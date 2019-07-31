@@ -111,7 +111,6 @@ int decodeResizeEncodeOneImage(std::string sImagePath, std::string sOutputPath, 
             std::cerr << "Error decoding JPEG header: " << sImagePath << std::endl;
             return EXIT_FAILURE;
         }
-
 		if(resize_width == 0 || resize_height == 0)
 		{
 			resize_width = widths[0]/2;
@@ -128,7 +127,7 @@ int decodeResizeEncodeOneImage(std::string sImagePath, std::string sOutputPath, 
 			return EXIT_FAILURE;
 		}
 
-	    // device image buffers.
+		// device image buffers.
 		nvjpegImage_t imgdesc;
 		nvjpegImage_t imgresize;
 
@@ -167,8 +166,8 @@ int decodeResizeEncodeOneImage(std::string sImagePath, std::string sOutputPath, 
 		CHECK_CUDA( cudaEventRecord(start, 0) );
 
 #ifdef CUDA10U2 // This part needs CUDA 10.1 Update 2
-        //parse image save metadata in jpegStream structure
-        CHECK_NVJPEG(nvjpegJpegStreamParse(nvjpeg_handle, dpImage, nSize, 1, 0, nvjpeg_jpeg_stream));
+		//parse image save metadata in jpegStream structure
+		CHECK_NVJPEG(nvjpegJpegStreamParse(nvjpeg_handle, dpImage, nSize, 1, 0, nvjpeg_jpeg_stream));
 #endif
 
 		int nReturnCode = 0;
@@ -186,9 +185,10 @@ int decodeResizeEncodeOneImage(std::string sImagePath, std::string sOutputPath, 
 		// image resize
 		/* Note: this is the simplest resizing function from NPP. */
 		NppStatus st;
-	    NppStreamContext nppStreamCtx;
+		NppStreamContext nppStreamCtx;
+		nppStreamCtx.hStream = NULL; // default stream
 
-	    st = nppiResize_8u_C3R_Ctx(imgdesc.channel[0], imgdesc.pitch[0], src_size, src_roi,
+		st = nppiResize_8u_C3R_Ctx(imgdesc.channel[0], imgdesc.pitch[0], src_size, src_roi,
 				imgresize.channel[0], imgresize.pitch[0], dst_size, dst_roi, NPPI_INTER_LANCZOS, nppStreamCtx);
 
 		if (st != NPP_SUCCESS)
@@ -196,9 +196,9 @@ int decodeResizeEncodeOneImage(std::string sImagePath, std::string sOutputPath, 
 			std::cerr << "NPP resize failed : " << std::endl;
 			return EXIT_FAILURE;
 		}
-        std::cout << "Resize-width: " << dst_size.width << " Resize-height: " << dst_size.height << std::endl;
+		std::cout << "Resize-width: " << dst_size.width << " Resize-height: " << dst_size.height << std::endl;
 
-        // get encoding from the jpeg stream and copy it to the encode parameters
+		// get encoding from the jpeg stream and copy it to the encode parameters
 #ifdef CUDA10U2 // This part needs CUDA 10.1 Update 2 for copy the metadata other information from base image.
 		CHECK_NVJPEG(nvjpegJpegStreamGetJpegEncoding(nvjpeg_jpeg_stream, &nvjpeg_encoding));
 		CHECK_NVJPEG(nvjpegEncoderParamsSetEncoding(nvjpeg_encode_params, nvjpeg_encoding, NULL));
@@ -244,35 +244,34 @@ int decodeResizeEncodeOneImage(std::string sImagePath, std::string sOutputPath, 
 			NULL));
 
 		// Timing stop
-	    CHECK_CUDA( cudaEventRecord(stop, 0) );
-	    CHECK_CUDA( cudaEventSynchronize(stop) );
+		CHECK_CUDA( cudaEventRecord(stop, 0) );
+		CHECK_CUDA( cudaEventSynchronize(stop) );
 
-	    // file writing
-        std::string output_filename = sOutputPath + "/" + sFileName + ".jpg";
-        char directory[120];
-        char mkdir_cmd[256];
-        std::string folder = sOutputPath;
-        output_filename = folder + "/"+ sFileName +".jpg";
+		// file writing
+		std::string output_filename = sOutputPath + "/" + sFileName + ".jpg";
+		char directory[120];
+		char mkdir_cmd[256];
+		std::string folder = sOutputPath;
+		output_filename = folder + "/"+ sFileName +".jpg";
 #if !defined(_WIN32)
-        sprintf(directory, "%s", folder.c_str());
-        sprintf(mkdir_cmd, "mkdir -p %s 2> /dev/null", directory);
+		sprintf(directory, "%s", folder.c_str());
+		sprintf(mkdir_cmd, "mkdir -p %s 2> /dev/null", directory);
 #else
-        sprintf(directory, "%s", folder.c_str());
-        sprintf(mkdir_cmd, "mkdir %s 2> nul", directory);
+		sprintf(directory, "%s", folder.c_str());
+		sprintf(mkdir_cmd, "mkdir %s 2> nul", directory);
 #endif
 
-        int ret = system(mkdir_cmd);
+		int ret = system(mkdir_cmd);
 
-        std::cout << "Writing JPEG file: " << output_filename << std::endl;
-        std::ofstream outputFile(output_filename.c_str(), std::ios::out | std::ios::binary);
+		std::cout << "Writing JPEG file: " << output_filename << std::endl;
+		std::ofstream outputFile(output_filename.c_str(), std::ios::out | std::ios::binary);
 		outputFile.write(reinterpret_cast<const char *>(obuffer.data()), static_cast<int>(length));
-            
-		// Free memory
-		cudaFree(pBuffer);
-		cudaFree(pResizeBuffer);
     }
+	// Free memory
+    CHECK_CUDA(cudaFree(pBuffer));
+    CHECK_CUDA(cudaFree(pResizeBuffer));
 
-    // get timing
+	// get timing
     CHECK_CUDA( cudaEventElapsedTime(&resize_time, start, stop) );
     time = (double)resize_time;
 
@@ -397,6 +396,7 @@ int main(int argc, const char *argv[])
     pidx = processArgs(params);
 
     CHECK_NVJPEG(nvjpegEncoderParamsDestroy(nvjpeg_encode_params));
+    CHECK_NVJPEG(nvjpegDecodeParamsDestroy(nvjpeg_decode_params));
     CHECK_NVJPEG(nvjpegEncoderStateDestroy(nvjpeg_encoder_state));
     CHECK_NVJPEG(nvjpegJpegStateDestroy(nvjpeg_decoder_state));
     CHECK_NVJPEG(nvjpegDestroy(nvjpeg_handle));
