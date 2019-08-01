@@ -38,13 +38,16 @@ x86_64
 
 ## Build command
 ```
+$ mkdir build
+$ cd build
+$ cmake ..
 $ make
 ```
 
 # Usage
-./image-resize -h
+./imageResize -h
 ```
-Usage: ./image-resize -i images-dir  [-o output-dir][-q jpeg-quality][-rw resize-width ] [-rh resize-height]
+Usage: ./imageResize -i images-dir  [-o output-dir][-q jpeg-quality][-rw resize-width ] [-rh resize-height]
 Parameters: 
 	images-dir	:	Path to single image or directory of images
 	output-dir	:	Write resized images to this directory [default resize_output]
@@ -62,56 +65,56 @@ Example:
 -rh 512 - resize height set to 512
 ```
 ```
-$  ./image-resize -i input_images/ -o resize_images -q 85 -rw 512 -rh 512
+$  ./imageResize -i ../input_images/ -o resize_images -q 85 -rw 512 -rh 512
 
 ```
 
 Sample example output on GV100, Ubuntu 18.04, CUDA 10.1
 
 ```
-$  ./image-resize -i input_images/
+$  ./imageResize -i ../input_images/
 ```
 ```
-Processing file: input_images/cat_baseline.jpg
+Processing file: ../input_images/cat_baseline.jpg
 Resize-width: 32 Resize-height: 32
 Writing JPEG file: resize_output/cat_baseline.jpg
-Processing file: input_images/img8.jpg
+Processing file: ../input_images/img8.jpg
 Resize-width: 240 Resize-height: 320
 Writing JPEG file: resize_output/img8.jpg
-Processing file: input_images/img5.jpg
+Processing file: ../input_images/img5.jpg
 Resize-width: 320 Resize-height: 240
 Writing JPEG file: resize_output/img5.jpg
-Processing file: input_images/img7.jpg
+Processing file: ../input_images/img7.jpg
 Resize-width: 240 Resize-height: 320
 Writing JPEG file: resize_output/img7.jpg
-Processing file: input_images/img2.jpg
+Processing file: ../input_images/img2.jpg
 Resize-width: 240 Resize-height: 320
 Writing JPEG file: resize_output/img2.jpg
-Processing file: input_images/img4.jpg
+Processing file: ../input_images/img4.jpg
 Resize-width: 320 Resize-height: 213
 Writing JPEG file: resize_output/img4.jpg
-Processing file: input_images/cat.jpg
+Processing file: ../input_images/cat.jpg
 Resize-width: 32 Resize-height: 32
 Writing JPEG file: resize_output/cat.jpg
-Processing file: input_images/cat_grayscale.jpg
+Processing file: ../input_images/cat_grayscale.jpg
 Resize-width: 32 Resize-height: 32
 Writing JPEG file: resize_output/cat_grayscale.jpg
-Processing file: input_images/img1.jpg
+Processing file: ../input_images/img1.jpg
 Resize-width: 240 Resize-height: 320
 Writing JPEG file: resize_output/img1.jpg
-Processing file: input_images/img3.jpg
+Processing file: ../input_images/img3.jpg
 Resize-width: 320 Resize-height: 213
 Writing JPEG file: resize_output/img3.jpg
-Processing file: input_images/img9.jpg
+Processing file: ../input_images/img9.jpg
 Resize-width: 320 Resize-height: 240
 Writing JPEG file: resize_output/img9.jpg
-Processing file: input_images/img6.jpg
+Processing file: ../input_images/img6.jpg
 Resize-width: 320 Resize-height: 240
 Writing JPEG file: resize_output/img6.jpg
 ------------------------------------------------------------- 
 Total images resized: 12
-Total time spent on resizing: 32.7526 (ms)
-Avg time/image: 2.72938 (ms)
-------------------------------------------------------------- 
+Total time spent on resizing: 35.9706 (ms)
+Avg time/image: 2.99755 (ms)
+-------------------------------------------------------------
 ```
 

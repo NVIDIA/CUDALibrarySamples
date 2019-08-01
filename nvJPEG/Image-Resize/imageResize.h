@@ -36,10 +36,10 @@
 #include <string.h>  // strcmpi
 #ifndef _WIN64
 #include <sys/time.h>  // timings
-
 #include <dirent.h>  // linux dir traverse
 #include <unistd.h>
 #endif
+
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -80,8 +80,8 @@ struct image_resize_params_t {
 
 
 typedef struct {
-	NppiSize size;
-	nvjpegImage_t data;
+    NppiSize size;
+    nvjpegImage_t data;
 } image_t;
 
 
