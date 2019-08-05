@@ -14,7 +14,7 @@ Image Resize, Image Encoding and Decoding from NVJPEG Library
 
 ## Supported OSes
 
-Linux
+Linux Windows
 
 ## Supported CPU Architecture
 
@@ -33,16 +33,27 @@ x86_64
 # Building (make)
 
 # Prerequisites
-- A Linux system with recent NVIDIA drivers.
+- A Linux/Windows system with recent NVIDIA drivers.
 - Install the [CUDA 10.1 toolkit](https://developer.nvidia.com/cuda-downloads).
 
-## Build command
+## Build command on Linux
 ```
 $ mkdir build
 $ cd build
 $ cmake ..
 $ make
 ```
+
+## Build command on Windows
+```
+$ mkdir build
+$ cd build
+$ cmake -DCMAKE_GENERATOR_PLATFORM=x64 ..
+$ Open imageResize.sln project in Visual Studio 15 2017 and build
+```
+
+
+
 
 # Usage
 ./imageResize -h

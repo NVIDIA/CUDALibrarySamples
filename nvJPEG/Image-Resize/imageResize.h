@@ -36,10 +36,9 @@
 #include <string.h>  // strcmpi
 #ifndef _WIN64
 #include <sys/time.h>  // timings
-#include <dirent.h>  // linux dir traverse
 #include <unistd.h>
 #endif
-
+#include <dirent.h>  
 #include <sys/stat.h>
 #include <sys/types.h>
 
