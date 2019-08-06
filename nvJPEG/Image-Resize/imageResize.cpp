@@ -35,7 +35,7 @@
 // *****************************************************************************
 // nvJPEG handles and parameters
 // -----------------------------------------------------------------------------
-nvjpegBackend_t impl = NVJPEG_BACKEND_GPU_HYBRID; // NVJPEG_BACKEND_DEFAULT;
+nvjpegBackend_t impl = NVJPEG_BACKEND_GPU_HYBRID; //NVJPEG_BACKEND_DEFAULT;
 nvjpegHandle_t nvjpeg_handle;
 nvjpegJpegStream_t nvjpeg_jpeg_stream;
 nvjpegDecodeParams_t nvjpeg_decode_params;
@@ -54,15 +54,15 @@ nvjpegJpegEncoding_t nvjpeg_encoding;
 int decodeResizeEncodeOneImage(std::string sImagePath, std::string sOutputPath, double &time, int resizeWidth, int resizeHeight, int resize_quality)
 {
     // Decode, Encoder format
-    nvjpegOutputFormat_t oformat = NVJPEG_OUTPUT_RGBI;
-    nvjpegInputFormat_t iformat = NVJPEG_INPUT_RGBI;
+    nvjpegOutputFormat_t oformat = NVJPEG_OUTPUT_BGR;
+    nvjpegInputFormat_t iformat = NVJPEG_INPUT_BGR;
 
     // timing for resize
     time = 0.;
     float resize_time = 0.;
     cudaEvent_t start, stop;
-    CHECK_CUDA( cudaEventCreate(&start) );
-    CHECK_CUDA( cudaEventCreate(&stop) );
+    CHECK_CUDA(cudaEventCreate(&start));
+    CHECK_CUDA(cudaEventCreate(&stop));
 
     // Image reading section
     // Get the file name, without extension.
@@ -106,97 +106,127 @@ int decodeResizeEncodeOneImage(std::string sImagePath, std::string sOutputPath, 
         nvjpegChromaSubsampling_t subsampling;
         int widths[NVJPEG_MAX_COMPONENT];
         int heights[NVJPEG_MAX_COMPONENT];
+        int nReturnCode = 0;
         if (NVJPEG_STATUS_SUCCESS != nvjpegGetImageInfo(nvjpeg_handle, dpImage, nSize, &nComponent, &subsampling, widths, heights))
         {
             std::cerr << "Error decoding JPEG header: " << sImagePath << std::endl;
             return EXIT_FAILURE;
         }
+
         if(resizeWidth == 0 || resizeHeight == 0)
         {
             resizeWidth = widths[0]/2;
             resizeHeight = heights[0]/2;
         }
-        NppiSize dstSize = {(int)resizeWidth, (int)resizeHeight};
 
-        size_t pitch;
-        pitch = NVJPEG_MAX_COMPONENT * widths[0];
-        cudaError_t eCopy = cudaMalloc(&pBuffer, pitch * heights[0]);
-        if(cudaSuccess != eCopy)
-        {
-            std::cerr << "cudaMalloc failed for component Y: " << cudaGetErrorString(eCopy) << std::endl;
-            return EXIT_FAILURE;
-        }
+        // image resize
+        size_t pitchDesc, pitchResize;
+        NppiSize srcSize = { (int)widths[0], (int)heights[0] };
+        NppiRect srcRoi = { 0, 0, srcSize.width, srcSize.height };
+        NppiSize dstSize = { (int)resizeWidth, (int)resizeHeight };
+        NppiRect dstRoi = { 0, 0, dstSize.width, dstSize.height };
+        NppStatus st;
+        NppStreamContext nppStreamCtx;
+        nppStreamCtx.hStream = NULL; // default stream
 
         // device image buffers.
         nvjpegImage_t imgDesc;
         nvjpegImage_t imgResize;
 
+        if (is_interleaved(oformat))
+        {
+            pitchDesc = NVJPEG_MAX_COMPONENT * widths[0];
+            pitchResize = NVJPEG_MAX_COMPONENT * resizeWidth;
+        }
+        else
+        {
+            pitchDesc = 3 * widths[0];
+            pitchResize = 3 * resizeWidth;
+        }
+
+        cudaError_t eCopy = cudaMalloc(&pBuffer, pitchDesc * heights[0]);
+        if (cudaSuccess != eCopy)
+        {
+            std::cerr << "cudaMalloc failed : " << cudaGetErrorString(eCopy) << std::endl;
+            return EXIT_FAILURE;
+        }
+        cudaError_t eCopy1 = cudaMalloc(&pResizeBuffer, pitchResize * resizeHeight);
+        if (cudaSuccess != eCopy1)
+        {
+            std::cerr << "cudaMalloc failed : " << cudaGetErrorString(eCopy) << std::endl;
+            return EXIT_FAILURE;
+        }
+
+
         imgDesc.channel[0] = pBuffer;
         imgDesc.channel[1] = pBuffer + widths[0] * heights[0];
         imgDesc.channel[2] = pBuffer + widths[0] * heights[0] * 2;
-        imgDesc.channel[3] = pBuffer + widths[0] * heights[0] * 3;
         imgDesc.pitch[0] = (unsigned int)(is_interleaved(oformat) ? widths[0] * NVJPEG_MAX_COMPONENT : widths[0]);
         imgDesc.pitch[1] = (unsigned int)widths[0];
         imgDesc.pitch[2] = (unsigned int)widths[0];
-        imgDesc.pitch[3] = (unsigned int)widths[0];
-
-        // image resize
-        NppiSize srcSize = {(int)widths[0], (int)heights[0]};
-        NppiRect srcRoi = { 0, 0, srcSize.width, srcSize.height};
-        NppiRect dstRoi = { 0, 0, dstSize.width, dstSize.height};
-
-        pitch = NVJPEG_MAX_COMPONENT * resizeWidth;
-        cudaError_t eCopy1 = cudaMalloc(&pResizeBuffer,pitch * resizeHeight);
-        if(cudaSuccess != eCopy1)
-        {
-            std::cerr << "cudaMalloc failed for component Y: " << cudaGetErrorString(eCopy) << std::endl;
-            return EXIT_FAILURE;
-        }
 
         imgResize.channel[0] = pResizeBuffer;
         imgResize.channel[1] = pResizeBuffer + resizeWidth * resizeHeight;
         imgResize.channel[2] = pResizeBuffer + resizeWidth * resizeHeight * 2;
-        imgResize.channel[3] = pResizeBuffer + resizeWidth * resizeHeight * 3;
         imgResize.pitch[0] = (unsigned int)(is_interleaved(oformat) ? resizeWidth * NVJPEG_MAX_COMPONENT : resizeWidth);;
         imgResize.pitch[1] = (unsigned int)resizeWidth;
         imgResize.pitch[2] = (unsigned int)resizeWidth;
-        imgResize.pitch[3] = (unsigned int)resizeWidth;
+
+        if (is_interleaved(oformat))
+        {
+            imgDesc.channel[3] = pBuffer + widths[0] * heights[0] * 3;
+            imgDesc.pitch[3] = (unsigned int)widths[0];
+            imgResize.channel[3] = pResizeBuffer + resizeWidth * resizeHeight * 3;
+            imgResize.pitch[3] = (unsigned int)resizeWidth;
+        }
+
+        // nvJPEG encoder parameter setting
+        CHECK_NVJPEG(nvjpegEncoderParamsSetQuality(nvjpeg_encode_params, resize_quality, NULL));
+
+#ifdef OPTIMIZED_HUFFMAN  // Optimized Huffman
+        CHECK_NVJPEG(nvjpegEncoderParamsSetOptimizedHuffman(nvjpeg_encode_params, 1, NULL));
+#endif
+        CHECK_NVJPEG(nvjpegEncoderParamsSetSamplingFactors(nvjpeg_encode_params, subsampling, NULL));
+
 
         // Timing start
-        CHECK_CUDA( cudaEventRecord(start, 0) );
+        CHECK_CUDA(cudaEventRecord(start, 0));
 
 #ifdef CUDA10U2 // This part needs CUDA 10.1 Update 2
         //parse image save metadata in jpegStream structure
         CHECK_NVJPEG(nvjpegJpegStreamParse(nvjpeg_handle, dpImage, nSize, 1, 0, nvjpeg_jpeg_stream));
 #endif
 
-        int nReturnCode = 0;
-
         // decode by stages
         nReturnCode = nvjpegDecode(nvjpeg_handle, nvjpeg_decoder_state, dpImage, nSize, oformat, &imgDesc, NULL);
-
-        cudaDeviceSynchronize();
         if(nReturnCode != 0)
         {
-            std::cerr << "Error in nvjpegDecode." << std::endl;
+            std::cerr << "Error in nvjpegDecode." << nReturnCode << std::endl;
             return EXIT_FAILURE;
         }
 
         // image resize
         /* Note: this is the simplest resizing function from NPP. */
-        NppStatus st;
-        NppStreamContext nppStreamCtx;
-        nppStreamCtx.hStream = NULL; // default stream
-
-        st = nppiResize_8u_C3R_Ctx(imgDesc.channel[0], imgDesc.pitch[0], srcSize, srcRoi,
+        if (is_interleaved(oformat))
+        {
+            st = nppiResize_8u_C3R_Ctx(imgDesc.channel[0], imgDesc.pitch[0], srcSize, srcRoi,
                 imgResize.channel[0], imgResize.pitch[0], dstSize, dstRoi, NPPI_INTER_LANCZOS, nppStreamCtx);
+        }
+        else
+        {
+            st = nppiResize_8u_C1R_Ctx(imgDesc.channel[0], imgDesc.pitch[0], srcSize, srcRoi,
+                imgResize.channel[0], imgResize.pitch[0], dstSize, dstRoi, NPPI_INTER_LANCZOS, nppStreamCtx);
+            st = nppiResize_8u_C1R_Ctx(imgDesc.channel[1], imgDesc.pitch[1], srcSize, srcRoi,
+                imgResize.channel[1], imgResize.pitch[1], dstSize, dstRoi, NPPI_INTER_LANCZOS, nppStreamCtx);
+            st = nppiResize_8u_C1R_Ctx(imgDesc.channel[2], imgDesc.pitch[2], srcSize, srcRoi,
+                imgResize.channel[2], imgResize.pitch[2], dstSize, dstRoi, NPPI_INTER_LANCZOS, nppStreamCtx);
+        }
 
         if (st != NPP_SUCCESS)
         {
-            std::cerr << "NPP resize failed : " << std::endl;
+            std::cerr << "NPP resize failed : " << st << std::endl;
             return EXIT_FAILURE;
         }
-        std::cout << "Resize-width: " << dstSize.width << " Resize-height: " << dstSize.height << std::endl;
 
         // get encoding from the jpeg stream and copy it to the encode parameters
 #ifdef CUDA10U2 // This part needs CUDA 10.1 Update 2 for copy the metadata other information from base image.
@@ -206,15 +236,6 @@ int decodeResizeEncodeOneImage(std::string sImagePath, std::string sOutputPath, 
         CHECK_NVJPEG(nvjpegEncoderParamsCopyHuffmanTables(nvjpeg_encoder_state, nvjpeg_encode_params, nvjpeg_jpeg_stream, NULL));
         CHECK_NVJPEG(nvjpegEncoderParamsCopyMetadata(nvjpeg_encoder_state, nvjpeg_encode_params, nvjpeg_jpeg_stream, NULL));
 #endif
-
-        CHECK_NVJPEG(nvjpegEncoderParamsSetQuality(nvjpeg_encode_params, resize_quality, NULL));
-
-#ifdef OPTIMIZED_HUFFMAN  // Optimized Huffman
-        CHECK_NVJPEG(nvjpegEncoderParamsSetOptimizedHuffman(nvjpeg_encode_params, 1, NULL));
-#endif
-        CHECK_NVJPEG(nvjpegEncoderParamsSetSamplingFactors(nvjpeg_encode_params, subsampling, NULL));
-
-        cudaDeviceSynchronize();
 
         // encoding the resize data
         CHECK_NVJPEG(nvjpegEncodeImage(nvjpeg_handle,
@@ -235,7 +256,9 @@ int decodeResizeEncodeOneImage(std::string sImagePath, std::string sOutputPath, 
             NULL,
             &length,
             NULL));
+
         obuffer.resize(length);
+
         CHECK_NVJPEG(nvjpegEncodeRetrieveBitstream(
             nvjpeg_handle,
             nvjpeg_encoder_state,
@@ -244,10 +267,11 @@ int decodeResizeEncodeOneImage(std::string sImagePath, std::string sOutputPath, 
             NULL));
 
         // Timing stop
-        CHECK_CUDA( cudaEventRecord(stop, 0) );
-        CHECK_CUDA( cudaEventSynchronize(stop) );
+        CHECK_CUDA(cudaEventRecord(stop, 0));
+        CHECK_CUDA(cudaEventSynchronize(stop));
 
         // file writing
+        std::cout << "Resize-width: " << dstSize.width << " Resize-height: " << dstSize.height << std::endl;
         std::string output_filename = sOutputPath + "/" + sFileName + ".jpg";
         char directory[120];
         char mkdir_cmd[256];
@@ -272,7 +296,7 @@ int decodeResizeEncodeOneImage(std::string sImagePath, std::string sOutputPath, 
     CHECK_CUDA(cudaFree(pResizeBuffer));
 
     // get timing
-    CHECK_CUDA( cudaEventElapsedTime(&resize_time, start, stop) );
+    CHECK_CUDA(cudaEventElapsedTime(&resize_time, start, stop));
     time = (double)resize_time;
 
     return EXIT_SUCCESS;
