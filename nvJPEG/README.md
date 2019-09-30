@@ -12,6 +12,7 @@ Image Encoding and Decoding from NVJPEG Library
 
 [Image Resize](Image-Resize/)
 
+[Image Resize Watermarking](Image-Resize-WaterMark/)
 
 ## Supported SM Architectures
 
