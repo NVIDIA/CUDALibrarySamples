@@ -2,7 +2,7 @@
 
 ## Description
 
-This code demonstrates Image resize and Watermarking (Alpha Blending) utility using NPP resize and nvJPEG library.
+This code demonstrates Image resize and Image Watermarking (Alpha Blending) functionality used from NPP library and Image encoder/decoder from nvJPEG library.
 
 ## Key Concepts
 
@@ -14,7 +14,7 @@ Image Resize, Alpha Blending, Image Encoding and Decoding from NVJPEG Library
 
 ## Supported OSes
 
-Linux Windows
+Linux, Windows
 
 ## Supported CPU Architecture
 
