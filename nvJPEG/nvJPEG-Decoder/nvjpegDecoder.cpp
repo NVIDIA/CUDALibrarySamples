@@ -40,60 +40,84 @@ int decode_images(const FileData &img_data, const std::vector<size_t> &img_len,
   CHECK_CUDA(cudaEventCreate(&startEvent, cudaEventBlockingSync));
   CHECK_CUDA(cudaEventCreate(&stopEvent, cudaEventBlockingSync));
 
-  if (!params.batched) {
-    if (!params.pipelined)  // decode one image at a time
-    {
-      CHECK_CUDA(cudaEventRecord(startEvent, params.stream));
-      for (int i = 0; i < params.batch_size; i++) {
-        CHECK_NVJPEG(nvjpegDecode(params.nvjpeg_handle, params.nvjpeg_state,
-                                     (const unsigned char *)img_data[i].data(),
-                                     img_len[i], params.fmt, &out[i],
-                                     params.stream));
+
+  std::vector<const unsigned char*> batched_bitstreams;
+  std::vector<size_t> batched_bitstreams_size;
+  std::vector<nvjpegImage_t>  batched_output;
+
+  // bit-streams that batched decode cannot handle
+  std::vector<const unsigned char*> otherdecode_bitstreams;
+  std::vector<size_t> otherdecode_bitstreams_size;
+  std::vector<nvjpegImage_t> otherdecode_output;
+
+  if(params.hw_decode_available){
+    for(int i = 0; i < params.batch_size; i++){
+      // extract bitstream meta data to figure out whether a bit-stream can be decoded
+      nvjpegJpegStreamParseHeader(params.nvjpeg_handle, (const unsigned char *)img_data[i].data(), img_len[i], params.jpeg_streams[0]);
+      int isSupported = -1;
+      nvjpegDecodeBatchedSupported(params.nvjpeg_handle, params.jpeg_streams[0], &isSupported);
+
+      if(isSupported == 0){
+        batched_bitstreams.push_back((const unsigned char *)img_data[i].data());
+        batched_bitstreams_size.push_back(img_len[i]);
+        batched_output.push_back(out[i]);
+      } else {
+        otherdecode_bitstreams.push_back((const unsigned char *)img_data[i].data());
+        otherdecode_bitstreams_size.push_back(img_len[i]);
+        otherdecode_output.push_back(out[i]);
       }
-      CHECK_CUDA(cudaEventRecord(stopEvent, params.stream));
-    } else {
-      // use de-coupled API in pipelined mode
-      CHECK_CUDA(cudaEventRecord(startEvent, params.stream));
-      CHECK_NVJPEG(nvjpegStateAttachDeviceBuffer(params.nvjpeg_decoupled_state, params.device_buffer));
-      int buffer_index = 0;
-      CHECK_NVJPEG(nvjpegDecodeParamsSetOutputFormat(params.nvjpeg_decode_params, params.fmt));
-      for (int i = 0; i < params.batch_size; i++) {
-      CHECK_NVJPEG(
-          nvjpegJpegStreamParse(params.nvjpeg_handle, (const unsigned char *)img_data[i].data(), img_len[i], 
-          0, 0, params.jpeg_streams[buffer_index]));
-                                
-      CHECK_NVJPEG(nvjpegStateAttachPinnedBuffer(params.nvjpeg_decoupled_state,
-          params.pinned_buffers[buffer_index]));
-      
-      CHECK_NVJPEG(nvjpegDecodeJpegHost(params.nvjpeg_handle, params.nvjpeg_decoder, params.nvjpeg_decoupled_state, 
-          params.nvjpeg_decode_params, params.jpeg_streams[buffer_index]));
-
-      CHECK_CUDA(cudaStreamSynchronize(params.stream));
-
-      CHECK_NVJPEG(nvjpegDecodeJpegTransferToDevice(params.nvjpeg_handle, params.nvjpeg_decoder, params.nvjpeg_decoupled_state,
-          params.jpeg_streams[buffer_index], params.stream));
-
-      buffer_index = 1 - buffer_index; // switch pinned buffer in pipeline mode to avoid an extra sync
-
-      CHECK_NVJPEG(nvjpegDecodeJpegDevice(params.nvjpeg_handle, params.nvjpeg_decoder, params.nvjpeg_decoupled_state,
-          &out[i], params.stream));
-
-      }
-      CHECK_CUDA(cudaEventRecord(stopEvent, params.stream));
     }
   } else {
-    std::vector<const unsigned char *> raw_inputs;
-    for (int i = 0; i < params.batch_size; i++) {
-      raw_inputs.push_back((const unsigned char *)img_data[i].data());
+    for(int i = 0; i < params.batch_size; i++) {
+      otherdecode_bitstreams.push_back((const unsigned char *)img_data[i].data());
+      otherdecode_bitstreams_size.push_back(img_len[i]);
+      otherdecode_output.push_back(out[i]);
+    }
+  }
+
+  CHECK_CUDA(cudaEventRecord(startEvent, params.stream));
+
+    if(batched_bitstreams.size() > 0)
+     {
+          CHECK_NVJPEG(
+               nvjpegDecodeBatchedInitialize(params.nvjpeg_handle, params.nvjpeg_state,
+                                            batched_bitstreams.size(), 1, params.fmt));
+
+         CHECK_NVJPEG(nvjpegDecodeBatched(
+             params.nvjpeg_handle, params.nvjpeg_state, batched_bitstreams.data(),
+             batched_bitstreams_size.data(), batched_output.data(), params.stream));
+     }
+
+    if(otherdecode_bitstreams.size() > 0)
+    {
+          CHECK_NVJPEG(nvjpegStateAttachDeviceBuffer(params.nvjpeg_decoupled_state, params.device_buffer));
+          int buffer_index = 0;
+          CHECK_NVJPEG(nvjpegDecodeParamsSetOutputFormat(params.nvjpeg_decode_params, params.fmt));
+          for (int i = 0; i < params.batch_size; i++) {
+              CHECK_NVJPEG(
+                  nvjpegJpegStreamParse(params.nvjpeg_handle, otherdecode_bitstreams[i], otherdecode_bitstreams_size[i],
+                  0, 0, params.jpeg_streams[buffer_index]));
+
+              CHECK_NVJPEG(nvjpegStateAttachPinnedBuffer(params.nvjpeg_decoupled_state,
+                  params.pinned_buffers[buffer_index]));
+
+              CHECK_NVJPEG(nvjpegDecodeJpegHost(params.nvjpeg_handle, params.nvjpeg_decoder, params.nvjpeg_decoupled_state,
+                  params.nvjpeg_decode_params, params.jpeg_streams[buffer_index]));
+
+              CHECK_CUDA(cudaStreamSynchronize(params.stream));
+
+              CHECK_NVJPEG(nvjpegDecodeJpegTransferToDevice(params.nvjpeg_handle, params.nvjpeg_decoder, params.nvjpeg_decoupled_state,
+                  params.jpeg_streams[buffer_index], params.stream));
+
+              buffer_index = 1 - buffer_index; // switch pinned buffer in pipeline mode to avoid an extra sync
+
+              CHECK_NVJPEG(nvjpegDecodeJpegDevice(params.nvjpeg_handle, params.nvjpeg_decoder, params.nvjpeg_decoupled_state,
+                  &otherdecode_output[i], params.stream));
+
+          }
+      CHECK_CUDA(cudaEventRecord(stopEvent, params.stream));
     }
 
-    CHECK_CUDA(cudaEventRecord(startEvent, params.stream));
-    CHECK_NVJPEG(nvjpegDecodeBatched(
-        params.nvjpeg_handle, params.nvjpeg_state, raw_inputs.data(),
-        img_len.data(), out.data(), params.stream));
-    CHECK_CUDA(cudaEventRecord(stopEvent, params.stream));
-  
-  }
   CHECK_CUDA(cudaEventSynchronize(stopEvent));
   CHECK_CUDA(cudaEventElapsedTime(&loopTime, startEvent, stopEvent));
   time = static_cast<double>(loopTime);
@@ -134,6 +158,7 @@ int write_images(std::vector<nvjpegImage_t> &iout, std::vector<int> &widths,
     }
     std::cout << "Done writing decoded image to file: " << fname << std::endl;
   }
+  return EXIT_SUCCESS;
 }
 
 double process_images(FileNames &image_names, decode_params_t &params,
@@ -264,16 +289,6 @@ int main(int argc, const char *argv[]) {
     params.warmup = std::atoi(argv[pidx + 1]);
   }
 
-  params.batched = false;
-  if ((pidx = findParamIndex(argv, argc, "-batched")) != -1) {
-    params.batched = true;
-  }
-
-  params.pipelined = false;
-  if ((pidx = findParamIndex(argv, argc, "-pipelined")) != -1) {
-    params.pipelined = true;
-  }
-
   params.fmt = NVJPEG_OUTPUT_RGB;
   if ((pidx = findParamIndex(argv, argc, "-fmt")) != -1) {
     std::string sfmt = argv[pidx + 1];
@@ -312,19 +327,26 @@ int main(int argc, const char *argv[]) {
 
   nvjpegDevAllocator_t dev_allocator = {&dev_malloc, &dev_free};
   nvjpegPinnedAllocator_t pinned_allocator ={&host_malloc, &host_free};
-  int flags = 0;
-  CHECK_NVJPEG(nvjpegCreateEx(NVJPEG_BACKEND_DEFAULT, &dev_allocator,
-                                &pinned_allocator,flags,  &params.nvjpeg_handle));
+
+  nvjpegStatus_t status = nvjpegCreateEx(NVJPEG_BACKEND_HARDWARE, &dev_allocator,
+                                &pinned_allocator,NVJPEG_FLAGS_DEFAULT,  &params.nvjpeg_handle);
+  params.hw_decode_available = true;
+  if( status == NVJPEG_STATUS_ARCH_MISMATCH) {
+    std::cout<<"Hardware Decoder not supported. Falling back to default backend"<<std::endl;
+    CHECK_NVJPEG(nvjpegCreateEx(NVJPEG_BACKEND_DEFAULT, &dev_allocator,
+                              &pinned_allocator, NVJPEG_FLAGS_DEFAULT, &params.nvjpeg_handle));
+    params.hw_decode_available = false;
+  } else {
+    CHECK_NVJPEG(status);
+  }
 
   CHECK_NVJPEG(
       nvjpegJpegStateCreate(params.nvjpeg_handle, &params.nvjpeg_state));
-  CHECK_NVJPEG(
-      nvjpegDecodeBatchedInitialize(params.nvjpeg_handle, params.nvjpeg_state,
-                                    params.batch_size, 1, params.fmt));
 
-  if(params.pipelined ){
-    create_decoupled_api_handles(params);
-  }
+
+
+  create_decoupled_api_handles(params);
+
   // read source images
   FileNames image_names;
   readInput(params.input_dir, image_names);
@@ -355,9 +377,7 @@ int main(int argc, const char *argv[]) {
                         params.batch_size)
             << std::endl;
 
-  if(params.pipelined ){ 
-    destroy_decoupled_api_handles(params);
-  }
+  destroy_decoupled_api_handles(params);
 
   CHECK_NVJPEG(nvjpegJpegStateDestroy(params.nvjpeg_state));
   CHECK_NVJPEG(nvjpegDestroy(params.nvjpeg_handle));

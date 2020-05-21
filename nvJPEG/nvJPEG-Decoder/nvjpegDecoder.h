@@ -102,8 +102,7 @@ struct decode_params_t {
   bool write_decoded;
   std::string output_dir;
 
-  bool pipelined;
-  bool batched;
+  bool hw_decode_available;
 };
 
 int read_next_batch(FileNames &image_names, int batch_size,
