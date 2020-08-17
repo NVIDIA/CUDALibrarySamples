@@ -114,7 +114,7 @@ int main(void) {
                                  CUSPARSE_OPERATION_NON_TRANSPOSE,
                                  &alpha, matA, matB, &beta, matC, CUDA_R_32F,
                                  CUSPARSE_SPMM_ALG_DEFAULT, &bufferSize) )
-    CHECK_CUSPARSE( cudaMalloc(&dBuffer, bufferSize) )
+    CHECK_CUDA( cudaMalloc(&dBuffer, bufferSize) )
 
     // execute preprocess (optional)
     CHECK_CUSPARSE( cusparseSpMM_preprocess(
