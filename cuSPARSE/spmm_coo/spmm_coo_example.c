@@ -94,7 +94,7 @@ int main(void) {
     void*                dBuffer    = NULL;
     size_t               bufferSize = 0;
     CHECK_CUSPARSE( cusparseCreate(&handle) )
-    // Create sparse matrix A in CSR format
+    // Create sparse matrix A in COO format
     CHECK_CUSPARSE( cusparseCreateCoo(&matA, A_num_rows, A_num_cols, A_nnz,
                                       dA_rows, dA_columns, dA_values,
                                       CUSPARSE_INDEX_32I,
