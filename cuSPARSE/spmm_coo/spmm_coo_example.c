@@ -142,7 +142,7 @@ int main(void) {
                                  CUSPARSE_OPERATION_NON_TRANSPOSE,
                                  CUSPARSE_OPERATION_NON_TRANSPOSE,
                                  &alpha, matA, matB, &beta, matC, CUDA_R_32F,
-                                 CUSPARSE_MM_ALG_DEFAULT, &bufferSize) )
+                                 CUSPARSE_SPMM_ALG_DEFAULT, &bufferSize) )
     CHECK_CUDA( cudaMalloc(&dBuffer, bufferSize) )
 
     // execute SpMM
@@ -150,7 +150,7 @@ int main(void) {
                                  CUSPARSE_OPERATION_NON_TRANSPOSE,
                                  CUSPARSE_OPERATION_NON_TRANSPOSE,
                                  &alpha, matA, matB, &beta, matC, CUDA_R_32F,
-                                 CUSPARSE_MM_ALG_DEFAULT, dBuffer) )
+                                 CUSPARSE_SPMM_ALG_DEFAULT, dBuffer) )
 
     // destroy matrix/vector descriptors
     CHECK_CUSPARSE( cusparseDestroySpMat(matA) )
