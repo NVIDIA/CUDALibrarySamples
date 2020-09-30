@@ -6,7 +6,7 @@ This folder demonstrates cuSPARSE Generic APIs usage.
 
 [cuSPARSE Generic APIs Documentation](https://docs.nvidia.com/cuda/cusparse/index.html#cusparse-generic-api-reference)
 
-## Samples
+## cuSPARSE Samples
 
 ##### Vector - Vector Operations
 
@@ -62,4 +62,10 @@ This folder demonstrates cuSPARSE Generic APIs usage.
 
 * [Hardware Memory Compression](compression/)
 
-    The sample demonstrates how to optimize *sparse vector - dense vector scaling and sum* (`cusparseAxpby`) by exploting Ampere *Hardware Memory Compression*
+    The sample demonstrates how to optimize *sparse vector - dense vector scaling and sum* (`cusparseAxpby`) by exploting NVIDIA Ampere architecture *Hardware Memory Compression*
+
+## cuSPARSELt Samples
+
+* [Structured Matrix-Matrix Multiplication](spmma/)
+
+    The sample demonstrates how to exploit NVIDIA Ampere architecture *Sparse Tensor Cores* for performing Structured Matrix-Matrix Multiplication

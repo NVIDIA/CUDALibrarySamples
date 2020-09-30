@@ -146,7 +146,7 @@ int main(void) {
     cudaStream_t    stream;
     cudaGraphExec_t graph_exec;
     CHECK_CUDA( cudaStreamCreate(&stream) )
-    CHECK_CUDA( cusparseSetStream(handle, stream) )
+    CHECK_CUSPARSE( cusparseSetStream(handle, stream) )
     CHECK_CUDA( cudaStreamBeginCapture(stream, cudaStreamCaptureModeGlobal) )
 
     for (int j = 0; j < 1000; j++) {

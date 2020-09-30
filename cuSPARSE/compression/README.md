@@ -2,7 +2,7 @@
 
 ## Description
 
-The sample demonstrates how to optimize *sparse vector - dense vector scaling and sum* (`cusparseAxpby`) by exploting Ampere *Hardware Memory Compression*
+The sample demonstrates how to optimize *sparse vector - dense vector scaling and sum* (`cusparseAxpby`) by exploting NVIDIA Ampere architecture *Hardware Memory Compression*
 
 [cuSPARSE Optimization Notes](https://docs.nvidia.com/cuda/cusparse/index.html#optimization-notes)
 
@@ -26,7 +26,7 @@ nv-nsight-cu-cli --metrics lts__gcomp_input_sectors_compression_achieved_algo_sd
     cmake ..
     make
     ```
-    On Windows, instead of running the last build step, open    the Visual Studio Solution that was created and build.
+    On Windows, instead of running the last build step, open the Visual Studio Solution that was created and build.
 
 ## Support
 
