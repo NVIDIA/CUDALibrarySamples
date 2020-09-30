@@ -127,13 +127,13 @@ int main(void) {
                            cudaMemcpyDeviceToHost) )
     int correct = 1;
     for (int i = 0; i < size; i++) {
-        if (abs(hY[i] - hY_result[i]) > 0.001) {
+        if (fabsf(hY[i] - hY_result[i]) > 0.001) {
             correct = 0;
             break;
         }
     }
     for (int i = 0; i < nnz; i++) {
-        if (abs(hX_values[i] != hX_result[i]) > 0.001) {
+        if (fabsf(hX_values[i] - hX_result[i]) > 0.001) {
             correct = 0;
             break;
         }

@@ -27,7 +27,7 @@ This sample demonstrates the usage of `cusparseSpGEMM` for performing *sparse ma
     cmake ..
     make
     ```
-    On Windows, instead of running the last build step, open    the Visual Studio Solution that was created and build.
+    On Windows, instead of running the last build step, open the Visual Studio Solution that was created and build.
 
 ## Support
 

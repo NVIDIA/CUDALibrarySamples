@@ -127,7 +127,7 @@ int main(void) {
                                  handle, CUSPARSE_OPERATION_NON_TRANSPOSE,
                                  &alpha, matA, vecX, &beta, vecY, CUDA_R_32F,
                                  CUSPARSE_MV_ALG_DEFAULT, &bufferSize) )
-    CHECK_CUSPARSE( cudaMalloc(&dBuffer, bufferSize) )
+    CHECK_CUDA( cudaMalloc(&dBuffer, bufferSize) )
 
     // execute SpMV
     CHECK_CUSPARSE( cusparseSpMV(handle, CUSPARSE_OPERATION_NON_TRANSPOSE,

@@ -199,6 +199,8 @@ int main(void) {
     CHECK_CUSPARSE(
         cusparseCsrSetPointers(matC, dC_csrOffsets, dC_columns, dC_values) )
 
+    // if beta != 0, cusparseSpGEMM_copy reuses/updates the values of dC_values
+
     // copy the final products to the matrix C
     CHECK_CUSPARSE(
         cusparseSpGEMM_copy(handle, opA, opB,
