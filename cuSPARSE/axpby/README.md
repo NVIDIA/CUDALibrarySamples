@@ -27,7 +27,7 @@ This sample demonstrates the usage of `cusparseAxpby` for performing *sparse vec
     cmake ..
     make
     ```
-    On Windows, instead of running the last build step, open    the Visual Studio Solution that was created and build.
+    On Windows, instead of running the last build step, open the Visual Studio Solution that was created and build.
 
 ## Support
 
@@ -41,4 +41,3 @@ This sample demonstrates the usage of `cusparseAxpby` for performing *sparse vec
 
 * [CUDA 11.0 toolkit](https://developer.nvidia.com/cuda-downloads) (or above) and compatible driver (see [CUDA Driver Release Notes](https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/index.html#cuda-major-component-versions)).
 * [CMake 3.9](https://cmake.org/download/) or above on Windows
-

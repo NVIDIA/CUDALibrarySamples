@@ -27,7 +27,7 @@ This sample demonstrates the usage of `cusparseSpMV` for performing *sparse matr
     cmake ..
     make
     ```
-    On Windows, instead of running the last build step, open    the Visual Studio Solution that was created and build.
+    On Windows, instead of running the last build step, open the Visual Studio Solution that was created and build.
 
 ## Support
 

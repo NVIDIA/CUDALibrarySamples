@@ -49,11 +49,10 @@
 #include <algorithm>          // std::fill
 #include <cstdio>             // printf
 #include <cstdlib>            // EXIT_FAILURE
-//#include <cuda.h>             // cuMemCreate
+#include <cuda.h>             // cuMemCreate
 #include <cuda_runtime_api.h> // cudaMalloc, cudaMemcpy, etc.
 #include <cusparse.h>         // cusparseAxpby
 #include <numeric>            // std::iota
-
 
 #define CHECK_DRV(func)                                                        \
 {                                                                              \

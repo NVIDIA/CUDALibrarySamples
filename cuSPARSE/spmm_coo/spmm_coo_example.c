@@ -125,7 +125,7 @@ int main(void) {
     void*                dBuffer    = NULL;
     size_t               bufferSize = 0;
     CHECK_CUSPARSE( cusparseCreate(&handle) )
-    // Create sparse matrix A in CSR format
+    // Create sparse matrix A in COO format
     CHECK_CUSPARSE( cusparseCreateCoo(&matA, A_num_rows, A_num_cols, A_num_nnz,
                                       dA_rows, dA_columns, dA_values,
                                       CUSPARSE_INDEX_32I,
@@ -142,15 +142,15 @@ int main(void) {
                                  CUSPARSE_OPERATION_NON_TRANSPOSE,
                                  CUSPARSE_OPERATION_NON_TRANSPOSE,
                                  &alpha, matA, matB, &beta, matC, CUDA_R_32F,
-                                 CUSPARSE_MM_ALG_DEFAULT, &bufferSize) )
-    CHECK_CUSPARSE( cudaMalloc(&dBuffer, bufferSize) )
+                                 CUSPARSE_SPMM_ALG_DEFAULT, &bufferSize) )
+    CHECK_CUDA( cudaMalloc(&dBuffer, bufferSize) )
 
     // execute SpMM
     CHECK_CUSPARSE( cusparseSpMM(handle,
                                  CUSPARSE_OPERATION_NON_TRANSPOSE,
                                  CUSPARSE_OPERATION_NON_TRANSPOSE,
                                  &alpha, matA, matB, &beta, matC, CUDA_R_32F,
-                                 CUSPARSE_MM_ALG_DEFAULT, dBuffer) )
+                                 CUSPARSE_SPMM_ALG_DEFAULT, dBuffer) )
 
     // destroy matrix/vector descriptors
     CHECK_CUSPARSE( cusparseDestroySpMat(matA) )
