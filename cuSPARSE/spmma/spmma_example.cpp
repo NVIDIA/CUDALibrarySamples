@@ -71,6 +71,8 @@
     }                                                                          \
 }
 
+constexpr int EXIT_UNSUPPORTED = 2;
+
 int main(void) {
     int major_cc, minor_cc;
     CHECK_CUDA( cudaDeviceGetAttribute(&major_cc,
@@ -81,7 +83,7 @@ int main(void) {
         std::printf("\ncusparseLt is supported only on GPU devices with"
                     " compute capability == 8.0, current: %d.%d\n\n",
                      major_cc, minor_cc);
-        return EXIT_SUCCESS;
+        return EXIT_UNSUPPORTED;
     }
     // Host problem definition, row-major order
     constexpr int m     = 32; // bigger sizes may require dynamic allocations

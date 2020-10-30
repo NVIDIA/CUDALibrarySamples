@@ -99,22 +99,6 @@ public:
         // DRIVER CONTEXT
         auto     size_bytes = num_items * sizeof(T);
         CUdevice dev        = 0;
-        // Without a previous CUDA runtime call (e.g. cudaMalloc) we need to
-        // explicitly initialize the context:
-        //
-        // CUcontext ctx;
-        // CHECK_DRV( cuInit(0) )
-        // CHECK_DRV( cuDevicePrimaryCtxRetain(&ctx, 0) )
-        // CHECK_DRV( cuCtxSetCurrent(ctx) )
-        // CHECK_DRV( cuCtxGetDevice(&dev) )
-
-        // (0) Check if Virtual Address Management is supported
-        int supportsVMM = 0;
-        CHECK_DRV( cuDeviceGetAttribute(
-                       &supportsVMM,
-                       CU_DEVICE_ATTRIBUTE_VIRTUAL_ADDRESS_MANAGEMENT_SUPPORTED,
-                       dev) )
-
         // (1) Set allocation properties, enable compression
         CUmemAllocationProp prop = {};
         prop.allocFlags.compressionType = CU_MEM_ALLOCATION_COMP_GENERIC;
@@ -239,17 +223,41 @@ float benchmark(int64_t nnz,
 }
 
 //------------------------------------------------------------------------------
+ constexpr int EXIT_UNSUPPORTED = 2;
 
 int main() {
-    int major_cc;
-    CHECK_CUDA( cudaDeviceGetAttribute(&major_cc,
-                                       cudaDevAttrComputeCapabilityMajor, 0) )
-    if (major_cc < 8) {
-        std::printf("\nL2 compression is supported only on GPU devices with"
-                    " compute capability >= 8.0 (Ampere), current: %d.x\n\n",
-                     major_cc);
-        return EXIT_SUCCESS;
+    cudaFree(nullptr);
+    // Without a previous CUDA runtime call (e.g. cudaMalloc) we need to
+    // explicitly initialize the context:
+    //
+    // CUcontext ctx;
+    // CHECK_DRV( cuInit(0) )
+    // CHECK_DRV( cuDevicePrimaryCtxRetain(&ctx, 0) )
+    // CHECK_DRV( cuCtxSetCurrent(ctx) )
+    // CHECK_DRV( cuCtxGetDevice(&dev) )
+
+    // Check if Memory Compression and Virtual Address Management is supported
+    CUdevice dev                 = 0;
+    int      supportsCompression = 0;
+    int      supportsVMM         = 0;
+    CHECK_DRV( cuDeviceGetAttribute(
+                    &supportsCompression,
+                    CU_DEVICE_ATTRIBUTE_GENERIC_COMPRESSION_SUPPORTED, dev) )
+    if (supportsCompression == 0) {
+        std::printf("\nL2 compression is not supported on the "
+                    "current device\n\n");
+        return EXIT_UNSUPPORTED;
     }
+    CHECK_DRV( cuDeviceGetAttribute(
+                    &supportsVMM,
+                    CU_DEVICE_ATTRIBUTE_VIRTUAL_ADDRESS_MANAGEMENT_SUPPORTED,
+                    dev) )
+    if (supportsVMM == 0) {
+        std::printf("\nVirtual Memory Management is not supported on the "
+                    "current device\n\n");
+        return EXIT_UNSUPPORTED;
+    }
+    //--------------------------------------------------------------------------
     // Host problem definition
     int64_t size       = 134217728; // 2^27
     int64_t nnz        = 134217728; // 2^27
