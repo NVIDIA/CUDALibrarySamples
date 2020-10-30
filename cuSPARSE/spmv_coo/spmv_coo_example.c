@@ -75,7 +75,7 @@ int main(void) {
     // Host problem definition
     int   A_num_rows   = 4;
     int   A_num_cols   = 4;
-    int   A_num_nnz    = 9;
+    int   A_nnz        = 9;
     int   hA_rows[]    = { 0, 0, 0, 1, 2, 2, 2, 3, 3 };
     int   hA_columns[] = { 0, 2, 3, 1, 0, 2, 3, 1, 3 };
     float hA_values[]  = { 1.0f, 2.0f, 3.0f, 4.0f, 5.0f,
@@ -89,17 +89,17 @@ int main(void) {
     // Device memory management
     int   *dA_rows, *dA_columns;
     float *dA_values, *dX, *dY;
-    CHECK_CUDA( cudaMalloc((void**) &dA_rows,    A_num_nnz * sizeof(int))    )
-    CHECK_CUDA( cudaMalloc((void**) &dA_columns, A_num_nnz * sizeof(int))    )
-    CHECK_CUDA( cudaMalloc((void**) &dA_values,  A_num_nnz * sizeof(float))  )
+    CHECK_CUDA( cudaMalloc((void**) &dA_rows,    A_nnz * sizeof(int))        )
+    CHECK_CUDA( cudaMalloc((void**) &dA_columns, A_nnz * sizeof(int))        )
+    CHECK_CUDA( cudaMalloc((void**) &dA_values,  A_nnz * sizeof(float))      )
     CHECK_CUDA( cudaMalloc((void**) &dX,         A_num_cols * sizeof(float)) )
     CHECK_CUDA( cudaMalloc((void**) &dY,         A_num_rows * sizeof(float)) )
 
-    CHECK_CUDA( cudaMemcpy(dA_rows, hA_rows, A_num_nnz * sizeof(int),
+    CHECK_CUDA( cudaMemcpy(dA_rows, hA_rows, A_nnz * sizeof(int),
                            cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dA_columns, hA_columns, A_num_nnz * sizeof(int),
+    CHECK_CUDA( cudaMemcpy(dA_columns, hA_columns, A_nnz * sizeof(int),
                            cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dA_values, hA_values, A_num_nnz * sizeof(float),
+    CHECK_CUDA( cudaMemcpy(dA_values, hA_values, A_nnz * sizeof(float),
                            cudaMemcpyHostToDevice) )
     CHECK_CUDA( cudaMemcpy(dX, hX, A_num_cols * sizeof(float),
                            cudaMemcpyHostToDevice) )
@@ -114,7 +114,7 @@ int main(void) {
     size_t               bufferSize = 0;
     CHECK_CUSPARSE( cusparseCreate(&handle) )
     // Create sparse matrix A in CSR format
-    CHECK_CUSPARSE( cusparseCreateCoo(&matA, A_num_rows, A_num_cols, A_num_nnz,
+    CHECK_CUSPARSE( cusparseCreateCoo(&matA, A_num_rows, A_num_cols, A_nnz,
                                       dA_rows, dA_columns, dA_values,
                                       CUSPARSE_INDEX_32I,
                                       CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F) )

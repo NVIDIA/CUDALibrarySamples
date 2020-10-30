@@ -31,7 +31,7 @@ This sample demonstrates the usage of `cusparseSpMM` for performing *sparse matr
 
 ## Support
 
-* **Supported SM Architectures:** SM 3.5, SM 3.7, SM 5.0, SM 5.2, SM 5.3, SM 6.0, SM 6.1, SM 6.2, SM 7.0, SM 7.2, SM 7.5, SM 8.0
+* **Supported SM Architectures:** SM 3.5, SM 3.7, SM 5.0, SM 5.2, SM 5.3, SM 6.0, SM 6.1, SM 6.2, SM 7.0, SM 7.2, SM 7.5, SM 8.0, SM 8.6
 * **Supported OSes:** Linux, Windows, QNX, Android
 * **Supported CPU Architectures**: x86_64, ppc64le, arm64
 * **Supported Compilers**: gcc, clang, icc, xlc, msvc, pgi
@@ -41,4 +41,3 @@ This sample demonstrates the usage of `cusparseSpMM` for performing *sparse matr
 
 * [CUDA 11.0 toolkit](https://developer.nvidia.com/cuda-downloads) (or above) and compatible driver (see [CUDA Driver Release Notes](https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/index.html#cuda-major-component-versions)).
 * [CMake 3.9](https://cmake.org/download/) or above on Windows
-

@@ -1,10 +1,17 @@
-# cuSPARSE Generic APIs - `CUDA Graph Capture`
+# cuSPARSE Generic APIs - `cusparseSparseToDense`
 
 ## Description
 
-The sample demonstrates how to optimize *sparse vector - dense vector dot product* (`cusparseSpVV`) by exploting *CUDA Graph Capture functionality*
+This sample demonstrates the usage of `cusparseSparseToDense` for performing *sparse matrix to dense matrix conversion*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format.
 
-[cuSPARSE Optimization Notes](https://docs.nvidia.com/cuda/cusparse/index.html#optimization-notes)
+[cusparseSparseToDense Documentation](https://docs.nvidia.com/cuda/cusparse/index.html#cusparse-generic-function-sparse2dense)
+
+<center>
+
+`A (csr) -> B (dense)`
+
+![](sparse2dense.svg)
+</center>
 
 ## Building
 
@@ -32,5 +39,5 @@ The sample demonstrates how to optimize *sparse vector - dense vector dot produc
 
 ## Prerequisites
 
-* [CUDA 11.0 toolkit](https://developer.nvidia.com/cuda-downloads) (or above) and compatible driver (see [CUDA Driver Release Notes](https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/index.html#cuda-major-component-versions)).
+* [CUDA 11.1.1 toolkit](https://developer.nvidia.com/cuda-downloads) (or above) and compatible driver (see [CUDA Driver Release Notes](https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/index.html#cuda-major-component-versions)).
 * [CMake 3.9](https://cmake.org/download/) or above on Windows

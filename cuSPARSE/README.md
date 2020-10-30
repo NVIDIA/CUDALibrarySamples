@@ -54,6 +54,16 @@ This folder demonstrates cuSPARSE Generic APIs usage.
 
     The sample demonstrates *sparse matrix - sparse matrix multiplication*, where all operands are sparse matrices represented in CSR (Compressed Sparse Row) storage format
 
+##### Conversion
+
+* [cusparseSparseToDense](sparse2dense/)
+
+    The sample demonstrates *sparse matrix to dense matrix conversion*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
+
+* [cusparseDenseToSparse](dense2sparse/)
+
+    The sample demonstrates *dense matrix to sparse matrix conversion*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
+
 ##### Optimizations
 
 * [CUDA Graph Capture](graph_capture/)

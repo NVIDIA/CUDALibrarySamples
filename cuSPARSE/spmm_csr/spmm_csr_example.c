@@ -47,7 +47,7 @@
  * Users Notice.
  */
 #include <cuda_runtime_api.h> // cudaMalloc, cudaMemcpy, etc.
-#include <cusparse.h>         // cusparseSpMV
+#include <cusparse.h>         // cusparseSpMM
 #include <stdio.h>            // printf
 #include <stdlib.h>           // EXIT_FAILURE
 
@@ -75,7 +75,7 @@ int main(void) {
     // Host problem definition
     int   A_num_rows      = 4;
     int   A_num_cols      = 4;
-    int   A_num_nnz       = 9;
+    int   A_nnz           = 9;
     int   B_num_rows      = A_num_cols;
     int   B_num_cols      = 3;
     int   ldb             = B_num_rows;
@@ -103,17 +103,17 @@ int main(void) {
     float *dA_values, *dB, *dC;
     CHECK_CUDA( cudaMalloc((void**) &dA_csrOffsets,
                            (A_num_rows + 1) * sizeof(int)) )
-    CHECK_CUDA( cudaMalloc((void**) &dA_columns, A_num_nnz * sizeof(int))   )
-    CHECK_CUDA( cudaMalloc((void**) &dA_values,  A_num_nnz * sizeof(float)) )
-    CHECK_CUDA( cudaMalloc((void**) &dB,         B_size * sizeof(float))    )
-    CHECK_CUDA( cudaMalloc((void**) &dC,         C_size * sizeof(float))    )
+    CHECK_CUDA( cudaMalloc((void**) &dA_columns, A_nnz * sizeof(int))    )
+    CHECK_CUDA( cudaMalloc((void**) &dA_values,  A_nnz * sizeof(float))  )
+    CHECK_CUDA( cudaMalloc((void**) &dB,         B_size * sizeof(float)) )
+    CHECK_CUDA( cudaMalloc((void**) &dC,         C_size * sizeof(float)) )
 
     CHECK_CUDA( cudaMemcpy(dA_csrOffsets, hA_csrOffsets,
                            (A_num_rows + 1) * sizeof(int),
                            cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dA_columns, hA_columns, A_num_nnz * sizeof(int),
+    CHECK_CUDA( cudaMemcpy(dA_columns, hA_columns, A_nnz * sizeof(int),
                            cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dA_values, hA_values, A_num_nnz * sizeof(float),
+    CHECK_CUDA( cudaMemcpy(dA_values, hA_values, A_nnz * sizeof(float),
                            cudaMemcpyHostToDevice) )
     CHECK_CUDA( cudaMemcpy(dB, hB, B_size * sizeof(float),
                            cudaMemcpyHostToDevice) )
@@ -128,7 +128,7 @@ int main(void) {
     size_t               bufferSize = 0;
     CHECK_CUSPARSE( cusparseCreate(&handle) )
     // Create sparse matrix A in CSR format
-    CHECK_CUSPARSE( cusparseCreateCsr(&matA, A_num_rows, A_num_cols, A_num_nnz,
+    CHECK_CUSPARSE( cusparseCreateCsr(&matA, A_num_rows, A_num_cols, A_nnz,
                                       dA_csrOffsets, dA_columns, dA_values,
                                       CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
                                       CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F) )
