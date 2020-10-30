@@ -47,7 +47,7 @@
  * Users Notice.
  */
 #include <cuda_runtime_api.h> // cudaMalloc, cudaMemcpy, etc.
-#include <cusparse.h>         // cusparseAxpby
+#include <cusparse.h>         // cusparseSpVV
 #include <stdio.h>            // printf
 #include <stdlib.h>           // EXIT_FAILURE
 

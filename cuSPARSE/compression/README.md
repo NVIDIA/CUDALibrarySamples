@@ -30,7 +30,7 @@ nv-nsight-cu-cli --metrics lts__gcomp_input_sectors_compression_achieved_algo_sd
 
 ## Support
 
-* **Supported SM Architectures:** SM 8.x
+* **Supported SM Architectures:** SM 8.0, SM 8.6
 * **Supported OSes:** Linux, Windows, QNX, Android
 * **Supported CPU Architectures**: x86_64, ppc64le, arm64
 * **Supported Compilers**: gcc, clang, icc, xlc, msvc, pgi

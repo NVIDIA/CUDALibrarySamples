@@ -2,7 +2,7 @@
 
 ## Description
 
-This sample demonstrates the usage of `cuspaseLt` library and `cusparseMatMul` APIs for performing *structured matrix - dense matrix multiplication* by exploiting NVIDIA Ampere architecture *Sparse Tensor Cores*, where the structured matrix is compressed with 2:4 ratio.
+This sample demonstrates the usage of `cuspaseLt` library and `cusparseMatMul` APIs for performing *structured matrix - dense matrix multiplication* by exploiting NVIDIA *Sparse Tensor Cores*, where the structured matrix is compressed with 2:4 ratio.
 
 [cusparseLt Documentation](https://docs.nvidia.com/cuda/cusparselt/index.html)
 

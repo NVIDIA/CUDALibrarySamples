@@ -76,10 +76,10 @@ int main(void) {
     #define   A_NUM_ROWS 4   // C compatibility
     const int A_num_rows = 4;
     const int A_num_cols = 4;
-    const int A_num_nnz  = 9;
+    const int A_nnz      = 9;
     const int B_num_rows = 4;
     const int B_num_cols = 4;
-    const int B_num_nnz  = 9;
+    const int B_nnz      = 9;
     int   hA_csrOffsets[] = { 0, 3, 4, 7, 9 };
     int   hA_columns[]    = { 0, 2, 3, 1, 0, 2, 3, 1, 3 };
     float hA_values[]     = { 1.0f, 2.0f, 3.0f, 4.0f, 5.0f,
@@ -93,7 +93,7 @@ int main(void) {
     float hC_values[]     = { 11.0f, 36.0f, 14.0f, 2.0f,  12.0f,
                               16.0f, 35.0f, 92.0f, 42.0f, 10.0f,
                               96.0f, 32.0f };
-    const int C_num_nnz   = 12;
+    const int C_nnz       = 12;
     #define   C_NUM_NNZ 12   // C compatibility
     float               alpha       = 1.0f;
     float               beta        = 0.0f;
@@ -108,13 +108,13 @@ int main(void) {
     // allocate A
     CHECK_CUDA( cudaMalloc((void**) &dA_csrOffsets,
                            (A_num_rows + 1) * sizeof(int)) )
-    CHECK_CUDA( cudaMalloc((void**) &dA_columns, A_num_nnz * sizeof(int))   )
-    CHECK_CUDA( cudaMalloc((void**) &dA_values,  A_num_nnz * sizeof(float)) )
+    CHECK_CUDA( cudaMalloc((void**) &dA_columns, A_nnz * sizeof(int))   )
+    CHECK_CUDA( cudaMalloc((void**) &dA_values,  A_nnz * sizeof(float)) )
     // allocate B
     CHECK_CUDA( cudaMalloc((void**) &dB_csrOffsets,
                            (B_num_rows + 1) * sizeof(int)) )
-    CHECK_CUDA( cudaMalloc((void**) &dB_columns, B_num_nnz * sizeof(int))   )
-    CHECK_CUDA( cudaMalloc((void**) &dB_values,  B_num_nnz * sizeof(float)) )
+    CHECK_CUDA( cudaMalloc((void**) &dB_columns, B_nnz * sizeof(int))   )
+    CHECK_CUDA( cudaMalloc((void**) &dB_values,  B_nnz * sizeof(float)) )
     // allocate C offsets
     CHECK_CUDA( cudaMalloc((void**) &dC_csrOffsets,
                            (A_num_rows + 1) * sizeof(int)) )
@@ -123,18 +123,18 @@ int main(void) {
     CHECK_CUDA( cudaMemcpy(dA_csrOffsets, hA_csrOffsets,
                            (A_num_rows + 1) * sizeof(int),
                            cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dA_columns, hA_columns, A_num_nnz * sizeof(int),
+    CHECK_CUDA( cudaMemcpy(dA_columns, hA_columns, A_nnz * sizeof(int),
                            cudaMemcpyHostToDevice) )
     CHECK_CUDA( cudaMemcpy(dA_values, hA_values,
-                           A_num_nnz * sizeof(float), cudaMemcpyHostToDevice) )
+                           A_nnz * sizeof(float), cudaMemcpyHostToDevice) )
     // copy B
     CHECK_CUDA( cudaMemcpy(dB_csrOffsets, hB_csrOffsets,
                            (B_num_rows + 1) * sizeof(int),
                            cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dB_columns, hB_columns, B_num_nnz * sizeof(int),
+    CHECK_CUDA( cudaMemcpy(dB_columns, hB_columns, B_nnz * sizeof(int),
                            cudaMemcpyHostToDevice) )
     CHECK_CUDA( cudaMemcpy(dB_values, hB_values,
-                           B_num_nnz * sizeof(float), cudaMemcpyHostToDevice) )
+                           B_nnz * sizeof(float), cudaMemcpyHostToDevice) )
     //--------------------------------------------------------------------------
     // CUSPARSE APIs
     cusparseHandle_t     handle = NULL;
@@ -143,11 +143,11 @@ int main(void) {
     size_t bufferSize1 = 0,    bufferSize2 = 0;
     CHECK_CUSPARSE( cusparseCreate(&handle) )
     // Create sparse matrix A in CSR format
-    CHECK_CUSPARSE( cusparseCreateCsr(&matA, A_num_rows, A_num_cols, A_num_nnz,
+    CHECK_CUSPARSE( cusparseCreateCsr(&matA, A_num_rows, A_num_cols, A_nnz,
                                       dA_csrOffsets, dA_columns, dA_values,
                                       CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
                                       CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F) )
-    CHECK_CUSPARSE( cusparseCreateCsr(&matB, B_num_rows, B_num_cols, B_num_nnz,
+    CHECK_CUSPARSE( cusparseCreateCsr(&matB, B_num_rows, B_num_cols, B_nnz,
                                       dB_csrOffsets, dB_columns, dB_values,
                                       CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
                                       CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F) )
@@ -188,13 +188,13 @@ int main(void) {
                                            &alpha, matA, matB, &beta, matC,
                                            computeType, CUSPARSE_SPGEMM_DEFAULT,
                                            spgemmDesc, &bufferSize2, dBuffer2) )
-    // get matrix C non-zero entries C_num_nnz1
-    int64_t C_num_rows1, C_num_cols1, C_num_nnz1;
+    // get matrix C non-zero entries C_nnz1
+    int64_t C_num_rows1, C_num_cols1, C_nnz1;
     CHECK_CUSPARSE( cusparseSpMatGetSize(matC, &C_num_rows1, &C_num_cols1,
-                                         &C_num_nnz1) )
+                                         &C_nnz1) )
     // allocate matrix C
-    CHECK_CUDA( cudaMalloc((void**) &dC_columns, C_num_nnz1 * sizeof(int))   )
-    CHECK_CUDA( cudaMalloc((void**) &dC_values,  C_num_nnz1 * sizeof(float)) )
+    CHECK_CUDA( cudaMalloc((void**) &dC_columns, C_nnz1 * sizeof(int))   )
+    CHECK_CUDA( cudaMalloc((void**) &dC_values,  C_nnz1 * sizeof(float)) )
     // update matC with the new pointers
     CHECK_CUSPARSE(
         cusparseCsrSetPointers(matC, dC_csrOffsets, dC_columns, dC_values) )
@@ -222,10 +222,10 @@ int main(void) {
                            (A_num_rows + 1) * sizeof(int),
                            cudaMemcpyDeviceToHost) )
     CHECK_CUDA( cudaMemcpy(hC_columns_tmp, dC_columns,
-                           C_num_nnz * sizeof(int),
+                           C_nnz * sizeof(int),
                            cudaMemcpyDeviceToHost) )
     CHECK_CUDA( cudaMemcpy(hC_values_tmp, dC_values,
-                           C_num_nnz * sizeof(float),
+                           C_nnz * sizeof(float),
                            cudaMemcpyDeviceToHost) )
     int correct = 1;
     for (int i = 0; i < A_num_rows + 1; i++) {
@@ -234,7 +234,7 @@ int main(void) {
             break;
         }
     }
-    for (int i = 0; i < C_num_nnz; i++) {
+    for (int i = 0; i < C_nnz; i++) {
         if (hC_columns_tmp[i] != hC_columns[i] ||
             hC_values_tmp[i]  != hC_values[i]) {
             correct = 0;
