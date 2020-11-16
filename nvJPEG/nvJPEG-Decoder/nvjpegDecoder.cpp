@@ -115,8 +115,8 @@ int decode_images(const FileData &img_data, const std::vector<size_t> &img_len,
                   &otherdecode_output[i], params.stream));
 
           }
-      CHECK_CUDA(cudaEventRecord(stopEvent, params.stream));
     }
+  CHECK_CUDA(cudaEventRecord(stopEvent, params.stream));
 
   CHECK_CUDA(cudaEventSynchronize(stopEvent));
   CHECK_CUDA(cudaEventElapsedTime(&loopTime, startEvent, stopEvent));
