@@ -21,17 +21,19 @@ Linear Solver, Factorization, Mixed Precision, Tensor Cores
 
 [SM 7.0 ](https://developer.nvidia.com/cuda-gpus)  
 [SM 7.2 ](https://developer.nvidia.com/cuda-gpus)  
-[SM 7.5 ](https://developer.nvidia.com/cuda-gpus)
-[SM 8.0 ](https://developer.nvidia.com/cuda-gpus)
-[SM 8.6 ](https://developer.nvidia.com/cuda-gpus)
+[SM 7.5 ](https://developer.nvidia.com/cuda-gpus)  
+[SM 8.0 ](https://developer.nvidia.com/cuda-gpus)  
+[SM 8.6 ](https://developer.nvidia.com/cuda-gpus)  
 
 ## Supported OSes
 
-Linux Windows
+Linux  
+Windows  
 
 ## Supported CPU Architecture
 
-x86_64 ppc64le
+x86_64  
+ppc64le  
 
 ## CUDA APIs involved
 - [cusolverDn gesv LAPACK style API](https://docs.nvidia.com/cuda/cusolver/index.html#cuds-lt-t-gt-gesv)
