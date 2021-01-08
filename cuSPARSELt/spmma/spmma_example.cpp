@@ -1,5 +1,5 @@
 /*
- * Copyright 1993-2020 NVIDIA Corporation.  All rights reserved.
+ * Copyright 1993-2021 NVIDIA Corporation.  All rights reserved.
  *
  * NOTICE TO LICENSEE:
  *
@@ -126,9 +126,11 @@ int main(void) {
     //--------------------------------------------------------------------------
     // Device memory management
     __half *dA, *dB, *dC, *dD, *dA_compressed;
+    int    *d_valid;
     CHECK_CUDA( cudaMalloc((void**) &dA, A_size) )
     CHECK_CUDA( cudaMalloc((void**) &dB, B_size) )
     CHECK_CUDA( cudaMalloc((void**) &dC, C_size) )
+    CHECK_CUDA( cudaMalloc((void**) &d_valid, sizeof(d_valid)) )
     dD = dC;
 
     CHECK_CUDA( cudaMemcpy(dA, hA, A_size, cudaMemcpyHostToDevice) )
@@ -142,7 +144,7 @@ int main(void) {
     cusparseLtMatmulPlan_t         plan;
     cudaStream_t                   stream = nullptr;
     CHECK_CUSPARSE( cusparseLtInit(&handle) )
-    // matrix descriptor initilization
+    // matrix descriptor initialization
     CHECK_CUSPARSE( cusparseLtStructuredDescriptorInit(
                                             &handle, &matA, num_A_rows,
                                             num_A_cols, lda, alignment,
@@ -156,7 +158,7 @@ int main(void) {
                                             &handle, &matC, num_C_rows,
                                             num_C_cols, ldc, alignment,
                                             type, order) )
-    // matmul, algorithm selection, and plan initilization
+    // matmul, algorithm selection, and plan initialization
     CHECK_CUSPARSE( cusparseLtMatmulDescriptorInit(
                                             &handle, &matmul, opA, opB,
                                             &matA, &matB, &matC, &matC,
@@ -179,12 +181,15 @@ int main(void) {
     // Prune the A matrix (in-place) and check the correcteness
     CHECK_CUSPARSE( cusparseLtSpMMAPrune(&handle, &matmul, dA, dA,
                                          CUSPARSELT_PRUNE_SPMMA_TILE, stream) )
-    int is_valid;
     CHECK_CUSPARSE( cusparseLtSpMMAPruneCheck(&handle, &matmul, dA,
-                                              &is_valid, stream) )
+                                              d_valid, stream) )
+    int is_valid;
+    CHECK_CUDA( cudaMemcpyAsync(&is_valid, d_valid, sizeof(d_valid),
+                                cudaMemcpyDeviceToHost, stream) )
+    CHECK_CUDA( cudaStreamSynchronize(stream) )
     if (is_valid != 0) {
         std::printf("!!!! The matrix has been pruned in a wrong way. "
-                    "cusparseLtMatmul will not provided correct results\n");
+                    "cusparseLtMatmul will not provide correct results\n");
         return EXIT_FAILURE;
     }
     //--------------------------------------------------------------------------
@@ -256,5 +261,6 @@ int main(void) {
     CHECK_CUDA( cudaFree(dA) )
     CHECK_CUDA( cudaFree(dB) )
     CHECK_CUDA( cudaFree(dC) )
+    CHECK_CUDA( cudaFree(d_valid) )
     return EXIT_SUCCESS;
 }
