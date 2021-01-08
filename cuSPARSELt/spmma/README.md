@@ -36,7 +36,7 @@ where `A`, `B`, `C` are dense matrices
 * **Supported SM Architectures:** SM 8.0
 * **Supported OSes:** Linux
 * **Supported CPU Architectures**: x86_64
-* **Supported Compilers**: gcc, clang, icc, xlc, msvc, pgi
+* **Supported Compilers**: gcc, clang, Intel icc, IBM xlc, Microsoft msvc, Nvidia HPC SDK nvc
 * **Language**: `C++14`
 
 ## Prerequisites
