@@ -1,4 +1,4 @@
-# Copyright 1993-2020 NVIDIA Corporation.  All rights reserved.
+# Copyright 1993-2021 NVIDIA Corporation.  All rights reserved.
 #
 # NOTICE TO LICENSEE:
 #
@@ -44,43 +44,27 @@
 # software must include, in the user documentation and internal
 # comments to the code, the above Disclaimer and U.S. Government End
 # Users Notice.
-cmake_minimum_required(VERSION 3.9)
+CUDA_TOOLKIT    := $(shell dirname $$(command -v nvcc))/..
+INC             := -I$(CUDA_TOOLKIT)/include
+LIBS            := -lcudart -lcusparse
+CUSPARSELT_PATH := ${CUDA_TOOLKIT_PATH}/lib64
 
-set(ROUTINE spmma)
+all: spmma_example spmma_example_static
 
-project("${ROUTINE}_example"
-        DESCRIPTION  "GPU-Accelerated Sparse Linear Algebra"
-        HOMEPAGE_URL "https://docs.nvidia.com/cuda/cusparse/index.html"
-        LANGUAGES    CXX CUDA)
+spmma_example: spmma_example.cpp
+	nvcc $(INC) spmma_example.cpp -o spmma_example $(LIBS) -lcusparseLt
 
-add_executable(${ROUTINE}_example)
-add_executable(${ROUTINE}_example_static)
+spmma_example_static: spmma_example.cpp
+	nvcc $(INC) spmma_example.cpp -o spmma_example_static $(LIBS)  \
+         -Xlinker=--whole-archive                                  \
+         -Xlinker=${CUSPARSELT_PATH}/libcusparseLt_static.a        \
+         -Xlinker=--no-whole-archive
 
-target_sources(${ROUTINE}_example
-    PUBLIC ${PROJECT_SOURCE_DIR}/${ROUTINE}_example.cpp
-)
+clean:
+	rm -f spmma_example spmma_example_static
 
-target_sources(${ROUTINE}_example_static
-    PUBLIC ${PROJECT_SOURCE_DIR}/${ROUTINE}_example.cpp
-)
+test:
+	@echo "\n==== cusparseLt SpMMA Test ====\n"
+	./spmma_example
 
-target_include_directories(${ROUTINE}_example
-    PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
-)
-
-target_include_directories(${ROUTINE}_example_static
-    PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
-)
-
-target_link_libraries(${ROUTINE}_example
-    PUBLIC cudart
-    PUBLIC cusparse
-    PUBLIC cusparseLt
-)
-
-target_link_libraries(${ROUTINE}_example_static
-    PUBLIC cudart
-    PUBLIC cusparse
-    PUBLIC -Wl,--whole-archive ${CUDA_TOOLKIT_PATH}/lib64/libcusparseLt_static.a
-           -Wl,--no-whole-archive
-)
+.PHONY: clean all test

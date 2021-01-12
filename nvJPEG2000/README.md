@@ -11,6 +11,7 @@ Image Decoding from NVJPEG2000 Library
 ## Examples
 
 [JPEG2000 Image Decoder](nvJPEG2000-Decoder/)
+[JPEG2000 Image Decoder Pipelined](nvJPEG2000-Decoder-Pipelined/)
 
 
 ## Supported SM Architectures
