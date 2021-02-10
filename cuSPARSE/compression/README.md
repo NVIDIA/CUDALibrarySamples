@@ -2,7 +2,7 @@
 
 ## Description
 
-The sample demonstrates how to optimize *sparse vector - dense vector scaling and sum* (`cusparseAxpby`) by exploting NVIDIA Ampere architecture *Hardware Memory Compression*
+The sample demonstrates how to optimize *sparse vector - dense vector scaling and sum* (`cusparseAxpby`) by exploiting NVIDIA Ampere architecture *Hardware Memory Compression*
 
 [cuSPARSE Optimization Notes](https://docs.nvidia.com/cuda/cusparse/index.html#optimization-notes)
 
@@ -33,7 +33,7 @@ nv-nsight-cu-cli --metrics lts__gcomp_input_sectors_compression_achieved_algo_sd
 * **Supported SM Architectures:** SM 8.0, SM 8.6
 * **Supported OSes:** Linux, Windows, QNX, Android
 * **Supported CPU Architectures**: x86_64, ppc64le, arm64
-* **Supported Compilers**: gcc, clang, icc, xlc, msvc, pgi
+* **Supported Compilers**: gcc, clang, Intel icc, IBM xlc, Microsoft msvc, Nvidia HPC SDK nvc
 * **Language**: `C++14`
 
 ## Prerequisites

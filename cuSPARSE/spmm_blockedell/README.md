@@ -1,8 +1,8 @@
-# cuSPARSE Generic APIs - `cusparseSpMM CSR`
+# cuSPARSE Generic APIs - `cusparseSpMM Blocked ELL`
 
 ## Description
 
-This sample demonstrates the usage of `cusparseSpMM` for performing *sparse matrix - dense matrix multiplication*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format.
+This sample demonstrates the usage of `cusparseSpMM` for performing *sparse matrix - dense matrix multiplication*, where the sparse matrix is represented in Blocked-ELL format.
 
 [cusparseSpMM Documentation](https://docs.nvidia.com/cuda/cusparse/index.html#cusparse-generic-function-spmm)
 
@@ -10,7 +10,7 @@ This sample demonstrates the usage of `cusparseSpMM` for performing *sparse matr
 
 `C = alpha * A * B + beta * C`
 
-![](spmm_csr.svg)
+![](spmm_blockedell.svg)
 </center>
 
 ## Building
@@ -31,13 +31,13 @@ This sample demonstrates the usage of `cusparseSpMM` for performing *sparse matr
 
 ## Support
 
-* **Supported SM Architectures:** SM 3.5, SM 3.7, SM 5.0, SM 5.2, SM 5.3, SM 6.0, SM 6.1, SM 6.2, SM 7.0, SM 7.2, SM 7.5, SM 8.0, SM 8.6
+* **Supported SM Architectures:** SM 7.0, SM 7.2, SM 7.5, SM 8.0, SM 8.6
 * **Supported OSes:** Linux, Windows, QNX, Android
 * **Supported CPU Architectures**: x86_64, ppc64le, arm64
 * **Supported Compilers**: gcc, clang, Intel icc, IBM xlc, Microsoft msvc, Nvidia HPC SDK nvc
-* **Language**: `C99`
+* **Language**: `C++03`
 
 ## Prerequisites
 
-* [CUDA 11.0 toolkit](https://developer.nvidia.com/cuda-downloads) (or above) and compatible driver (see [CUDA Driver Release Notes](https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/index.html#cuda-major-component-versions)).
+* [CUDA 11.2.1 toolkit](https://developer.nvidia.com/cuda-downloads) (or above) and compatible driver (see [CUDA Driver Release Notes](https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/index.html#cuda-major-component-versions)).
 * [CMake 3.9](https://cmake.org/download/) or above on Windows
