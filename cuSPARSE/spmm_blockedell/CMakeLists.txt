@@ -46,17 +46,17 @@
 # Users Notice.
 cmake_minimum_required(VERSION 3.9)
 
-set(ROUTINE spmm_coo)
+set(ROUTINE spmm_blockedell)
 
 project("${ROUTINE}_example"
         DESCRIPTION  "GPU-Accelerated Sparse Linear Algebra"
         HOMEPAGE_URL "https://docs.nvidia.com/cuda/cusparse/index.html"
-        LANGUAGES    C CUDA)
+        LANGUAGES    CXX)
 
 add_executable(${ROUTINE}_example)
 
 target_sources(${ROUTINE}_example
-    PUBLIC ${PROJECT_SOURCE_DIR}/${ROUTINE}_example.c
+    PUBLIC ${PROJECT_SOURCE_DIR}/${ROUTINE}_example.cpp
 )
 
 target_include_directories(${ROUTINE}_example

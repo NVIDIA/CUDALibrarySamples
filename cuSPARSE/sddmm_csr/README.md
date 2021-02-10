@@ -1,16 +1,16 @@
-# cuSPARSE Generic APIs - `cusparseSpMV CSR`
+# cuSPARSE Generic APIs - `cusparseSDDMM CSR`
 
 ## Description
 
-This sample demonstrates the usage of `cusparseSpMV` for performing *sparse matrix - dense vector multiplication*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format.
+This sample demonstrates the usage of `cusparseSDDMM` for performing *dense matrix - dense matrix multiplication into sparse matrix*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format.
 
-[cusparseSpMV Documentation](https://docs.nvidia.com/cuda/cusparse/index.html#cusparse-generic-function-spmv)
+[cusparseSDDMM Documentation](https://docs.nvidia.com/cuda/cusparse/index.html#cusparse-generic-function-sddmm)
 
 <center>
 
-`Y = alpha * A * X + beta * Y`
+`C = (alpha * A * B) ° spy(C) + beta * C`
 
-![](spmv_csr.svg)
+![](sddmm_csr.svg)
 </center>
 
 ## Building
@@ -39,5 +39,5 @@ This sample demonstrates the usage of `cusparseSpMV` for performing *sparse matr
 
 ## Prerequisites
 
-* [CUDA 11.0 toolkit](https://developer.nvidia.com/cuda-downloads) (or above) and compatible driver (see [CUDA Driver Release Notes](https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/index.html#cuda-major-component-versions)).
+* [CUDA 11.2.1 toolkit](https://developer.nvidia.com/cuda-downloads) (or above) and compatible driver (see [CUDA Driver Release Notes](https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/index.html#cuda-major-component-versions)).
 * [CMake 3.9](https://cmake.org/download/) or above on Windows
