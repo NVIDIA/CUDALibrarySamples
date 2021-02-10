@@ -44,15 +44,23 @@ This folder demonstrates cuSPARSE Generic APIs usage.
 
 * [cusparseSpMM CSR](spmm_csr/)
 
-    The sample demonstrates *sparse matrix - dense matrix multiplication*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
+    The sample demonstrates *sparse matrix - dense matrix multiplication = dense matrix*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
 
 * [cusparseSpMM COO](spmm_coo/)
 
-    The sample demonstrates *sparse matrix - dense matrix multiplication*, where the sparse matrix is represented in COO (Coordinate) storage format
+    The sample demonstrates *sparse matrix - dense matrix multiplication = dense matrix*, where the sparse matrix is represented in COO (Coordinate) storage format
+
+* [cusparseSpMM SDDMM](sddmm_csr/)
+
+    The sample demonstrates *dense matrix - dense matrix multiplication = sparse matrix*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
+
+* [cusparseSpMM Blocked-ELL](spmm_blockedell/)
+
+    The sample demonstrates *sparse matrix - dense matrix multiplication = dense matrix*, where the sparse matrix is represented in Blocked-ELL storage format
 
 * [cusparseSpGEMM](spgemm/)
 
-    The sample demonstrates *sparse matrix - sparse matrix multiplication*, where all operands are sparse matrices represented in CSR (Compressed Sparse Row) storage format
+    The sample demonstrates *sparse matrix - sparse matrix multiplication = sparse matrix*, where all operands are sparse matrices represented in CSR (Compressed Sparse Row) storage format
 
 ##### Conversion
 
@@ -68,8 +76,8 @@ This folder demonstrates cuSPARSE Generic APIs usage.
 
 * [CUDA Graph Capture](graph_capture/)
 
-    The sample demonstrates how to optimize *sparse vector - dense vector dot product* (`cusparseSpVV`) by exploting *CUDA Graph Capture functionality*
+    The sample demonstrates how to optimize *sparse vector - dense vector dot product* (`cusparseSpVV`) by exploiting *CUDA Graph Capture functionality*
 
 * [Hardware Memory Compression](compression/)
 
-    The sample demonstrates how to optimize *sparse vector - dense vector scaling and sum* (`cusparseAxpby`) by exploting NVIDIA Ampere architecture *Hardware Memory Compression*
+    The sample demonstrates how to optimize *sparse vector - dense vector scaling and sum* (`cusparseAxpby`) by exploiting NVIDIA Ampere architecture *Hardware Memory Compression*
