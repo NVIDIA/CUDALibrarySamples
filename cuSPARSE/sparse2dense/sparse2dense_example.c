@@ -150,7 +150,7 @@ int main(void) {
     int correct = 1;
     for (int i = 0; i < num_rows; i++) {
         for (int j = 0; j < num_cols; j++) {
-            if (h_dense[i + j * ld] != h_dense_result[i + j * ld]) {
+            if (h_dense[i* ld + j] != h_dense_result[i* ld + j]) {
                 correct = 0;
                 break;
             }
