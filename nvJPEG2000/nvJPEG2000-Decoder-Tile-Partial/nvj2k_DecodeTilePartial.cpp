@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,14 +26,15 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "nvjpeg2000DecodePipelined.h"
+#include "nvj2k_DecodeTilePartial.h"
 
-int write_image(std::string output_path, std::string filename, const nvjpeg2kImage_t &imgdesc, int width, int height,
+template<typename T>
+int write_image(std::string output_path, std::string filename, const T &imgdesc, int width, int height,
                uint32_t num_components, uint8_t precision)
 {
     // Get the file name, without extension.
     // This will be used to rename the output file.
-    size_t position = filename.rfind("/");
+    size_t position = filename.rfind(separator);
     std::string sFileName =
         (std::string::npos == position)
             ? filename
@@ -47,7 +48,7 @@ int write_image(std::string output_path, std::string filename, const nvjpeg2kIma
     // For single component image output as PGM channel
     if (num_components == 1)
     {
-        std::string fname(output_path + "/" + sFileName + ".pgm");
+        std::string fname(output_path + separator + sFileName + ".pgm");
         if (imgdesc.pixel_type == NVJPEG2K_UINT8)
         {
             err = writePGM<unsigned char>(fname.c_str(), (unsigned char *)imgdesc.pixel_data[0], 
@@ -67,7 +68,7 @@ int write_image(std::string output_path, std::string filename, const nvjpeg2kIma
     }
     else if (num_components == 3)
     {
-        std::string fname(output_path + "/" + sFileName + ".bmp");
+        std::string fname(output_path + separator + sFileName + ".bmp");
         if (imgdesc.pixel_type == NVJPEG2K_UINT8)
         {
             err = writeBMP<unsigned char>(fname.c_str(),
@@ -100,7 +101,7 @@ int write_image(std::string output_path, std::string filename, const nvjpeg2kIma
 
 int prepare_buffers(FileData &file_data, std::vector<size_t> &file_len,
                     std::vector<int> &img_width, std::vector<int> &img_height,
-                    std::vector<nvjpeg2ksample_img_16u_t> &ibuf,
+                    std::vector<nvjpeg2kImage16u_t> &ibuf,
                     std::vector<nvjpeg2ksample_img_sz> &isz, 
                     FileNames &current_names,
                     decode_params_t &params,
@@ -136,21 +137,28 @@ int prepare_buffers(FileData &file_data, std::vector<size_t> &file_len,
         img_width[i] = image_info.image_width;
         img_height[i] = image_info.image_width;
         ibuf[i].num_comps = image_info.num_components;
+        ibuf[i].pixel_type = NVJPEG2K_UINT16;
         // realloc output buffer if required
+       
         for (uint32_t c = 0; c < image_info.num_components; c++) 
         {
             uint32_t bytes_per_element = (MAX_PRECISION/8);
             uint32_t aw = bytes_per_element * image_comp_info[c].component_width;
             uint32_t ah = image_comp_info[c].component_height;
+            if(params.partial_decode)
+            {
+                aw = bytes_per_element * (params.win_x1 - params.win_x0);
+                ah = (params.win_y1 - params.win_y0);
+            }
             uint32_t sz = aw * ah;
             ibuf[i].pitch_in_bytes[c] = aw;
             if (sz > isz[i].comp_sz[c]) 
             {
-                if (ibuf[i].component[c]) 
+                if (ibuf[i].pixel_data[c]) 
                 {
-                    CHECK_CUDA(cudaFree(ibuf[i].component[c]));
+                    CHECK_CUDA(cudaFree(ibuf[i].pixel_data[c]));
                 }
-                CHECK_CUDA(cudaMalloc((void**)&ibuf[i].component[c], sz));
+                CHECK_CUDA(cudaMalloc((void**)&ibuf[i].pixel_data[c], sz));
                 isz[i].comp_sz[c] = sz;
             }
         }
@@ -158,11 +166,51 @@ int prepare_buffers(FileData &file_data, std::vector<size_t> &file_len,
     return EXIT_SUCCESS;
 }
 
+struct partial_decode_info
+{
+    unsigned int win_tilex0;
+    unsigned int win_tilex1;
+    unsigned int win_tiley0;
+    unsigned int win_tiley1;
+    unsigned int tile_id;
+};
 
-int decode_images(FileNames &current_names, std::vector<nvjpeg2ksample_img_16u_t> &out,
+void determine_tiles_to_decode(const nvjpeg2kImageInfo_t& image_info, decode_params_t &params,
+    std::vector<partial_decode_info>& tile_window_data)
+{
+    uint32_t tile_id = 0;
+    for(uint32_t tile_y0 = 0; tile_y0 < image_info.image_height; tile_y0 += image_info.tile_height)
+    {
+        for(uint32_t tile_x0 = 0; tile_x0 < image_info.image_width; tile_x0 += image_info.tile_width)
+        {
+            // include min and max functions in braces for windows builds issues
+            uint32_t tile_y1 = (std::min)(tile_y0 + image_info.tile_height, image_info.image_height);
+            uint32_t tile_x1 = (std::min)(tile_x0 + image_info.tile_width, image_info.image_height);
+
+            if( params.win_x0 < tile_x1 && params.win_x1 > tile_x0 &&
+                params.win_y0 < tile_y1 && params.win_y1 > tile_y0)
+            {
+                partial_decode_info decode_data;
+                decode_data.tile_id = tile_id;
+                decode_data.win_tilex0 = (std::max)(tile_x0, params.win_x0);
+                decode_data.win_tilex1 = (std::min)(tile_x1, params.win_x1);
+                decode_data.win_tiley0 = (std::max)(tile_y0, params.win_y0);
+                decode_data.win_tiley1 = (std::min)(tile_y1, params.win_y1);
+                tile_window_data.push_back(decode_data);
+                
+            }
+            tile_id++;
+            
+        }
+    }
+}
+
+int decode_images_partial(FileNames &current_names, std::vector<nvjpeg2kImage16u_t> &out,
                   decode_params_t &params, double &time)
 {
     cudaEvent_t startEvent = NULL, stopEvent = NULL;
+    nvjpeg2kDecodeParams_t decode_params;
+    CHECK_NVJPEG2K(nvjpeg2kDecodeParamsCreate(&decode_params));
     float loopTime = 0;
 
     cudaEvent_t pipeline_events[PIPELINE_STAGES];
@@ -170,40 +218,66 @@ int decode_images(FileNames &current_names, std::vector<nvjpeg2ksample_img_16u_t
     for (int p = 0; p < PIPELINE_STAGES; p++)
     {
         CHECK_CUDA(cudaEventCreate(&pipeline_events[p]));
+        CHECK_CUDA(cudaEventRecord(pipeline_events[p], params.stream[p]));
     }
     CHECK_CUDA(cudaEventCreateWithFlags(&startEvent, cudaEventBlockingSync));
     CHECK_CUDA(cudaEventCreateWithFlags(&stopEvent, cudaEventBlockingSync));
-    
-    
-    std::vector<nvjpeg2kImage_t> nvjpeg2k_output;
 
-    nvjpeg2k_output.resize(params.batch_size);
-
-    for( int i = 0; i < params.batch_size; i++) 
-    {
-        nvjpeg2k_output[i].pixel_type = NVJPEG2K_UINT16;
-        nvjpeg2k_output[i].num_components = out[i].num_comps;
-        nvjpeg2k_output[i].pixel_data =  (void**)out[i].component;
-        nvjpeg2k_output[i].pitch_in_bytes = out[i].pitch_in_bytes;
-    }
     
-    int buffer_index = 0;
     CHECK_CUDA(cudaEventRecord(startEvent, params.stream[0]));
-    for( int i = 0; i < params.batch_size; i++)
+    int buffer_index = 0;
+    for(int batch_id = 0; batch_id < params.batch_size; batch_id++)
     {
-        if( i >= PIPELINE_STAGES)
+        nvjpeg2kImageInfo_t image_info;
+        CHECK_NVJPEG2K(nvjpeg2kStreamGetImageInfo(params.jpeg2k_streams[batch_id], &image_info));
+
+        std::vector<partial_decode_info> tile_window_data;
+        determine_tiles_to_decode(image_info, params, tile_window_data);
+
+        uint32_t out_width = 0;
+        uint32_t out_height = 0;
+        for( uint32_t i = 0; i < tile_window_data.size(); i++)
         {
             // make sure that the previous stage are done
             CHECK_CUDA(cudaEventSynchronize(pipeline_events[buffer_index]));
+            nvjpeg2kImage16u_t tile_decode_out;
+            
+            auto& decode_data = tile_window_data[i];
+            tile_decode_out.num_comps = out[batch_id].num_comps;
+            tile_decode_out.pixel_type = out[batch_id].pixel_type;
+            uint32_t bytes_per_comp = sizeof(*tile_decode_out.pixel_data[0]);
+            for(uint32_t c = 0; c < out[batch_id].num_comps; c++)
+            {
+                size_t pitch_in_pixels = out[batch_id].pitch_in_bytes[c]/bytes_per_comp;
+                tile_decode_out.pixel_data[c] = out[batch_id].pixel_data[c] + out_height * pitch_in_pixels + (out_width);
+                tile_decode_out.pitch_in_bytes[c] = out[batch_id].pitch_in_bytes[c];
+            }
+            out_width += decode_data.win_tilex1 - decode_data.win_tilex0;
+                
+            if( out_width == params.win_x1 - params.win_x0)
+            {
+                out_width = 0;
+                out_height += decode_data.win_tiley1 - decode_data.win_tiley0;
+            }
+
+            nvjpeg2kImage_t nvjpeg2k_out;
+            nvjpeg2k_out.num_components = tile_decode_out.num_comps;
+            nvjpeg2k_out.pixel_data = (void**)tile_decode_out.pixel_data;
+            nvjpeg2k_out.pitch_in_bytes = tile_decode_out.pitch_in_bytes;
+            nvjpeg2k_out.pixel_type = tile_decode_out.pixel_type;
+
+            CHECK_NVJPEG2K(nvjpeg2kDecodeParamsSetDecodeArea(decode_params, decode_data.win_tilex0, decode_data.win_tilex1,
+                decode_data.win_tiley0, decode_data.win_tiley1));
+            CHECK_NVJPEG2K(nvjpeg2kDecodeTile(params.nvjpeg2k_handle, params.nvjpeg2k_decode_states[buffer_index],
+                params.jpeg2k_streams[batch_id], decode_params, decode_data.tile_id, 0,
+                &nvjpeg2k_out, params.stream[buffer_index]));
+            
+            CHECK_CUDA(cudaEventRecord(pipeline_events[buffer_index], params.stream[buffer_index]));
+
+            buffer_index++;
+            buffer_index = buffer_index%PIPELINE_STAGES;
+
         }
-        CHECK_NVJPEG2K(nvjpeg2kDecode(params.nvjpeg2k_handle, params.nvjpeg2k_decode_states[buffer_index],
-            params.jpeg2k_streams[i], &nvjpeg2k_output[i], params.stream[buffer_index]));
-        
-        CHECK_CUDA(cudaEventRecord(pipeline_events[buffer_index], params.stream[buffer_index]))
-
-        buffer_index++;
-        buffer_index = buffer_index%PIPELINE_STAGES;
-
     }
     for (int p = 0; p < PIPELINE_STAGES; p++)
     {
@@ -221,10 +295,12 @@ int decode_images(FileNames &current_names, std::vector<nvjpeg2ksample_img_16u_t
         for( int i = 0; i < params.batch_size; i++)
         {
             nvjpeg2kImageInfo_t image_info;
-            uint8_t precision = 16;
+            nvjpeg2kImageComponentInfo_t comp_info;
             CHECK_NVJPEG2K(nvjpeg2kStreamGetImageInfo(params.jpeg2k_streams[i], &image_info));
-            write_image(params.output_dir, current_names[i], nvjpeg2k_output[i], image_info.image_width, 
-                image_info.image_height, image_info.num_components, precision);
+            // assume all components have the same precision
+            CHECK_NVJPEG2K(nvjpeg2kStreamGetImageComponentInfo(params.jpeg2k_streams[i], &comp_info, 0));
+            write_image(params.output_dir, current_names[i], out[i], params.win_x1 - params.win_x0, 
+                params.win_x1 - params.win_x0, image_info.num_components, comp_info.precision);
         }
     }
 
@@ -234,7 +310,108 @@ int decode_images(FileNames &current_names, std::vector<nvjpeg2ksample_img_16u_t
     }
     CHECK_CUDA(cudaEventDestroy(stopEvent));
     CHECK_CUDA(cudaEventDestroy(startEvent));
+    CHECK_NVJPEG2K(nvjpeg2kDecodeParamsDestroy(decode_params));
     
+    return EXIT_SUCCESS;
+}
+
+
+int decode_images(FileNames &current_names, std::vector<nvjpeg2kImage16u_t> &out,
+                  decode_params_t &params, double &time)
+{
+    cudaEvent_t startEvent = NULL, stopEvent = NULL;
+    float loopTime = 0;
+
+    cudaEvent_t pipeline_events[PIPELINE_STAGES];
+
+    for (int p = 0; p < PIPELINE_STAGES; p++)
+    {
+        CHECK_CUDA(cudaEventCreate(&pipeline_events[p]));
+        CHECK_CUDA(cudaEventRecord(pipeline_events[p], params.stream[p]));
+    }
+    CHECK_CUDA(cudaEventCreateWithFlags(&startEvent, cudaEventBlockingSync));
+    CHECK_CUDA(cudaEventCreateWithFlags(&stopEvent, cudaEventBlockingSync));
+
+    
+    CHECK_CUDA(cudaEventRecord(startEvent, params.stream[0]));
+    int buffer_index = 0;
+    for(int batch_id = 0; batch_id < params.batch_size; batch_id++)
+    {
+        nvjpeg2kImageInfo_t image_info;
+        CHECK_NVJPEG2K(nvjpeg2kStreamGetImageInfo(params.jpeg2k_streams[batch_id], &image_info));
+
+        uint32_t tile_id = 0;
+        for(uint32_t tile_y0 = 0; tile_y0 < image_info.image_height; tile_y0 += image_info.tile_height)
+        {
+            for(uint32_t tile_x0 = 0; tile_x0 < image_info.image_width; tile_x0 += image_info.tile_width)
+            {
+                // make sure that the previous stage are done
+                CHECK_CUDA(cudaEventSynchronize(pipeline_events[buffer_index]));
+                nvjpeg2kImage16u_t tile_decode_out;
+                tile_decode_out.num_comps = out[batch_id].num_comps;
+                tile_decode_out.pixel_type = out[batch_id].pixel_type;
+                uint32_t bytes_per_comp = sizeof(*tile_decode_out.pixel_data[0]);
+                for(uint32_t c = 0; c < out[batch_id].num_comps; c++)
+                {
+                    size_t pitch_in_pixels = out[batch_id].pitch_in_bytes[c]/bytes_per_comp;
+                    tile_decode_out.pixel_data[c] = out[batch_id].pixel_data[c] + tile_y0 * pitch_in_pixels + (tile_x0);
+                    tile_decode_out.pitch_in_bytes[c] = out[batch_id].pitch_in_bytes[c];
+                }
+                // make sure that the previous stage are done before reusing
+                CHECK_CUDA(cudaEventSynchronize(pipeline_events[buffer_index]));
+            
+                nvjpeg2kImage_t nvjpeg2k_out;
+                nvjpeg2k_out.num_components = tile_decode_out.num_comps;
+                nvjpeg2k_out.pixel_data = (void**)tile_decode_out.pixel_data;
+                nvjpeg2k_out.pitch_in_bytes = tile_decode_out.pitch_in_bytes;
+                nvjpeg2k_out.pixel_type = tile_decode_out.pixel_type;
+
+                CHECK_NVJPEG2K(nvjpeg2kDecodeTile(params.nvjpeg2k_handle, params.nvjpeg2k_decode_states[buffer_index],
+                    params.jpeg2k_streams[batch_id], nullptr, tile_id, 0,
+                    &nvjpeg2k_out, params.stream[buffer_index]));
+                
+                CHECK_CUDA(cudaEventRecord(pipeline_events[buffer_index], params.stream[buffer_index]));
+
+                buffer_index++;
+                buffer_index = buffer_index%PIPELINE_STAGES;
+                tile_id++;
+
+            }
+        }
+    }
+    for (int p = 0; p < PIPELINE_STAGES; p++)
+    {
+        CHECK_CUDA(cudaEventSynchronize(pipeline_events[p]));
+    }
+
+    CHECK_CUDA(cudaEventRecord(stopEvent, params.stream[0]));
+    
+    CHECK_CUDA(cudaEventSynchronize(stopEvent));
+    CHECK_CUDA(cudaEventElapsedTime(&loopTime, startEvent, stopEvent));
+    time += static_cast<double>(loopTime/1000.0); // loopTime is in milliseconds
+    
+    if (params.write_decoded)
+    {
+        for( int i = 0; i < params.batch_size; i++)
+        {
+            nvjpeg2kImageInfo_t image_info;
+            nvjpeg2kImageComponentInfo_t comp_info;
+            CHECK_NVJPEG2K(nvjpeg2kStreamGetImageInfo(params.jpeg2k_streams[i], &image_info));
+            // assume all components have the same precision
+            CHECK_NVJPEG2K(nvjpeg2kStreamGetImageComponentInfo(params.jpeg2k_streams[i], &comp_info, 0));
+            
+            write_image(params.output_dir, current_names[i], out[i], image_info.image_width, 
+                image_info.image_height, image_info.num_components, comp_info.precision);
+        }
+    }
+
+    for(int p = 0; p < PIPELINE_STAGES; p++)
+    {
+        CHECK_CUDA(cudaEventDestroy(pipeline_events[p]));
+    }
+    CHECK_CUDA(cudaEventDestroy(stopEvent));
+    CHECK_CUDA(cudaEventDestroy(startEvent));
+
     return EXIT_SUCCESS;
 }
 
@@ -250,7 +427,7 @@ double process_images(FileNames &image_names, decode_params_t &params,
     // we wrap over image files to process total_images of files
     FileNames::iterator file_iter = image_names.begin();
    // output buffers
-   std::vector<nvjpeg2ksample_img_16u_t> iout(params.batch_size);
+   std::vector<nvjpeg2kImage16u_t> iout(params.batch_size);
   // output buffer
    std::vector<nvjpeg2ksample_img_sz> isz(params.batch_size);
 
@@ -275,8 +452,19 @@ double process_images(FileNames &image_names, decode_params_t &params,
             return EXIT_FAILURE;
 
         double time = 0;
-        if (decode_images(current_names, iout, params, time))
+        int ret_val = 0;
+        if (params.partial_decode)
+        {
+            ret_val = decode_images_partial(current_names, iout, params, time);
+        }
+        else
+        {
+            ret_val = decode_images(current_names, iout, params, time);
+        }
+        if(ret_val)
+        {
             return EXIT_FAILURE;
+        }
         if (warmup < params.warmup)
         {
             warmup++;
@@ -296,6 +484,44 @@ double process_images(FileNames &image_names, decode_params_t &params,
     return EXIT_SUCCESS;
 }
 
+int parseDecodeCoordinates(const char* argv, decode_params_t& params)
+{
+    std::istringstream decode_area(argv);
+    std::string temp;
+    int idx = 0;
+    while(getline(decode_area, temp,','))
+    {
+        if( idx == 0)
+        {
+            params.win_x0 = std::stoi(temp);
+        }
+        else if (idx == 1)
+        {
+            params.win_y0 = std::stoi(temp);
+        }
+        else if( idx == 2)
+        {
+            params.win_x1 = std::stoi(temp);
+        }
+        else if (idx == 3)
+        {
+            params.win_y1 = std::stoi(temp);
+        }
+        else
+        {
+            std::cout<<"invalid decode area here"<<std::endl;
+            return EXIT_FAILURE;
+        }
+        idx++;
+    }
+    if (params.win_x0 >= params.win_x1 || params.win_y0 >= params.win_y1)
+    {
+        std::cout<<"invalid decode area here"<<std::endl;
+        return EXIT_FAILURE;
+    }
+    params.partial_decode = true;
+    return EXIT_SUCCESS;
+}
 int main(int argc, const char *argv[])
 {
     int pidx;
@@ -373,6 +599,20 @@ int main(int argc, const char *argv[])
         params.write_decoded = true;
     }
 
+    params.win_x0 = 0;
+    params.win_y0 = 0;
+    params.win_x1 = 0;
+    params.win_y1 = 0;
+    params.partial_decode = false;
+    if ((pidx = findParamIndex(argv, argc, "-da")) != -1)
+    {
+        if(parseDecodeCoordinates(argv[pidx + 1], params))
+        {
+            return EXIT_SUCCESS;
+        }
+        
+    }
+
     nvjpeg2kDeviceAllocator_t dev_allocator = {&dev_malloc, &dev_free};
     nvjpeg2kPinnedAllocator_t pinned_allocator = {&host_malloc, &host_free};
     int flags = 0;
@@ -398,7 +638,7 @@ int main(int argc, const char *argv[])
 
     if (params.total_images == -1)
     {
-        params.total_images = image_names.size();
+        params.total_images = static_cast<int>(image_names.size());
     }
     else if (params.total_images % params.batch_size)
     {

@@ -1,8 +1,8 @@
-# JPEG2000 Image decoding Example using nvJPEG 2000 Library
+# JPEG2000 Partial Image decoding Example using nvJPEG 2000 Library
 
 ## Description
 
-This code demonstrates how to pipleline the decoding of multiple JPEG 2000 images nvJPEG2000 library. 
+This code demonstrates how to partially decode a multi tile image, when the decode window spans multiple tiles
 
 ## Key Concepts
 
@@ -40,7 +40,7 @@ $ mkdir build
 $
 $ cd build 
 $
-$ export CUDACXX= nvcc path
+$ export CUDACXX=nvcc
 $
 $ cmake ..  -DCMAKE_BUILT_TYPE=Release -DNVJPEG2K_PATH= nvjpeg2k location
 #
@@ -52,15 +52,16 @@ $ make
 
 
 # Usage
-./nvjpeg2k_dec_pipelined -h
+./nvj2k_decode_tile_partial -h
 
 ```
-Usage: ./nvjpeg2k_dec_pipelined -i images_dir [-b batch_size] [-t total_images] [-w warmup_iterations] [-o output_dir] Parameters: 
+Usage: ./nvj2k_decode_tile_partial -i images_dir [-b batch_size] [-t total_images] [-w warmup_iterations] [-o output_dir] [-da x0,y0,x1,y1]Parameters: 
 	images_dir	:	Path to single image or directory of images
 	batch_size	:	Decode images from input by batches of specified size
 	total_images	:	Decode these many images, if there are fewer images 
 				in the input than total images, decoder will loop over the input
 	warmup_iterations:	Run these many batches first without measuring performance
 	output_dir	:	Write decoded images in BMP/PGM format to this directory
+	-da x0,y0,x1,y1 : Decode Area of Interest. The  coordinates are relative to the image origin
 
 ```

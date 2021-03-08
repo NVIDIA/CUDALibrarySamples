@@ -12,7 +12,7 @@ Image Decoding from NVJPEG2000 Library
 
 [JPEG2000 Image Decoder](nvJPEG2000-Decoder/)
 [JPEG2000 Image Decoder Pipelined](nvJPEG2000-Decoder-Pipelined/)
-
+[JPEG2000 Image Decoder Tile Partial](nvjpeg2000-Decoder-Tile-Partial/)
 
 ## Supported SM Architectures
 
@@ -20,7 +20,7 @@ Image Decoding from NVJPEG2000 Library
 
 ## Supported OSes
 
-Linux 
+Linux, Windows
 
 ## Supported CPU Architecture
 
