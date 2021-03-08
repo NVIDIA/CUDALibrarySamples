@@ -1,5 +1,5 @@
 # 
-# Copyright (c) 2020, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2021, NVIDIA CORPORATION.  All rights reserved.
 # 
 # NVIDIA CORPORATION and its licensors retain all intellectual property
 # and proprietary rights in and to this software, related documentation
@@ -10,7 +10,7 @@
 
 cmake_minimum_required(VERSION 3.13 FATAL_ERROR)
 
-project(nvjpeg2k_sample LANGUAGES CXX CUDA)
+project(nvj2k_decode_tile_partial LANGUAGES CXX CUDA)
 
 if(NOT NVJPEG2K_PATH)
 message(FATAL_ERROR, "NVJPEG2K_PATH not set")
@@ -30,9 +30,9 @@ include_directories(
 )
 
 
-set(EXAMPLES_DESCRIPTOR_SOURCES "nvjpeg2k_dec_pipelined.cpp")
+SET(EXAMPLES_DESCRIPTOR_SOURCES "nvj2k_DecodeTilePartial.cpp")
 
-add_executable(nvjpeg2k_dec_pipelined ${EXAMPLES_DESCRIPTOR_SOURCES})
+add_executable(nvj2k_decode_tile_partial ${EXAMPLES_DESCRIPTOR_SOURCES})
 
 find_library(NVJPEG2K_LIB
     NAMES nvjpeg2k
@@ -45,5 +45,6 @@ find_library(CUDART_LIB
 if(UNIX)
   set(FILESYS -lstdc++fs)
 endif()
-  
-target_link_libraries(nvjpeg2k_dec_pipelined PUBLIC ${NVJPEG2K_LIB} ${CUDART_LIB} ${FILESYS})
+
+target_link_libraries(nvj2k_decode_tile_partial PUBLIC ${NVJPEG2K_LIB} ${CUDART_LIB} ${FILESYS})
+
