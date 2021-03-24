@@ -161,7 +161,7 @@ template <>
 struct traits<cuDoubleComplex>
 {
     // scalar type
-    typedef float S;
+    typedef double S;
     typedef cuDoubleComplex T;
 
     static constexpr T zero = {0., 0.};
