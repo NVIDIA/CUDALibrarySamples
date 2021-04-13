@@ -15,6 +15,7 @@ Image processing performance primitives from NPP Library
 
 [Image segmentation using watershed algorithm ](watershedSegmentation/)
 
+[Image Euclidean Distance Transform ](distanceTransform/)
 
 ## Supported SM Architectures
 
@@ -34,5 +35,5 @@ x86_64
 
 # Prerequisites
 - A Linux system with recent NVIDIA drivers.
-- Install the [CUDA 11.0 toolkit](https://developer.nvidia.com/cuda-downloads).
+- Install the [CUDA 11.2 toolkit](https://developer.nvidia.com/cuda-downloads).
 
