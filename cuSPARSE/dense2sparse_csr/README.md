@@ -1,4 +1,4 @@
-# cuSPARSE Generic APIs - `cusparseDenseToSparse`
+# cuSPARSE Generic APIs - `cusparseDenseToSparse CSR`
 
 ## Description
 
@@ -10,7 +10,7 @@ This sample demonstrates the usage of `cusparseDenseToSparse` for performing *de
 
 `B (dense) -> A (csr)`
 
-![](dense2sparse.svg)
+![](dense2sparse_csr.svg)
 </center>
 
 ## Building

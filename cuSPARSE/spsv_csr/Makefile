@@ -48,16 +48,16 @@ CUDA_TOOLKIT := $(shell dirname $$(command -v nvcc))/..
 INC          := -I$(CUDA_TOOLKIT)/include
 LIBS         := -lcudart -lcusparse
 
-all: dense2sparse_example
+all: spsv_csr_example
 
-dense2sparse_example: dense2sparse_example.c
-	nvcc $(INC) dense2sparse_example.c -o dense2sparse_example $(LIBS)
+spsv_csr_example: spsv_csr_example.c
+	nvcc $(INC) spsv_csr_example.c -o spsv_csr_example $(LIBS)
 
 clean:
-	rm -f dense2sparse_example
+	rm -f spsv_csr_example
 
 test:
-	@echo "\n==== Dense to Sparse Test ====\n"
-	./dense2sparse_example
+	@echo "\n==== SpSV CSR Test ====\n"
+	./spsv_csr_example
 
 .PHONY: clean all test
