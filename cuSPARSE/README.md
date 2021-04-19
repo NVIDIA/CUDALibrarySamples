@@ -32,13 +32,17 @@ This folder demonstrates cuSPARSE Generic APIs usage.
 
 ##### Matrix - Vector Operations
 
-* [cusparseSpMV CSR](spmm_csr/)
+* [cusparseSpMV CSR](spmv_csr/)
 
     The sample demonstrates *sparse matrix - dense vector multiplication*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
 
 * [cusparseSpMV COO](spmv_coo/)
 
     The sample demonstrates *sparse matrix - dense vector multiplication*, where the sparse matrix is represented in COO (Coordinate) storage format
+
+* [cusparseSpSV CSR](spsv_csr/)
+
+    The sample demonstrates *sparse triangular solver with single right-hand side*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
 
 ##### Matrix - Matrix Operations
 
@@ -64,11 +68,11 @@ This folder demonstrates cuSPARSE Generic APIs usage.
 
 ##### Conversion
 
-* [cusparseSparseToDense](sparse2dense/)
+* [cusparseSparseToDense](sparse2dense_csr/)
 
     The sample demonstrates *sparse matrix to dense matrix conversion*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
 
-* [cusparseDenseToSparse](dense2sparse/)
+* [cusparseDenseToSparse](dense2sparse_csr/)
 
     The sample demonstrates *dense matrix to sparse matrix conversion*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
 

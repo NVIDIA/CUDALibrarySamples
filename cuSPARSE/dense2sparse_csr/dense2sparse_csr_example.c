@@ -174,9 +174,9 @@ int main(void) {
         }
     }
     if (correct)
-        printf("dense2sparse_example test PASSED\n");
+        printf("dense2sparse_csr_example test PASSED\n");
     else
-        printf("dense2sparse_example test FAILED: wrong result\n");
+        printf("dense2sparse_csr_example test FAILED: wrong result\n");
     //--------------------------------------------------------------------------
     // device memory deallocation
     CHECK_CUDA( cudaFree(dBuffer) )
