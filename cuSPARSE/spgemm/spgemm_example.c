@@ -167,7 +167,7 @@ int main(void) {
                                       computeType, CUSPARSE_SPGEMM_DEFAULT,
                                       spgemmDesc, &bufferSize1, NULL) )
     CHECK_CUDA( cudaMalloc((void**) &dBuffer1, bufferSize1) )
-    // inspect the matrices A and B to understand the memory requiremnent for
+    // inspect the matrices A and B to understand the memory requirement for
     // the next step
     CHECK_CUSPARSE(
         cusparseSpGEMM_workEstimation(handle, opA, opB,
@@ -221,11 +221,9 @@ int main(void) {
     CHECK_CUDA( cudaMemcpy(hC_csrOffsets_tmp, dC_csrOffsets,
                            (A_num_rows + 1) * sizeof(int),
                            cudaMemcpyDeviceToHost) )
-    CHECK_CUDA( cudaMemcpy(hC_columns_tmp, dC_columns,
-                           C_nnz * sizeof(int),
+    CHECK_CUDA( cudaMemcpy(hC_columns_tmp, dC_columns, C_nnz * sizeof(int),
                            cudaMemcpyDeviceToHost) )
-    CHECK_CUDA( cudaMemcpy(hC_values_tmp, dC_values,
-                           C_nnz * sizeof(float),
+    CHECK_CUDA( cudaMemcpy(hC_values_tmp, dC_values, C_nnz * sizeof(float),
                            cudaMemcpyDeviceToHost) )
     int correct = 1;
     for (int i = 0; i < A_num_rows + 1; i++) {
@@ -236,8 +234,8 @@ int main(void) {
     }
     for (int i = 0; i < C_nnz; i++) {
         if (hC_columns_tmp[i] != hC_columns[i] ||
-            hC_values_tmp[i]  != hC_values[i]) {
-            correct = 0;
+            hC_values_tmp[i]  != hC_values[i]) { // direct floating point
+            correct = 0;                         // comparison is not reliable
             break;
         }
     }
