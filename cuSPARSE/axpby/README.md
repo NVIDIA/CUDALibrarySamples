@@ -10,7 +10,7 @@ This sample demonstrates the usage of `cusparseAxpby` for performing *sparse vec
 
 `Y = alpha * X + beta * Y`
 
-![](axpby.svg)
+![](axpby.png)
 </center>
 
 ## Building

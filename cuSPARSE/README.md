@@ -50,9 +50,17 @@ This folder demonstrates cuSPARSE Generic APIs usage.
 
     The sample demonstrates *sparse matrix - dense matrix multiplication = dense matrix*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
 
+* [cusparseSpMM CSR - Batched](spmm_csr_batched/)
+
+    The sample demonstrates *batched sparse matrix - dense matrix multiplication = dense matrix*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
+
 * [cusparseSpMM COO](spmm_coo/)
 
     The sample demonstrates *sparse matrix - dense matrix multiplication = dense matrix*, where the sparse matrix is represented in COO (Coordinate) storage format
+
+* [cusparseSpMM COO - Batched](spmm_coo_batched/)
+
+    The sample demonstrates *batched sparse matrix - dense matrix multiplication = dense matrix*, where the sparse matrix is represented in COO (Coordinate) storage format
 
 * [cusparseSpMM SDDMM](sddmm_csr/)
 
