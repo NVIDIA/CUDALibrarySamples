@@ -44,25 +44,20 @@
 # software must include, in the user documentation and internal
 # comments to the code, the above Disclaimer and U.S. Government End
 # Users Notice.
-cmake_minimum_required(VERSION 3.9)
+CUDA_TOOLKIT := $(shell dirname $$(command -v nvcc))/..
+INC          := -I$(CUDA_TOOLKIT)/include
+LIBS         := -lcudart -lcusparse
 
-set(ROUTINE sparse2dense_csr)
+all: spmm_csr_batched_example
 
-project("${ROUTINE}_example"
-        DESCRIPTION  "GPU-Accelerated Sparse Linear Algebra"
-        HOMEPAGE_URL "https://docs.nvidia.com/cuda/cusparse/index.html"
-        LANGUAGES    C CUDA)
+spmm_csr_batched_example: spmm_csr_batched_example.c
+	nvcc $(INC) spmm_csr_batched_example.c -o spmm_csr_batched_example $(LIBS)
 
-add_executable(${ROUTINE}_example)
+clean:
+	rm -f spmm_csr_batched_example
 
-target_sources(${ROUTINE}_example
-    PUBLIC ${PROJECT_SOURCE_DIR}/${ROUTINE}_example.c
-)
+test:
+	@echo "\n==== Batched SpMM CSR Test ====\n"
+	./spmm_csr_batched_example
 
-target_include_directories(${ROUTINE}_example
-    PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
-)
-
-target_link_libraries(${ROUTINE}_example
-    PUBLIC cudart cusparse
-)
+.PHONY: clean all test

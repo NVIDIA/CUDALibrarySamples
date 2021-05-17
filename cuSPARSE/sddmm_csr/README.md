@@ -10,7 +10,7 @@ This sample demonstrates the usage of `cusparseSDDMM` for performing *dense matr
 
 `C = (alpha * A * B) ° spy(C) + beta * C`
 
-![](sddmm_csr.svg)
+![](sddmm_csr.png)
 </center>
 
 ## Building

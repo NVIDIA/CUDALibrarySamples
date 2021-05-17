@@ -8,7 +8,7 @@ This sample demonstrates the usage of `cusparseRot` for performing *Givens rotat
 
 <center>
 
-![](rot.svg)
+![](rot.png)
 </center>
 
 ## Building

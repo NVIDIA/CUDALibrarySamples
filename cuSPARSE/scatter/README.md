@@ -8,7 +8,7 @@ This sample demonstrates the usage of `cusparseScatter` for performing *sparse v
 
 <center>
 
-![](scatter.svg)
+![](scatter.png)
 </center>
 
 ## Building

@@ -1,16 +1,17 @@
-# cuSPARSE Generic APIs - `cusparseSpSV CSR`
+# cuSPARSE Generic APIs - `Batched cusparseSpMM COO`
 
 ## Description
 
-This sample demonstrates the usage of `cusparseSpSV` for performing *sparse triangular solver with single right-hand side*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format.
+This sample demonstrates the usage of `cusparseSpMM` for performing *batched sparse matrix - dense matrix multiplication*, where the sparse matrix is represented in COO (Coordinate) storage format.
 
-[cusparseSpSV Documentation](https://docs.nvidia.com/cuda/cusparse/index.html#cusparse-generic-function-spsv)
+[cusparseSpMM Documentation](https://docs.nvidia.com/cuda/cusparse/index.html#cusparse-generic-function-spmm)
 
 <center>
 
-`op(A) * Y = alpha * X`
+`C[1] = alpha * A * B[1] + beta * C[1]`
+`C[2] = alpha * A * B[2] + beta * C[2]`
 
-![](spsv_csr.png)
+![](spmm_coo_batched.png)
 </center>
 
 ## Building
@@ -39,5 +40,5 @@ This sample demonstrates the usage of `cusparseSpSV` for performing *sparse tria
 
 ## Prerequisites
 
-* [CUDA 11.3 toolkit](https://developer.nvidia.com/cuda-downloads) (or above) and compatible driver (see [CUDA Driver Release Notes](https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/index.html#cuda-major-component-versions)).
+* [CUDA 11.2 toolkit](https://developer.nvidia.com/cuda-downloads) (or above) and compatible driver (see [CUDA Driver Release Notes](https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/index.html#cuda-major-component-versions)).
 * [CMake 3.9](https://cmake.org/download/) or above on Windows
