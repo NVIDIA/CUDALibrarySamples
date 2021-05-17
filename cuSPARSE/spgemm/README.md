@@ -10,7 +10,7 @@ This sample demonstrates the usage of `cusparseSpGEMM` for performing *sparse ma
 
 `C = alpha * A * B + beta * C`
 
-![](spgemm.svg)
+![](spgemm.png)
 </center>
 
 ## Building

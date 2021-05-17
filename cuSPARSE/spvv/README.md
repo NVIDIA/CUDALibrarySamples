@@ -10,7 +10,7 @@ This sample demonstrates the usage of `cusparseSpVV` for performing *sparse vect
 
 `result = X * Y` or `result = X^H * Y`
 
-![](spvv.svg)
+![](spvv.png)
 </center>
 
 ## Building

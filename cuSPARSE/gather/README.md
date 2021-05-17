@@ -8,7 +8,7 @@ This sample demonstrates the usage of `cusparseGather` for performing *sparse ve
 
 <center>
 
-![](gather.svg)
+![](gather.png)
 </center>
 
 ## Building

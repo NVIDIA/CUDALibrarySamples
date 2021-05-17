@@ -46,7 +46,7 @@
 # Users Notice.
 cmake_minimum_required(VERSION 3.9)
 
-set(ROUTINE sparse2dense_csr)
+set(ROUTINE spmm_coo_batched)
 
 project("${ROUTINE}_example"
         DESCRIPTION  "GPU-Accelerated Sparse Linear Algebra"

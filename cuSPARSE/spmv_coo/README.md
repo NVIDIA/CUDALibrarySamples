@@ -10,7 +10,7 @@ This sample demonstrates the usage of `cusparseSpMV` for performing *sparse matr
 
 `Y = alpha * A * X + beta * Y`
 
-![](spmv_coo.svg)
+![](spmv_coo.png)
 </center>
 
 ## Building

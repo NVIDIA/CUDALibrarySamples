@@ -10,7 +10,7 @@ This sample demonstrates the usage of `cusparseDenseToSparse` for performing *de
 
 `B (dense) -> A (csr)`
 
-![](dense2sparse_csr.svg)
+![](dense2sparse_csr.png)
 </center>
 
 ## Building
