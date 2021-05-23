@@ -44,6 +44,10 @@ This folder demonstrates cuSPARSE Generic APIs usage.
 
     The sample demonstrates *sparse triangular solver with single right-hand side*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
 
+* [cusparseSpSV COO](spsv_coo/)
+
+    The sample demonstrates *sparse triangular solver with single right-hand side*, where the sparse matrix is represented in COO (Coordinate) storage format
+
 ##### Matrix - Matrix Operations
 
 * [cusparseSpMM CSR](spmm_csr/)
@@ -74,6 +78,18 @@ This folder demonstrates cuSPARSE Generic APIs usage.
 
     The sample demonstrates *sparse matrix - sparse matrix multiplication = sparse matrix*, where all operands are sparse matrices represented in CSR (Compressed Sparse Row) storage format
 
+* [cusparseSpGEMM_reuse](spgemm_reuse/)
+
+    The sample demonstrates *sparse matrix - sparse matrix multiplication = sparse matrix*, where all operands are sparse matrices represented in CSR (Compressed Sparse Row) storage format and the structure of the output matrix can be reused multiple times
+
+* [cusparseSpSM CSR](spsm_csr/)
+
+    The sample demonstrates *sparse triangular solver with multiple right-hand sides*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
+
+* [cusparseSpSM COO](spsm_coo/)
+
+    The sample demonstrates *sparse triangular solver with multiple right-hand sides*, where the sparse matrix is represented in COO (Coordinate) storage format
+
 ##### Conversion
 
 * [cusparseSparseToDense](sparse2dense_csr/)
@@ -83,6 +99,10 @@ This folder demonstrates cuSPARSE Generic APIs usage.
 * [cusparseDenseToSparse](dense2sparse_csr/)
 
     The sample demonstrates *dense matrix to sparse matrix conversion*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
+
+* [cusparseDenseToSparse (Blocked-ELL)](dense2sparse_blockedell/)
+
+    The sample demonstrates *dense matrix to sparse matrix conversion*, where the sparse matrix is represented in Blocked-Ellpack storage format
 
 ##### Optimizations
 
