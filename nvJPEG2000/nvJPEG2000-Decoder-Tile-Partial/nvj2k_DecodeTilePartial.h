@@ -73,9 +73,9 @@ namespace fs = std::experimental::filesystem::v1;
         }                                                                                                   \
     }
 
-constexpr int PIPELINE_STAGES = 3;
+constexpr int PIPELINE_STAGES = 10;
 constexpr int MAX_PRECISION = 16;
-constexpr int NUM_COMPONENTS = 3;
+constexpr int NUM_COMPONENTS = 4;
 
 typedef struct
 {
@@ -114,7 +114,7 @@ struct decode_params_t
     nvjpeg2kHandle_t nvjpeg2k_handle;
     cudaStream_t stream[PIPELINE_STAGES];
     std::vector<nvjpeg2kStream_t> jpeg2k_streams;
-
+    bool verbose;
     bool write_decoded;
     std::string output_dir;
 
@@ -129,7 +129,7 @@ struct decode_params_t
 
 int read_next_batch(FileNames &image_names, int batch_size,
                     FileNames::iterator &cur_iter, FileData &raw_data,
-                    std::vector<size_t> &raw_len, FileNames &current_names)
+                    std::vector<size_t> &raw_len, FileNames &current_names, bool verbose)
 {
     int counter = 0;
 
@@ -137,9 +137,12 @@ int read_next_batch(FileNames &image_names, int batch_size,
     {
         if (cur_iter == image_names.end())
         {
-         //   std::cerr << "Image list is too short to fill the batch, adding files "
-           //              "from the beginning of the image list"
-             //         << std::endl;
+            if(verbose)
+            {
+                std::cerr << "Image list is too short to fill the batch, adding files "
+                         "from the beginning of the image list"
+                         << std::endl;
+            }
             cur_iter = image_names.begin();
         }
 
@@ -373,7 +376,9 @@ int writeBMP(const char *filename,
              const D *d_chanR, size_t pitchR,
              const D *d_chanG, size_t pitchG,
              const D *d_chanB, size_t pitchB,
-             int width, int height)
+             int width, int height,
+             uint8_t precision,
+             bool verbose)
 {
 
     unsigned int headers[13];
@@ -451,6 +456,11 @@ int writeBMP(const char *filename,
         fprintf(outfile, "%c", (headers[n] & 0x00FF0000) >> 16);
         fprintf(outfile, "%c", (headers[n] & (unsigned int)0xFF000000) >> 24);
     }
+    
+    if (verbose && precision > 8)
+    {
+        std::cout<<"BMP write - truncating "<< (int)precision <<" bit data to 8 bit"<<std::endl;
+    }
 
     //
     // Headers done, now write the data...
@@ -462,6 +472,15 @@ int writeBMP(const char *filename,
             red = chanR[y * width + x];
             green = chanG[y * width + x];
             blue = chanB[y * width + x];
+
+            int scale = precision - 8;
+            if (scale > 0) 
+            {
+                red = ((red >> scale) + ((red >> (scale - 1)) % 2));
+                green = ((green >> scale) + ((green >> (scale - 1)) % 2));
+                blue = ((blue >> scale) + ((blue >> (scale - 1)) % 2));
+            }
+
 
             if (red > 255)
                 red = 255;

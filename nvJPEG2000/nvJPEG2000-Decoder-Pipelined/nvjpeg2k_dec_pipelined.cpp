@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2020 - 2021, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,7 +29,7 @@
 #include "nvjpeg2k_dec_pipelined.h"
 
 int write_image(std::string output_path, std::string filename, const nvjpeg2kImage_t &imgdesc, int width, int height,
-               uint32_t num_components, uint8_t precision)
+               uint32_t num_components, uint8_t precision, bool verbose)
 {
     // Get the file name, without extension.
     // This will be used to rename the output file.
@@ -65,8 +65,12 @@ int write_image(std::string output_path, std::string filename, const nvjpeg2kIma
         }
        
     }
-    else if (num_components == 3)
+    else if (num_components == 3 || num_components == 4)
     {
+        if(num_components == 4 && verbose)
+        {
+            std::cout<<"Discarding the alpha channel and writing the 4 component image as a .bmp file"<<std::endl;
+        }
         std::string fname(output_path + separator + sFileName + ".bmp");
         if (imgdesc.pixel_type == NVJPEG2K_UINT8)
         {
@@ -74,7 +78,7 @@ int write_image(std::string output_path, std::string filename, const nvjpeg2kIma
                      (unsigned char *)imgdesc.pixel_data[0], imgdesc.pitch_in_bytes[0],
                      (unsigned char *)imgdesc.pixel_data[1], imgdesc.pitch_in_bytes[1],
                      (unsigned char *)imgdesc.pixel_data[2], imgdesc.pitch_in_bytes[2],
-                     width, height);
+                     width, height, precision, verbose);
         }
         else if (imgdesc.pixel_type == NVJPEG2K_UINT16)
         {
@@ -82,7 +86,7 @@ int write_image(std::string output_path, std::string filename, const nvjpeg2kIma
                      (unsigned short *)imgdesc.pixel_data[0], imgdesc.pitch_in_bytes[0],
                      (unsigned short *)imgdesc.pixel_data[1], imgdesc.pitch_in_bytes[1],
                      (unsigned short *)imgdesc.pixel_data[2], imgdesc.pitch_in_bytes[2],
-                     width, height);
+                     width, height, precision, verbose);
         }
         if (err)
         {
@@ -228,7 +232,7 @@ int decode_images(FileNames &current_names, std::vector<nvjpeg2ksample_img> &out
             CHECK_NVJPEG2K(nvjpeg2kStreamGetImageComponentInfo(params.jpeg2k_streams[i], &comp_info, 0));
 
             write_image(params.output_dir, current_names[i], nvjpeg2k_output[i], image_info.image_width, 
-                image_info.image_height, image_info.num_components, comp_info.precision);
+                image_info.image_height, image_info.num_components, comp_info.precision, params.verbose);
         }
     }
 
@@ -269,7 +273,7 @@ double process_images(FileNames &image_names, decode_params_t &params,
     while (total_processed < params.total_images)
     {
         if (read_next_batch(image_names, params.batch_size, file_iter, file_data,
-                            file_len, current_names))
+                            file_len, current_names, params.verbose))
             return EXIT_FAILURE;
         double parsetime = 0;
         if (prepare_buffers(file_data, file_len, iout, isz,
@@ -307,7 +311,7 @@ int main(int argc, const char *argv[])
     {
         std::cout << "Usage: " << argv[0]
                   << " -i images_dir [-b batch_size] [-t total_images] "
-                     "[-w warmup_iterations] [-o output_dir] ";
+                     "[-w warmup_iterations] [-o output_dir] [-v verbose]";
         std::cout << "Parameters: " << std::endl;
         std::cout << "\timages_dir\t:\tPath to single image or directory of images"
                   << std::endl;
@@ -324,6 +328,9 @@ int main(int argc, const char *argv[])
                   << std::endl;
         std::cout
             << "\toutput_dir\t:\tWrite decoded images in BMP/PGM format to this directory"
+            << std::endl;
+        std::cout
+            << "\tverbose\t\t:\tLog verbose messages to console"
             << std::endl;
         return EXIT_SUCCESS;
     }
@@ -368,16 +375,31 @@ int main(int argc, const char *argv[])
     if ((pidx = findParamIndex(argv, argc, "-o")) != -1)
     {
         params.output_dir = argv[pidx + 1];
-
-        std::cout << "3 channel images are written out as bmp files and 1 channels images are written out as .pgm files"
-                  << std::endl;
-
         params.write_decoded = true;
+    }
+    params.verbose = false;
+    if ((pidx = findParamIndex(argv, argc, "-v")) != -1)
+    {
+        params.verbose = true;
+    }
+
+    if( params.verbose)
+    {
+        if(params.write_decoded) 
+        {
+            std::cout << "3/4 channel images are written out as bmp files and 1 channels images are written out as .pgm files"
+                      << std::endl;
+        }
+        cudaDeviceProp props;
+        int dev = 0;
+        cudaGetDevice(&dev);
+        cudaGetDeviceProperties(&props, dev);
+        std::cout<<"Using GPU - "<<props.name<<" with CC "<<props.major<<"."<<props.minor<<std::endl;
     }
 
     nvjpeg2kDeviceAllocator_t dev_allocator = {&dev_malloc, &dev_free};
     nvjpeg2kPinnedAllocator_t pinned_allocator = {&host_malloc, &host_free};
-    int flags = 0;
+
     CHECK_NVJPEG2K(nvjpeg2kCreate(NVJPEG2K_BACKEND_DEFAULT, &dev_allocator,
                                   &pinned_allocator, &params.nvjpeg2k_handle));
 
