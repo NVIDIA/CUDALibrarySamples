@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2020 - 2021, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -34,11 +34,19 @@
 #include <algorithm>
 
 #include <string.h> // strcmpi
-#ifndef _WIN64
+
+#if defined(WIN32) || defined(_WIN32) || defined(WIN64) || defined(_WIN64)
+#include <windows.h>
+#include <filesystem>
+const std::string separator = "\\";
+namespace fs = std::filesystem;
+#else
 #include <sys/time.h> // timings
-#include <unistd.h>
+#include <experimental/filesystem>
+const std::string separator = "/";
+namespace fs = std::experimental::filesystem::v1;
 #endif
-#include <dirent.h>
+
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -88,14 +96,14 @@ struct decode_params_t
     nvjpeg2kHandle_t nvjpeg2k_handle;
     cudaStream_t stream;
     nvjpeg2kStream_t jpeg2k_stream;
-
+    bool verbose;
     bool write_decoded;
     std::string output_dir;
 };
 
 int read_next_batch(FileNames &image_names, int batch_size,
                     FileNames::iterator &cur_iter, FileData &raw_data,
-                    std::vector<size_t> &raw_len, FileNames &current_names)
+                    std::vector<size_t> &raw_len, FileNames &current_names, bool verbose)
 {
     int counter = 0;
 
@@ -103,9 +111,12 @@ int read_next_batch(FileNames &image_names, int batch_size,
     {
         if (cur_iter == image_names.end())
         {
-            std::cerr << "Image list is too short to fill the batch, adding files "
+            if(verbose)
+            {
+                std::cerr << "Image list is too short to fill the batch, adding files "
                          "from the beginning of the image list"
-                      << std::endl;
+                         << std::endl;
+            }
             cur_iter = image_names.begin();
         }
 
@@ -130,7 +141,7 @@ int read_next_batch(FileNames &image_names, int batch_size,
         std::streamsize file_size = input.tellg();
         input.seekg(0, std::ios::beg);
         // resize if buffer is too small
-        if (raw_data[counter].size() < file_size)
+        if (raw_data[counter].size() < static_cast<size_t>(file_size))
         {
             raw_data[counter].resize(file_size);
         }
@@ -190,62 +201,29 @@ double Wtime(void)
 // -----------------------------------------------------------------------------
 int readInput(const std::string &sInputPath, std::vector<std::string> &filelist)
 {
-    int error_code = 1;
-    struct stat s;
-
-    if (stat(sInputPath.c_str(), &s) == 0)
+    
+    if( fs::is_regular_file(sInputPath))
     {
-        if (s.st_mode & S_IFREG)
+        filelist.push_back(sInputPath);
+    }
+    else if (fs::is_directory(sInputPath))
+    { 
+        fs::recursive_directory_iterator iter(sInputPath);
+        for(auto& p: iter)
         {
-            filelist.push_back(sInputPath);
-        }
-        else if (s.st_mode & S_IFDIR)
-        {
-            // processing each file in directory
-            DIR *dir_handle;
-            struct dirent *dir;
-            dir_handle = opendir(sInputPath.c_str());
-            std::vector<std::string> filenames;
-            if (dir_handle)
-            {
-                error_code = 0;
-                while ((dir = readdir(dir_handle)) != NULL)
-                {
-                    if (dir->d_type == DT_REG)
-                    {
-                        std::string sFileName = sInputPath + dir->d_name;
-                        filelist.push_back(sFileName);
-                    }
-                    else if (dir->d_type == DT_DIR)
-                    {
-                        std::string sname = dir->d_name;
-                        if (sname != "." && sname != "..")
-                        {
-                            readInput(sInputPath + sname + "/", filelist);
-                        }
-                    }
-                }
-                closedir(dir_handle);
-            }
-            else
-            {
-                std::cout << "Cannot open input directory: " << sInputPath << std::endl;
-                return error_code;
-            }
-        }
-        else
-        {
-            std::cout << "Cannot open input: " << sInputPath << std::endl;
-            return error_code;
+           if( fs::is_regular_file(p))
+           {
+                filelist.push_back(p.path().string());
+           }
         }
     }
     else
     {
-        std::cout << "Cannot find input path " << sInputPath << std::endl;
-        return error_code;
+        std::cout<<"unable to open input"<<std::endl;
+        return EXIT_FAILURE;
     }
 
-    return 0;
+    return EXIT_SUCCESS;
 }
 
 // *****************************************************************************
@@ -326,9 +304,9 @@ int getInputDir(std::string &input_dir, const char *executable_path)
 
 // write PGM, input - single channel, device
 template <typename D>
-int writePGM(const char *filename, const D *pSrc, int nSrcStep, int nWidth, int nHeight, uint8_t precision)
+int writePGM(const char *filename, const D *pSrc, size_t nSrcStep, int nWidth, int nHeight, uint8_t precision)
 {
-    std::ofstream rOutputStream(filename);
+    std::ofstream rOutputStream(filename, std::fstream::binary);
     if (!rOutputStream)
     {
         std::cerr << "Cannot open output file: " << filename << std::endl;
@@ -354,7 +332,7 @@ int writePGM(const char *filename, const D *pSrc, int nSrcStep, int nWidth, int 
         {
             if (precision == 8)
             {
-                rOutputStream << static_cast<int>(*pRow) << " ";
+                rOutputStream << static_cast<unsigned char>(*pRow);
             }
             else
             {
@@ -371,7 +349,9 @@ int writeBMP(const char *filename,
              const D *d_chanR, size_t pitchR,
              const D *d_chanG, size_t pitchG,
              const D *d_chanB, size_t pitchB,
-             int width, int height)
+             int width, int height,
+             uint8_t precision,
+             bool verbose)
 {
 
     unsigned int headers[13];
@@ -449,6 +429,11 @@ int writeBMP(const char *filename,
         fprintf(outfile, "%c", (headers[n] & 0x00FF0000) >> 16);
         fprintf(outfile, "%c", (headers[n] & (unsigned int)0xFF000000) >> 24);
     }
+    
+    if (verbose && precision > 8)
+    {
+        std::cout<<"BMP write - truncating "<< (int)precision <<" bit data to 8 bit"<<std::endl;
+    }
 
     //
     // Headers done, now write the data...
@@ -460,6 +445,15 @@ int writeBMP(const char *filename,
             red = chanR[y * width + x];
             green = chanG[y * width + x];
             blue = chanB[y * width + x];
+
+            int scale = precision - 8;
+            if (scale > 0) 
+            {
+                red = ((red >> scale) + ((red >> (scale - 1)) % 2));
+                green = ((green >> scale) + ((green >> (scale - 1)) % 2));
+                blue = ((blue >> scale) + ((blue >> (scale - 1)) % 2));
+            }
+
 
             if (red > 255)
                 red = 255;
