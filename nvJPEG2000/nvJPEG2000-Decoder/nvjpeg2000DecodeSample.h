@@ -91,6 +91,7 @@ struct decode_params_t
     int total_images;
     int dev;
     int warmup;
+    int rgb_output;
 
     nvjpeg2kDecodeState_t nvjpeg2k_decode_state;
     nvjpeg2kHandle_t nvjpeg2k_handle;
