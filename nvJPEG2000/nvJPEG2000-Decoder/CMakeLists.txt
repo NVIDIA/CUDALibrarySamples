@@ -44,6 +44,7 @@ find_library(CUDART_LIB
 
 if(UNIX)
   set(FILESYS -lstdc++fs)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 endif()
 
 target_link_libraries(nvjpeg2000_decode_sample PUBLIC ${NVJPEG2K_LIB} ${CUDART_LIB} ${FILESYS})
