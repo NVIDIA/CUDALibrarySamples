@@ -1,5 +1,5 @@
 # 
-# Copyright (c) 2020, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2020 - 2021, NVIDIA CORPORATION.  All rights reserved.
 # 
 # NVIDIA CORPORATION and its licensors retain all intellectual property
 # and proprietary rights in and to this software, related documentation
@@ -44,6 +44,7 @@ find_library(CUDART_LIB
 
 if(UNIX)
   set(FILESYS -lstdc++fs)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 endif()
   
 target_link_libraries(nvjpeg2k_dec_pipelined PUBLIC ${NVJPEG2K_LIB} ${CUDART_LIB} ${FILESYS})

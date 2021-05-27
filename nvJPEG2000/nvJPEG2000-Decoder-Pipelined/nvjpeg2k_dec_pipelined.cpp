@@ -112,7 +112,7 @@ int prepare_buffers(FileData &file_data, std::vector<size_t> &file_len,
     nvjpeg2kImageInfo_t image_info;
     nvjpeg2kImageComponentInfo_t image_comp_info[NUM_COMPONENTS];
     parse_time = 0;
-    for (int i = 0; i < file_data.size(); i++) 
+    for (uint32_t i = 0; i < file_data.size(); i++) 
     {
         double time = Wtime();
         CHECK_NVJPEG2K(nvjpeg2kStreamParse(params.nvjpeg2k_handle, (unsigned char*)file_data[i].data(), file_len[i],
@@ -141,8 +141,10 @@ int prepare_buffers(FileData &file_data, std::vector<size_t> &file_len,
         for (uint32_t c = 0; c < image_info.num_components; c++) 
         {
             uint32_t bytes_per_element = (MAX_PRECISION/8);
-            uint32_t aw = bytes_per_element * image_comp_info[c].component_width;
-            uint32_t ah = image_comp_info[c].component_height;
+            // for JPEG 2000 bitstreams with 420/422 subsampling, this sample enables RGB output
+            // we are allocating assuming that all component dimensions are the same
+            uint32_t aw = bytes_per_element * image_info.image_width;
+            uint32_t ah = image_info.image_height;
             uint32_t sz = aw * ah;
             ibuf[i].pitch_in_bytes[c] = aw;
             if (sz > isz[i].comp_sz[c]) 
@@ -174,10 +176,15 @@ int decode_images(FileNames &current_names, std::vector<nvjpeg2ksample_img> &out
     }
     CHECK_CUDA(cudaEventCreateWithFlags(&startEvent, cudaEventBlockingSync));
     CHECK_CUDA(cudaEventCreateWithFlags(&stopEvent, cudaEventBlockingSync));
-    
-    
-    std::vector<nvjpeg2kImage_t> nvjpeg2k_output;
+    nvjpeg2kDecodeParams_t decode_params;
+    CHECK_NVJPEG2K(nvjpeg2kDecodeParamsCreate(&decode_params));
 
+#if (NVJPEG2K_VER_MAJOR == 0 && NVJPEG2K_VER_MINOR >= 3) 
+    // set RGB  output for the entire batch
+    CHECK_NVJPEG2K(nvjpeg2kDecodeParamsSetRGBOutput(decode_params, 1));
+#endif
+
+    std::vector<nvjpeg2kImage_t> nvjpeg2k_output;
     nvjpeg2k_output.resize(params.batch_size);
 
     for( int i = 0; i < params.batch_size; i++) 
@@ -201,9 +208,13 @@ int decode_images(FileNames &current_names, std::vector<nvjpeg2ksample_img> &out
             // make sure that the previous stage are done
             CHECK_CUDA(cudaEventSynchronize(pipeline_events[buffer_index]));
         }
+#if (NVJPEG2K_VER_MAJOR == 0 && NVJPEG2K_VER_MINOR >= 3)
+        CHECK_NVJPEG2K(nvjpeg2kDecodeImage(params.nvjpeg2k_handle, params.nvjpeg2k_decode_states[buffer_index],
+            params.jpeg2k_streams[i], decode_params, &nvjpeg2k_output[i], params.stream[buffer_index]));
+#else  
         CHECK_NVJPEG2K(nvjpeg2kDecode(params.nvjpeg2k_handle, params.nvjpeg2k_decode_states[buffer_index],
             params.jpeg2k_streams[i], &nvjpeg2k_output[i], params.stream[buffer_index]));
-        
+#endif        
         CHECK_CUDA(cudaEventRecord(pipeline_events[buffer_index], params.stream[buffer_index]))
 
         buffer_index++;
@@ -235,7 +246,8 @@ int decode_images(FileNames &current_names, std::vector<nvjpeg2ksample_img> &out
                 image_info.image_height, image_info.num_components, comp_info.precision, params.verbose);
         }
     }
-
+    
+    CHECK_NVJPEG2K(nvjpeg2kDecodeParamsDestroy(decode_params));
     for(int p = 0; p < PIPELINE_STAGES; p++)
     {
         CHECK_CUDA(cudaEventDestroy(pipeline_events[p]));
