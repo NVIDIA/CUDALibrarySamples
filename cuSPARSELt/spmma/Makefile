@@ -47,7 +47,7 @@
 CUDA_TOOLKIT    := $(shell dirname $$(command -v nvcc))/..
 INC             := -I$(CUDA_TOOLKIT)/include
 LIBS            := -lcudart -lcusparse
-CUSPARSELT_PATH := ${CUDA_TOOLKIT_PATH}/lib64
+CUSPARSELT_PATH := ${CUDA_TOOLKIT}/lib64
 
 all: spmma_example spmma_example_static
 
