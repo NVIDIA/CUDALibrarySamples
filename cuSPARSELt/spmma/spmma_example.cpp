@@ -79,9 +79,9 @@ int main(void) {
                                        cudaDevAttrComputeCapabilityMajor, 0) )
     CHECK_CUDA( cudaDeviceGetAttribute(&minor_cc,
                                        cudaDevAttrComputeCapabilityMinor, 0) )
-    if (!(major_cc == 8 && minor_cc == 0)) {
+    if (major_cc < 8) {
         std::printf("\ncusparseLt is supported only on GPU devices with"
-                    " compute capability == 8.0, current: %d.%d\n\n",
+                    " compute capability >= 8.0, current: %d.%d\n\n",
                      major_cc, minor_cc);
         return EXIT_UNSUPPORTED;
     }
