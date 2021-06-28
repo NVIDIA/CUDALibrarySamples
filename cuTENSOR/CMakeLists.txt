@@ -68,8 +68,15 @@ endif()
 
 if(NOT TARGET cutensor)
   add_library(cutensor SHARED IMPORTED)
+  if(WIN32)
+    set(CUTENSOR_LIBRARY_NAME "cutensor.dll")
+    set(CUTENSOR_LIBRARY_DEF "cutensor.lib")
+  else()
+    set(CUTENSOR_LIBRARY_NAME "libcutensor.so")
+  endif()
   set_target_properties(cutensor PROPERTIES
-    IMPORTED_LOCATION "${CUTENSOR_ROOT}/lib/libcutensor.so"
+    IMPORTED_LOCATION "${CUTENSOR_ROOT}/lib/${CUTENSOR_LIBRARY_NAME}"
+    IMPORTED_IMPLIB "${CUTENSOR_ROOT}/lib/${CUTENSOR_LIBRARY_DEF}"
     INTERFACE_INCLUDE_DIRECTORIES "${CUTENSOR_ROOT}/include")
 endif()
 
@@ -89,7 +96,6 @@ endif()
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CUFFTDX_CUDA_CXX_FLAGS}")
 
 # Global CUDA CXX flags/options
 set(CUDA_HOST_COMPILER ${CMAKE_CXX_COMPILER})
@@ -114,6 +120,7 @@ function(add_cutensor_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
         PUBLIC
             cutensor
             cudart
+            cublasLt
     )
     set_target_properties(${EXAMPLE_TARGET} PROPERTIES
         POSITION_INDEPENDENT_CODE ON
@@ -133,9 +140,11 @@ endfunction()
 
 add_custom_target(cutensor_examples)
 
+add_cutensor_example(cutensor_examples "cuTENSOR.example.einsum" einsum.cu)
 add_cutensor_example(cutensor_examples "cuTENSOR.example.contraction" contraction.cu)
 add_cutensor_example(cutensor_examples "cuTENSOR.example.contraction_autotuning" contraction_autotuning.cu)
 add_cutensor_example(cutensor_examples "cuTENSOR.example.contraction_simple" contraction_simple.cu)
+add_cutensor_example(cutensor_examples "cuTENSOR.example.contraction_plan_cache" contraction_plan_cache.cu)
 add_cutensor_example(cutensor_examples "cuTENSOR.example.elementwise_binary" elementwise_binary.cu)
 add_cutensor_example(cutensor_examples "cuTENSOR.example.elementwise_permute" elementwise_permute.cu)
 add_cutensor_example(cutensor_examples "cuTENSOR.example.elementwise_trinary" elementwise_trinary.cu)

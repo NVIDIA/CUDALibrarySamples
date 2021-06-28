@@ -80,7 +80,7 @@ struct GPUTimer
     cudaEvent_t start_, stop_;
 };
 
-int main(int argc, char** argv)
+int main()
 {
     typedef float floatTypeA;
     typedef float floatTypeB;
@@ -90,7 +90,7 @@ int main(int argc, char** argv)
     cudaDataType_t typeA = CUDA_R_32F;
     cudaDataType_t typeB = CUDA_R_32F;
     cudaDataType_t typeC = CUDA_R_32F;
-    cutensorComputeType_t typeCompute = CUTENSOR_R_MIN_32F;
+    cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_32F;
 
     floatTypeCompute alpha = (floatTypeCompute)1.1f;
     floatTypeCompute beta  = (floatTypeCompute)0.f;

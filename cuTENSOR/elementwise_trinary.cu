@@ -84,7 +84,7 @@ struct GPUTimer
 };
 
 
-int main(int argc, char** argv)
+int main()
 {
     typedef float floatTypeA;
     typedef float floatTypeB;
