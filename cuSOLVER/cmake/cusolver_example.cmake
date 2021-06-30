@@ -37,6 +37,8 @@ target_include_directories(${EXAMPLE_NAME}
 target_link_libraries(${EXAMPLE_NAME}
     PUBLIC
         cusolver
+        cublas
+        cublasLt
 )
 set_target_properties(${EXAMPLE_NAME} PROPERTIES
     POSITION_INDEPENDENT_CODE ON
