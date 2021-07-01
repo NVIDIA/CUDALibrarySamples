@@ -1,5 +1,5 @@
 # 
-# Copyright (c) 2019, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2020, NVIDIA CORPORATION.  All rights reserved.
 #
 # 
 # Redistribution and use in source and binary forms, with or without
@@ -49,12 +49,6 @@ else()
 endif()
 
 # ##########################################
-# cusolver_examples dependencies
-# ##########################################
-
-#include_directories("${CUDA_INCLUDE_DIRS}")
-
-# ##########################################
 # cusolver_examples building flags
 # ##########################################
 
@@ -64,7 +58,6 @@ endif()
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
 
 # Global CUDA CXX flags/options
 set(CUDA_HOST_COMPILER ${CMAKE_CXX_COMPILER})
@@ -83,16 +76,11 @@ include(../cmake/cusolver_example.cmake)
 
 include_directories("${CMAKE_SOURCE_DIR}/../utils")
 
-# Iterative refinement solver is added in CUDA 10.2
-if(NOT CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "10.2")
-    add_cusolver_example(cusolver_examples "cusolver_irs_lapack" cusolver_irs_lapack.cu)
-    if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "11.0")
-        add_cusolver_example(cusolver_examples "cusolver_irs_expert" cusolver_irs_expert_cuda-11.cu)
-    else()
-        add_cusolver_example(cusolver_examples "cusolver_irs_expert" cusolver_irs_expert_cuda-10.2.cu)
-    endif()
+# trtri was added in CUDA 11.4
+if(NOT CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "11.4")
+    add_cusolver_example(cusolver_examples "cusolver_trtri_example" cusolver_trtri_example.cu)
 else()
-    message("GESV solver routines are introduced in CUDA 10.2, update toolkit to get GESV functionality in cuSOLVER")
+    message("TRTRI solver routine was introduced in CUDA 11.4, update toolkit to get TRTRI functionality in cuSOLVER")
 endif()
 
 # ##########################################
@@ -112,4 +100,3 @@ set(CUSOLVER_EXAMPLES_BINARY_INSTALL_DIR "cusolver_examples/bin")
 IF(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
   SET(CMAKE_INSTALL_PREFIX ${CMAKE_BINARY_DIR} CACHE PATH "" FORCE)
 ENDIF()
-
