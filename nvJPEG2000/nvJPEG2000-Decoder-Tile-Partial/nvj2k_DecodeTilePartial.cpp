@@ -30,7 +30,7 @@
 
 template<typename T>
 int write_image(std::string output_path, std::string filename, const T &imgdesc, int width, int height,
-               uint32_t num_components, uint8_t precision)
+               uint32_t num_components, uint8_t precision, bool verbose)
 {
     // Get the file name, without extension.
     // This will be used to rename the output file.
@@ -66,8 +66,12 @@ int write_image(std::string output_path, std::string filename, const T &imgdesc,
         }
        
     }
-    else if (num_components == 3)
+    else if (num_components == 3 || num_components == 4)
     {
+        if(num_components == 4 && verbose)
+        {
+            std::cout<<"Discarding the alpha channel and writing the 4 component image as a .bmp file"<<std::endl;
+        }
         std::string fname(output_path + separator + sFileName + ".bmp");
         if (imgdesc.pixel_type == NVJPEG2K_UINT8)
         {
@@ -75,7 +79,7 @@ int write_image(std::string output_path, std::string filename, const T &imgdesc,
                      (unsigned char *)imgdesc.pixel_data[0], imgdesc.pitch_in_bytes[0],
                      (unsigned char *)imgdesc.pixel_data[1], imgdesc.pitch_in_bytes[1],
                      (unsigned char *)imgdesc.pixel_data[2], imgdesc.pitch_in_bytes[2],
-                     width, height);
+                     width, height, precision, verbose);
         }
         else if (imgdesc.pixel_type == NVJPEG2K_UINT16)
         {
@@ -83,7 +87,7 @@ int write_image(std::string output_path, std::string filename, const T &imgdesc,
                      (unsigned short *)imgdesc.pixel_data[0], imgdesc.pitch_in_bytes[0],
                      (unsigned short *)imgdesc.pixel_data[1], imgdesc.pitch_in_bytes[1],
                      (unsigned short *)imgdesc.pixel_data[2], imgdesc.pitch_in_bytes[2],
-                     width, height);
+                     width, height, precision, verbose);
         }
         if (err)
         {
@@ -110,7 +114,7 @@ int prepare_buffers(FileData &file_data, std::vector<size_t> &file_len,
     nvjpeg2kImageInfo_t image_info;
     nvjpeg2kImageComponentInfo_t image_comp_info[NUM_COMPONENTS];
     parse_time = 0;
-    for (int i = 0; i < file_data.size(); i++) 
+    for (uint32_t i = 0; i < file_data.size(); i++) 
     {
         double time = Wtime();
         CHECK_NVJPEG2K(nvjpeg2kStreamParse(params.nvjpeg2k_handle, (unsigned char*)file_data[i].data(), file_len[i],
@@ -130,7 +134,7 @@ int prepare_buffers(FileData &file_data, std::vector<size_t> &file_len,
 
             if( image_comp_info[0].precision > MAX_PRECISION)
             {
-                std::cout<<"Precision > "<< MAX_PRECISION<<"not supported by this sample"<<std::endl;
+                std::cout<<"Precision > "<< MAX_PRECISION<<" not supported by this sample"<<std::endl;
                 return EXIT_FAILURE;
             }
         }
@@ -143,8 +147,10 @@ int prepare_buffers(FileData &file_data, std::vector<size_t> &file_len,
         for (uint32_t c = 0; c < image_info.num_components; c++) 
         {
             uint32_t bytes_per_element = (MAX_PRECISION/8);
-            uint32_t aw = bytes_per_element * image_comp_info[c].component_width;
-            uint32_t ah = image_comp_info[c].component_height;
+            // for JPEG 2000 bitstreams with 420/422 subsampling, this sample enables RGB output
+            // we are allocating assuming that all component dimensions are the same
+            uint32_t aw = bytes_per_element * image_info.image_width;
+            uint32_t ah = image_info.image_height;
             if(params.partial_decode)
             {
                 aw = bytes_per_element * (params.win_x1 - params.win_x0);
@@ -223,7 +229,10 @@ int decode_images_partial(FileNames &current_names, std::vector<nvjpeg2kImage16u
     CHECK_CUDA(cudaEventCreateWithFlags(&startEvent, cudaEventBlockingSync));
     CHECK_CUDA(cudaEventCreateWithFlags(&stopEvent, cudaEventBlockingSync));
 
-    
+#if (NVJPEG2K_VER_MAJOR == 0 && NVJPEG2K_VER_MINOR >= 3) 
+    // set RGB  output for the entire batch
+    CHECK_NVJPEG2K(nvjpeg2kDecodeParamsSetRGBOutput(decode_params, 1));
+#endif
     CHECK_CUDA(cudaEventRecord(startEvent, params.stream[0]));
     int buffer_index = 0;
     for(int batch_id = 0; batch_id < params.batch_size; batch_id++)
@@ -300,7 +309,8 @@ int decode_images_partial(FileNames &current_names, std::vector<nvjpeg2kImage16u
             // assume all components have the same precision
             CHECK_NVJPEG2K(nvjpeg2kStreamGetImageComponentInfo(params.jpeg2k_streams[i], &comp_info, 0));
             write_image(params.output_dir, current_names[i], out[i], params.win_x1 - params.win_x0, 
-                params.win_x1 - params.win_x0, image_info.num_components, comp_info.precision);
+                params.win_x1 - params.win_x0, image_info.num_components, comp_info.precision,
+                params.verbose);
         }
     }
 
@@ -332,7 +342,14 @@ int decode_images(FileNames &current_names, std::vector<nvjpeg2kImage16u_t> &out
     CHECK_CUDA(cudaEventCreateWithFlags(&startEvent, cudaEventBlockingSync));
     CHECK_CUDA(cudaEventCreateWithFlags(&stopEvent, cudaEventBlockingSync));
 
-    
+    nvjpeg2kDecodeParams_t decode_params;
+    CHECK_NVJPEG2K(nvjpeg2kDecodeParamsCreate(&decode_params));
+
+#if (NVJPEG2K_VER_MAJOR == 0 && NVJPEG2K_VER_MINOR >= 3) 
+    // set RGB  output for the entire batch
+    CHECK_NVJPEG2K(nvjpeg2kDecodeParamsSetRGBOutput(decode_params, 1));
+#endif
+
     CHECK_CUDA(cudaEventRecord(startEvent, params.stream[0]));
     int buffer_index = 0;
     for(int batch_id = 0; batch_id < params.batch_size; batch_id++)
@@ -367,7 +384,7 @@ int decode_images(FileNames &current_names, std::vector<nvjpeg2kImage16u_t> &out
                 nvjpeg2k_out.pixel_type = tile_decode_out.pixel_type;
 
                 CHECK_NVJPEG2K(nvjpeg2kDecodeTile(params.nvjpeg2k_handle, params.nvjpeg2k_decode_states[buffer_index],
-                    params.jpeg2k_streams[batch_id], nullptr, tile_id, 0,
+                    params.jpeg2k_streams[batch_id], decode_params, tile_id, 0,
                     &nvjpeg2k_out, params.stream[buffer_index]));
                 
                 CHECK_CUDA(cudaEventRecord(pipeline_events[buffer_index], params.stream[buffer_index]));
@@ -401,7 +418,8 @@ int decode_images(FileNames &current_names, std::vector<nvjpeg2kImage16u_t> &out
             CHECK_NVJPEG2K(nvjpeg2kStreamGetImageComponentInfo(params.jpeg2k_streams[i], &comp_info, 0));
             
             write_image(params.output_dir, current_names[i], out[i], image_info.image_width, 
-                image_info.image_height, image_info.num_components, comp_info.precision);
+                image_info.image_height, image_info.num_components, comp_info.precision,
+                params.verbose);
         }
     }
 
@@ -411,6 +429,7 @@ int decode_images(FileNames &current_names, std::vector<nvjpeg2kImage16u_t> &out
     }
     CHECK_CUDA(cudaEventDestroy(stopEvent));
     CHECK_CUDA(cudaEventDestroy(startEvent));
+    CHECK_NVJPEG2K(nvjpeg2kDecodeParamsDestroy(decode_params));
 
     return EXIT_SUCCESS;
 }
@@ -444,7 +463,7 @@ double process_images(FileNames &image_names, decode_params_t &params,
     while (total_processed < params.total_images)
     {
         if (read_next_batch(image_names, params.batch_size, file_iter, file_data,
-                            file_len, current_names))
+                            file_len, current_names, params.verbose))
             return EXIT_FAILURE;
         double parsetime = 0;
         if (prepare_buffers(file_data, file_len, widths, heights, iout, isz,
@@ -531,7 +550,7 @@ int main(int argc, const char *argv[])
     {
         std::cout << "Usage: " << argv[0]
                   << " -i images_dir [-b batch_size] [-t total_images] "
-                     "[-w warmup_iterations] [-o output_dir] ";
+                     "[-w warmup_iterations] [-o output_dir] [-da decode_area_of_interest] [-v verbose]\n";
         std::cout << "Parameters: " << std::endl;
         std::cout << "\timages_dir\t:\tPath to single image or directory of images"
                   << std::endl;
@@ -546,8 +565,14 @@ int main(int argc, const char *argv[])
         std::cout << "\twarmup_iterations:\tRun these many batches first "
                      "without measuring performance"
                   << std::endl;
+        std::cout << "\tdecode_area_of_interest: Image coordinates specifying an area "
+                  << "to be decoded"
+                  << std::endl;
         std::cout
             << "\toutput_dir\t:\tWrite decoded images in BMP/PGM format to this directory"
+            << std::endl;
+        std::cout
+            << "\tverbose\t\t:\tLog verbose messages to console"
             << std::endl;
         return EXIT_SUCCESS;
     }
@@ -592,11 +617,12 @@ int main(int argc, const char *argv[])
     if ((pidx = findParamIndex(argv, argc, "-o")) != -1)
     {
         params.output_dir = argv[pidx + 1];
-
-        std::cout << "3 channel images are written out as bmp files and 1 channels images are written out as .pgm files"
-                  << std::endl;
-
         params.write_decoded = true;
+    }
+    params.verbose = false;
+    if ((pidx = findParamIndex(argv, argc, "-v")) != -1)
+    {
+        params.verbose = true;
     }
 
     params.win_x0 = 0;
@@ -613,9 +639,23 @@ int main(int argc, const char *argv[])
         
     }
 
+    if( params.verbose)
+    {
+        if(params.write_decoded) 
+        {
+            std::cout << "3/4 channel images are written out as bmp files and 1 channels images are written out as .pgm files"
+                      << std::endl;
+        }
+        cudaDeviceProp props;
+        int dev = 0;
+        cudaGetDevice(&dev);
+        cudaGetDeviceProperties(&props, dev);
+        std::cout<<"Using GPU - "<<props.name<<" with CC "<<props.major<<"."<<props.minor<<std::endl;
+    }
+
     nvjpeg2kDeviceAllocator_t dev_allocator = {&dev_malloc, &dev_free};
     nvjpeg2kPinnedAllocator_t pinned_allocator = {&host_malloc, &host_free};
-    int flags = 0;
+
     CHECK_NVJPEG2K(nvjpeg2kCreate(NVJPEG2K_BACKEND_DEFAULT, &dev_allocator,
                                   &pinned_allocator, &params.nvjpeg2k_handle));
 

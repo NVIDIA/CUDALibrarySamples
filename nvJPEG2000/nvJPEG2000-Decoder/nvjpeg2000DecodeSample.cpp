@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2020 - 2021, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,11 +29,11 @@
 #include "nvjpeg2000DecodeSample.h"
 
 int write_image(std::string output_path, std::string filename, const nvjpeg2kImage_t &imgdesc, int width, int height,
-               uint32_t num_components, uint8_t precision)
+               uint32_t num_components, uint8_t precision, bool verbose)
 {
     // Get the file name, without extension.
     // This will be used to rename the output file.
-    size_t position = filename.rfind("/");
+    size_t position = filename.rfind(separator);
     std::string sFileName =
         (std::string::npos == position)
             ? filename
@@ -47,7 +47,7 @@ int write_image(std::string output_path, std::string filename, const nvjpeg2kIma
     // For single component image output as PGM channel
     if (num_components == 1)
     {
-        std::string fname(output_path + "/" + sFileName + ".pgm");
+        std::string fname(output_path + separator + sFileName + ".pgm");
         if (imgdesc.pixel_type == NVJPEG2K_UINT8)
         {
             err = writePGM<unsigned char>(fname.c_str(), (unsigned char *)imgdesc.pixel_data[0], 
@@ -65,16 +65,20 @@ int write_image(std::string output_path, std::string filename, const nvjpeg2kIma
         }
        
     }
-    else if (num_components == 3)
+    else if (num_components == 3 || num_components == 4)
     {
-        std::string fname(output_path + "/" + sFileName + ".bmp");
+        if(num_components == 4 && verbose)
+        {
+            std::cout<<"Discarding the alpha channel and writing the 4 component image as a .bmp file"<<std::endl;
+        }
+        std::string fname(output_path + separator + sFileName + ".bmp");
         if (imgdesc.pixel_type == NVJPEG2K_UINT8)
         {
             err = writeBMP<unsigned char>(fname.c_str(),
                      (unsigned char *)imgdesc.pixel_data[0], imgdesc.pitch_in_bytes[0],
                      (unsigned char *)imgdesc.pixel_data[1], imgdesc.pitch_in_bytes[1],
                      (unsigned char *)imgdesc.pixel_data[2], imgdesc.pitch_in_bytes[2],
-                     width, height);
+                     width, height, precision, verbose);
         }
         else if (imgdesc.pixel_type == NVJPEG2K_UINT16)
         {
@@ -82,7 +86,7 @@ int write_image(std::string output_path, std::string filename, const nvjpeg2kIma
                      (unsigned short *)imgdesc.pixel_data[0], imgdesc.pitch_in_bytes[0],
                      (unsigned short *)imgdesc.pixel_data[1], imgdesc.pitch_in_bytes[1],
                      (unsigned short *)imgdesc.pixel_data[2], imgdesc.pitch_in_bytes[2],
-                     width, height);
+                     width, height, precision, verbose);
         }
         if (err)
         {
@@ -99,20 +103,33 @@ int write_image(std::string output_path, std::string filename, const nvjpeg2kIma
 }
 int free_output_buffers(nvjpeg2kImage_t& output_image)
 {
-    for(int c = 0; c < output_image.num_components;c++)
+    for(uint32_t c = 0; c < output_image.num_components;c++)
     {
          CHECK_CUDA(cudaFree(output_image.pixel_data[c]));
     }
     return EXIT_SUCCESS;
 }
 
-int allocate_output_buffers(nvjpeg2kImage_t& output_image, nvjpeg2kImageInfo_t& image_info, int bytes_per_element)
+int allocate_output_buffers(nvjpeg2kImage_t& output_image, nvjpeg2kImageInfo_t& image_info, std::vector<nvjpeg2kImageComponentInfo_t> image_comp_info,
+    int bytes_per_element, int rgb_output)
 {
     output_image.num_components = image_info.num_components;
-    for(int c = 0; c < image_info.num_components;c++)
+    if(rgb_output)
     {
-        CHECK_CUDA(cudaMallocPitch(&output_image.pixel_data[c], &output_image.pitch_in_bytes[c], 
-            image_info.image_width* bytes_per_element, image_info.image_height ));
+        // for RGB output all component outputs dimensions are equal
+        for(uint32_t c = 0; c < image_info.num_components;c++)
+        {
+            CHECK_CUDA(cudaMallocPitch(&output_image.pixel_data[c], &output_image.pitch_in_bytes[c], 
+                image_info.image_width * bytes_per_element, image_info.image_height));
+        }
+    }
+    else
+    {
+        for(uint32_t c = 0; c < image_info.num_components;c++)
+        {
+            CHECK_CUDA(cudaMallocPitch(&output_image.pixel_data[c], &output_image.pitch_in_bytes[c], 
+                image_comp_info[c].component_width * bytes_per_element, image_comp_info[c].component_height));
+        }
     }
     return EXIT_SUCCESS;
 }
@@ -126,6 +143,13 @@ int decode_images(FileNames &current_names, const FileData &img_data, const std:
 
     CHECK_CUDA(cudaEventCreateWithFlags(&startEvent, cudaEventBlockingSync));
     CHECK_CUDA(cudaEventCreateWithFlags(&stopEvent, cudaEventBlockingSync));
+    nvjpeg2kDecodeParams_t decode_params;
+    CHECK_NVJPEG2K(nvjpeg2kDecodeParamsCreate(&decode_params));
+
+#if (NVJPEG2K_VER_MAJOR == 0 && NVJPEG2K_VER_MINOR >= 3) 
+    // 420 and 422 subsampling are enabled in nvJPEG2k v 0.3.0
+    CHECK_NVJPEG2K(nvjpeg2kDecodeParamsSetRGBOutput(decode_params, params.rgb_output));
+#endif
     
     int bytes_per_element = 1;
     nvjpeg2kImage_t output_image;
@@ -144,7 +168,7 @@ int decode_images(FileNames &current_names, const FileData &img_data, const std:
         CHECK_NVJPEG2K(nvjpeg2kStreamGetImageInfo(params.jpeg2k_stream, &image_info));
 
         image_comp_info.resize(image_info.num_components);
-        for (int c = 0; c < image_info.num_components; c++)
+        for (uint32_t c = 0; c < image_info.num_components; c++)
         {
             CHECK_NVJPEG2K(nvjpeg2kStreamGetImageComponentInfo(params.jpeg2k_stream, &image_comp_info[c], c));
             //std::cout << "Component #" << c << " size: " << image_comp_info[c].component_width << " x "
@@ -173,15 +197,19 @@ int decode_images(FileNames &current_names, const FileData &img_data, const std:
             return EXIT_FAILURE;
         }
 
-        if(allocate_output_buffers(output_image, image_info, bytes_per_element))
+        if(allocate_output_buffers(output_image, image_info, image_comp_info, bytes_per_element, params.rgb_output))
         {
             return EXIT_FAILURE;
         }
         CHECK_CUDA(cudaEventRecord(startEvent, params.stream));
-       
+
+#if (NVJPEG2K_VER_MAJOR == 0 && NVJPEG2K_VER_MINOR >= 3)
+        CHECK_NVJPEG2K(nvjpeg2kDecodeImage(params.nvjpeg2k_handle, params.nvjpeg2k_decode_state,
+            params.jpeg2k_stream, decode_params, &output_image, params.stream));
+#else   
         CHECK_NVJPEG2K(nvjpeg2kDecode(params.nvjpeg2k_handle, params.nvjpeg2k_decode_state,
-                                        params.jpeg2k_stream, &output_image, params.stream));
-       
+            params.jpeg2k_stream, &output_image, params.stream));
+#endif            
         CHECK_CUDA(cudaEventRecord(stopEvent, params.stream));
 
         CHECK_CUDA(cudaEventSynchronize(stopEvent));
@@ -190,8 +218,22 @@ int decode_images(FileNames &current_names, const FileData &img_data, const std:
         time += parse_time;
         if (params.write_decoded)
         {
+            if(image_info.num_components == 3)
+            {
+                //check if the image is either 420 or 422
+                if((float)image_comp_info[0].component_width/(float)image_comp_info[1].component_width > 1.0 && 
+                    params.rgb_output == 0)
+                {
+                    if(params.verbose)
+                    {
+                        std::cout<<"Unable to write 420/422 decode output to file. Use -rgb_output flag"<<std::endl;
+                    }
+                    continue;
+                }
+            }
             write_image(params.output_dir, current_names[i], output_image, image_info.image_width, 
-                image_info.image_height, image_info.num_components, image_comp_info[0].precision);
+                image_info.image_height, image_info.num_components, image_comp_info[0].precision, 
+                params.verbose);
         }
 
         if(free_output_buffers(output_image))
@@ -199,6 +241,10 @@ int decode_images(FileNames &current_names, const FileData &img_data, const std:
             return EXIT_FAILURE;
         }
     }
+
+    CHECK_NVJPEG2K(nvjpeg2kDecodeParamsDestroy(decode_params));
+    CHECK_CUDA(cudaEventDestroy(startEvent));
+    CHECK_CUDA(cudaEventDestroy(stopEvent));
     return EXIT_SUCCESS;
 }
 
@@ -224,7 +270,7 @@ double process_images(FileNames &image_names, decode_params_t &params,
     while (total_processed < params.total_images)
     {
         if (read_next_batch(image_names, params.batch_size, file_iter, file_data,
-                            file_len, current_names))
+                            file_len, current_names, params.verbose))
             return EXIT_FAILURE;
 
         double time = 0;
@@ -256,7 +302,8 @@ int main(int argc, const char *argv[])
     {
         std::cout << "Usage: " << argv[0]
                   << " -i images_dir [-b batch_size] [-t total_images] "
-                     "[-w warmup_iterations] [-o output_dir] ";
+                     "[-w warmup_iterations] [-o output_dir] [-v verbose] [-rgb_output]"
+                  << std::endl;
         std::cout << "Parameters: " << std::endl;
         std::cout << "\timages_dir\t:\tPath to single image or directory of images"
                   << std::endl;
@@ -264,16 +311,20 @@ int main(int argc, const char *argv[])
                      "specified size"
                   << std::endl;
         std::cout << "\ttotal_images\t:\tDecode these many images, if there are "
-                     "fewer images \n"
+                     "fewer images "<<std::endl
                   << "\t\t\t\tin the input than total images, decoder will loop "
                      "over the input"
                   << std::endl;
         std::cout << "\twarmup_iterations:\tRun these many batches first "
                      "without measuring performance"
                   << std::endl;
-        std::cout
-            << "\toutput_dir\t:\tWrite decoded images in BMP/PGM format to this directory"
-            << std::endl;
+        std::cout << "\toutput_dir\t:\tWrite decoded images in BMP/PGM format to this directory"
+                  << std::endl;   
+        std::cout << "\trgb_output\t:\tUse this flag when decoding images with 420/422 subsampling"<<std::endl
+                  << "\t\t\t\tsuch that the nvJPEG2000 library generates RGB output"
+                  << std::endl;
+        std::cout << "\tverbose\t\t:\tLog verbose messages to console"
+                  << std::endl;
         return EXIT_SUCCESS;
     }
 
@@ -318,15 +369,37 @@ int main(int argc, const char *argv[])
     {
         params.output_dir = argv[pidx + 1];
 
-        std::cout << "3 channel images are written out as bmp files and 1 channels images are written out as .pgm files"
-                  << std::endl;
-
         params.write_decoded = true;
+    }
+    params.verbose = false;
+    if ((pidx = findParamIndex(argv, argc, "-v")) != -1)
+    {
+        params.verbose = true;
+    }
+
+    params.rgb_output = 0;
+    if ((pidx = findParamIndex(argv, argc, "-rgb_output")) != -1)
+    {
+        params.rgb_output = 1;
+    }
+
+    if(params.verbose)
+    {
+        if(params.write_decoded)
+        {
+            std::cout << "3/4 channel images are written out as bmp files and 1 channels images are written out as .pgm files"
+                      << std::endl;
+        }
+        cudaDeviceProp props;
+        int dev = 0;
+        cudaGetDevice(&dev);
+        cudaGetDeviceProperties(&props, dev);
+        std::cout<<"Using GPU - "<<props.name<<" with CC "<<props.major<<"."<<props.minor<<std::endl;
     }
 
     nvjpeg2kDeviceAllocator_t dev_allocator = {&dev_malloc, &dev_free};
     nvjpeg2kPinnedAllocator_t pinned_allocator = {&host_malloc, &host_free};
-    int flags = 0;
+
     CHECK_NVJPEG2K(nvjpeg2kCreate(NVJPEG2K_BACKEND_DEFAULT, &dev_allocator,
                                   &pinned_allocator, &params.nvjpeg2k_handle));
 
