@@ -38,5 +38,5 @@ x86_64
 
 # Prerequisites
 - A Linux system with recent NVIDIA drivers.
-- Install the [CUDA 11.2 toolkit](https://developer.nvidia.com/cuda-downloads).
+- Install the [CUDA 11.0 toolkit and above](https://developer.nvidia.com/cuda-downloads).
 

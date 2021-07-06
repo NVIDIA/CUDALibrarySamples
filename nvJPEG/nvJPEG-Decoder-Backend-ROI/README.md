@@ -1,10 +1,10 @@
-# nvJPEG-Decoder-Backend-ROI
+# nvJPEG-Decoder-DifferentBackEnd
 
 ## Description
-The sample codes shows the usage of decouple nvJPEG API on decoding JPEG images. This sample help to use different backends and ROI API usage.
+The sample codes shows the usage of decouple nvJPEG API on decoding JPEG images. Extra functionalities including different backends and ROI are supported.
 
 ## Key Concepts
-Image Decoding, different Backend from NVJPEG Library
+Image Decoding, different backends from NVJPEG Library
 
 ## Supported SM Architecture 
 SM 3.0 SM 3.5 SM 3.7 SM 5.0 SM 5.2 SM 6.0 SM 6.1 SM 7.0 SM 7.2 SM 7.5 8.0
@@ -44,6 +44,62 @@ Parameters:
         batched         :       Use batched interface
         output_format   :       nvJPEG output format for decoding. One of [rgb, rgbi, bgr, bgri, yuv, y, unchanged]
 ```
+
+# Example 1 - Choosing different backend
+**Default Backend**
+<br />
+Command: ./nvJPEGROIDecode -i ../input_images/ -backend 0
+```
+...
+...
+Total decoding time: 17.238
+Avg decoding time per image: 1.4365
+Avg images per sec: 0.696136
+Avg decoding time per batch: 1.4365
+```
+
+**Hybrid BackEnd**
+<br />
+Command: ./nvJPEGROIDecode -i ../input_images/ -backend 1
+```
+...
+...
+Total decoding time: 13.9479
+Avg decoding time per image: 1.16233
+Avg images per sec: 0.860344
+Avg decoding time per batch: 1.16233
+```
+
+**GPU Backend**
+<br />
+Command: ./nvJPEGROIDecode -i ../input_images/ -backend 2
+```
+...
+...
+Total decoding time: 20.5875
+Avg decoding time per image: 1.71563
+Avg images per sec: 0.582877
+Avg decoding time per batch: 1.71563
+```
+
+# Example 2 - Decode with ROI
+Command: ./nvJPEGROIDecode -i ../input_images/ -roi 0,0,64,64
+
+Original image: 
+<br />
+![Original Image](./input_images/img9.jpg)
+<br />
+<br />
+Result: 
+<br />
+![Result](img9_roi.png)
+
+
+
+
+
+
+
 
 
 
