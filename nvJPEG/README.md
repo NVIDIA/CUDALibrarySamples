@@ -14,6 +14,8 @@ Image Encoding and Decoding from NVJPEG Library
 
 [JPEG Image Decoder MultipleInstances](nvJPEG-Decoder-MultipleInstances/)
 
+[JPEG Image Decoder Backend and ROI](nvJPEG-Decoder-Backend-ROI/)
+
 [Image Resize](Image-Resize/)
 
 [Image Resize Watermarking](Image-Resize-WaterMark/)
@@ -36,5 +38,5 @@ x86_64
 
 # Prerequisites
 - A Linux system with recent NVIDIA drivers.
-- Install the [CUDA 11.0 toolkit](https://developer.nvidia.com/cuda-downloads).
+- Install the [CUDA 11.0 toolkit and above](https://developer.nvidia.com/cuda-downloads).
 

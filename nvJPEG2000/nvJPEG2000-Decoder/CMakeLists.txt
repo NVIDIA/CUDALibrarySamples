@@ -1,5 +1,5 @@
 # 
-# Copyright (c) 2020, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2020 - 2021, NVIDIA CORPORATION.  All rights reserved.
 # 
 # NVIDIA CORPORATION and its licensors retain all intellectual property
 # and proprietary rights in and to this software, related documentation
@@ -16,11 +16,11 @@ if(NOT NVJPEG2K_PATH)
 message(FATAL_ERROR, "NVJPEG2K_PATH not set")
 endif()
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-set(CMAKE_CUDA_STANDARD 11)
+set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_EXTENSIONS OFF)
 
@@ -42,5 +42,10 @@ find_library(CUDART_LIB
     NAMES cudart
     PATHS ${CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES})
 
-target_link_libraries(nvjpeg2000_decode_sample PUBLIC ${NVJPEG2K_LIB} ${CUDART_LIB})
+if(UNIX)
+  set(FILESYS -lstdc++fs)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
+endif()
+
+target_link_libraries(nvjpeg2000_decode_sample PUBLIC ${NVJPEG2K_LIB} ${CUDART_LIB} ${FILESYS})
 
