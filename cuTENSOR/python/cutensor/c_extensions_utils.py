@@ -66,6 +66,14 @@ class CustomExtension:
         try:
             import torch
             from torch.utils.cpp_extension import CUDAExtension
+
+            # Determine whether to use TensorFloat32
+            # This option controls matmul in pytorch, which is used internally
+            # in tensordot, and thus is appropriate to use for einsum
+            # Note that a seperate flag exists in PyTorch for cuDNN
+            # See https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices
+            use_tf32 = torch.backends.cuda.matmul.allow_tf32
+
             ext = CUDAExtension(name,
                                 sources=sources,
                                 libraries=['cutensor'],
@@ -75,7 +83,10 @@ class CustomExtension:
                                      name.split('.')[-1]),
                                     ('_GLIBCXX_USE_CXX11_ABI',
                                      str(int(torch._C._GLIBCXX_USE_CXX11_ABI)))
-                                ],
+                                ] + (
+                                    [("CUTENSOR_USE_TF32", "true")]
+                                    if use_tf32 else []
+                                ),
                                 extra_compile_args=['-std=c++14', '-fopenmp'],
                                 extra_link_args=['-std=c++14', '-fopenmp'],
                                 include_dirs=include_dirs,
@@ -90,13 +101,26 @@ class CustomExtension:
     def Tensorflow(cls, name, sources):
         try:
             import tensorflow as tf
+
+            # Determine whether to use TensorFloat32
+            # "TensorFloat-32 is enabled by default.
+            # TensorFloat-32 is only supported on Ampere GPUs,
+            # so all other hardware will use the full
+            # float32 precision regardless of whether
+            # TensorFloat-32 is enabled or not."
+            # See https://www.tensorflow.org/api_docs/python/tf/config/experimental/enable_tensor_float_32_execution
+            use_tf32 = tf.config.experimental.tensor_float_32_execution_enabled()
+
             ext = Extension(name,
                             sources=sources,
                             libraries=['cutensor', 'cudart'],
                             extra_compile_args=tf.sysconfig.get_compile_flags(),
                             extra_link_args=tf.sysconfig.get_link_flags() +
                             tf.sysconfig.get_compile_flags(),
-                            define_macros=[('GOOGLE_CUDA', '1')],
+                            define_macros=[('GOOGLE_CUDA', '1')] + (
+                                [("CUTENSOR_USE_TF32", "true")]
+                                if use_tf32 else []
+                            ),
                             include_dirs=include_dirs,
                             library_dirs=library_dirs,
                             runtime_library_dirs=library_dirs)
