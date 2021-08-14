@@ -79,9 +79,9 @@ int main(void) {
     int   B_num_cols   = 3;
     int   C_nnz        = 9;
     int   lda          = A_num_cols;
-    int   ldb          = B_num_rows;
+    int   ldb          = B_num_cols;
     int   A_size       = lda * A_num_rows;
-    int   B_size       = ldb * B_num_cols;
+    int   B_size       = ldb * B_num_rows;
     float hA[]         = { 1.0f,   2.0f,  3.0f,  4.0f,
                            5.0f,   6.0f,  7.0f,  8.0f,
                            9.0f,  10.0f, 11.0f, 12.0f,
@@ -94,10 +94,10 @@ int main(void) {
     int   hC_columns[] = { 0, 1, 2, 1, 0, 1, 2, 0, 2 };
     float hC_values[]  = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
                            0.0f, 0.0f, 0.0f, 0.0f };
-    float hC_result[]  = { 30.0f, 70.0f, 110.0f,
-                           174.0f,
-                           110.0f, 278.0f, 446.0f,
-                           150.0f, 614.0f };
+    float hC_result[]  = { 70.0f, 80.0f, 90.0f,
+                           184.0f,
+                           246.0f, 288.0f, 330.0f,
+                           334.0f, 450.0f };
     float alpha        = 1.0f;
     float beta         = 0.0f;
     //--------------------------------------------------------------------------
@@ -135,7 +135,7 @@ int main(void) {
                                         CUDA_R_32F, CUSPARSE_ORDER_ROW) )
     // Create dense matrix B
     CHECK_CUSPARSE( cusparseCreateDnMat(&matB, A_num_cols, B_num_cols, ldb, dB,
-                                        CUDA_R_32F, CUSPARSE_ORDER_COL) )
+                                        CUDA_R_32F, CUSPARSE_ORDER_ROW) )
     // Create sparse matrix C in CSR format
     CHECK_CUSPARSE( cusparseCreateCsr(&matC, A_num_rows, B_num_cols, C_nnz,
                                       dC_offsets, dC_columns, dC_values,
