@@ -83,7 +83,7 @@ struct GPUTimer
     cudaEvent_t start_, stop_;
 };
 
-int main(int argc, char** argv)
+int main()
 {
     typedef float floatTypeA;
     typedef float floatTypeC;

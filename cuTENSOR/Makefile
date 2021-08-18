@@ -1,6 +1,7 @@
-CXX_FLAGS=-std=c++11 -I../include -L../lib -lcutensor -lcudart
+CXX_FLAGS=-std=c++11 -I${CUTENSOR_ROOT}/include -L${CUTENSOR_ROOT}/lib -lcutensor -lcudart
 
 all:
+	nvcc einsum.cu -o  einsum ${CXX_FLAGS}
 	nvcc contraction.cu -o  contraction ${CXX_FLAGS}
 	nvcc contraction_simple.cu -o  contraction_simple ${CXX_FLAGS}
 	nvcc contraction_autotuning.cu -o  contraction_autotuning ${CXX_FLAGS}
