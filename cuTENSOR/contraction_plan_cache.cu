@@ -183,6 +183,31 @@ int main()
     HANDLE_ERROR(cutensorInit(&handle));
 
     /**********************
+     * Setup planCache
+     **********************/
+    constexpr int32_t numCachelines = 1024;
+    size_t sizeCache = numCachelines * sizeof(cutensorPlanCacheline_t);
+    printf("Allocating: %.2f kB for the cache\n", sizeCache / 1000.);
+    cutensorPlanCacheline_t* cachelines = (cutensorPlanCacheline_t*) malloc(sizeCache);
+    HANDLE_ERROR( cutensorHandleAttachPlanCachelines(&handle, cachelines, numCachelines) );
+
+    const char cacheFilename[] = "./cache.bin";
+    uint32_t numCachelinesRead = 0;
+    cutensorStatus_t status = cutensorHandleReadCacheFromFile(&handle, cacheFilename, &numCachelinesRead);
+    if (status == CUTENSOR_STATUS_SUCCESS)
+    {
+        printf("%d cachelines have been successfully read from file (%s).\n", numCachelinesRead, cacheFilename);
+    }
+    else if (status == CUTENSOR_STATUS_IO_ERROR)
+    {
+        printf("File (%s) doesn't seem to exist.\n", cacheFilename);
+    }
+    else if (status == CUTENSOR_STATUS_INSUFFICIENT_WORKSPACE)
+    {
+        printf("Cannot read cache: Please attach at least %d cachelines to the handle.\n", numCachelinesRead);
+    }
+
+    /**********************
      * Create Tensor Descriptors
      **********************/
 
@@ -254,6 +279,30 @@ int main()
                  &handle, &find, 
                  CUTENSOR_ALGO_DEFAULT));
 
+    const cutensorCacheMode_t cacheMode = CUTENSOR_CACHE_MODE_PEDANTIC;
+    HANDLE_ERROR(cutensorContractionFindSetAttribute(
+        &handle,
+        &find,
+        CUTENSOR_CONTRACTION_FIND_CACHE_MODE,
+        &cacheMode,
+        sizeof(cutensorCacheMode_t)));
+
+    const cutensorAutotuneMode_t autotuneMode = CUTENSOR_AUTOTUNE_INCREMENTAL;
+    HANDLE_ERROR(cutensorContractionFindSetAttribute(
+        &handle,
+        &find,
+        CUTENSOR_CONTRACTION_FIND_AUTOTUNE_MODE,
+        &autotuneMode ,
+        sizeof(cutensorAutotuneMode_t)));
+
+    const uint32_t incCount = 4;
+    HANDLE_ERROR(cutensorContractionFindSetAttribute(
+        &handle,
+        &find,
+        CUTENSOR_CONTRACTION_FIND_INCREMENTAL_COUNT,
+        &incCount,
+        sizeof(uint32_t)));
+
     /**********************
      * Query workspace
      **********************/
@@ -262,7 +311,7 @@ int main()
     HANDLE_ERROR(cutensorContractionGetWorkspace(&handle,
                  &desc,
                  &find,
-                 CUTENSOR_WORKSPACE_RECOMMENDED, &worksize));
+                 CUTENSOR_WORKSPACE_MAX, &worksize)); // TODO
 
     void *work = nullptr;
     if (worksize > 0)
@@ -279,19 +328,44 @@ int main()
      **************************/
 
     cutensorContractionPlan_t plan;
-    HANDLE_ERROR(cutensorInitContractionPlan(&handle,
-                 &plan,
-                 &desc,
-                 &find,
-                 worksize));
 
     /**********************
      * Run
      **********************/
 
     double minTimeCUTENSOR = 1e100;
-    cutensorStatus_t err;
-    for (int i=0; i < 3; ++i)
+    // warm-up GPU (without caching) (optional, but recommended for more accurate measurements later on)
+    for (int i=0; i < 4; ++i)
+    {
+
+        cutensorContractionFind_t find_copy = find;
+
+        const cutensorCacheMode_t cacheMode = CUTENSOR_CACHE_MODE_NONE;
+        HANDLE_ERROR(cutensorContractionFindSetAttribute(
+                    &handle,
+                    &find_copy,
+                    CUTENSOR_CONTRACTION_FIND_CACHE_MODE,
+                    &cacheMode,
+                    sizeof(cutensorCacheMode_t)));
+
+        // To take advantage of the incremental-autotuning (via the cache), it's important to re-initialize the plan
+        HANDLE_ERROR(cutensorInitContractionPlan(&handle,
+                    &plan,
+                    &desc,
+                    &find_copy,
+                    worksize));
+
+        HANDLE_ERROR(cutensorContraction(&handle,
+                                  &plan,
+                                  (void*) &alpha, A_d, B_d,
+                                  (void*) &beta,  C_d, C_d, 
+                                  work, worksize, 0 /* stream */));
+    }
+    cudaDeviceSynchronize();
+    printf("Warm-up completed.\n");
+
+
+    for (int i=0; i < incCount + 1; ++i) // last iteration will hit the cache
     {
         cudaMemcpy(C_d, C, sizeC, cudaMemcpyHostToDevice);
         cudaDeviceSynchronize();
@@ -300,7 +374,14 @@ int main()
         GPUTimer timer;
         timer.start();
 
-        err = cutensorContraction(&handle,
+        // To take advantage of the incremental-autotuning (via the cache), it's important to re-initialize the plan
+        HANDLE_ERROR(cutensorInitContractionPlan(&handle,
+                    &plan,
+                    &desc,
+                    &find,
+                    worksize));
+
+        cutensorStatus_t err = cutensorContraction(&handle,
                                   &plan,
                                   (void*) &alpha, A_d, B_d,
                                   (void*) &beta,  C_d, C_d, 
@@ -311,7 +392,8 @@ int main()
 
         if (err != CUTENSOR_STATUS_SUCCESS)
         {
-            printf("ERROR: %s in line %d\n", cutensorGetErrorString(err), __LINE__);
+            printf("ERROR: %s in %s:%d\n", cutensorGetErrorString(err), __FILE__, __LINE__);
+            break;
         }
         minTimeCUTENSOR = (minTimeCUTENSOR < time) ? minTimeCUTENSOR : time;
     }
@@ -323,9 +405,20 @@ int main()
     transferedBytes /= 1e9;
     printf("cuTensor: %.2f GFLOPs/s %.2f GB/s\n", gflops / minTimeCUTENSOR, transferedBytes/ minTimeCUTENSOR);
 
+
+    /*
+     * Optional: Write cache to disk
+     */
+    HANDLE_ERROR( cutensorHandleWriteCacheToFile(&handle, cacheFilename) );
+    printf("Cache has been successfully written to file (%s).\n", cacheFilename);
+
+    // Detach cache and free-up resources
+    HANDLE_ERROR( cutensorHandleDetachPlanCachelines(&handle) );
+
     if (A) free(A);
     if (B) free(B);
     if (C) free(C);
+    if (cachelines) free(cachelines);
     if (A_d) cudaFree(A_d);
     if (B_d) cudaFree(B_d);
     if (C_d) cudaFree(C_d);
