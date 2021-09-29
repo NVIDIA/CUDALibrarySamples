@@ -46,10 +46,11 @@
  * comments to the code, the above Disclaimer and U.S. Government End
  * Users Notice.
  */
-#include <cuda_runtime_api.h> // cudaMalloc, cudaMemcpy, etc.
-#include <cusparseLt.h>       // cusparseLt header
+#include <algorithm>          // std::min
 #include <cstdio>             // printf
 #include <cstdlib>            // std::rand
+#include <cuda_runtime_api.h> // cudaMalloc, cudaMemcpy, etc.
+#include <cusparseLt.h>       // cusparseLt header
 
 #define CHECK_CUDA(func)                                                       \
 {                                                                              \
@@ -71,6 +72,32 @@
     }                                                                          \
 }
 
+void print_matrix(const __half* matrix,
+                  int64_t       height,
+                  int64_t       width,
+                  int64_t       ld,
+                  int           num_batches,
+                  int64_t       batch_stride) {
+    for (int b = 0; b < num_batches; b++) {
+        for (int i = 0; i < height; i++) {
+            for (int j = 0; j < width; j++) {
+                printf("%3.0f",
+                     static_cast<float>(matrix[b * batch_stride + i * ld + j]));
+            }
+            printf("\n");
+        }
+        if (b == num_batches - 1)
+            printf("================================================\n");
+        else
+            printf("------------------------------------------------\n");
+    }
+    printf("\n");
+}
+
+__half random_half_gen() {
+    return static_cast<__half>(static_cast<float>(std::rand() % 10));
+}
+
 constexpr int EXIT_UNSUPPORTED = 2;
 
 int main(void) {
@@ -86,15 +113,20 @@ int main(void) {
                      major_cc, minor_cc);
         return EXIT_UNSUPPORTED;
     }
+    constexpr bool print_sparse_matrix = true;
     // Host problem definition, row-major order
-    constexpr int m     = 32; // bigger sizes may require dynamic allocations
-    constexpr int n     = 32; // bigger sizes may require dynamic allocations
-    constexpr int k     = 32; // bigger sizes may require dynamic allocations
-    auto          order = CUSPARSE_ORDER_ROW;
-    auto          opA   = CUSPARSE_OPERATION_NON_TRANSPOSE;
-    auto          opB   = CUSPARSE_OPERATION_NON_TRANSPOSE;
-    auto          type  = CUDA_R_16F;
-    auto          compute_type = CUSPARSE_COMPUTE_16F;
+    constexpr int     num_batches   = 2;
+    constexpr int64_t m             = 16;
+    constexpr int64_t n             = 16;
+    constexpr int64_t k             = 16;
+    constexpr int64_t batch_strideA = m * k + 128;
+    constexpr int64_t batch_strideB = k * n + 128;
+    constexpr int64_t batch_strideC = m * n + 128;
+    constexpr auto    order         = CUSPARSE_ORDER_ROW;
+    constexpr auto    opA           = CUSPARSE_OPERATION_NON_TRANSPOSE;
+    constexpr auto    opB           = CUSPARSE_OPERATION_NON_TRANSPOSE;
+    constexpr auto    type          = CUDA_R_16F;
+    constexpr auto    compute_type  = CUSPARSE_COMPUTE_16F;
 
     bool     is_rowmajor    = (order == CUSPARSE_ORDER_ROW);
     bool     isA_transposed = (opA != CUSPARSE_OPERATION_NON_TRANSPOSE);
@@ -112,31 +144,47 @@ int main(void) {
     auto     A_height       = (is_rowmajor) ? num_A_rows : num_A_cols;
     auto     B_height       = (is_rowmajor) ? num_B_rows : num_B_cols;
     auto     C_height       = (is_rowmajor) ? num_C_rows : num_C_cols;
-    auto     A_size         = A_height * lda * sizeof(__half);
-    auto     B_size         = B_height * ldb * sizeof(__half);
-    auto     C_size         = C_height * ldc * sizeof(__half);
-    __half hA[m * k];
-    __half hB[k * n];
-    __half hC[m * n] = {};
-    for (int i = 0; i < m * k; i++)
-        hA[i] = static_cast<__half>(static_cast<float>(std::rand() % 10));
-    for (int i = 0; i < k * n; i++)
-        hB[i] = static_cast<__half>(static_cast<float>(std::rand() % 10));
+    auto     A_width        = (is_rowmajor) ? num_A_cols : num_A_rows;
+    auto     B_width        = (is_rowmajor) ? num_B_cols : num_B_rows;
+    auto     C_width        = (is_rowmajor) ? num_C_cols : num_C_rows;
+    auto     A_size         = num_batches * batch_strideA;
+    auto     B_size         = num_batches * batch_strideB;
+    auto     C_size         = num_batches * batch_strideC;
+    auto     A_size_bytes   = num_batches * batch_strideA * sizeof(__half);
+    auto     B_size_bytes   = num_batches * batch_strideB * sizeof(__half);
+    auto     C_size_bytes   = num_batches * batch_strideC * sizeof(__half);
+    auto hA = new __half[A_size];
+    auto hB = new __half[B_size];
+    auto hC = new __half[C_size]();
+    for (int b = 0; b < num_batches; b++) {
+        for (int i = 0; i < A_height; i++) {
+            for (int j = 0; j < A_width; j++)
+                hA[b * batch_strideA + i * lda + j] = random_half_gen();
+        }
+    }
+    for (int b = 0; b < num_batches; b++) {
+        for (int i = 0; i < B_height; i++) {
+            for (int j = 0; j < B_width; j++)
+                hB[b * batch_strideB + i * ldb + j] = random_half_gen();
+        }
+    }
+    if (print_sparse_matrix)
+        print_matrix(hA, A_height, A_width, lda, num_batches, batch_strideA);
     float alpha = 1.0f;
     float beta  = 0.0f;
     //--------------------------------------------------------------------------
     // Device memory management
     __half *dA, *dB, *dC, *dD, *dA_compressed;
     int    *d_valid;
-    CHECK_CUDA( cudaMalloc((void**) &dA, A_size) )
-    CHECK_CUDA( cudaMalloc((void**) &dB, B_size) )
-    CHECK_CUDA( cudaMalloc((void**) &dC, C_size) )
+    CHECK_CUDA( cudaMalloc((void**) &dA, A_size_bytes) )
+    CHECK_CUDA( cudaMalloc((void**) &dB, B_size_bytes) )
+    CHECK_CUDA( cudaMalloc((void**) &dC, C_size_bytes) )
     CHECK_CUDA( cudaMalloc((void**) &d_valid, sizeof(d_valid)) )
     dD = dC;
 
-    CHECK_CUDA( cudaMemcpy(dA, hA, A_size, cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dB, hB, B_size, cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dC, hC, C_size, cudaMemcpyHostToDevice) )
+    CHECK_CUDA( cudaMemcpy(dA, hA, A_size_bytes, cudaMemcpyHostToDevice) )
+    CHECK_CUDA( cudaMemcpy(dB, hB, B_size_bytes, cudaMemcpyHostToDevice) )
+    CHECK_CUDA( cudaMemcpy(dC, hC, C_size_bytes, cudaMemcpyHostToDevice) )
     //--------------------------------------------------------------------------
     cusparseLtHandle_t             handle;
     cusparseLtMatDescriptor_t      matA, matB, matC;
@@ -159,19 +207,72 @@ int main(void) {
                                             &handle, &matC, num_C_rows,
                                             num_C_cols, ldc, alignment,
                                             type, order) )
-    // matmul, algorithm selection, and plan initialization
-    CHECK_CUSPARSE( cusparseLtMatmulDescriptorInit(
-                                            &handle, &matmul, opA, opB,
-                                            &matA, &matB, &matC, &matC,
-                                            compute_type) )
+    //--------------------------------------------------------------------------
+    // SET NUM BATCHES
+    CHECK_CUSPARSE( cusparseLtMatDescSetAttribute(&handle, &matA,
+                                            CUSPARSELT_MAT_NUM_BATCHES,
+                                            &num_batches, sizeof(num_batches)) )
+    CHECK_CUSPARSE( cusparseLtMatDescSetAttribute(&handle, &matB,
+                                            CUSPARSELT_MAT_NUM_BATCHES,
+                                            &num_batches, sizeof(num_batches)) )
+    CHECK_CUSPARSE( cusparseLtMatDescSetAttribute(&handle, &matC,
+                                            CUSPARSELT_MAT_NUM_BATCHES,
+                                            &num_batches, sizeof(num_batches)) )
+    //--------------------------------------------------------------------------
+    // SET BATCH STRIDE
+    // if batch_strideA = 0, the matrix multiplication performs a broadcast of
+    // the matrix A
+    CHECK_CUSPARSE(  cusparseLtMatDescSetAttribute(&handle, &matA,
+                                                CUSPARSELT_MAT_BATCH_STRIDE,
+                                                &batch_strideA,
+                                                sizeof(batch_strideA)) )
+    CHECK_CUSPARSE(  cusparseLtMatDescSetAttribute(&handle, &matB,
+                                                CUSPARSELT_MAT_BATCH_STRIDE,
+                                                &batch_strideB,
+                                                sizeof(batch_strideB)) )
+    CHECK_CUSPARSE(  cusparseLtMatDescSetAttribute(&handle, &matC,
+                                                CUSPARSELT_MAT_BATCH_STRIDE,
+                                                &batch_strideC,
+                                                sizeof(batch_strideC)) )
+    //--------------------------------------------------------------------------
+    // MATMUL DESCRIPTOR INITIALIZATION
+    CHECK_CUSPARSE( cusparseLtMatmulDescriptorInit(&handle, &matmul, opA, opB,
+                                                   &matA, &matB, &matC, &matC,
+                                                   compute_type) )
+    //--------------------------------------------------------------------------
+    // ENABLE ReLU ACTIVATION FUNCTION
+    int   true_value       = 1;
+    float relu_upper_bound = 15.0f;
+    float relu_threshold   = 1.0f;
+    CHECK_CUSPARSE( cusparseLtMatmulDescSetAttribute(&handle, &matmul,
+                                            CUSPARSELT_MATMUL_ACTIVATION_RELU,
+                                            &true_value, sizeof(true_value)) )
+    CHECK_CUSPARSE( cusparseLtMatmulDescSetAttribute(
+                                &handle, &matmul,
+                                CUSPARSELT_MATMUL_ACTIVATION_RELU_UPPERBOUND,
+                                &(relu_upper_bound),
+                                sizeof(relu_upper_bound)) )
+    CHECK_CUSPARSE( cusparseLtMatmulDescSetAttribute(
+                                &handle, &matmul,
+                                CUSPARSELT_MATMUL_ACTIVATION_RELU_THRESHOLD,
+                                &(relu_threshold), sizeof(relu_threshold)) )
+    //--------------------------------------------------------------------------
+    // SET BIAS POINTER
+    void* dBias;
+    auto  hBias = new float[m];
+    for (int i = 0; i < m; i++)
+        hBias[i] = 1.0f;
+    CHECK_CUDA( cudaMalloc((void**) &dBias, m * sizeof(float)) )
+    CHECK_CUDA( cudaMemcpy(dBias, hBias, m * sizeof(float),
+                           cudaMemcpyHostToDevice) )
+    CHECK_CUSPARSE( cusparseLtMatmulDescSetAttribute(&handle, &matmul,
+                                                CUSPARSELT_MATMUL_BIAS_POINTER,
+                                                &dBias, sizeof(dBias)) )
+    //--------------------------------------------------------------------------
+    // Algorithm selection, and plan initialization
     CHECK_CUSPARSE( cusparseLtMatmulAlgSelectionInit(
                                             &handle, &alg_sel, &matmul,
                                             CUSPARSELT_MATMUL_ALG_DEFAULT) )
-    int alg = 0;
-    CHECK_CUSPARSE( cusparseLtMatmulAlgSetAttribute(
-                                            &handle, &alg_sel,
-                                            CUSPARSELT_MATMUL_ALG_CONFIG_ID,
-                                            &alg, sizeof(alg)))
     size_t workspace_size, compressed_size;
     CHECK_CUSPARSE( cusparseLtMatmulGetWorkspace(&handle, &alg_sel,
                                                  &workspace_size))
@@ -219,52 +320,73 @@ int main(void) {
     //--------------------------------------------------------------------------
     // device result check
     // matrix A has been pruned
-    CHECK_CUDA( cudaMemcpy(hA, dA, A_size, cudaMemcpyDeviceToHost) )
-    CHECK_CUDA( cudaMemcpy(hC, dC, C_size, cudaMemcpyDeviceToHost) )
+    CHECK_CUDA( cudaMemcpy(hA, dA, A_size_bytes, cudaMemcpyDeviceToHost) )
+    CHECK_CUDA( cudaMemcpy(hC, dC, C_size_bytes, cudaMemcpyDeviceToHost) )
 
+    if (print_sparse_matrix)
+        print_matrix(hA, A_height, A_width, lda, num_batches, batch_strideA);
     bool A_std_layout = (is_rowmajor != isA_transposed);
     bool B_std_layout = (is_rowmajor != isB_transposed);
+    auto ReLU         = [=](float value) {
+        if (value <= relu_threshold)
+            return 0.0f;
+        return std::min(value, relu_upper_bound);
+    };
     // host computation
     float hC_result[m * n];
-    for (int i = 0; i < m; i++) {
-        for (int j = 0; j < n; j++) {
-            float sum  = 0.0f;
-            for (int k1 = 0; k1 < k; k1++) {
-                auto posA = (A_std_layout) ? i * lda + k1 : i + k1 * lda;
-                auto posB = (B_std_layout) ? k1 * ldb + j : k1 + j * ldb;
-                sum      += static_cast<float>(hA[posA]) *  // [i][k]
-                            static_cast<float>(hB[posB]);   // [k][j]
+    for (int b = 0; b < num_batches; b++) {
+        for (int i = 0; i < m; i++) {
+            for (int j = 0; j < n; j++) {
+                float sum  = 0.0f;
+                for (int k1 = 0; k1 < k; k1++) {
+                    auto posA = (A_std_layout) ? i * lda + k1 : i + k1 * lda;
+                    auto posB = (B_std_layout) ? k1 * ldb + j : k1 + j * ldb;
+                    posA     += b * batch_strideA;
+                    posB     += b * batch_strideA;
+                    sum      += static_cast<float>(hA[posA]) *  // [i][k]
+                                static_cast<float>(hB[posB]);   // [k][j]
+                }
+                auto posC       = (is_rowmajor) ? i * ldc + j : i + j * ldc;
+                posC           += b * batch_strideC;
+                hC_result[posC] = ReLU(sum + 1.0f /*bias*/);  // [i][j]
             }
-            auto posC       = (is_rowmajor) ? i * ldc + j : i + j * ldc;
-            hC_result[posC] = sum;  // [i][j]
         }
     }
     // host-device comparison
     int correct = 1;
-    for (int i = 0; i < m; i++) {
-        for (int j = 0; j < n; j++) {
-            auto pos          = (is_rowmajor) ? i * ldc + j : i + j * ldc;
-            auto device_value = static_cast<float>(hC[pos]);
-            auto host_value   = hC_result[pos];
-            if (device_value != host_value) {
-                // direct floating point comparison is not reliable
-                std::printf("(%d, %d):\t%f vs. %f\n",
-                            i, j, host_value, device_value);
-                correct = 0;
-                break;
+    for (int b = 0; b < num_batches; b++) {
+        for (int i = 0; i < m; i++) {
+            for (int j = 0; j < n; j++) {
+                auto pos          = (is_rowmajor) ? i * ldc + j : i + j * ldc;
+                auto device_value = static_cast<float>(hC[pos]);
+                auto host_value   = hC_result[pos + b * batch_strideC];
+                if (device_value != host_value) {
+                    // direct floating point comparison is not reliable
+                    std::printf("(%d, %d, %d):\t%f vs. %f\n",
+                                b, i, j, host_value, device_value);
+                    correct = 0;
+                    break;
+                }
             }
         }
     }
     if (correct)
-        std::printf("spmma_example test PASSED\n");
+        std::printf("spmma2_example test PASSED\n");
     else
-        std::printf("spmma_example test FAILED: wrong result\n");
+        std::printf("spmma2_example test FAILED: wrong result\n");
+    //--------------------------------------------------------------------------
+    // host memory deallocation
+    delete[] hA;
+    delete[] hB;
+    delete[] hC;
+    delete[] hBias;
     //--------------------------------------------------------------------------
     // device memory deallocation
     CHECK_CUDA( cudaFree(dA_compressed) )
     CHECK_CUDA( cudaFree(dA) )
     CHECK_CUDA( cudaFree(dB) )
     CHECK_CUDA( cudaFree(dC) )
+    CHECK_CUDA( cudaFree(dBias) )
     CHECK_CUDA( cudaFree(d_valid) )
     return EXIT_SUCCESS;
 }
