@@ -42,9 +42,9 @@ $ cd build
 $
 $ export CUDACXX= nvcc path
 $
-$ cmake ..  -DCMAKE_BUILT_TYPE=Release -DNVJPEG2K_PATH= nvjpeg2k location
+$ cmake ..  -DCMAKE_BUILD_TYPE=Release -DNVJPEG2K_PATH= nvjpeg2k location
 #
-# example  cmake .. -DCMAKE_BUILT_TYPE=Release -DNVJPEG2K_PATH=~/nvJPEG2kDecodeSample/libnvjpeg_2k
+# example  cmake .. -DCMAKE_BUILD_TYPE=Release -DNVJPEG2K_PATH=~/nvJPEG2kDecodeSample/libnvjpeg_2k
 #
 $ make
 ```
