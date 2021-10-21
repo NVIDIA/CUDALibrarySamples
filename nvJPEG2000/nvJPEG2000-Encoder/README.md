@@ -72,4 +72,20 @@ Parameters:
 
 ```
 
+```
+Example:
 
+Sample example on GV100, Ubuntu 18.04, CUDA 11.2
+
+```
+$ ./nvjpeg2k_encode -i ../images/ -b 1 -t 1024 -w 4 -o .
+```
+
+```
+Encoding images in directory: ../images/, total 1024, batchsize 1
+Total encode time: 18.1703
+Avg encode time per image: 0.0177444
+Avg encode speed  (in images per sec): 56.3558
+Avg encode time per batch: 0.0177444
+
+```
