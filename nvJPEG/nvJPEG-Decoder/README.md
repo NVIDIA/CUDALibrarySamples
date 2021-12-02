@@ -32,7 +32,8 @@ x86_64
 
 # Prerequisites
 - A Linux/Windows system with recent NVIDIA drivers.
-- Install the [CUDA 10.1 toolkit](https://developer.nvidia.com/cuda-downloads).
+- Install the [CUDA 11.0 toolkit](https://developer.nvidia.com/cuda-downloads) 
+  [Hardware accelerated decode supported on NVIDIA A100]
 
 ## Build command on Linux
 ```

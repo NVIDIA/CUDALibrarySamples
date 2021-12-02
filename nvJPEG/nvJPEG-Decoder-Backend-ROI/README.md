@@ -18,6 +18,10 @@ x86_64
 ## CUDA APIs involved
 NVJPEG
 
+# Prerequisites
+- A Linux/Windows system with recent NVIDIA drivers.
+- Install the [CUDA 11.2 Update 1 toolkit](https://developer.nvidia.com/cuda-downloads) 
+
 # Building
 Build command
 ```
