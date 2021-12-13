@@ -216,20 +216,25 @@ struct traits<cuDoubleComplex> {
     }
 };
 
-template<typename T>
-void print_matrix( int m, int n, T *A, int lda, cublasOperation_t trans = CUBLAS_OP_N ) {
-    if ( trans == CUBLAS_OP_N ) {
-        for ( int i = 0; i < m; i++ ) {
-            T *A_row = A + lda * i;
-            for ( int j = 0; j < n; j++ )
+template <typename T>
+void print_matrix(int m, int n, T* A, int lda, cublasOperation_t trans=CUBLAS_OP_N)
+{
+    if (trans == CUBLAS_OP_N)
+    {
+        for (int i = 0; i < m; i++)
+        {
+            T* A_row = A + lda*i;
+            for (int j = 0; j < n; j++)
                 std::cout << A_row[j] << " ";
             std::cout << std::endl;
         }
     } else {
-        for ( int i = 0; i < m; i++ ) {
-            T *A_row = A + i;
-            for ( int j = 0; j < n; j++ )
-                std::cout << A_row[j * m] << " ";
+        for (int i = 0; i < m; i++)
+        {
+            T* A_row = A + i;
+            for (int j = 0; j < n; j++)
+                std::cout << A_row[j*m] << " ";
+
             std::cout << std::endl;
         }
     }
