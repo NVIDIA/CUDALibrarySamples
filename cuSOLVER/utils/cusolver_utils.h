@@ -193,7 +193,6 @@ void print_matrix(int m, int n, T* A, int lda, cublasOperation_t trans=CUBLAS_OP
             T* A_row = A + i;
             for (int j = 0; j < n; j++)
                 std::cout << A_row[j*m] << " ";
-
             std::cout << std::endl;
         }
     }
