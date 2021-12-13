@@ -39,6 +39,7 @@ target_link_libraries(${EXAMPLE_NAME}
         cusolver
         cublas
         cublasLt
+        cusparse
 )
 set_target_properties(${EXAMPLE_NAME} PROPERTIES
     POSITION_INDEPENDENT_CODE ON
