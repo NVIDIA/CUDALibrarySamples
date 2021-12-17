@@ -28,19 +28,18 @@
 
 #pragma once
 
-#include "cuComplex.h"
-#include "cuda_runtime_api.h"
-#include "library_types.h"
-
-#include "cublas_api.h"
-#include "cusolverDn.h"
-
 #include <cmath>
 #include <functional>
 #include <iostream>
 #include <random>
 #include <stdexcept>
 #include <string>
+
+#include <cuComplex.h>
+#include <cuda_runtime_api.h>
+#include <cublas_api.h>
+#include <cusolverDn.h>
+#include <library_types.h>
 
 // CUDA API error checking
 #define CUDA_CHECK(err)                                                                            \
