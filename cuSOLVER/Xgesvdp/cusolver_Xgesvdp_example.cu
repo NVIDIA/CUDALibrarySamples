@@ -69,25 +69,25 @@ int main(int argc, char *argv[]) {
     const int64_t n = 2;
     const int64_t lda = m;
     /*
-     * | 1 2  |
+     *       | 1 2  |
      *   A = | 4 5  |
      *       | 2 1  |
      */
 
     const std::vector<data_type> A = {1.0, 4.0, 2.0, 2.0, 5.0, 1.0};
-    std::vector<data_type> U(lda * m);
-    std::vector<data_type> V(lda * n);
-    std::vector<data_type> S(n);
+    std::vector<data_type> U(lda * m, 0);
+    std::vector<data_type> V(lda * n, 0);
+    std::vector<data_type> S(n, 0);
     std::vector<data_type> S_exact = {7.065283497082729, 1.040081297712078};
 
     data_type *d_A = nullptr;
     data_type *d_S = nullptr;
     data_type *d_U = nullptr;
     data_type *d_V = nullptr;
-    int *devInfo = nullptr;
+    int *d_info = nullptr;
     data_type *d_W = nullptr; // W = S*VT
 
-    int info_gpu = 0;
+    int info = 0;
     const double h_one = 1;
     const double h_minus_one = -1;
 
@@ -96,9 +96,9 @@ int main(int argc, char *argv[]) {
     size_t h_lwork = 0;     /* size of workspace */
     void *h_work = nullptr; /* host workspace for getrf */
 
-    printf("A = (matlab base-1)\n");
+    std::printf("A = (matlab base-1)\n");
     print_matrix(m, n, A.data(), lda, CUBLAS_OP_T);
-    printf("=====\n");
+    std::printf("=====\n");
 
     /* step 1: create cusolver handle, bind a stream */
     CUSOLVER_CHECK(cusolverDnCreate(&cusolverH));
@@ -109,14 +109,14 @@ int main(int argc, char *argv[]) {
     CUBLAS_CHECK(cublasSetStream(cublasH, stream));
 
     /* step 2: copy A to device */
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_A), sizeof(data_type) * lda * n));
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_S), sizeof(data_type) * n));
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_U), sizeof(data_type) * lda * m));
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_V), sizeof(data_type) * lda * n));
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&devInfo), sizeof(int)));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_A), sizeof(data_type) * A.size()));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_S), sizeof(data_type) * S.size()));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_U), sizeof(data_type) * U.size()));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_V), sizeof(data_type) * V.size()));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_info), sizeof(int)));
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_W), sizeof(data_type) * lda * n));
 
-    CUDA_CHECK(cudaMemcpyAsync(d_A, A.data(), sizeof(data_type) * lda * n, cudaMemcpyHostToDevice,
+    CUDA_CHECK(cudaMemcpyAsync(d_A, A.data(), sizeof(data_type) * A.size(), cudaMemcpyHostToDevice,
                                stream));
 
     cusolverEigMode_t jobz = CUSOLVER_EIG_MODE_VECTOR;
@@ -155,35 +155,36 @@ int main(int argc, char *argv[]) {
                                      traits<data_type>::cuda_data_type,           /* dataTypeV */
                                      d_V, lda,                                    /* ldv */
                                      traits<data_type>::cuda_data_type,           /* computeType */
-                                     d_work, d_lwork, h_work, h_lwork, devInfo, &h_err_sigma));
+                                     d_work, d_lwork, h_work, h_lwork, d_info, &h_err_sigma));
 
-    CUDA_CHECK(cudaMemcpyAsync(U.data(), d_U, sizeof(data_type) * lda * m, cudaMemcpyDeviceToHost,
+    CUDA_CHECK(cudaMemcpyAsync(U.data(), d_U, sizeof(data_type) * U.size(), cudaMemcpyDeviceToHost,
                                stream));
-    CUDA_CHECK(cudaMemcpyAsync(V.data(), d_V, sizeof(data_type) * lda * n, cudaMemcpyDeviceToHost,
+    CUDA_CHECK(cudaMemcpyAsync(V.data(), d_V, sizeof(data_type) * V.size(), cudaMemcpyDeviceToHost,
                                stream));
-    CUDA_CHECK(
-        cudaMemcpyAsync(S.data(), d_S, sizeof(data_type) * n, cudaMemcpyDeviceToHost, stream));
-    CUDA_CHECK(cudaMemcpyAsync(&info_gpu, devInfo, sizeof(int), cudaMemcpyDeviceToHost, stream));
+    CUDA_CHECK(cudaMemcpyAsync(S.data(), d_S, sizeof(data_type) * S.size(), cudaMemcpyDeviceToHost,
+                               stream));
+    CUDA_CHECK(cudaMemcpyAsync(&info, d_info, sizeof(int), cudaMemcpyDeviceToHost, stream));
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
-    printf("after gesvdp: info_gpu = %d\n", info_gpu);
-    if (info_gpu) {
-        throw std::runtime_error("Error returned from gesvdp");
+    std::printf("after Xgesvdp: info = %d\n", info);
+    if (0 > info) {
+        std::printf("%d-th parameter is wrong \n", -info);
+        exit(1);
     }
-    printf("=====\n");
+    std::printf("=====\n");
 
-    printf("S = (matlab base-1)\n");
-    print_matrix(n, 1, S.data(), lda);
-    printf("=====\n");
+    std::printf("S = (matlab base-1)\n");
+    print_matrix(n, 1, S.data(), lda, CUBLAS_OP_T);
+    std::printf("=====\n");
 
-    printf("U = (matlab base-1)\n");
+    std::printf("U = (matlab base-1)\n");
     print_matrix(m, (econ) ? n : m, U.data(), lda);
-    printf("=====\n");
+    std::printf("=====\n");
 
-    printf("V = (matlab base-1)\n");
+    std::printf("V = (matlab base-1)\n");
     print_matrix(n, n, V.data(), lda);
-    printf("=====\n");
+    std::printf("=====\n");
 
     // step 5: measure error of singular value
     double ds_sup = 0;
@@ -191,14 +192,14 @@ int main(int argc, char *argv[]) {
         double err = fabs(S[j] - S_exact[j]);
         ds_sup = (ds_sup > err) ? ds_sup : err;
     }
-    printf("|S - S_exact| = %E \n", ds_sup);
+    std::printf("|S - S_exact| = %E \n", ds_sup);
 
     /* step 6: |A - U*S*V**T| */
     /* W = V*S */
     CUBLAS_CHECK(cublasDdgmm(cublasH, CUBLAS_SIDE_RIGHT, n, n, d_V, lda, d_S, 1, d_W, lda));
 
     /* A := -U*W**T + A */
-    CUDA_CHECK(cudaMemcpyAsync(d_A, A.data(), sizeof(data_type) * lda * n, cudaMemcpyHostToDevice,
+    CUDA_CHECK(cudaMemcpyAsync(d_A, A.data(), sizeof(data_type) * A.size(), cudaMemcpyHostToDevice,
                                stream));
 
     CUBLAS_CHECK(cublasDgemm(cublasH, CUBLAS_OP_N, CUBLAS_OP_T, m, /* number of rows of A */
@@ -207,20 +208,20 @@ int main(int argc, char *argv[]) {
                              &h_minus_one, d_U, lda, d_W, lda, &h_one, d_A, lda));
 
     double dR_fro = 0.0;
-    CUBLAS_CHECK(cublasDnrm2(cublasH, lda * n, d_A, 1, &dR_fro));
+    CUBLAS_CHECK(cublasDnrm2(cublasH, A.size(), d_A, 1, &dR_fro));
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
-    printf("|A - U*S*V**T| = %E \n", dR_fro);
-    printf("h_err_sigma = %E \n", h_err_sigma);
-    printf("h_err_sigma is 0 if the singular value of A is not close to zero\n");
+    std::printf("|A - U*S*V**T| = %E \n", dR_fro);
+    std::printf("h_err_sigma = %E \n", h_err_sigma);
+    std::printf("h_err_sigma is 0 if the singular value of A is not close to zero\n");
 
     /* free resources */
     CUDA_CHECK(cudaFree(d_A));
     CUDA_CHECK(cudaFree(d_S));
     CUDA_CHECK(cudaFree(d_U));
     CUDA_CHECK(cudaFree(d_V));
-    CUDA_CHECK(cudaFree(devInfo));
+    CUDA_CHECK(cudaFree(d_info));
     CUDA_CHECK(cudaFree(d_W));
     CUDA_CHECK(cudaFree(d_work));
     CUDA_CHECK(cudaFree(h_work));

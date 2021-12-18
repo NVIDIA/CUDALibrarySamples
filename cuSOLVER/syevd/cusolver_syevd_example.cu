@@ -47,7 +47,6 @@
  * Users Notice.
  */
 
-
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
@@ -61,8 +60,6 @@ int main(int argc, char *argv[]) {
     cusolverDnHandle_t cusolverH = NULL;
     cudaStream_t stream = NULL;
 
-    using data_type = double;
-
     const int m = 3;
     const int lda = m;
     /*
@@ -71,22 +68,20 @@ int main(int argc, char *argv[]) {
      *       | 0.0 0.0 2.0 |
      *
      */
-    const std::vector<data_type> A = {3.5, 0.5, 0.0, 0.5, 3.5, 0.0, 0.0, 0.0, 2.0};
-    const std::vector<data_type> lambda = {2.0, 3.0, 4.0};
+    const std::vector<double> A = {3.5, 0.5, 0.0, 0.5, 3.5, 0.0, 0.0, 0.0, 2.0};
+    const std::vector<double> lambda = {2.0, 3.0, 4.0};
 
-    std::vector<data_type> V(lda * m, 0); // eigenvectors
-    std::vector<data_type> W(m, 0);       // eigenvalues
+    std::vector<double> V(lda * m, 0); // eigenvectors
+    std::vector<double> W(m, 0);       // eigenvalues
 
-    data_type *d_A = nullptr;
-    data_type *d_W = nullptr;
+    double *d_A = nullptr;
+    double *d_W = nullptr;
     int *d_info = nullptr;
 
     int info = 0;
 
-    size_t d_lwork = 0;     /* size of workspace */
-    void *d_work = nullptr; /* device workspace */
-    size_t h_lwork = 0;     /* size of workspace */
-    void *h_work = nullptr; /* host workspace for */
+    int lwork = 0;            /* size of workspace */
+    double *d_work = nullptr; /* device workspace*/
 
     std::printf("A = (matlab base-1)\n");
     print_matrix(m, m, A.data(), lda);
@@ -98,39 +93,34 @@ int main(int argc, char *argv[]) {
     CUDA_CHECK(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
     CUSOLVER_CHECK(cusolverDnSetStream(cusolverH, stream));
 
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_A), sizeof(data_type) * A.size()));
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_W), sizeof(data_type) * W.size()));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_A), sizeof(double) * A.size()));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_W), sizeof(double) * W.size()));
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_info), sizeof(int)));
 
-    CUDA_CHECK(cudaMemcpyAsync(d_A, A.data(), sizeof(data_type) * A.size(), cudaMemcpyHostToDevice,
-                               stream));
+    CUDA_CHECK(
+        cudaMemcpyAsync(d_A, A.data(), sizeof(double) * A.size(), cudaMemcpyHostToDevice, stream));
 
     // step 3: query working space of syevd
     cusolverEigMode_t jobz = CUSOLVER_EIG_MODE_VECTOR; // compute eigenvalues and eigenvectors.
     cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
 
-    CUSOLVER_CHECK(cusolverDnXsyevd_bufferSize(
-        cusolverH, NULL, jobz, uplo, m, traits<data_type>::cuda_data_type, d_A, lda,
-        traits<data_type>::cuda_data_type, d_W, traits<data_type>::cuda_data_type, &d_lwork,
-        &h_lwork));
+    CUSOLVER_CHECK(cusolverDnDsyevd_bufferSize(cusolverH, jobz, uplo, m, d_A, lda, d_W, &lwork));
 
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_work), sizeof(data_type) * d_lwork));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_work), sizeof(double) * lwork));
 
     // step 4: compute spectrum
-    CUSOLVER_CHECK(cusolverDnXsyevd(
-        cusolverH, NULL, jobz, uplo, m, traits<data_type>::cuda_data_type, d_A, lda,
-        traits<data_type>::cuda_data_type, d_W, traits<data_type>::cuda_data_type, d_work, d_lwork,
-        h_work, h_lwork, d_info));
+    CUSOLVER_CHECK(
+        cusolverDnDsyevd(cusolverH, jobz, uplo, m, d_A, lda, d_W, d_work, lwork, d_info));
 
-    CUDA_CHECK(cudaMemcpyAsync(V.data(), d_A, sizeof(data_type) * V.size(), cudaMemcpyDeviceToHost,
-                               stream));
-    CUDA_CHECK(cudaMemcpyAsync(W.data(), d_W, sizeof(data_type) * W.size(), cudaMemcpyDeviceToHost,
-                               stream));
+    CUDA_CHECK(
+        cudaMemcpyAsync(V.data(), d_A, sizeof(double) * V.size(), cudaMemcpyDeviceToHost, stream));
+    CUDA_CHECK(
+        cudaMemcpyAsync(W.data(), d_W, sizeof(double) * W.size(), cudaMemcpyDeviceToHost, stream));
     CUDA_CHECK(cudaMemcpyAsync(&info, d_info, sizeof(int), cudaMemcpyDeviceToHost, stream));
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
-    std::printf("after Xsyevd: info = %d\n", info);
+    std::printf("after syevd: info = %d\n", info);
     if (0 > info) {
         std::printf("%d-th parameter is wrong \n", -info);
         exit(1);
@@ -138,7 +128,7 @@ int main(int argc, char *argv[]) {
 
     std::printf("eigenvalue = (matlab base-1), ascending order\n");
     int idx = 1;
-    for (auto const& i : W ) {
+    for (auto const &i : W) {
         std::printf("W[%i] = %E\n", idx, i);
         idx++;
     }
@@ -148,9 +138,9 @@ int main(int argc, char *argv[]) {
     std::printf("=====\n");
 
     // step 4: check eigenvalues
-    data_type lambda_sup = 0;
+    double lambda_sup = 0;
     for (int i = 0; i < m; i++) {
-        data_type error = fabs(lambda[i] - W[i]);
+        double error = fabs(lambda[i] - W[i]);
         lambda_sup = (lambda_sup > error) ? lambda_sup : error;
     }
     std::printf("|lambda - W| = %E\n", lambda_sup);

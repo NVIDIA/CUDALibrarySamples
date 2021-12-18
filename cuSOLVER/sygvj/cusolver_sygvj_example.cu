@@ -77,16 +77,16 @@ int main(int argc, char *argv[]) {
     const std::vector<double> B = {10.0, 2.0, 3.0, 2.0, 10.0, 5.0, 3.0, 5.0, 10.0};
     const std::vector<double> lambda = {0.158660256604, 0.370751508101882, 0.6};
 
-    std::vector<double> V(lda * m); // eigenvectors
-    std::vector<double> W(m);       // eigenvalues
+    std::vector<double> V(lda * m, 0); // eigenvectors
+    std::vector<double> W(m, 0);       // eigenvalues
 
     double *d_A = nullptr;
     double *d_B = nullptr;
     double *d_W = nullptr;
-    int *devInfo = nullptr;
+    int *d_info = nullptr;
     double *d_work = nullptr;
     int lwork = 0;
-    int info_gpu = 0;
+    int info = 0;
 
     /* configuration of syevj  */
     const double tol = 1.e-7;
@@ -99,16 +99,16 @@ int main(int argc, char *argv[]) {
     double residual = 0;
     int executed_sweeps = 0;
 
-    printf("tol = %E, default value is machine zero \n", tol);
-    printf("max. sweeps = %d, default value is 100\n", max_sweeps);
+    std::printf("tol = %E, default value is machine zero \n", tol);
+    std::printf("max. sweeps = %d, default value is 100\n", max_sweeps);
 
-    printf("A = (matlab base-1)\n");
+    std::printf("A = (matlab base-1)\n");
     print_matrix(m, m, A.data(), lda);
-    printf("=====\n");
+    std::printf("=====\n");
 
-    printf("B = (matlab base-1)\n");
+    std::printf("B = (matlab base-1)\n");
     print_matrix(m, m, B.data(), lda);
-    printf("=====\n");
+    std::printf("=====\n");
 
     /* step 1: create cusolver handle, bind a stream */
     CUSOLVER_CHECK(cusolverDnCreate(&cusolverH));
@@ -126,15 +126,15 @@ int main(int argc, char *argv[]) {
     CUSOLVER_CHECK(cusolverDnXsyevjSetMaxSweeps(syevj_params, max_sweeps));
 
     /* step 3: copy A to device */
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_A), sizeof(double) * lda * m));
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_B), sizeof(double) * lda * m));
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_W), sizeof(double) * m));
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&devInfo), sizeof(int)));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_A), sizeof(double) * A.size()));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_B), sizeof(double) * B.size()));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_W), sizeof(double) * W.size()));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_info), sizeof(int)));
 
     CUDA_CHECK(
-        cudaMemcpyAsync(d_A, A.data(), sizeof(double) * lda * m, cudaMemcpyHostToDevice, stream));
+        cudaMemcpyAsync(d_A, A.data(), sizeof(double) * A.size(), cudaMemcpyHostToDevice, stream));
     CUDA_CHECK(
-        cudaMemcpyAsync(d_B, B.data(), sizeof(double) * lda * m, cudaMemcpyHostToDevice, stream));
+        cudaMemcpyAsync(d_B, B.data(), sizeof(double) * B.size(), cudaMemcpyHostToDevice, stream));
 
     /* step 4: query working space of sygvj */
     CUSOLVER_CHECK(cusolverDnDsygvj_bufferSize(cusolverH, itype, jobz, uplo, m, d_A, lda, d_B,
@@ -145,35 +145,38 @@ int main(int argc, char *argv[]) {
 
     /* step 5: compute spectrum of (A,B) */
     CUSOLVER_CHECK(cusolverDnDsygvj(cusolverH, itype, jobz, uplo, m, d_A, lda, d_B, lda, /* ldb */
-                                    d_W, d_work, lwork, devInfo, syevj_params));
+                                    d_W, d_work, lwork, d_info, syevj_params));
 
     CUDA_CHECK(
-        cudaMemcpyAsync(V.data(), d_A, sizeof(double) * lda * m, cudaMemcpyDeviceToHost, stream));
-    CUDA_CHECK(cudaMemcpyAsync(W.data(), d_W, sizeof(double) * m, cudaMemcpyDeviceToHost, stream));
-    CUDA_CHECK(cudaMemcpyAsync(&info_gpu, devInfo, sizeof(int), cudaMemcpyDeviceToHost, stream));
+        cudaMemcpyAsync(V.data(), d_A, sizeof(double) * A.size(), cudaMemcpyDeviceToHost, stream));
+    CUDA_CHECK(
+        cudaMemcpyAsync(W.data(), d_W, sizeof(double) * W.size(), cudaMemcpyDeviceToHost, stream));
+    CUDA_CHECK(cudaMemcpyAsync(&info, d_info, sizeof(int), cudaMemcpyDeviceToHost, stream));
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
-    if (0 == info_gpu) {
-        printf("sygvj converges \n");
-    } else if (0 > info_gpu) {
-        printf("Error: %d-th parameter is wrong \n", -info_gpu);
+    if (0 == info) {
+        std::printf("sygvj converges \n");
+    } else if (0 > info) {
+        std::printf("Error: %d-th parameter is wrong \n", -info);
         exit(1);
-    } else if (m >= info_gpu) {
-        printf("Error: leading minor of order %d of B is not positive definite\n", -info_gpu);
+    } else if (m >= info) {
+        std::printf("Error: leading minor of order %d of B is not positive definite\n", -info);
         exit(1);
-    } else { /* info_gpu = m+1 */
-        printf("WARNING: info = %d : sygvj does not converge \n", info_gpu);
+    } else { /* info = m+1 */
+        std::printf("WARNING: info = %d : sygvj does not converge \n", info);
     }
 
-    printf("Eigenvalue = (matlab base-1), ascending order\n");
-    for (int i = 0; i < m; i++) {
-        printf("W[%d] = %E\n", i + 1, W[i]);
+    std::printf("Eigenvalue = (matlab base-1), ascending order\n");
+    int idx = 1;
+    for (auto const &i : W) {
+        std::printf("W[%i] = %E\n", idx, i);
+        idx++;
     }
 
-    printf("V = (matlab base-1)\n");
+    std::printf("V = (matlab base-1)\n");
     print_matrix(m, m, V.data(), lda);
-    printf("=====\n");
+    std::printf("=====\n");
 
     /* step 6: check eigenvalues */
     double lambda_sup = 0;
@@ -181,20 +184,20 @@ int main(int argc, char *argv[]) {
         double error = fabs(lambda[i] - W[i]);
         lambda_sup = (lambda_sup > error) ? lambda_sup : error;
     }
-    printf("|lambda - W| = %E\n", lambda_sup);
+    std::printf("|lambda - W| = %E\n", lambda_sup);
 
     CUSOLVER_CHECK(cusolverDnXsyevjGetSweeps(cusolverH, syevj_params, &executed_sweeps));
 
     CUSOLVER_CHECK(cusolverDnXsyevjGetResidual(cusolverH, syevj_params, &residual));
 
-    printf("residual |A - V*W*V**H|_F = %E \n", residual);
-    printf("number of executed sweeps = %d \n", executed_sweeps);
+    std::printf("residual |A - V*W*V**H|_F = %E \n", residual);
+    std::printf("number of executed sweeps = %d \n", executed_sweeps);
 
     /* free resources */
     CUDA_CHECK(cudaFree(d_A));
     CUDA_CHECK(cudaFree(d_B));
     CUDA_CHECK(cudaFree(d_W));
-    CUDA_CHECK(cudaFree(devInfo));
+    CUDA_CHECK(cudaFree(d_info));
     CUDA_CHECK(cudaFree(d_work));
 
     CUSOLVER_CHECK(cusolverDnDestroySyevjInfo(syevj_params));

@@ -86,9 +86,9 @@ int main(int argc, char *argv[]) {
 
     const std::vector<data_type> A = {1.0, 4.0, 7.0, 2.0, 5.0, 8.0, 3.0, 6.0, 10.0};
     const std::vector<data_type> B = {1.0, 2.0, 3.0};
-    std::vector<data_type> X(m);
-    std::vector<data_type> LU(lda * m);
-    std::vector<int64_t> Ipiv(m);
+    std::vector<data_type> X(m, 0);
+    std::vector<data_type> LU(lda * m, 0);
+    std::vector<int64_t> Ipiv(m, 0);
     int info = 0;
 
     data_type *d_A = nullptr;  /* device copy of A */
@@ -105,18 +105,18 @@ int main(int argc, char *argv[]) {
     const int algo = 0;
 
     if (pivot_on) {
-        printf("pivot is on : compute P*A = L*U \n");
+        std::printf("pivot is on : compute P*A = L*U \n");
     } else {
-        printf("pivot is off: compute A = L*U (not numerically stable)\n");
+        std::printf("pivot is off: compute A = L*U (not numerically stable)\n");
     }
 
-    printf("A = (matlab base-1)\n");
+    std::printf("A = (matlab base-1)\n");
     print_matrix(m, m, A.data(), lda, CUBLAS_OP_T);
-    printf("=====\n");
+    std::printf("=====\n");
 
-    printf("B = (matlab base-1)\n");
+    std::printf("B = (matlab base-1)\n");
     print_matrix(m, 1, B.data(), ldb, CUBLAS_OP_T);
-    printf("=====\n");
+    std::printf("=====\n");
 
     /* step 1: create cusolver handle, bind a stream */
     CUSOLVER_CHECK(cusolverDnCreate(&cusolverH));
@@ -128,23 +128,23 @@ int main(int argc, char *argv[]) {
     cusolverDnParams_t params;
     CUSOLVER_CHECK(cusolverDnCreateParams(&params));
     if (algo == 0) {
-        printf("Using New Algo\n");
+        std::printf("Using New Algo\n");
         CUSOLVER_CHECK(cusolverDnSetAdvOptions(params, CUSOLVERDN_GETRF, CUSOLVER_ALG_0));
     } else {
-        printf("Using Legacy Algo\n");
+        std::printf("Using Legacy Algo\n");
         CUSOLVER_CHECK(cusolverDnSetAdvOptions(params, CUSOLVERDN_GETRF, CUSOLVER_ALG_1));
     }
 
     /* step 2: copy A to device */
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_A), sizeof(data_type) * lda * m));
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_B), sizeof(data_type) * m));
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_Ipiv), sizeof(int64_t) * m));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_A), sizeof(data_type) * A.size()));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_B), sizeof(data_type) * B.size()));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_Ipiv), sizeof(int64_t) * Ipiv.size()));
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_info), sizeof(int)));
 
-    CUDA_CHECK(cudaMemcpyAsync(d_A, A.data(), sizeof(data_type) * lda * m, cudaMemcpyHostToDevice,
+    CUDA_CHECK(cudaMemcpyAsync(d_A, A.data(), sizeof(data_type) * A.size(), cudaMemcpyHostToDevice,
                                stream));
-    CUDA_CHECK(
-        cudaMemcpyAsync(d_B, B.data(), sizeof(data_type) * m, cudaMemcpyHostToDevice, stream));
+    CUDA_CHECK(cudaMemcpyAsync(d_B, B.data(), sizeof(data_type) * B.size(), cudaMemcpyHostToDevice,
+                               stream));
 
     /* step 3: query working space of getrf */
     CUSOLVER_CHECK(
@@ -165,28 +165,29 @@ int main(int argc, char *argv[]) {
     }
 
     if (pivot_on) {
-        CUDA_CHECK(cudaMemcpyAsync(Ipiv.data(), d_Ipiv, sizeof(int64_t) * m, cudaMemcpyDeviceToHost,
-                                   stream));
+        CUDA_CHECK(cudaMemcpyAsync(Ipiv.data(), d_Ipiv, sizeof(int64_t) * Ipiv.size(),
+                                   cudaMemcpyDeviceToHost, stream));
     }
-    CUDA_CHECK(cudaMemcpyAsync(LU.data(), d_A, sizeof(data_type) * lda * m, cudaMemcpyDeviceToHost,
+    CUDA_CHECK(cudaMemcpyAsync(LU.data(), d_A, sizeof(data_type) * A.size(), cudaMemcpyDeviceToHost,
                                stream));
     CUDA_CHECK(cudaMemcpyAsync(&info, d_info, sizeof(int), cudaMemcpyDeviceToHost, stream));
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
+    std::printf("after Xgetrf: info = %d\n", info);
     if (0 > info) {
-        printf("%d-th parameter is wrong \n", -info);
+        std::printf("%d-th parameter is wrong \n", -info);
         exit(1);
     }
     if (pivot_on) {
-        printf("pivoting sequence, matlab base-1\n");
+        std::printf("pivoting sequence, matlab base-1\n");
         for (int j = 0; j < m; j++) {
-            printf("Ipiv(%d) = %lu\n", j + 1, Ipiv[j]);
+            std::printf("Ipiv(%d) = %lu\n", j + 1, Ipiv[j]);
         }
     }
-    printf("L and U = (matlab base-1)\n");
-    print_matrix(m, m, LU.data(), lda, CUBLAS_OP_T);
-    printf("=====\n");
+    std::printf("L and U = (matlab base-1)\n");
+    print_matrix(m, m, LU.data(), lda);
+    std::printf("=====\n");
 
     /*
      * step 5: solve A*X = B
@@ -205,13 +206,13 @@ int main(int argc, char *argv[]) {
                                         traits<data_type>::cuda_data_type, d_B, ldb, d_info));
     }
 
-    CUDA_CHECK(
-        cudaMemcpyAsync(X.data(), d_B, sizeof(data_type) * m, cudaMemcpyDeviceToHost, stream));
+    CUDA_CHECK(cudaMemcpyAsync(X.data(), d_B, sizeof(data_type) * X.size(), cudaMemcpyDeviceToHost,
+                               stream));
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
-    printf("X = (matlab base-1)\n");
+    std::printf("X = (matlab base-1)\n");
     print_matrix(m, 1, X.data(), ldb, CUBLAS_OP_T);
-    printf("=====\n");
+    std::printf("=====\n");
 
     /* free resources */
     CUDA_CHECK(cudaFree(d_A));
