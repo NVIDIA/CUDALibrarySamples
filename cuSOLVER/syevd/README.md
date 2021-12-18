@@ -2,7 +2,7 @@
 
 ## Description
 
-This code demonstrates a usage of cuSOLVER Xsyevd 64-bit function for using syevd to compute the spectrum of a dense symmetric system by
+This code demonstrates a usage of cuSOLVER syevd function for using syevd to compute the spectrum of a dense symmetric system by
 
 _**A**x = &lambda;x_
 
@@ -31,15 +31,14 @@ ppc64le
 arm64-sbsa
 
 ## CUDA APIs involved
-- [cusolverDnXsyevd_bufferSize API](https://docs.nvidia.com/cuda/cusolver/index.html#cuSolverDnXsyevd)
-- [cusolverDnXsyevd API](https://docs.nvidia.com/cuda/cusolver/index.html#cuSolverDnXsyevd)
+- [cusolverDnDsyevd_bufferSize API](https://docs.nvidia.com/cuda/cusolver/index.html#cuSolverDN-lt-t-gt-syevd)
+- [cusolverDnDsyevd API](https://docs.nvidia.com/cuda/cusolver/index.html#cuSolverDN-lt-t-gt-syevd)
 
 # Building (make)
 
 # Prerequisites
 - A Linux/Windows system with recent NVIDIA drivers.
 - [CMake](https://cmake.org/download) version 3.18 minimum
-- Minimum [CUDA 11.1 toolkit](https://developer.nvidia.com/cuda-downloads) is required.
 
 ## Build command on Linux
 ```
@@ -60,7 +59,7 @@ $ Open cusolver_examples.sln project in Visual Studio and build
 
 # Usage
 ```
-$  ./cusolver_Xsyevd_example
+$  ./cusolver_syevd_example
 ```
 
 Sample example output:

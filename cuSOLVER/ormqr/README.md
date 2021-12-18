@@ -70,9 +70,6 @@ Sample example output:
 
 ```
 A = (matlab base-1)
-A(1,1) = 1.000000
-A(1,2) = 2.000000
-A(1,3) = 3.000000A = (matlab base-1)
 1 2 3
 4 5 6
 2 1 1
@@ -82,8 +79,8 @@ B = (matlab base-1)
 15
 4
 =====
-after geqrf: info_gpu = 0
-after ormqr: info_gpu = 0
+after geqrf: info = 0
+after ormqr: info = 0
 X = (matlab base-1)
 1
 1

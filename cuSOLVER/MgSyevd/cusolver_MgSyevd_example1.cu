@@ -49,7 +49,6 @@
 
 #include <cstdio>
 #include <cstdlib>
-#include <stdexcept>
 #include <vector>
 
 #include <cuda_runtime.h>
@@ -199,8 +198,9 @@ int main(int argc, char *argv[]) {
     CUDA_CHECK(cudaDeviceSynchronize());
 
     /* check if SYEVD converges */
-    if (info) {
-        throw std::runtime_error("SYEVD diverges");
+    if (0 > info) {
+        std::printf("%d-th parameter is wrong \n", -info);
+        exit(1);
     }
 
     std::printf("Step 10: Copy eigenvectors to A and eigenvalues to D\n");
