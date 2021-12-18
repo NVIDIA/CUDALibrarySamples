@@ -76,9 +76,9 @@ include(../cmake/cusolver_example.cmake)
 
 include_directories("${CMAKE_SOURCE_DIR}/../utils")
 
-# potrf_batched was added in CUDA 9.1
+# potrfBatched was added in CUDA 9.1
 if(NOT CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "9.1")
-    add_cusolver_example(cusolver_examples "cusolver_potrf_batched_example" cusolver_potrf_batched_example.cu)
+    add_cusolver_example(cusolver_examples "cusolver_potrfBatched_example" cusolver_potrfBatched_example.cu)
 else()
     message("POTRF Batched solver routine was introduced in CUDA 9.1, update toolkit to get POTRF Batched functionality in cuSOLVER")
 endif()

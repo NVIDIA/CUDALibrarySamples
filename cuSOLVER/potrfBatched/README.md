@@ -55,7 +55,7 @@ $ Open cusolver_examples.sln project in Visual Studio and build
 
 # Usage
 ```
-$  ./cusolver_potrf_batched_example
+$  ./cusolver_potrfBatched_example
 ```
 
 Sample example output:
