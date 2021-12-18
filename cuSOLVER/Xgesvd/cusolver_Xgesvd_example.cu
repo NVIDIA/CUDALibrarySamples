@@ -49,7 +49,6 @@
 
 #include <cstdio>
 #include <cstdlib>
-#include <stdexcept>
 #include <vector>
 
 #include <cuda_runtime.h>
@@ -73,28 +72,28 @@ int main(int argc, char *argv[]) {
      */
 
     const std::vector<data_type> A = {1.0, 4.0, 2.0, 2.0, 5.0, 1.0};
-    std::vector<data_type> U(lda * m);
-    std::vector<data_type> VT(lda * n);
-    std::vector<data_type> S(n);
-    std::vector<data_type> S_exact(n);
+    std::vector<data_type> U(lda * m, 0);
+    std::vector<data_type> VT(lda * n, 0);
+    std::vector<data_type> S(n, 0);
+    std::vector<data_type> S_exact(n, 0);
 
     data_type *d_A = nullptr;
     data_type *d_S = nullptr;
     data_type *d_U = nullptr;
     data_type *d_VT = nullptr;
-    int *devInfo = nullptr;
+    int *d_info = nullptr;
     data_type *d_work = nullptr;
     data_type *d_rwork = nullptr;
     data_type *d_W = nullptr; // W = S*VT
 
     int lwork = 0;
-    int info_gpu = 0;
+    int info = 0;
     const data_type h_one = 1;
     const data_type h_minus_one = -1;
 
-    printf("A = (matlab base-1)\n");
+    std::printf("A = (matlab base-1)\n");
     print_matrix(m, n, A.data(), lda, CUBLAS_OP_T);
-    printf("=====\n");
+    std::printf("=====\n");
 
     /* step 1: create cusolver handle, bind a stream */
     CUSOLVER_CHECK(cusolverDnCreate(&cusolverH));
@@ -105,11 +104,11 @@ int main(int argc, char *argv[]) {
     CUBLAS_CHECK(cublasSetStream(cublasH, stream));
 
     /* step 2: copy A to device */
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_A), sizeof(data_type) * lda * n));
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_S), sizeof(data_type) * n));
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_U), sizeof(data_type) * lda * m));
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_VT), sizeof(data_type) * lda * n));
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&devInfo), sizeof(int)));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_A), sizeof(data_type) * A.size()));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_S), sizeof(data_type) * S.size()));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_U), sizeof(data_type) * U.size()));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_VT), sizeof(data_type) * VT.size()));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_info), sizeof(int)));
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_W), sizeof(data_type) * lda * n));
 
     CUDA_CHECK(cudaMemcpyAsync(d_A, A.data(), sizeof(data_type) * lda * n, cudaMemcpyHostToDevice,
@@ -128,35 +127,36 @@ int main(int argc, char *argv[]) {
                                     lda, // ldu
                                     d_VT,
                                     lda, // ldvt,
-                                    d_work, lwork, d_rwork, devInfo));
+                                    d_work, lwork, d_rwork, d_info));
 
-    CUDA_CHECK(cudaMemcpyAsync(U.data(), d_U, sizeof(data_type) * lda * m, cudaMemcpyDeviceToHost,
+    CUDA_CHECK(cudaMemcpyAsync(U.data(), d_U, sizeof(data_type) * U.size(), cudaMemcpyDeviceToHost,
                                stream));
-    CUDA_CHECK(cudaMemcpyAsync(VT.data(), d_VT, sizeof(data_type) * lda * n, cudaMemcpyDeviceToHost,
+    CUDA_CHECK(cudaMemcpyAsync(VT.data(), d_VT, sizeof(data_type) * VT.size(),
+                               cudaMemcpyDeviceToHost, stream));
+    CUDA_CHECK(cudaMemcpyAsync(S.data(), d_S, sizeof(data_type) * S.size(), cudaMemcpyDeviceToHost,
                                stream));
-    CUDA_CHECK(
-        cudaMemcpyAsync(S.data(), d_S, sizeof(data_type) * n, cudaMemcpyDeviceToHost, stream));
-    CUDA_CHECK(cudaMemcpyAsync(&info_gpu, devInfo, sizeof(int), cudaMemcpyDeviceToHost, stream));
+    CUDA_CHECK(cudaMemcpyAsync(&info, d_info, sizeof(int), cudaMemcpyDeviceToHost, stream));
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
-    printf("after gesvd: info_gpu = %d\n", info_gpu);
-    if (info_gpu) {
-        throw std::runtime_error("Error returned from gesvd");
+    std::printf("after Xgesvd: info = %d\n", info);
+    if (0 > info) {
+        std::printf("%d-th parameter is wrong \n", -info);
+        exit(1);
     }
-    printf("=====\n");
+    std::printf("=====\n");
 
-    printf("S = (matlab base-1)\n");
-    print_matrix(n, 1, S.data(), lda);
-    printf("=====\n");
+    std::printf("S = (matlab base-1)\n");
+    print_matrix(n, 1, S.data(), lda, CUBLAS_OP_T);
+    std::printf("=====\n");
 
-    printf("U = (matlab base-1)\n");
+    std::printf("U = (matlab base-1)\n");
     print_matrix(m, m, U.data(), lda);
-    printf("=====\n");
+    std::printf("=====\n");
 
-    printf("VT = (matlab base-1)\n");
+    std::printf("VT = (matlab base-1)\n");
     print_matrix(n, n, VT.data(), lda);
-    printf("=====\n");
+    std::printf("=====\n");
 
     // step 5: measure error of singular value
     double ds_sup = 0;
@@ -164,13 +164,13 @@ int main(int argc, char *argv[]) {
         double err = fabs(S[j] - S_exact[j]);
         ds_sup = (ds_sup > err) ? ds_sup : err;
     }
-    printf("|S - S_exact| = %E \n", ds_sup);
+    std::printf("|S - S_exact| = %E \n", ds_sup);
 
     // step 6: |A - U*S*VT|
     // W = S*VT
     CUBLAS_CHECK(cublasDdgmm(cublasH, CUBLAS_SIDE_LEFT, n, n, d_VT, lda, d_S, 1, d_W, lda));
 
-    CUDA_CHECK(cudaMemcpyAsync(d_A, A.data(), sizeof(data_type) * lda * n, cudaMemcpyHostToDevice,
+    CUDA_CHECK(cudaMemcpyAsync(d_A, A.data(), sizeof(data_type) * A.size(), cudaMemcpyHostToDevice,
                                stream));
 
     CUBLAS_CHECK(cublasDgemm_v2(cublasH,
@@ -187,18 +187,18 @@ int main(int argc, char *argv[]) {
                                 d_A, lda));
 
     double dR_fro = 0.0;
-    CUBLAS_CHECK(cublasDnrm2_v2(cublasH, lda * n, d_A, 1, &dR_fro));
+    CUBLAS_CHECK(cublasDnrm2_v2(cublasH, A.size(), d_A, 1, &dR_fro));
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
-    printf("|A - U*S*VT| = %E \n", dR_fro);
+    std::printf("|A - U*S*VT| = %E \n", dR_fro);
 
     /* free resources */
     CUDA_CHECK(cudaFree(d_A));
     CUDA_CHECK(cudaFree(d_S));
     CUDA_CHECK(cudaFree(d_U));
     CUDA_CHECK(cudaFree(d_VT));
-    CUDA_CHECK(cudaFree(devInfo));
+    CUDA_CHECK(cudaFree(d_info));
     CUDA_CHECK(cudaFree(d_work));
     CUDA_CHECK(cudaFree(d_rwork));
     CUDA_CHECK(cudaFree(d_W));

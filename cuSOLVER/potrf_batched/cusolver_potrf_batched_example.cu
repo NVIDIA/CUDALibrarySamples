@@ -85,29 +85,29 @@ int main(int argc, char *argv[]) {
     const std::vector<double> A0 = {1.0, 2.0, 3.0, 2.0, 5.0, 5.0, 3.0, 5.0, 12.0};
     const std::vector<double> A1 = {1.0, 2.0, 3.0, 2.0, 4.0, 5.0, 3.0, 5.0, 12.0};
     const std::vector<double> B0 = {1.0, 1.0, 1.0};
-    std::vector<double> X0(m);             /* X0 = A0\B0 */
-    std::vector<int> infoArray(batchSize); /* host copy of error info */
+    std::vector<double> X0(m, 0);             /* X0 = A0\B0 */
+    std::vector<int> infoArray(batchSize, 0); /* host copy of error info */
 
     std::vector<double> L0(lda * m); /* cholesky factor of A0 */
 
-    std::vector<double *> Aarray(batchSize);
-    std::vector<double *> Barray(batchSize);
+    std::vector<double *> Aarray(batchSize, nullptr);
+    std::vector<double *> Barray(batchSize, nullptr);
 
     double **d_Aarray = nullptr;
     double **d_Barray = nullptr;
     int *d_infoArray = nullptr;
 
-    printf("A0 = (matlab base-1)\n");
+    std::printf("A0 = (matlab base-1)\n");
     print_matrix(m, m, A0.data(), lda);
-    printf("=====\n");
+    std::printf("=====\n");
 
-    printf("A1 = (matlab base-1)\n");
+    std::printf("A1 = (matlab base-1)\n");
     print_matrix(m, m, A1.data(), lda);
-    printf("=====\n");
+    std::printf("=====\n");
 
-    printf("B0 = (matlab base-1)\n");
+    std::printf("B0 = (matlab base-1)\n");
     print_matrix(m, 1, B0.data(), ldb, CUBLAS_OP_T);
-    printf("=====\n");
+    std::printf("=====\n");
 
     /* step 1: create cusolver handle, bind a stream */
     CUSOLVER_CHECK(cusolverDnCreate(&cusolverH));
@@ -120,31 +120,31 @@ int main(int argc, char *argv[]) {
         CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&Aarray[j]), sizeof(double) * lda * m));
         CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&Barray[j]), sizeof(double) * ldb * nrhs));
     }
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_infoArray), sizeof(int) * batchSize));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_infoArray), sizeof(int) * infoArray.size()));
 
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_Aarray), sizeof(double *) * batchSize));
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_Barray), sizeof(double *) * batchSize));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_Aarray), sizeof(double *) * Aarray.size()));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_Barray), sizeof(double *) * Barray.size()));
 
-    CUDA_CHECK(cudaMemcpyAsync(Aarray[0], A0.data(), sizeof(double) * lda * m,
+    CUDA_CHECK(cudaMemcpyAsync(Aarray[0], A0.data(), sizeof(double) * A0.size(),
                                cudaMemcpyHostToDevice, stream));
-    CUDA_CHECK(cudaMemcpyAsync(Aarray[1], A1.data(), sizeof(double) * lda * m,
+    CUDA_CHECK(cudaMemcpyAsync(Aarray[1], A1.data(), sizeof(double) * A1.size(),
                                cudaMemcpyHostToDevice, stream));
 
     CUDA_CHECK(
-        cudaMemcpyAsync(Barray[0], B0.data(), sizeof(double) * m, cudaMemcpyHostToDevice, stream));
+        cudaMemcpyAsync(Barray[0], B0.data(), sizeof(double) * B0.size(), cudaMemcpyHostToDevice, stream));
     CUDA_CHECK(
-        cudaMemcpyAsync(Barray[1], B0.data(), sizeof(double) * m, cudaMemcpyHostToDevice, stream));
+        cudaMemcpyAsync(Barray[1], B0.data(), sizeof(double) * B0.size(), cudaMemcpyHostToDevice, stream));
 
-    CUDA_CHECK(cudaMemcpyAsync(d_Aarray, Aarray.data(), sizeof(double) * batchSize,
+    CUDA_CHECK(cudaMemcpyAsync(d_Aarray, Aarray.data(), sizeof(double) * Aarray.size(),
                                cudaMemcpyHostToDevice, stream));
-    CUDA_CHECK(cudaMemcpyAsync(d_Barray, Barray.data(), sizeof(double) * batchSize,
+    CUDA_CHECK(cudaMemcpyAsync(d_Barray, Barray.data(), sizeof(double) * Barray.size(),
                                cudaMemcpyHostToDevice, stream));
 
     /* step 3: Cholesky factorization */
     CUSOLVER_CHECK(
         cusolverDnDpotrfBatched(cusolverH, uplo, m, d_Aarray, lda, d_infoArray, batchSize));
 
-    CUDA_CHECK(cudaMemcpyAsync(infoArray.data(), d_infoArray, sizeof(int) * batchSize,
+    CUDA_CHECK(cudaMemcpyAsync(infoArray.data(), d_infoArray, sizeof(int) * infoArray.size(),
                                cudaMemcpyDeviceToHost, stream));
     CUDA_CHECK(cudaMemcpyAsync(L0.data(), Aarray[0], sizeof(double) * lda * m,
                                cudaMemcpyDeviceToHost, stream));
@@ -152,16 +152,16 @@ int main(int argc, char *argv[]) {
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
     for (int j = 0; j < batchSize; j++) {
-        printf("info[%d] = %d\n", j, infoArray[j]);
+        std::printf("info[%d] = %d\n", j, infoArray[j]);
     }
 
     assert(0 == infoArray[0]);
     /* A1 is singular */
     assert(2 == infoArray[1]);
 
-    printf("L = (matlab base-1), upper triangle is don't care \n");
-    print_matrix(m, m, L0.data(), lda, CUBLAS_OP_T);
-    printf("=====\n");
+    std::printf("L = (matlab base-1), upper triangle is don't care \n");
+    print_matrix(m, m, L0.data(), lda);
+    std::printf("=====\n");
 
     /*
      * step 4: solve A0*X0 = B0
@@ -175,16 +175,19 @@ int main(int argc, char *argv[]) {
     CUDA_CHECK(cudaMemcpyAsync(infoArray.data(), d_infoArray, sizeof(int), cudaMemcpyDeviceToHost,
                                stream));
     CUDA_CHECK(
-        cudaMemcpyAsync(X0.data(), Barray[0], sizeof(double) * m, cudaMemcpyDeviceToHost, stream));
+        cudaMemcpyAsync(X0.data(), Barray[0], sizeof(double) * X0.size(), cudaMemcpyDeviceToHost, stream));
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
-    printf("info = %d\n", infoArray[0]);
-    assert(0 == infoArray[0]);
+    std::printf("after potrsBatched: infoArray[0] = %d\n", infoArray[0]);
+    if (0 > infoArray[0]) {
+        std::printf("%d-th parameter is wrong \n", -infoArray[0]);
+        exit(1);
+    }
 
-    printf("X0 = (matlab base-1)\n");
+    std::printf("X0 = (matlab base-1)\n");
     print_matrix(m, 1, X0.data(), ldb, CUBLAS_OP_T);
-    printf("=====\n");
+    std::printf("=====\n");
 
     /* free resources */
     CUDA_CHECK(cudaFree(d_Aarray));

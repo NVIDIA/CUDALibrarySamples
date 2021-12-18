@@ -84,9 +84,9 @@ int main(int argc, char *argv[]) {
 
     const std::vector<double> A = {1.0, 4.0, 7.0, 2.0, 5.0, 8.0, 3.0, 6.0, 10.0};
     const std::vector<double> B = {1.0, 2.0, 3.0};
-    std::vector<double> X(m);
-    std::vector<double> LU(lda * m);
-    std::vector<int> Ipiv(m);
+    std::vector<double> X(m, 0);
+    std::vector<double> LU(lda * m, 0);
+    std::vector<int> Ipiv(m, 0);
     int info = 0;
 
     double *d_A = nullptr; /* device copy of A */
@@ -120,14 +120,15 @@ int main(int argc, char *argv[]) {
     CUSOLVER_CHECK(cusolverDnSetStream(cusolverH, stream));
 
     /* step 2: copy A to device */
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_A), sizeof(double) * lda * m));
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_B), sizeof(double) * m));
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_Ipiv), sizeof(int) * m));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_A), sizeof(double) * A.size()));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_B), sizeof(double) * B.size()));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_Ipiv), sizeof(int) * Ipiv.size()));
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_info), sizeof(int)));
 
     CUDA_CHECK(
-        cudaMemcpyAsync(d_A, A.data(), sizeof(double) * lda * m, cudaMemcpyHostToDevice, stream));
-    CUDA_CHECK(cudaMemcpyAsync(d_B, B.data(), sizeof(double) * m, cudaMemcpyHostToDevice, stream));
+        cudaMemcpyAsync(d_A, A.data(), sizeof(double) * A.size(), cudaMemcpyHostToDevice, stream));
+    CUDA_CHECK(
+        cudaMemcpyAsync(d_B, B.data(), sizeof(double) * B.size(), cudaMemcpyHostToDevice, stream));
 
     /* step 3: query working space of getrf */
     CUSOLVER_CHECK(cusolverDnDgetrf_bufferSize(cusolverH, m, m, d_A, lda, &lwork));
@@ -142,11 +143,11 @@ int main(int argc, char *argv[]) {
     }
 
     if (pivot_on) {
-        CUDA_CHECK(
-            cudaMemcpyAsync(Ipiv.data(), d_Ipiv, sizeof(int) * m, cudaMemcpyDeviceToHost, stream));
+        CUDA_CHECK(cudaMemcpyAsync(Ipiv.data(), d_Ipiv, sizeof(int) * Ipiv.size(),
+                                   cudaMemcpyDeviceToHost, stream));
     }
     CUDA_CHECK(
-        cudaMemcpyAsync(LU.data(), d_A, sizeof(double) * lda * m, cudaMemcpyDeviceToHost, stream));
+        cudaMemcpyAsync(LU.data(), d_A, sizeof(double) * A.size(), cudaMemcpyDeviceToHost, stream));
     CUDA_CHECK(cudaMemcpyAsync(&info, d_info, sizeof(int), cudaMemcpyDeviceToHost, stream));
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -180,7 +181,8 @@ int main(int argc, char *argv[]) {
                                         d_A, lda, NULL, d_B, ldb, d_info));
     }
 
-    CUDA_CHECK(cudaMemcpyAsync(X.data(), d_B, sizeof(double) * m, cudaMemcpyDeviceToHost, stream));
+    CUDA_CHECK(
+        cudaMemcpyAsync(X.data(), d_B, sizeof(double) * X.size(), cudaMemcpyDeviceToHost, stream));
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
     printf("X = (matlab base-1)\n");

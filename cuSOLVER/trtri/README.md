@@ -28,8 +28,9 @@ Windows
 
 ## Supported CPU Architecture
 
-x86_64  
-ppc64le  
+x86_64
+ppc64le
+arm64-sbsa
 
 ## CUDA APIs involved
 - [cusolverDnXtrtri_bufferSize API](https://docs.nvidia.com/cuda/cusolver/index.html#cusolverDnXtrtri_bufferSize)

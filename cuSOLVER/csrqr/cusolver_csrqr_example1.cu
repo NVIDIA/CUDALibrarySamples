@@ -49,7 +49,6 @@
 
 #include <cstdio>
 #include <cstdlib>
-#include <stdexcept>
 #include <vector>
 
 #include <cuda_runtime.h>
@@ -78,7 +77,8 @@ int main(int argc, char *argv[]) {
     size_t size_internal = 0;
     void *buffer_qr = nullptr; // working space for numerical factorization
 
-    /*      | 1                |
+    /*      
+     *      | 1                |
      *  A = |       2          |
      *      |            3     |
      *      | 0.1  0.1  0.1  4 |
@@ -95,9 +95,9 @@ int main(int argc, char *argv[]) {
     const std::vector<double> b = {1.0, 1.0, 1.0, 1.0};
     const int batchSize = 17;
 
-    std::vector<double> csrValABatch(nnzA * batchSize);
-    std::vector<double> bBatch(m * batchSize);
-    std::vector<double> xBatch(m * batchSize);
+    std::vector<double> csrValABatch(nnzA * batchSize, 0);
+    std::vector<double> bBatch(m * batchSize, 0);
+    std::vector<double> xBatch(m * batchSize, 0);
 
     // step 1: prepare Aj and bj on host
     //  Aj is a small perturbation of A
@@ -135,19 +135,21 @@ int main(int argc, char *argv[]) {
 
     // step 3: copy Aj and bj to device
     CUDA_CHECK(
-        cudaMalloc(reinterpret_cast<void **>(&d_csrValA), sizeof(double) * nnzA * batchSize));
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_csrColIndA), sizeof(int) * nnzA));
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_csrRowPtrA), sizeof(int) * (m + 1)));
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_b), sizeof(double) * m * batchSize));
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_x), sizeof(double) * m * batchSize));
+        cudaMalloc(reinterpret_cast<void **>(&d_csrValA), sizeof(double) * csrValABatch.size()));
+    CUDA_CHECK(
+        cudaMalloc(reinterpret_cast<void **>(&d_csrColIndA), sizeof(int) * csrColIndA.size()));
+    CUDA_CHECK(
+        cudaMalloc(reinterpret_cast<void **>(&d_csrRowPtrA), sizeof(int) * csrRowPtrA.size()));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_b), sizeof(double) * bBatch.size()));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_x), sizeof(double) * xBatch.size()));
 
-    CUDA_CHECK(cudaMemcpyAsync(d_csrValA, csrValABatch.data(), sizeof(double) * nnzA * batchSize,
+    CUDA_CHECK(cudaMemcpyAsync(d_csrValA, csrValABatch.data(), sizeof(double) * csrValABatch.size(),
                                cudaMemcpyHostToDevice, stream));
-    CUDA_CHECK(cudaMemcpyAsync(d_csrColIndA, csrColIndA.data(), sizeof(int) * nnzA,
+    CUDA_CHECK(cudaMemcpyAsync(d_csrColIndA, csrColIndA.data(), sizeof(int) * csrColIndA.size(),
                                cudaMemcpyHostToDevice, stream));
-    CUDA_CHECK(cudaMemcpyAsync(d_csrRowPtrA, csrRowPtrA.data(), sizeof(int) * (m + 1),
+    CUDA_CHECK(cudaMemcpyAsync(d_csrRowPtrA, csrRowPtrA.data(), sizeof(int) * csrRowPtrA.size(),
                                cudaMemcpyHostToDevice, stream));
-    CUDA_CHECK(cudaMemcpyAsync(d_b, bBatch.data(), sizeof(double) * m * batchSize,
+    CUDA_CHECK(cudaMemcpyAsync(d_b, bBatch.data(), sizeof(double) * bBatch.size(),
                                cudaMemcpyHostToDevice, stream));
 
     // step 4: symbolic analysis
@@ -160,8 +162,10 @@ int main(int argc, char *argv[]) {
                                                      &size_internal, &size_qr));
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
-    printf("numerical factorization needs internal data %lld bytes\n", (long long)size_internal);
-    printf("numerical factorization needs working space %lld bytes\n", (long long)size_qr);
+    std::printf("numerical factorization needs internal data %lld bytes\n",
+           static_cast<long long>(size_internal));
+    std::printf("numerical factorization needs working space %lld bytes\n",
+           static_cast<long long>(size_qr));
 
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&buffer_qr), size_qr));
 
@@ -172,7 +176,7 @@ int main(int argc, char *argv[]) {
 
     // step 7: check residual
     // xBatch = [x0, x1, x2, ...]
-    CUDA_CHECK(cudaMemcpyAsync(xBatch.data(), d_x, sizeof(double) * m * batchSize,
+    CUDA_CHECK(cudaMemcpyAsync(xBatch.data(), d_x, sizeof(double) * xBatch.size(),
                                cudaMemcpyDeviceToHost, stream));
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -181,7 +185,6 @@ int main(int argc, char *argv[]) {
 
     for (int batchId = 0; batchId < batchSize; batchId++) {
         // measure |bj - Aj*xj|
-        double tolerance = 1e-15;
         double *csrValAj = csrValABatch.data() + batchId * nnzA;
         double *xj = xBatch.data() + batchId * m;
         double *bj = bBatch.data() + batchId * m;
@@ -200,18 +203,15 @@ int main(int argc, char *argv[]) {
             double r = bj[row] - Ax;
             sup_res = (sup_res > fabs(r)) ? sup_res : fabs(r);
         }
-        printf("batchId %d: sup|bj - Aj*xj| = %E \n", batchId, sup_res);
-        if (sup_res > tolerance) {
-            throw std::runtime_error("Error exceeds tolerance!");
-        }
+        std::printf("batchId %d: sup|bj - Aj*xj| = %E \n", batchId, sup_res);
     }
 
     for (int batchId = 0; batchId < batchSize; batchId++) {
         double *xj = xBatch.data() + batchId * m;
         for (int row = 0; row < m; row++) {
-            printf("x%d[%d] = %E\n", batchId, row, xj[row]);
+            std::printf("x%d[%d] = %E\n", batchId, row, xj[row]);
         }
-        printf("\n");
+        std::printf("\n");
     }
 
     /* free resources */

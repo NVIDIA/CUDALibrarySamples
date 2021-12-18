@@ -76,7 +76,8 @@ include(../cmake/cusolver_example.cmake)
 
 include_directories("${CMAKE_SOURCE_DIR}/../utils")
 
-add_cusolver_example(cusolver_examples "cusolver_csrqr_example" cusolver_csrqr_example.cu)
+add_cusolver_example(cusolver_examples "cusolver_csrqr_example1" cusolver_csrqr_example1.cu)
+add_cusolver_example(cusolver_examples "cusolver_csrqr_example2" cusolver_csrqr_example2.cu)
 
 # ##########################################
 # cusolver_examples directories

@@ -26,24 +26,22 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <cassert>
+#include <cstring>
+#include <iostream>
+#include <string>
+
+#include <cuda_runtime.h>
+#include <cusolverDn.h>
 
 #include "cusolver_utils.h"
 
-#include "cuda_runtime_api.h"
-#include "cusolverDn.h"
-
-#include <string>
-#include <cstring>
-#include <iostream>
-#include <cassert>
-
-int main(int argc, const char* argv[])
-{
+int main(int argc, const char *argv[]) {
     bool verbose = false;
 
     // Matrix size
     const int N = 1024;
-    
+
     // Numer of right hand sides
     const int nrhs = 1;
 
@@ -57,11 +55,11 @@ int main(int argc, const char* argv[])
     // Use GMRES refinement solver
     const cusolverIRSRefinement_t refinement_solver = CUSOLVER_IRS_REFINE_GMRES;
 
-    T* hA;
+    T *hA;
     cusolver_int_t lda;
-    T* hB;
+    T *hB;
     cusolver_int_t ldb;
-    T* hX;
+    T *hX;
     cusolver_int_t ldx;
 
     cudaStream_t stream;
@@ -79,8 +77,7 @@ int main(int argc, const char* argv[])
     std::cout << "Generating matrix X on host..." << std::endl;
     generate_random_matrix<T>(nrhs, N, &hX, &ldx);
 
-    if (verbose)
-    {
+    if (verbose) {
         std::cout << "A: \n";
         print_matrix(N, N, hA, lda);
         std::cout << "B: \n";
@@ -100,30 +97,29 @@ int main(int argc, const char* argv[])
     // create solver parameters
     CUSOLVER_CHECK(cusolverDnIRSParamsCreate(&gesv_params));
     // set matrix precision and factorization precision
-    CUSOLVER_CHECK(cusolverDnIRSParamsSetSolverPrecisions(gesv_params, 
-        matrix_precision,
-        compute_lower_precision));
-    // set refinement solver 
+    CUSOLVER_CHECK(cusolverDnIRSParamsSetSolverPrecisions(gesv_params, matrix_precision,
+                                                          compute_lower_precision));
+    // set refinement solver
     CUSOLVER_CHECK(cusolverDnIRSParamsSetRefinementSolver(gesv_params, refinement_solver));
     // create solve info structure
     CUSOLVER_CHECK(cusolverDnIRSInfosCreate(gesv_params, &gesv_info));
 
     // matrix on device
-    T* dA;
-    cusolver_int_t ldda = ALIGN_TO(N*sizeof(T), device_alignment) / sizeof(T);
+    T *dA;
+    cusolver_int_t ldda = ALIGN_TO(N * sizeof(T), device_alignment) / sizeof(T);
     // right hand side on device
-    T* dB;
-    cusolver_int_t lddb = ALIGN_TO(N*sizeof(T), device_alignment) / sizeof(T);
+    T *dB;
+    cusolver_int_t lddb = ALIGN_TO(N * sizeof(T), device_alignment) / sizeof(T);
     // solution on device
-    T* dX;
-    cusolver_int_t lddx = ALIGN_TO(N*sizeof(T), device_alignment) / sizeof(T);
+    T *dX;
+    cusolver_int_t lddx = ALIGN_TO(N * sizeof(T), device_alignment) / sizeof(T);
 
     // pivot sequence on device
-    cusolver_int_t* dipiv;
+    cusolver_int_t *dipiv;
     // info indicator on device
-    cusolver_int_t* dinfo;
+    cusolver_int_t *dinfo;
     // work buffer
-    void* dwork;
+    void *dwork;
     // size of work buffer
     size_t dwork_size;
     // number of refinement iterations returned by solver
@@ -131,56 +127,43 @@ int main(int argc, const char* argv[])
 
     std::cout << "Allocating memory on device..." << std::endl;
     // allocate data
-    CUDA_CHECK(cudaMalloc( &dA, ldda*N*sizeof(T)));
-    CUDA_CHECK(cudaMalloc( &dB, lddb*nrhs*sizeof(T) ));
-    CUDA_CHECK(cudaMalloc( &dX, lddx*nrhs*sizeof(T) ));
-    CUDA_CHECK(cudaMalloc( &dipiv, N*sizeof(cusolver_int_t) ));
-    CUDA_CHECK(cudaMalloc( &dinfo, sizeof(cusolver_int_t) ));
+    CUDA_CHECK(cudaMalloc(&dA, ldda * N * sizeof(T)));
+    CUDA_CHECK(cudaMalloc(&dB, lddb * nrhs * sizeof(T)));
+    CUDA_CHECK(cudaMalloc(&dX, lddx * nrhs * sizeof(T)));
+    CUDA_CHECK(cudaMalloc(&dipiv, N * sizeof(cusolver_int_t)));
+    CUDA_CHECK(cudaMalloc(&dinfo, sizeof(cusolver_int_t)));
 
     // copy input data
-    CUDA_CHECK(cudaMemcpy2D( dA, ldda*sizeof(T), hA, lda*sizeof(T), N*sizeof(T)   , N, cudaMemcpyDefault ));
-    CUDA_CHECK(cudaMemcpy2D( dB, lddb*sizeof(T), hB, ldb*sizeof(T), N*sizeof(T), nrhs, cudaMemcpyDefault ));
+    CUDA_CHECK(cudaMemcpy2D(dA, ldda * sizeof(T), hA, lda * sizeof(T), N * sizeof(T), N,
+                            cudaMemcpyDefault));
+    CUDA_CHECK(cudaMemcpy2D(dB, lddb * sizeof(T), hB, ldb * sizeof(T), N * sizeof(T), nrhs,
+                            cudaMemcpyDefault));
 
     // get required device work buffer size
-    CUSOLVER_CHECK(cusolverDnIRSXgesv_bufferSize(handle, 
-        gesv_params, 
-        N, 
-        nrhs, 
-        &dwork_size));
+    CUSOLVER_CHECK(cusolverDnIRSXgesv_bufferSize(handle, gesv_params, N, nrhs, &dwork_size));
     std::cout << "Workspace is " << dwork_size << " bytes" << std::endl;
-    CUDA_CHECK(cudaMalloc( &dwork, dwork_size ));
+    CUDA_CHECK(cudaMalloc(&dwork, dwork_size));
 
     std::cout << "Solving matrix on device..." << std::endl;
     CUDA_CHECK(cudaEventRecord(event_start, stream));
 
-    cusolverStatus_t gesv_status = cusolverDnIRSXgesv(handle, gesv_params, gesv_info,
-        traits<T>::cuda_data_type, 
-        N,
-        nrhs,
-        dA,
-        ldda,
-        dipiv,
-        dB, 
-        lddb,
-        dX,
-        lddx,
-        dwork,
-        dwork_size,
-        &iter,
-        dinfo);
+    cusolverStatus_t gesv_status =
+        cusolverDnIRSXgesv(handle, gesv_params, gesv_info, traits<T>::cuda_data_type, N, nrhs, dA,
+                           ldda, dipiv, dB, lddb, dX, lddx, dwork, dwork_size, &iter, dinfo);
     CUSOLVER_CHECK(gesv_status);
 
     CUDA_CHECK(cudaEventRecord(event_end, stream));
     // check solve status
     int info = 0;
-    CUDA_CHECK(cudaMemcpyAsync(&info, dinfo, sizeof(cusolver_int_t), cudaMemcpyDeviceToHost, stream));
+    CUDA_CHECK(
+        cudaMemcpyAsync(&info, dinfo, sizeof(cusolver_int_t), cudaMemcpyDeviceToHost, stream));
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
     std::cout << "Solve info is: " << info << ", iter is: " << iter << std::endl;
 
-    CUDA_CHECK(cudaMemcpy2D( hX, ldx*sizeof(T), dX, lddx*sizeof(T), N*sizeof(T), nrhs, cudaMemcpyDefault ));
-    if (verbose)
-    {
+    CUDA_CHECK(cudaMemcpy2D(hX, ldx * sizeof(T), dX, lddx * sizeof(T), N * sizeof(T), nrhs,
+                            cudaMemcpyDefault));
+    if (verbose) {
         std::cout << "X:\n";
         print_matrix(nrhs, N, hX, ldx);
     }
@@ -189,16 +172,16 @@ int main(int argc, const char* argv[])
 
     float solve_time = 0.f;
     CUDA_CHECK(cudaEventElapsedTime(&solve_time, event_start, event_end));
-    std::cout << "Solved matrix " << N << "x" << N << " with " << nrhs <<
-        " right hand sides in " << solve_time << "ms" << std::endl;
+    std::cout << "Solved matrix " << N << "x" << N << " with " << nrhs << " right hand sides in "
+              << solve_time << "ms" << std::endl;
 
     std::cout << "Releasing resources..." << std::endl;
-    CUDA_CHECK(cudaFree( dwork ));
-    CUDA_CHECK(cudaFree( dinfo ));
-    CUDA_CHECK(cudaFree( dipiv ));
-    CUDA_CHECK(cudaFree( dX ));
-    CUDA_CHECK(cudaFree( dB ));
-    CUDA_CHECK(cudaFree( dA ));
+    CUDA_CHECK(cudaFree(dwork));
+    CUDA_CHECK(cudaFree(dinfo));
+    CUDA_CHECK(cudaFree(dipiv));
+    CUDA_CHECK(cudaFree(dX));
+    CUDA_CHECK(cudaFree(dB));
+    CUDA_CHECK(cudaFree(dA));
 
     free(hA);
     free(hB);

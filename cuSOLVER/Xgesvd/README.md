@@ -66,22 +66,22 @@ $ Open cusolver_examples.sln project in Visual Studio and build
 
 # Usage
 ```
-$  ./cusolver_Xgetrf_example
+$  ./cusolver_Xgesvd_example
 ```
 
 Sample example output:
 
 ```
 A = (matlab base-1)
-1 2 0
-4 5 3.21143e-322
-2 1 0
+1 2
+4 5
+2 1
 =====
-after gesvd: info_gpu = 0
+after Xgesvd: info = 0
 =====
 S = (matlab base-1)
 7.06528
-1.63042e-322
+1.04008
 =====
 U = (matlab base-1)
 -0.308219 -0.906133 -0.289695

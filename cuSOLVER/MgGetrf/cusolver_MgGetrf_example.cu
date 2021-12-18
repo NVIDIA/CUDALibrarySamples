@@ -49,7 +49,6 @@
 
 #include <cstdio>
 #include <cstdlib>
-#include <stdexcept>
 #include <vector>
 
 #include <cuda_runtime.h>
@@ -263,8 +262,9 @@ int main(int argc, char *argv[]) {
     CUDA_CHECK(cudaDeviceSynchronize());
 
     /* check if A is singular */
-    if (info) {
-        throw std::runtime_error("A is not singular.");
+    if (0 > info) {
+        std::printf("%d-th parameter is wrong \n", -info);
+        exit(1);
     }
 
     CUSOLVER_CHECK(cusolverMgGetrs(cusolverH, CUBLAS_OP_N, N, 1, /* NRHS */
@@ -279,8 +279,9 @@ int main(int argc, char *argv[]) {
     CUDA_CHECK(cudaDeviceSynchronize());
 
     /* check if parameters are valid */
-    if (info) {
-        throw std::runtime_error("Parameters not valid.");
+    if (0 > info) {
+        std::printf("%d-th parameter is wrong \n", -info);
+        exit(1);
     }
 
     std::printf("Step 10: Retrieve IPIV and solution vector X\n");

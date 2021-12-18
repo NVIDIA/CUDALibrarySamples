@@ -66,19 +66,20 @@ int main(int argc, char *argv[]) {
     const int n = 2;
     const int lda = m;
 
-    /*       | 1 2 |
+    /*
+     *       | 1 2 |
      *   A = | 4 5 |
      *       | 2 1 |
      */
 
-    std::vector<double> A = {1.0, 4.0, 2.0, 2.0, 5.0, 1.0};
-    std::vector<double> Q(lda * n); // orthonormal columns
-    std::vector<double> R(n * n);   // R = I - Q**T*Q
+    const std::vector<double> A = {1.0, 4.0, 2.0, 2.0, 5.0, 1.0};
+    std::vector<double> Q(lda * n, 0); // orthonormal columns
+    std::vector<double> R(n * n, 0);   // R = I - Q**T*Q
 
     /* device memory */
     double *d_A = nullptr;
     double *d_tau = nullptr;
-    int *devInfo = nullptr;
+    int *d_info = nullptr;
     double *d_work = nullptr;
 
     double *d_R = nullptr;
@@ -86,14 +87,14 @@ int main(int argc, char *argv[]) {
     int lwork_geqrf = 0;
     int lwork_orgqr = 0;
     int lwork = 0;
-    int info_gpu = 0;
+    int info = 0;
 
     const double h_one = 1;
     const double h_minus_one = -1;
 
-    printf("A = (matlab base-1)\n");
+    std::printf("A = (matlab base-1)\n");
     print_matrix(m, n, A.data(), lda, CUBLAS_OP_T);
-    printf("=====\n");
+    std::printf("=====\n");
 
     /* step 1: create cudense/cublas handle */
     CUSOLVER_CHECK(cusolverDnCreate(&cusolverH));
@@ -104,13 +105,13 @@ int main(int argc, char *argv[]) {
     CUBLAS_CHECK(cublasSetStream(cublasH, stream));
 
     /* step 2: copy A and B to device */
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_A), sizeof(double) * lda * n));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_A), sizeof(double) * A.size()));
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_tau), sizeof(double) * n));
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&devInfo), sizeof(int)));
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_R), sizeof(double) * n * n));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_info), sizeof(int)));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_R), sizeof(double) * R.size()));
 
     CUDA_CHECK(
-        cudaMemcpyAsync(d_A, A.data(), sizeof(double) * lda * n, cudaMemcpyHostToDevice, stream));
+        cudaMemcpyAsync(d_A, A.data(), sizeof(double) * A.size(), cudaMemcpyHostToDevice, stream));
 
     /* step 3: query working space of geqrf and orgqr */
     CUSOLVER_CHECK(cusolverDnDgeqrf_bufferSize(cusolverH, m, n, d_A, lda, &lwork_geqrf));
@@ -122,42 +123,44 @@ int main(int argc, char *argv[]) {
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_work), sizeof(double) * lwork));
 
     /* step 4: compute QR factorization */
-    CUSOLVER_CHECK(cusolverDnDgeqrf(cusolverH, m, n, d_A, lda, d_tau, d_work, lwork, devInfo));
+    CUSOLVER_CHECK(cusolverDnDgeqrf(cusolverH, m, n, d_A, lda, d_tau, d_work, lwork, d_info));
 
     /* check if QR is successful or not */
-    CUDA_CHECK(cudaMemcpyAsync(&info_gpu, devInfo, sizeof(int), cudaMemcpyDeviceToHost, stream));
+    CUDA_CHECK(cudaMemcpyAsync(&info, d_info, sizeof(int), cudaMemcpyDeviceToHost, stream));
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
-    printf("after geqrf: info_gpu = %d\n", info_gpu);
-    if (0 != info_gpu) {
-        throw std::runtime_error("the i-th parameter is wrong.");
+    std::printf("after geqrf: info = %d\n", info);
+    if (0 > info) {
+        std::printf("%d-th parameter is wrong \n", -info);
+        exit(1);
     }
 
     /* step 5: compute Q */
-    CUSOLVER_CHECK(cusolverDnDorgqr(cusolverH, m, n, n, d_A, lda, d_tau, d_work, lwork, devInfo));
+    CUSOLVER_CHECK(cusolverDnDorgqr(cusolverH, m, n, n, d_A, lda, d_tau, d_work, lwork, d_info));
 
     /* check if QR is good or not */
-    CUDA_CHECK(cudaMemcpyAsync(&info_gpu, devInfo, sizeof(int), cudaMemcpyDeviceToHost, stream));
+    CUDA_CHECK(cudaMemcpyAsync(&info, d_info, sizeof(int), cudaMemcpyDeviceToHost, stream));
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
-    printf("after ormqr: info_gpu = %d\n", info_gpu);
-    if (0 != info_gpu) {
-        throw std::runtime_error("the i-th parameter is wrong.");
+    std::printf("after ormqr: info = %d\n", info);
+    if (0 > info) {
+        printf("%d-th parameter is wrong \n", -info);
+        exit(1);
     }
 
     CUDA_CHECK(
-        cudaMemcpyAsync(Q.data(), d_A, sizeof(double) * lda * n, cudaMemcpyDeviceToHost, stream));
+        cudaMemcpyAsync(Q.data(), d_A, sizeof(double) * A.size(), cudaMemcpyDeviceToHost, stream));
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
-    printf("Q = (matlab base-1)\n");
+    std::printf("Q = (matlab base-1)\n");
     print_matrix(m, n, Q.data(), lda, CUBLAS_OP_T);
 
     // step 6: measure R = I - Q**T*Q
     CUDA_CHECK(
-        cudaMemcpyAsync(R.data(), d_R, sizeof(double) * n * n, cudaMemcpyDeviceToHost, stream));
+        cudaMemcpyAsync(R.data(), d_R, sizeof(double) * R.size(), cudaMemcpyDeviceToHost, stream));
 
     CUBLAS_CHECK(cublasDgemm(cublasH,
                              CUBLAS_OP_T,  // Q**T
@@ -173,16 +176,16 @@ int main(int argc, char *argv[]) {
                              d_R, n));
 
     double dR_nrm2 = 0.0;
-    CUBLAS_CHECK(cublasDnrm2(cublasH, n * n, d_R, 1, &dR_nrm2));
+    CUBLAS_CHECK(cublasDnrm2(cublasH, R.size(), d_R, 1, &dR_nrm2));
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
-    printf("|I - Q**T*Q| = %E\n", dR_nrm2);
+    std::printf("|I - Q**T*Q| = %E\n", dR_nrm2);
 
     /* free resources */
     CUDA_CHECK(cudaFree(d_A));
     CUDA_CHECK(cudaFree(d_tau));
-    CUDA_CHECK(cudaFree(devInfo));
+    CUDA_CHECK(cudaFree(d_info));
     CUDA_CHECK(cudaFree(d_work));
     CUDA_CHECK(cudaFree(d_R));
 

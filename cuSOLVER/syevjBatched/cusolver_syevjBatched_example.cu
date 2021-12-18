@@ -83,14 +83,14 @@ int main(int argc, char *argv[]) {
      *
      */
 
-    std::vector<double> A(lda * m * batchSize); /* V = [A0 ; A1] */
-    std::vector<double> V(lda * m * batchSize); /* V = [V0 ; V1] */
-    std::vector<double> W(m * batchSize);       /* W = [W0 ; W1] */
-    std::vector<int> info_gpu(batchSize);   /* info = [info0 ; info1] */
+    std::vector<double> A(lda * m * batchSize, 0); /* V = [A0 ; A1] */
+    std::vector<double> V(lda * m * batchSize, 0); /* V = [V0 ; V1] */
+    std::vector<double> W(m * batchSize, 0);       /* W = [W0 ; W1] */
+    std::vector<int> info(batchSize, 0);           /* info = [info0 ; info1] */
 
     double *d_A = nullptr;    /* lda-by-m-by-batchSize */
     double *d_W = nullptr;    /* m-by-batchSize */
-    int *devInfo = nullptr;   /* batchSize */
+    int *d_info = nullptr;    /* batchSize */
     double *d_work = nullptr; /* device workspace for syevjBatched */
     int lwork = 0;            /* size of workspace */
 
@@ -138,13 +138,13 @@ int main(int argc, char *argv[]) {
     A1[1 + 2 * lda] = 0.0;
     A1[2 + 2 * lda] = 0.0;
 
-    printf("A0 = (matlab base-1)\n");
+    std::printf("A0 = (matlab base-1)\n");
     print_matrix(m, m, A0, lda);
-    printf("=====\n");
+    std::printf("=====\n");
 
-    printf("A1 = (matlab base-1)\n");
+    std::printf("A1 = (matlab base-1)\n");
     print_matrix(m, m, A1, lda);
-    printf("=====\n");
+    std::printf("=====\n");
 
     /* step 1: create cusolver handle, bind a stream */
     CUSOLVER_CHECK(cusolverDnCreate(&cusolverH));
@@ -165,12 +165,12 @@ int main(int argc, char *argv[]) {
     CUSOLVER_CHECK(cusolverDnXsyevjSetSortEig(syevj_params, sort_eig));
 
     /* step 3: copy A to device */
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_A), sizeof(double) * lda * m * batchSize));
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_W), sizeof(double) * m * batchSize));
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&devInfo), sizeof(int) * batchSize));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_A), sizeof(double) * A.size()));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_W), sizeof(double) * W.size()));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_info), sizeof(int) * info.size()));
 
-    CUDA_CHECK(cudaMemcpyAsync(d_A, A.data(), sizeof(double) * lda * m * batchSize,
-                               cudaMemcpyHostToDevice, stream));
+    CUDA_CHECK(
+        cudaMemcpyAsync(d_A, A.data(), sizeof(double) * A.size(), cudaMemcpyHostToDevice, stream));
     /* step 4: query working space of syevj */
     CUSOLVER_CHECK(cusolverDnDsyevjBatched_bufferSize(cusolverH, jobz, uplo, m, d_A, lda, d_W,
                                                       &lwork, syevj_params, batchSize));
@@ -179,58 +179,58 @@ int main(int argc, char *argv[]) {
 
     /* step 5: compute eigen-pair   */
     CUSOLVER_CHECK(cusolverDnDsyevjBatched(cusolverH, jobz, uplo, m, d_A, lda, d_W, d_work, lwork,
-                                           devInfo, syevj_params, batchSize));
+                                           d_info, syevj_params, batchSize));
 
-    CUDA_CHECK(cudaMemcpyAsync(V.data(), d_A, sizeof(double) * lda * m * batchSize,
+    CUDA_CHECK(
+        cudaMemcpyAsync(V.data(), d_A, sizeof(double) * A.size(), cudaMemcpyDeviceToHost, stream));
+    CUDA_CHECK(
+        cudaMemcpyAsync(W.data(), d_W, sizeof(double) * W.size(), cudaMemcpyDeviceToHost, stream));
+    CUDA_CHECK(cudaMemcpyAsync(info.data(), d_info, sizeof(int) * info.size(),
                                cudaMemcpyDeviceToHost, stream));
-    CUDA_CHECK(cudaMemcpyAsync(W.data(), d_W, sizeof(double) * m * batchSize,
-                               cudaMemcpyDeviceToHost, stream));
-    CUDA_CHECK(cudaMemcpyAsync(info_gpu.data(), devInfo, sizeof(int) * batchSize, cudaMemcpyDeviceToHost,
-                               stream));
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
     for (int i = 0; i < batchSize; i++) {
-        if (0 == info_gpu[i]) {
-            printf("matrix %d: syevj converges \n", i);
-        } else if (0 > info_gpu[i]) {
+        if (0 == info[i]) {
+            std::printf("matrix %d: syevj converges \n", i);
+        } else if (0 > info[i]) {
             /* only info[0] shows if some input parameter is wrong.
              * If so, the error is CUSOLVER_STATUS_INVALID_VALUE.
              */
-            printf("Error: %d-th parameter is wrong \n", -info_gpu[i]);
+            std::printf("Error: %d-th parameter is wrong \n", -info[i]);
             exit(1);
         } else { /* info = m+1 */
                  /* if info[i] is not zero, Jacobi method does not converge at i-th matrix. */
-            printf("WARNING: matrix %d, info = %d : sygvj does not converge \n", i, info_gpu[i]);
+            std::printf("WARNING: matrix %d, info = %d : sygvj does not converge \n", i, info[i]);
         }
     }
 
     /* Step 6: show eigenvalues and eigenvectors */
     double *W0 = W.data();
     double *W1 = W.data() + m;
-	
-    printf("==== \n");
+
+    std::printf("==== \n");
     for (int i = 0; i < m; i++) {
-        printf("W0[%d] = %f\n", i, W0[i]);
+        std::printf("W0[%d] = %f\n", i, W0[i]);
     }
-    printf("==== \n");
+    std::printf("==== \n");
     for (int i = 0; i < m; i++) {
-        printf("W1[%d] = %f\n", i, W1[i]);
+        std::printf("W1[%d] = %f\n", i, W1[i]);
     }
-    printf("==== \n");
+    std::printf("==== \n");
 
     double *V0 = V.data();
     double *V1 = V.data() + lda * m;
 
-    printf("V0 = (matlab base-1)\n");
+    std::printf("V0 = (matlab base-1)\n");
     print_matrix(m, m, V0, lda);
-    printf("V1 = (matlab base-1)\n");
+    std::printf("V1 = (matlab base-1)\n");
     print_matrix(m, m, V1, lda);
 
     /* free resources */
     CUDA_CHECK(cudaFree(d_A));
     CUDA_CHECK(cudaFree(d_W));
-    CUDA_CHECK(cudaFree(devInfo));
+    CUDA_CHECK(cudaFree(d_info));
     CUDA_CHECK(cudaFree(d_work));
 
     CUSOLVER_CHECK(cusolverDnDestroySyevjInfo(syevj_params));
