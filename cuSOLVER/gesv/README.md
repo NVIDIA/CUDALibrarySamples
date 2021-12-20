@@ -34,6 +34,7 @@ Windows
 
 x86_64  
 ppc64le  
+arm64-sbsa
 
 ## CUDA APIs involved
 - [cusolverDn gesv LAPACK style API](https://docs.nvidia.com/cuda/cusolver/index.html#cuds-lt-t-gt-gesv)
