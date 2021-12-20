@@ -74,6 +74,12 @@ This folder demonstrates cuSOLVER APIs usage.
 
     The sample computes *singular value decomposition*. See example for detailed description.
 
+##### Singular Value Decomposition example
+
+* [cuSOLVER gesvdaStridedBatched](gesvdaStridedBatched/)
+
+    The sample computes a strided, batched approximate *singular value decomposition*. See example for detailed description.
+
 ##### Singular Value Decomposition (via Jacobi method) example
 
 * [cuSOLVER gesvdj](gesvdj/)
