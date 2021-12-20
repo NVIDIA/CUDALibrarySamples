@@ -41,7 +41,7 @@
 # above Disclaimer and U.S. Government End Users Notice.
 cmake_minimum_required(VERSION 3.18)
 
-set(ROUTINE mgpu_c2c)
+set(ROUTINE 3d_mgpu_c2c)
 
 project(
   "${ROUTINE}_example"
@@ -66,10 +66,11 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 add_executable(${ROUTINE}_example)
 
+target_include_directories(${ROUTINE}_example
+                           PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES} 
+                           ${CMAKE_SOURCE_DIR}/../utils)
+
 target_sources(${ROUTINE}_example
                PRIVATE ${PROJECT_SOURCE_DIR}/${ROUTINE}_example.cpp)
-
-target_include_directories(${ROUTINE}_example
-                           PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
 
 target_link_libraries(${ROUTINE}_example PRIVATE CUDA::cufft CUDA::cudart)
