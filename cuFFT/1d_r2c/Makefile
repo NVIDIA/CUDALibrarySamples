@@ -45,16 +45,16 @@
 # comments to the code, the above Disclaimer and U.S. Government End
 # Users Notice.
 CUDA_TOOLKIT := $(shell dirname $$(command -v nvcc))/..
-INC          := -I$(CUDA_TOOLKIT)/include
+INC          := -I$(CUDA_TOOLKIT)/include -I../utils
 LIBS         := -L$(CUDA_TOOLKIT)/lib64 -lcufft
 FLAGS        := -O3 -std=c++11
 
-all: mgpu_r2c_c2r_example
+all: 1d_r2c_example
 
-mgpu_r2c_c2r_example: mgpu_r2c_c2r_example.cpp
-	nvcc -x cu $(FLAGS) $(INC) mgpu_r2c_c2r_example.cpp -o mgpu_r2c_c2r_example $(LIBS)
+1d_r2c_example: 1d_r2c_example.cpp
+	nvcc -x cu $(FLAGS) $(INC) 1d_r2c_example.cpp -o 1d_r2c_example $(LIBS)
 
 clean:
-	rm -f mgpu_r2c_c2r_example
+	rm -f 1d_r2c_example
 
 .PHONY: clean all
