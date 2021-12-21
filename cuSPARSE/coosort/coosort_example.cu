@@ -47,12 +47,12 @@
  * Users Notice.
  */
 
-#include <cstdio>  // std::printf
-#include <cstdlib> // EXIT_FAILURE
-#include <vector>  // vector
+#include <cstdio>
+#include <cstdlib>
+#include <vector>
 
-#include <cuda_runtime.h> // cudaMalloc, cudaMemcpy, etc.
-#include <cusparse.h>     // cusparseXcoosortByRow
+#include <cuda_runtime.h>
+#include <cusparse.h>
 
 #define CHECK_CUDA(func)                                                                           \
     {                                                                                              \
@@ -75,37 +75,39 @@
     }
 
 int main(void) {
-    // Host problem definition
+    cusparseHandle_t cusparseH = NULL;
+    cudaStream_t stream = NULL;
+    cusparseSpVecDescr_t vecX;
+    cusparseDnVecDescr_t vecY;
+
+    const int m = 3;
+    const int n = 3;
+    const int nnz = 4;
     /*
      * A is a 3x3 sparse matrix
      *     | 1 2 0 |
      * A = | 0 5 0 |
      *     | 0 8 0 |
      */
-    const int m = 3;
-    const int n = 3;
-    const int nnz = 4;
 
 #if 0
-/* index starts at 0 */
+    /* index starts at 0 */
     std::vector<int> h_cooRows = {2, 1, 0, 0 };
     std::vector<int> h_cooCols = {1, 1, 0, 1 };
-    std::vector<int> h_cooRowsRef = {0, 0, 1, 2};
-    std::vector<int> h_cooColsRef = {0, 1, 1, 1};
+    const std::vector<int> h_cooRowsRef = {0, 0, 1, 2};
+    const std::vector<int> h_cooColsRef = {0, 1, 1, 1};
 #else
     /* index starts at -2 */
     std::vector<int> h_cooRows = {0, -1, -2, -2};
     std::vector<int> h_cooCols = {-1, -1, -2, -1};
-    std::vector<int> h_cooRowsRef = {-2, -2, -1, 0};
-    std::vector<int> h_cooColsRef = {-2, -1, -1, -1};
+    const std::vector<int> h_cooRowsRef = {-2, -2, -1, 0};
+    const std::vector<int> h_cooColsRef = {-2, -1, -1, -1};
 #endif
     std::vector<double> h_cooVals = {8.0, 5.0, 1.0, 2.0};
     std::vector<int> h_P(nnz, 0);
 
-    std::vector<double> h_cooValsRef = {1.0, 2.0, 5.0, 8.0};
-    std::vector<int> h_PRef = {2, 3, 1, 0};
-    //--------------------------------------------------------------------------
-    // Device memory management
+    const std::vector<double> h_cooValsRef = {1.0, 2.0, 5.0, 8.0};
+    const std::vector<int> h_PRef = {2, 3, 1, 0};
 
     int *d_cooRows = nullptr;
     int *d_cooCols = nullptr;
@@ -115,58 +117,58 @@ int main(void) {
     size_t pBufferSizeInBytes = 0;
     void *pBuffer = nullptr;
 
-    cusparseHandle_t handle = NULL;
-    cudaStream_t stream = NULL;
-    CHECK_CUDA(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking))
+    /* step 1: create cusolver handle, bind a stream */
+    CHECK_CUSPARSE(cusparseCreate(&cusparseH));
 
-    CHECK_CUSPARSE(cusparseCreate(&handle))
+    CHECK_CUDA(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+    CHECK_CUSPARSE(cusparseSetStream(cusparseH, stream));
 
-    CHECK_CUDA(cudaMalloc(reinterpret_cast<void **>(&d_cooRows), sizeof(int) * h_cooRows.size()))
-    CHECK_CUDA(cudaMalloc(reinterpret_cast<void **>(&d_cooCols), sizeof(int) * h_cooCols.size()))
-    CHECK_CUDA(cudaMalloc(reinterpret_cast<void **>(&d_P), sizeof(int) * h_P.size()))
-    CHECK_CUDA(cudaMalloc(reinterpret_cast<void **>(&d_cooVals), sizeof(double) * h_cooVals.size()))
-    CHECK_CUDA(cudaMalloc(reinterpret_cast<void **>(&d_cooVals_sorted), sizeof(double) * nnz))
+    /* step 2: copy data to device */
+    CHECK_CUDA(cudaMalloc(reinterpret_cast<void **>(&d_cooRows), sizeof(int) * h_cooRows.size()));
+    CHECK_CUDA(cudaMalloc(reinterpret_cast<void **>(&d_cooCols), sizeof(int) * h_cooCols.size()));
+    CHECK_CUDA(cudaMalloc(reinterpret_cast<void **>(&d_P), sizeof(int) * h_P.size()));
+    CHECK_CUDA(cudaMalloc(reinterpret_cast<void **>(&d_cooVals), sizeof(double) * h_cooVals.size()));
+    CHECK_CUDA(cudaMalloc(reinterpret_cast<void **>(&d_cooVals_sorted), sizeof(double) * nnz));
 
     CHECK_CUDA(cudaMemcpyAsync(d_cooRows, h_cooRows.data(), sizeof(int) * h_cooRows.size(),
                                cudaMemcpyHostToDevice, stream))
     CHECK_CUDA(cudaMemcpyAsync(d_cooCols, h_cooCols.data(), sizeof(int) * h_cooCols.size(),
                                cudaMemcpyHostToDevice, stream))
     CHECK_CUDA(cudaMemcpyAsync(d_cooVals, h_cooVals.data(), sizeof(double) * h_cooVals.size(),
-                               cudaMemcpyHostToDevice, stream))
+                               cudaMemcpyHostToDevice, stream));
 
-    //     //--------------------------------------------------------------------------
-    // CUSPARSE APIs
+    /* step 3: query working space of COO sort */
+    CHECK_CUSPARSE(cusparseXcoosort_bufferSizeExt(cusparseH, m, n, nnz, d_cooRows, d_cooCols,
+                                                  &pBufferSizeInBytes));
 
-    CHECK_CUSPARSE(cusparseSetStream(handle, stream))
+    CHECK_CUDA(cudaMalloc(reinterpret_cast<void **>(&pBuffer), sizeof(int) * pBufferSizeInBytes));
 
-    CHECK_CUSPARSE(cusparseXcoosort_bufferSizeExt(handle, m, n, nnz, d_cooRows, d_cooCols,
-                                                  &pBufferSizeInBytes))
+    /* step 4: setup permutation vector P to identity */
+    CHECK_CUSPARSE(cusparseCreateIdentityPermutation(cusparseH, nnz, d_P));
 
-    CHECK_CUDA(cudaMalloc(reinterpret_cast<void **>(&pBuffer), sizeof(int) * pBufferSizeInBytes))
+    /* step 4: sort COO format by Row */
+    CHECK_CUSPARSE(cusparseXcoosortByRow(cusparseH, m, n, nnz, d_cooRows, d_cooCols, d_P, pBuffer));
 
-    // setup permutation vector P to identity
-    CHECK_CUSPARSE(cusparseCreateIdentityPermutation(handle, nnz, d_P))
+    /* step 5: gather sorted cooVals */
+    CHECK_CUSPARSE( cusparseCreateSpVec(&vecX, h_cooVals.size(), h_cooVals.size(), d_P, d_cooVals_sorted,
+        CUSPARSE_INDEX_32I,
+        CUSPARSE_INDEX_BASE_ZERO, CUDA_R_64F) );
+    CHECK_CUSPARSE( cusparseCreateDnVec(&vecY, h_cooVals.size(), d_cooVals, CUDA_R_64F) );
+    CHECK_CUSPARSE( cusparseGather(cusparseH, vecY, vecX) );
 
-    // sort COO format by Row
-    CHECK_CUSPARSE(cusparseXcoosortByRow(handle, m, n, nnz, d_cooRows, d_cooCols, d_P, pBuffer))
-
-    // gather sorted cooVals
-    CHECK_CUSPARSE(
-        cusparseDgthr(handle, nnz, d_cooVals, d_cooVals_sorted, d_P, CUSPARSE_INDEX_BASE_ZERO))
-
+    /* step 6: copy data to host */
     CHECK_CUDA(cudaMemcpyAsync(h_cooRows.data(), d_cooRows, sizeof(int) * h_cooRows.size(),
-                               cudaMemcpyDeviceToHost, stream))
+                               cudaMemcpyDeviceToHost, stream));
     CHECK_CUDA(cudaMemcpyAsync(h_cooCols.data(), d_cooCols, sizeof(int) * h_cooCols.size(),
-                               cudaMemcpyDeviceToHost, stream))
+                               cudaMemcpyDeviceToHost, stream));
     CHECK_CUDA(
-        cudaMemcpyAsync(h_P.data(), d_P, sizeof(int) * h_P.size(), cudaMemcpyDeviceToHost, stream))
+        cudaMemcpyAsync(h_P.data(), d_P, sizeof(int) * h_P.size(), cudaMemcpyDeviceToHost, stream));
     CHECK_CUDA(cudaMemcpyAsync(h_cooVals.data(), d_cooVals_sorted,
-                               sizeof(double) * h_cooVals.size(), cudaMemcpyDeviceToHost, stream))
+                               sizeof(double) * h_cooVals.size(), cudaMemcpyDeviceToHost, stream));
 
-    CHECK_CUDA(cudaStreamSynchronize(stream))
+    CHECK_CUDA(cudaStreamSynchronize(stream));
 
-    //--------------------------------------------------------------------------
-    // device result check
+    /* step 7: Check results */
     int correct = 1;
     for (int i = 0; i < nnz; i++) {
         if (h_cooRows[i] != h_cooRowsRef[i]) { // direct floating point comparison is not
@@ -187,24 +189,23 @@ int main(void) {
         }
     }
     if (correct)
-        std::printf("axpby_example test PASSED\n");
+        std::printf("coosort_example test PASSED\n");
     else
-        std::printf("axpby_example test FAILED: wrong result\n");
+        std::printf("coosort_example test FAILED: wrong result\n");
 
-    //--------------------------------------------------------------------------
-    // device memory deallocation
+    /* free resources */
+    CHECK_CUDA(cudaFree(d_cooRows));
+    CHECK_CUDA(cudaFree(d_cooCols));
+    CHECK_CUDA(cudaFree(d_P));
+    CHECK_CUDA(cudaFree(d_cooVals));
+    CHECK_CUDA(cudaFree(d_cooVals_sorted));
+    CHECK_CUDA(cudaFree(pBuffer));
 
-    CHECK_CUDA(cudaFree(d_cooRows))
-    CHECK_CUDA(cudaFree(d_cooCols))
-    CHECK_CUDA(cudaFree(d_P))
-    CHECK_CUDA(cudaFree(d_cooVals))
-    CHECK_CUDA(cudaFree(d_cooVals_sorted))
-    CHECK_CUDA(cudaFree(pBuffer))
+    CHECK_CUSPARSE(cusparseDestroy(cusparseH));
 
-    CHECK_CUSPARSE(cusparseDestroy(handle))
+    CHECK_CUDA(cudaStreamDestroy(stream));
 
-    CHECK_CUDA(cudaStreamDestroy(stream))
+    CHECK_CUDA(cudaDeviceReset());
 
-    CHECK_CUDA(cudaDeviceReset())
     return EXIT_SUCCESS;
 }

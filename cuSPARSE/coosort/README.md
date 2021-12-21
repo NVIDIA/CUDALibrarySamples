@@ -28,7 +28,7 @@ This sample demonstrates the usage of `cusparseXcoosortByRow` to perform sorting
 * **Supported OSes:** Linux, Windows, QNX, Android
 * **Supported CPU Architectures**: x86_64, ppc64le, arm64
 * **Supported Compilers**: gcc, clang, Intel icc, IBM xlc, Microsoft msvc, Nvidia HPC SDK nvc
-* **Language**: `C99`
+* **Language**: `C++11`
 
 ## Prerequisites
 
