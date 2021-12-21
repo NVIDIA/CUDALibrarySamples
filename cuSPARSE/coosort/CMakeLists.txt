@@ -44,19 +44,61 @@
 # software must include, in the user documentation and internal
 # comments to the code, the above Disclaimer and U.S. Government End
 # Users Notice.
-cmake_minimum_required(VERSION 3.9)
+cmake_minimum_required(VERSION 3.18)
 
 set(ROUTINE coosort)
 
 project("${ROUTINE}_example"
         DESCRIPTION  "GPU-Accelerated Sparse Linear Algebra"
         HOMEPAGE_URL "https://docs.nvidia.com/cuda/cusparse/index.html"
-        LANGUAGES    C++ CUDA)
+        LANGUAGES    C CXX CUDA)
+
+find_package(CUDAToolkit REQUIRED)
+
+# ##########################################
+# cusparse_examples build mode
+# ##########################################
+
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    message(STATUS "Setting build type to 'Release' as none was specified.")
+    set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build." FORCE)
+    set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "" "Debug" "Release")
+else()
+    message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
+endif()
+
+# ##########################################
+# cusparse_examples building flags
+# ##########################################
+
+# Global CXX/CUDA flags
+if(CMAKE_CUDA_ARCHITECTURES LESS 60)
+  set(CMAKE_CUDA_ARCHITECTURES 60 70 75 80 86)
+endif()
+
+# Global CXX flags/options
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Global CUDA CXX flags/options
+set(CUDA_HOST_COMPILER ${CMAKE_CXX_COMPILER})
+set(CMAKE_CUDA_STANDARD 11)
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+set(CMAKE_CUDA_EXTENSIONS OFF)
+
+# Debug options
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -O0 -g")
+set(CMAKE_CUDA_FLAGS_DEBUG "${CMAKE_CUDA_FLAGS} -O0 -g -lineinfo")
+
+# ##########################################
+# cusparse_examples target
+# ##########################################
 
 add_executable(${ROUTINE}_example)
 
 target_sources(${ROUTINE}_example
-    PUBLIC ${PROJECT_SOURCE_DIR}/${ROUTINE}_example.cpp
+    PUBLIC ${PROJECT_SOURCE_DIR}/${ROUTINE}_example.cu
 )
 
 target_include_directories(${ROUTINE}_example
@@ -64,5 +106,5 @@ target_include_directories(${ROUTINE}_example
 )
 
 target_link_libraries(${ROUTINE}_example
-    PUBLIC cudart cusparse
+    PUBLIC CUDA::cudart CUDA::cusparse
 )

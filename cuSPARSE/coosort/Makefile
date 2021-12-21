@@ -50,8 +50,8 @@ LIBS         := -lcudart -lcusparse
 
 all: coosort_example
 
-coosort_example: coosort_example.cpp
-	nvcc $(INC) coosort_example.cpp -o coosort_example $(LIBS)
+coosort_example: coosort_example.cu
+	nvcc $(INC) coosort_example.cu -o coosort_example $(LIBS)
 
 clean:
 	rm -f coosort_example
