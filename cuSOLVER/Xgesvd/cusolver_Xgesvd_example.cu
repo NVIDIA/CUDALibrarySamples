@@ -92,7 +92,7 @@ int main(int argc, char *argv[]) {
     const data_type h_minus_one = -1;
 
     std::printf("A = (matlab base-1)\n");
-    print_matrix(m, n, A.data(), lda, CUBLAS_OP_T);
+    print_matrix(m, n, A.data(), lda);
     std::printf("=====\n");
 
     /* step 1: create cusolver handle, bind a stream */
@@ -147,7 +147,7 @@ int main(int argc, char *argv[]) {
     std::printf("=====\n");
 
     std::printf("S = (matlab base-1)\n");
-    print_matrix(n, 1, S.data(), lda, CUBLAS_OP_T);
+    print_matrix(n, 1, S.data(), lda);
     std::printf("=====\n");
 
     std::printf("U = (matlab base-1)\n");

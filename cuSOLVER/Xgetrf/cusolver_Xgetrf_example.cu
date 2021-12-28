@@ -101,7 +101,7 @@ int main(int argc, char *argv[]) {
     size_t h_lwork = 0;     /* size of workspace */
     void *h_work = nullptr; /* host workspace for getrf */
 
-    const int pivot_on = 0;
+    const int pivot_on = 1;
     const int algo = 0;
 
     if (pivot_on) {
@@ -111,11 +111,11 @@ int main(int argc, char *argv[]) {
     }
 
     std::printf("A = (matlab base-1)\n");
-    print_matrix(m, m, A.data(), lda, CUBLAS_OP_T);
+    print_matrix(m, m, A.data(), lda);
     std::printf("=====\n");
 
     std::printf("B = (matlab base-1)\n");
-    print_matrix(m, 1, B.data(), ldb, CUBLAS_OP_T);
+    print_matrix(m, 1, B.data(), ldb);
     std::printf("=====\n");
 
     /* step 1: create cusolver handle, bind a stream */
@@ -211,7 +211,7 @@ int main(int argc, char *argv[]) {
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
     std::printf("X = (matlab base-1)\n");
-    print_matrix(m, 1, X.data(), ldb, CUBLAS_OP_T);
+    print_matrix(m, 1, X.data(), ldb);
     std::printf("=====\n");
 
     /* free resources */

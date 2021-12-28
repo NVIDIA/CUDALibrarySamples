@@ -63,7 +63,9 @@ int main(int argc, char *argv[]) {
     const int m = 3;
     const int lda = m;
     const int ldb = m;
-    /*       | 1 2 3  |
+
+    /*       
+     *       | 1 2 3  |
      *   A = | 4 5 6  |
      *       | 7 8 10 |
      *
@@ -97,7 +99,7 @@ int main(int argc, char *argv[]) {
     int lwork = 0;            /* size of workspace */
     double *d_work = nullptr; /* device workspace for getrf */
 
-    const int pivot_on = 1;
+    const int pivot_on = 0;
 
     if (pivot_on) {
         printf("pivot is on : compute P*A = L*U \n");
@@ -106,11 +108,11 @@ int main(int argc, char *argv[]) {
     }
 
     printf("A = (matlab base-1)\n");
-    print_matrix(m, m, A.data(), lda, CUBLAS_OP_T);
+    print_matrix(m, m, A.data(), lda);
     printf("=====\n");
 
     printf("B = (matlab base-1)\n");
-    print_matrix(m, 1, B.data(), ldb, CUBLAS_OP_T);
+    print_matrix(m, 1, B.data(), ldb);
     printf("=====\n");
 
     /* step 1: create cusolver handle, bind a stream */
@@ -163,7 +165,7 @@ int main(int argc, char *argv[]) {
         }
     }
     printf("L and U = (matlab base-1)\n");
-    print_matrix(m, m, LU.data(), lda, CUBLAS_OP_T);
+    print_matrix(m, m, LU.data(), lda);
     printf("=====\n");
 
     /*
@@ -186,7 +188,7 @@ int main(int argc, char *argv[]) {
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
     printf("X = (matlab base-1)\n");
-    print_matrix(m, 1, X.data(), ldb, CUBLAS_OP_T);
+    print_matrix(m, 1, X.data(), ldb);
     printf("=====\n");
 
     /* free resources */

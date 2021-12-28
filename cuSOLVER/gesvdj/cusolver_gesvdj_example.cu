@@ -69,9 +69,9 @@ int main(int argc, char *argv[]) {
     const int minmn = (m < n) ? m : n; /* min(m,n) */
 
     /*
-     *    | 1 2  |
-     *   A = | 4 5  |
-     *       | 2 1  |
+     *       | 1 2 |
+     *   A = | 4 5 |
+     *       | 2 1 |
      */
 
     std::vector<double> A = {1.0, 4.0, 2.0, 2.0, 5.0, 1.0};
@@ -108,7 +108,7 @@ int main(int argc, char *argv[]) {
     std::printf("econ = %d \n", econ);
 
     std::printf("A = (matlab base-1)\n");
-    print_matrix(m, n, A.data(), lda, CUBLAS_OP_T);
+    print_matrix(m, n, A.data(), lda);
     std::printf("=====\n");
 
     /* step 1: create cusolver handle, bind a stream */

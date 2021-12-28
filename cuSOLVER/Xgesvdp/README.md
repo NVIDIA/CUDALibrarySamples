@@ -72,50 +72,25 @@ $  ./cusolver_Xgesvdp_example
 Sample example output:
 
 ```
-A = (matlab base-1)
-1 2
-4 5
-2 1
+AA = (matlab base-1)
+1.00 2.00
+4.00 5.00
+2.00 1.00
 =====
-after gesvdp: info_gpu = 0
-=====
-S = (matlab base-1)
-7.06528
-4.79244e-322
-=====
-U = (matlab base-1)
-0.308219 0.906133 0.289695
-0.488195 0.110706 -0.865685
-0.816497 -0.408248 0.408248
-=====
-V = (matlab base-1)
-0.638636 0.769509
--0.769509 0.638636
-=====
-|S - S_exact| = 8.881784E-16
-|A - U*S*V**T| = 3.802413E-15
-h_err_sigma = 0.000000E+00
-h_err_sigma is 0 if the singular value of A is not close to zero
-
-A = (matlab base-1)
-1 2
-4 5
-2 1
-=====
-after gesvdp: info_gpu = 0
+after Xgesvdp: info = 0
 =====
 S = (matlab base-1)
-7.06528
-4.79244e-322
+7.07
+1.04
 =====
 U = (matlab base-1)
-0.308219 0.906133
-0.488195 0.110706
-0 0
+0.31 0.49
+0.91 0.11
+0.29 -0.87
 =====
 V = (matlab base-1)
-0.638636 0.769509
--0.769509 0.638636
+0.64 -0.77
+0.77 0.64
 =====
 |S - S_exact| = 8.881784E-16
 |A - U*S*V**T| = 3.802413E-15
