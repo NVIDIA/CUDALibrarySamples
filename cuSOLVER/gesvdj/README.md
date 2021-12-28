@@ -69,23 +69,23 @@ tol = 1.000000E-07, default value is machine zero
 max. sweeps = 15, default value is 100
 econ = 0
 A = (matlab base-1)
-1 2
-4 5
-2 1
+1.00 2.00
+4.00 5.00
+2.00 1.00
 =====
 gesvdj converges
 S = singular values (matlab base-1)
-7.06528
-1.58101e-322
+7.07
+1.04
 =====
 U = left singular vectors (matlab base-1)
-0.308219 0.906133 0.289695
--0.488195 -0.110706 0.865685
-0.816497 -0.408248 0.408248
+0.31 -0.49 0.82
+0.91 -0.11 -0.41
+0.29 0.87 0.41
 =====
 V = right singular vectors (matlab base-1)
-0.638636 0.769509
-0.769509 -0.638636
+0.64 0.77
+0.77 -0.64
 =====
 |S - S_exact|_sup = 4.440892E-16
 residual |A - U*S*V**H|_F = 3.511066E-16

@@ -67,9 +67,9 @@ int main(int argc, char *argv[]) {
     const int lda = m; /* lda >= m */
 
     /*
-     *       | 1 2  |
-     *   A = | 4 5  |
-     *       | 2 1  |
+     *       | 1 2 |
+     *   A = | 4 5 |
+     *       | 2 1 |
      */
 
     const std::vector<double> A = {1.0, 4.0, 2.0, 2.0, 5.0, 1.0};
@@ -96,7 +96,7 @@ int main(int argc, char *argv[]) {
     const double h_minus_one = -1;
 
     std::printf("A = (matlab base-1)\n");
-    print_matrix(m, n, A.data(), lda, CUBLAS_OP_T);
+    print_matrix(m, n, A.data(), lda);
     std::printf("=====\n");
 
     /* step 1: create cusolver handle, bind a stream */
@@ -152,7 +152,7 @@ int main(int argc, char *argv[]) {
     }
 
     std::printf("S = singular values (matlab base-1)\n");
-    print_matrix(n, 1, S.data(), n, CUBLAS_OP_T);
+    print_matrix(n, 1, S.data(), n);
     std::printf("=====\n");
 
     std::printf("U = left singular vectors (matlab base-1)\n");

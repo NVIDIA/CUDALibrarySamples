@@ -102,11 +102,11 @@ int main(int argc, char *argv[]) {
     const cusolverEigMode_t jobz = CUSOLVER_EIG_MODE_VECTOR; /* compute eigenvectors */
 
     std::printf("A0 = (matlab base-1)\n");
-    print_matrix(m, n, A.data(), lda, CUBLAS_OP_T);
+    print_matrix(m, n, A.data(), lda);
     std::printf("=====\n");
 
     std::printf("A1 = (matlab base-1)\n");
-    print_matrix(m, n, A.data() + strideA, lda, CUBLAS_OP_T);
+    print_matrix(m, n, A.data() + strideA, lda);
     std::printf("=====\n");
 
     /* step 1: create cusolver handle, bind a stream */
@@ -194,15 +194,15 @@ int main(int argc, char *argv[]) {
     }
 
     std::printf("S0 = (matlab base-1)\n");
-    print_matrix(rank, 1, S.data(), n, CUBLAS_OP_T);
+    print_matrix(rank, 1, S.data(), n);
     std::printf("=====\n");
 
     std::printf("U0 = (matlab base-1)\n");
-    print_matrix(m, rank, U.data(), ldu, CUBLAS_OP_T);
+    print_matrix(m, rank, U.data(), ldu);
     std::printf("=====\n");
 
     std::printf("V) = (matlab base-1)\n");
-    print_matrix(n, rank, V.data(), ldv, CUBLAS_OP_T);
+    print_matrix(n, rank, V.data(), ldv);
     std::printf("=====\n");
 
     float ds_sup = 0;
@@ -215,15 +215,15 @@ int main(int argc, char *argv[]) {
     std::printf("residual |A0 - U0*S0*V0**H|_F = %E \n", RnrmF[0]);
 
     std::printf("S1 = (matlab base-1)\n");
-    print_matrix(rank, 1, S.data() + strideS, n, CUBLAS_OP_T);
+    print_matrix(rank, 1, S.data() + strideS, n);
     std::printf("=====\n");
 
     std::printf("U1 = (matlab base-1)\n");
-    print_matrix(m, rank, U.data() + strideU, ldu, CUBLAS_OP_T);
+    print_matrix(m, rank, U.data() + strideU, ldu);
     std::printf("=====\n");
 
     std::printf("V1 = (matlab base-1)\n");
-    print_matrix(n, rank, V.data() + strideV, ldv, CUBLAS_OP_T);
+    print_matrix(n, rank, V.data() + strideV, ldv);
     std::printf("=====\n");
 
     ds_sup = 0;

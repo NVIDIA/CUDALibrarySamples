@@ -66,9 +66,9 @@ Sample example output:
 
 ```
 A = (matlab base-1)
-3.5 0.5 0
-0.5 3.5 0
-0 0 2
+3.50 0.50 0.00
+0.50 3.50 0.00
+0.00 0.00 2.00
 =====
 after syevd: info = 0
 eigenvalue = (matlab base-1), ascending order
@@ -76,9 +76,9 @@ W[1] = 2.000000E+00
 W[2] = 3.000000E+00
 W[3] = 4.000000E+00
 V = (matlab base-1)
-0 0 1
--0.707107 0.707107 0
-0 0 2
+0.00 -0.71 0.00
+0.00 0.71 0.00
+1.00 0.00 2.00
 =====
 Eigenvalues found = 2
 |lambda - W| = 0.000000E+00
