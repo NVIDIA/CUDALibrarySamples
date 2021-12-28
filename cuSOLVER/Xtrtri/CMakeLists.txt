@@ -76,11 +76,11 @@ include(../cmake/cusolver_example.cmake)
 
 include_directories("${CMAKE_SOURCE_DIR}/../utils")
 
-# trtri was added in CUDA 11.4
+# Xtrtri was added in CUDA 11.4
 if(NOT CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "11.4")
-    add_cusolver_example(cusolver_examples "cusolver_trtri_example" cusolver_trtri_example.cu)
+    add_cusolver_example(cusolver_examples "cusolver_Xtrtri_example" cusolver_Xtrtri_example.cu)
 else()
-    message("TRTRI solver routine was introduced in CUDA 11.4, update toolkit to get TRTRI functionality in cuSOLVER")
+    message("XTRTRI solver routine was introduced in CUDA 11.4, update toolkit to get XTRTRI functionality in cuSOLVER")
 endif()
 
 # ##########################################

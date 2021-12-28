@@ -1,8 +1,8 @@
-# cuSOLVER triangular matrix inversion computation example
+# cuSOLVER Triangular Matrix Inversion Computation example
 
 ## Description
 
-This code demonstrates a usage of cuSOLVER trtri function introduced in CUDA 11.4 that provides interface to compute the inverse of a upper or lower triangular
+This code demonstrates a usage of cuSOLVER Xtrtri function introduced in CUDA 11.4 that provides interface to compute the inverse of a upper or lower triangular
  matrix.
 Examples perform following steps for both APIs:
 - Generating random diagonal dominant matrix of provided type on the host
@@ -62,7 +62,7 @@ $ Open cusolver_examples.sln project in Visual Studio and build
 
 # Usage
 ```
-$  ./cusolver_trtri_example
+$  ./cusolver_Xtrtri_example
 ```
 
 Sample example output:
