@@ -95,10 +95,10 @@ int main(int argc, char *argv[]) {
     const double one = 1;
 
     std::printf("A = (matlab base-1)\n");
-    print_matrix(m, m, A.data(), lda, CUBLAS_OP_T);
+    print_matrix(m, m, A.data(), lda);
     std::printf("=====\n");
     std::printf("B = (matlab base-1)\n");
-    print_matrix(m, nrhs, B.data(), ldb, CUBLAS_OP_T);
+    print_matrix(m, nrhs, B.data(), ldb);
     std::printf("=====\n");
 
     /* step 1: create cudense/cublas handle */
@@ -169,7 +169,7 @@ int main(int argc, char *argv[]) {
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
     std::printf("X = (matlab base-1)\n");
-    print_matrix(m, nrhs, XC.data(), ldb, CUBLAS_OP_T);
+    print_matrix(m, nrhs, XC.data(), ldb);
 
     /* free resources */
     CUDA_CHECK(cudaFree(d_A));

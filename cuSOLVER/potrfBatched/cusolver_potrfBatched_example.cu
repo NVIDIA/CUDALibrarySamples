@@ -106,7 +106,7 @@ int main(int argc, char *argv[]) {
     std::printf("=====\n");
 
     std::printf("B0 = (matlab base-1)\n");
-    print_matrix(m, 1, B0.data(), ldb, CUBLAS_OP_T);
+    print_matrix(m, 1, B0.data(), ldb);
     std::printf("=====\n");
 
     /* step 1: create cusolver handle, bind a stream */
@@ -186,7 +186,7 @@ int main(int argc, char *argv[]) {
     }
 
     std::printf("X0 = (matlab base-1)\n");
-    print_matrix(m, 1, X0.data(), ldb, CUBLAS_OP_T);
+    print_matrix(m, 1, X0.data(), ldb);
     std::printf("=====\n");
 
     /* free resources */

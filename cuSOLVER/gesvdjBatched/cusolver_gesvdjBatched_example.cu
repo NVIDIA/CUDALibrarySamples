@@ -141,11 +141,11 @@ int main(int argc, char *argv[]) {
     std::printf("max. sweeps = %d, default value is 100\n", max_sweeps);
 
     std::printf("A0 = (matlab base-1)\n");
-    print_matrix(m, n, A.data(), lda, CUBLAS_OP_T);
+    print_matrix(m, n, A.data(), lda);
     std::printf("=====\n");
 
     std::printf("A1 = (matlab base-1)\n");
-    print_matrix(m, n, A.data() + lda * n, lda, CUBLAS_OP_T);
+    print_matrix(m, n, A.data() + lda * n, lda);
     std::printf("=====\n");
 
     /* step 1: create cusolver handle, bind a stream */

@@ -71,9 +71,9 @@ Sample example output:
 tol = 1.000000E-07, default value is machine zero
 max. sweeps = 15, default value is 100
 A = (matlab base-1)
-3.5 0.5 0
-0.5 3.5 0
-0 0 2
+3.50 0.50 0.00
+0.50 3.50 0.00
+0.00 0.00 2.00
 =====
 syevj converges
 Eigenvalue = (matlab base-1), ascending order
@@ -81,9 +81,9 @@ W[1] = 2.000000E+00
 W[2] = 3.000000E+00
 W[3] = 4.000000E+00
 V = (matlab base-1)
-0 0 1
-0.707107 -0.707107 0
-0.707107 0.707107 0
+0.00 0.71 0.71
+0.00 -0.71 0.71
+1.00 0.00 0.00
 =====
 |lambda - W| = 1.332268E-15
 residual |A - V*W*V**H|_F = 3.344748E-17

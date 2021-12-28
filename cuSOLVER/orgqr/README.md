@@ -70,15 +70,15 @@ Sample example output:
 
 ```
 A = (matlab base-1)
-1 2
-4 5
-2 1
+1.00 2.00
+4.00 5.00
+2.00 1.00
 =====
-after geqrf: info_gpu = 0
-after ormqr: info_gpu = 0
+after geqrf: info = 0
+after ormqr: info = 0
 Q = (matlab base-1)
--0.218218 0.534522
--0.872872 0.267261
--0.436436 -0.801784
+-0.22 0.53
+-0.87 0.27
+-0.44 -0.80
 |I - Q**T*Q| = 1.414214E+00
 ```

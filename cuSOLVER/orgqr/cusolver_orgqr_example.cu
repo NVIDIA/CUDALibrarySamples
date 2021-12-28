@@ -93,7 +93,7 @@ int main(int argc, char *argv[]) {
     const double h_minus_one = -1;
 
     std::printf("A = (matlab base-1)\n");
-    print_matrix(m, n, A.data(), lda, CUBLAS_OP_T);
+    print_matrix(m, n, A.data(), lda);
     std::printf("=====\n");
 
     /* step 1: create cudense/cublas handle */
@@ -156,7 +156,7 @@ int main(int argc, char *argv[]) {
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
     std::printf("Q = (matlab base-1)\n");
-    print_matrix(m, n, Q.data(), lda, CUBLAS_OP_T);
+    print_matrix(m, n, Q.data(), lda);
 
     // step 6: measure R = I - Q**T*Q
     CUDA_CHECK(

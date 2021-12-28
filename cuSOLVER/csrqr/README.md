@@ -72,7 +72,6 @@ $  ./cusolver_csrqr_example1
 Sample example output:
 
 ```
-numerical factorization needs internal data 2312 bytes
 numerical factorization needs working space 209664 bytes
 batchId 0: sup|bj - Aj*xj| = 6.661338E-16
 batchId 1: sup|bj - Aj*xj| = 1.110223E-15

@@ -176,26 +176,42 @@ template <> struct traits<cuDoubleComplex> {
     inline static T mul(T v, double f) { return make_cuDoubleComplex(v.x * f, v.y * f); }
 };
 
-template <typename T>
-void print_matrix(int m, int n, T* A, int lda, cublasOperation_t trans=CUBLAS_OP_N)
-{
-    if (trans == CUBLAS_OP_N)
-    {
-        for (int i = 0; i < m; i++)
-        {
-            T* A_row = A + lda*i;
-            for (int j = 0; j < n; j++)
-                std::cout << A_row[j] << " ";
-            std::cout << std::endl;
+template <typename T> void print_matrix(const int &m, const int &n, const T *A, const int &lda);
+
+template <> void print_matrix(const int &m, const int &n, const float *A, const int &lda) {
+    for (int i = 0; i < m; i++) {
+        for (int j = 0; j < n; j++) {
+            std::printf("%0.2f ", A[j * lda + i]);
         }
-    } else {
-        for (int i = 0; i < m; i++)
-        {
-            T* A_row = A + i;
-            for (int j = 0; j < n; j++)
-                std::cout << A_row[j*m] << " ";
-            std::cout << std::endl;
+        std::printf("\n");
+    }
+}
+
+template <> void print_matrix(const int &m, const int &n, const double *A, const int &lda) {
+    for (int i = 0; i < m; i++) {
+        for (int j = 0; j < n; j++) {
+            std::printf("%0.2f ", A[j * lda + i]);
         }
+        std::printf("\n");
+    }
+}
+
+template <> void print_matrix(const int &m, const int &n, const cuComplex *A, const int &lda) {
+    for (int i = 0; i < m; i++) {
+        for (int j = 0; j < n; j++) {
+            std::printf("%0.2f + %0.2fj ", A[j * lda + i].x, A[j * lda + i].y);
+        }
+        std::printf("\n");
+    }
+}
+
+template <>
+void print_matrix(const int &m, const int &n, const cuDoubleComplex *A, const int &lda) {
+    for (int i = 0; i < m; i++) {
+        for (int j = 0; j < n; j++) {
+            std::printf("%0.2f + %0.2fj ", A[j * lda + i].x, A[j * lda + i].y);
+        }
+        std::printf("\n");
     }
 }
 

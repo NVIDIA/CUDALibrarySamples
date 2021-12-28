@@ -70,19 +70,19 @@ Sample example output:
 
 ```
 A = (matlab base-1)
-1 2 3
-4 5 6
-2 1 1
+1.00 2.00 3.00
+4.00 5.00 6.00
+2.00 1.00 1.00
 =====
 B = (matlab base-1)
-6
-15
-4
+6.00
+15.00
+4.00
 =====
 after geqrf: info = 0
 after ormqr: info = 0
 X = (matlab base-1)
-1
-1
-1
+1.00
+1.00
+1.00
 ```
