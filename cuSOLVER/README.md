@@ -56,6 +56,12 @@ This folder demonstrates cuSOLVER APIs usage.
 
     The sample demonstrates *standard symmetric eigenvalue* solver, using 64-bit APIs. See example for detailed description.
 
+##### 64-bit Standard Symmetric Dense Eigenvalue solver example
+
+* [cuSOLVER Xsyevdx](Xsyevdx/)
+
+    The sample demonstrates *standard symmetric eigenvalue* solver, using 64-bit APIs. See example for detailed description.
+
 ##### Batched Sparse QR Factorizaion examples
 
 * [cuSOLVER csrqr](csrqr/)
