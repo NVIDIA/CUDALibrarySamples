@@ -47,7 +47,7 @@ class EinsumFunction(torch.autograd.Function):
         if input_1 is None:
             input_1 = input_0.new_empty((1,))
 
-        output = einsum(equation, input_0, input_1)
+        output = einsum(equation, input_0, input_1, False, False)
 
         if isBinary:
             ctx.save_for_backward(input_0, input_1)
@@ -63,15 +63,18 @@ class EinsumFunction(torch.autograd.Function):
         lhs, modeC = equation.split('->')
         if ctx.isBinary:
             input_0, input_1 = ctx.saved_tensors
+            conjugate = False
+            if torch.is_complex(input_0) or torch.is_complex(input_1):
+                conjugate = True
             modeA, modeB = lhs.split(',')
             d_input_0 = einsum(modeC + ',' + modeB + '->' + modeA, grad_output,
-                               input_1)
+                               input_1, False, conjugate)
             d_input_1 = einsum(modeA + ',' + modeC + '->' + modeB, input_0,
-                               grad_output)
+                               grad_output, conjugate, False)
             return None, d_input_0, d_input_1
         else:
             dummy = grad_output.new_empty((1,))
-            d_input = einsum(modeC + '->' + lhs, grad_output, dummy)
+            d_input = einsum(modeC + '->' + lhs, grad_output, dummy, False, False)
             return None, d_input
 
 
