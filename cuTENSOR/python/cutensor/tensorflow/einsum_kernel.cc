@@ -40,14 +40,14 @@
 template<>
 struct CuTensorTypeTraits<Eigen::half> {
   static const cudaDataType_t cudaType = CUDA_R_16F;
-  static const cutensorComputeType_t cutensorType = CUTENSOR_R_MIN_32F;
+  static const cutensorComputeType_t cutensorType = CUTENSOR_COMPUTE_32F;
   typedef float ScalarType;
 };
 
 template<>
 struct CuTensorTypeTraits<tensorflow::bfloat16> {
   static const cudaDataType_t cudaType = CUDA_R_16BF;
-  static const cutensorComputeType_t cutensorType = CUTENSOR_R_MIN_32F;
+  static const cutensorComputeType_t cutensorType = CUTENSOR_COMPUTE_32F;
   typedef float ScalarType;
 };
 
@@ -81,7 +81,7 @@ class EinsumCuTensorOp : public OpKernel {
     for (int i = 0; i < input_1_tensor.dims(); i++)
         input_1_shape.push_back(input_1_tensor.dim_size(i));
 
-    constexpr int kMaxNumModes_ = 40; // maximal number of modes supported by cuTENSOR
+    constexpr int kMaxNumModes_ = 64; // maximal number of modes supported by cuTENSOR
     Einsum<T, int64, kMaxNumModes_> myEinsum(equation_, input_0_shape, input_1_shape);
     OP_REQUIRES(context, myEinsum.isInitialized(), errors::Internal("cutensor: Initialization failed."));
 

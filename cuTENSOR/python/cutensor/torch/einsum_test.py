@@ -45,17 +45,24 @@ class EinsumTest(unittest.TestCase):
         [
             param(
                 "test 0",
+                a_size=(48, 37),
+                b_size=(37, 74),
+                equation="ik,kj->ij",
+                dtype=torch.float32,
+            ),
+            param(
+                "test 0 (complex)",
                 a_size=(50, 50),
                 b_size=(50, 50),
                 equation="ik,kj->ij",
-                dtype=torch.float32,
+                dtype=torch.complex64,
             ),
             param(
                 "test 1",
                 a_size=(50, 50, 50),
                 b_size=(50, 50, 50),
                 equation="lik,lkj->lij",
-                dtype=torch.float32,
+                dtype=torch.complex128,
             ),
             param(
                 "test 2",
@@ -129,6 +136,7 @@ class EinsumTest(unittest.TestCase):
             'requires_grad': True
         }
 
+        torch.manual_seed(0)
 
         cutensor_A = torch.randn(*a_size, **kwargs)
         cutensor_B = torch.randn(*b_size, **kwargs)
@@ -176,9 +184,21 @@ class EinsumTest(unittest.TestCase):
                 equation="ik,kl,lj",
                 dtype=torch.float32,
             ),
-            # single input currently not supported
             param(
                 "test 3",
+                sizes=[(50, 60), (60, 7), (7, 8)],
+                equation="ik,kl,lj->ij",
+                dtype=torch.complex64,
+            ),
+            param(
+                "test 3",
+                sizes=[(50, 60), (60, 7), (7, 8)],
+                equation="ik,kl,lj->ij",
+                dtype=torch.complex64,
+            ),
+            # single input currently not supported
+            param(
+                "test 4",
                 sizes=[(50, 60)],
                 equation="ij->ji",
                 dtype=torch.float32,

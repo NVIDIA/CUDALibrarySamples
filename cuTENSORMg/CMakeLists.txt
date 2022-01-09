@@ -33,7 +33,7 @@ cmake_minimum_required(VERSION 3.12.0 FATAL_ERROR)
 include(GNUInstallDirs)
 
 # ---[ Project specIFication.
-project(cutensor_example LANGUAGES C CXX CUDA)
+project(cutensormg_example LANGUAGES C CXX CUDA)
 
 # ##########################################
 # cuTENSOR_example build mode
@@ -66,12 +66,16 @@ else()
   endif()
 endif()
 
-if(NOT TARGET cutensor)
+if((NOT TARGET cutensor) AND (NOT TARGET cutensorMg))
+  add_library(cutensorMg SHARED IMPORTED)
   add_library(cutensor SHARED IMPORTED)
   if(WIN32)
+    set(CUTENSORMG_LIBRARY_NAME "cutensorMg.dll")
     set(CUTENSOR_LIBRARY_NAME "cutensor.dll")
+    set(CUTENSORMG_LIBRARY_DEF "cutensorMg.lib")
     set(CUTENSOR_LIBRARY_DEF "cutensor.lib")
   else()
+    set(CUTENSORMG_LIBRARY_NAME "libcutensorMg.so")
     set(CUTENSOR_LIBRARY_NAME "libcutensor.so")
   endif()
   if((${CUDA_VERSION_MAJOR} LESS_EQUAL 10))
@@ -81,6 +85,10 @@ if(NOT TARGET cutensor)
   elseif((${CUDA_VERSION_MAJOR} GREATER_EQUAL 11) AND (${CUDA_VERSION_MINOR} GREATER_EQUAL 1))
       set(LIB_DIR "/lib/11")
   endif()
+  set_target_properties(cutensorMg PROPERTIES
+    IMPORTED_LOCATION "${CUTENSOR_ROOT}/${LIB_DIR}/${CUTENSORMG_LIBRARY_NAME}"
+    IMPORTED_IMPLIB "${CUTENSOR_ROOT}/${LIB_DIR}/${CUTENSORMG_LIBRARY_DEF}"
+    INTERFACE_INCLUDE_DIRECTORIES "${CUTENSOR_ROOT}/include")
   set_target_properties(cutensor PROPERTIES
     IMPORTED_LOCATION "${CUTENSOR_ROOT}/${LIB_DIR}/${CUTENSOR_LIBRARY_NAME}"
     IMPORTED_IMPLIB "${CUTENSOR_ROOT}/${LIB_DIR}/${CUTENSOR_LIBRARY_DEF}"
@@ -88,9 +96,9 @@ if(NOT TARGET cutensor)
 endif()
 
 # Installation directories
-if(NOT DEFINED CUTENSOR_EXAMPLE_BINARY_INSTALL_DIR)
-  message(WARNING "CUTENSOR_EXAMPLE_BINARY_INSTALL_DIR not set, setting to cutensor_example/bin")
-  set(CUTENSOR_EXAMPLE_BINARY_INSTALL_DIR "cutensor_example/bin")
+if(NOT DEFINED CUTENSORMG_EXAMPLE_BINARY_INSTALL_DIR)
+  message(WARNING "CUTENSORMG_EXAMPLE_BINARY_INSTALL_DIR not set, setting to cutensormg_example/bin")
+  set(CUTENSORMG_EXAMPLE_BINARY_INSTALL_DIR "cutensormg_example/bin")
 endif()
 
 # ##########################################
@@ -114,7 +122,7 @@ set(CMAKE_CUDA_EXTENSIONS OFF)
 # cuTENSOR_example target
 # ##########################################
 
-function(add_cutensor_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
+function(add_cutensormg_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
     list(GET EXAMPLE_SOURCES 0 EXAMPLE_MAIN_SOURCE)
     get_filename_component(EXAMPLE_TARGET ${EXAMPLE_MAIN_SOURCE} NAME_WE)
     add_executable(${EXAMPLE_TARGET} ${EXAMPLE_SOURCES})
@@ -122,12 +130,12 @@ function(add_cutensor_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
         PUBLIC
             ${CUDA_INCLUDE_DIRS}
             ${CUTENSOR_ROOT}/include
+            ${CUTENSOR_ROOT}/cutensorMg/include
     )
     target_link_libraries(${EXAMPLE_TARGET}
         PUBLIC
+            cutensorMg
             cutensor
-            cudart
-            cublasLt
     )
     set_target_properties(${EXAMPLE_TARGET} PROPERTIES
         POSITION_INDEPENDENT_CODE ON
@@ -145,17 +153,9 @@ function(add_cutensor_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
     add_dependencies(${GROUP_TARGET} ${EXAMPLE_TARGET})
 endfunction()
 
-add_custom_target(cutensor_examples)
+add_custom_target(cutensormg_examples)
 
-add_cutensor_example(cutensor_examples "cuTENSOR.example.einsum" einsum.cu)
-add_cutensor_example(cutensor_examples "cuTENSOR.example.contraction" contraction.cu)
-add_cutensor_example(cutensor_examples "cuTENSOR.example.contraction_autotuning" contraction_autotuning.cu)
-add_cutensor_example(cutensor_examples "cuTENSOR.example.contraction_simple" contraction_simple.cu)
-add_cutensor_example(cutensor_examples "cuTENSOR.example.contraction_plan_cache" contraction_plan_cache.cu)
-add_cutensor_example(cutensor_examples "cuTENSOR.example.elementwise_binary" elementwise_binary.cu)
-add_cutensor_example(cutensor_examples "cuTENSOR.example.elementwise_permute" elementwise_permute.cu)
-add_cutensor_example(cutensor_examples "cuTENSOR.example.elementwise_trinary" elementwise_trinary.cu)
-add_cutensor_example(cutensor_examples "cuTENSOR.example.reduction" reduction.cu)
+add_cutensormg_example(cutensormg_examples "cuTENSORMg.example.contraction_multi_gpu" contraction_multi_gpu.cu)
 
 # ##########################################
 # cuTENSOR_example directories
