@@ -40,26 +40,44 @@
 template<>
 struct CuTensorTypeTraits<at::Half> {
   static const cudaDataType_t cudaType = CUDA_R_16F;
-  static const cutensorComputeType_t cutensorType = CUTENSOR_R_MIN_32F;
+  static const cutensorComputeType_t cutensorType = CUTENSOR_COMPUTE_32F;
   typedef float ScalarType;
 };
 
 template<>
 struct CuTensorTypeTraits<at::BFloat16> {
   static const cudaDataType_t cudaType = CUDA_R_16BF;
-  static const cutensorComputeType_t cutensorType = CUTENSOR_R_MIN_32F;
+  static const cutensorComputeType_t cutensorType = CUTENSOR_COMPUTE_32F;
   typedef float ScalarType;
+};
+
+template<>
+struct CuTensorTypeTraits<c10::complex<float>> {
+  static const cudaDataType_t cudaType = CUDA_C_32F;
+  static const cutensorComputeType_t cutensorType = CUTENSOR_COMPUTE_32F;
+  typedef c10::complex<float> ScalarType;
+};
+
+template<>
+struct CuTensorTypeTraits<c10::complex<double>> {
+  static const cudaDataType_t cudaType = CUDA_C_64F;
+  static const cutensorComputeType_t cutensorType = CUTENSOR_COMPUTE_64F;
+  typedef c10::complex<double> ScalarType;
 };
 
 torch::Tensor einsum(
     std::string subscripts,
     torch::Tensor input_0,
-    torch::Tensor input_1
+    torch::Tensor input_1,
+    bool conjA = false,
+    bool conjB = false
 ) {
   at::Tensor output_tensor;
-  AT_DISPATCH_FLOATING_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, input_0.scalar_type(), "einsum", [&] {
-    constexpr int kMaxNumModes_ = 40; // maximal number of modes supported by cuTENSOR
-    Einsum<scalar_t, int64_t, kMaxNumModes_> myEinsum(subscripts, input_0.sizes().vec(), input_1.sizes().vec());
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, input_0.scalar_type(), "einsum", [&] {
+    constexpr int kMaxNumModes_ = 64; // maximal number of modes supported by cuTENSOR
+    cutensorOperator_t opA = conjA ? CUTENSOR_OP_CONJ : CUTENSOR_OP_IDENTITY;
+    cutensorOperator_t opB = conjB ? CUTENSOR_OP_CONJ : CUTENSOR_OP_IDENTITY;
+    Einsum<scalar_t, int64_t, kMaxNumModes_> myEinsum(subscripts, input_0.sizes().vec(), input_1.sizes().vec(), opA, opB);
     if (!myEinsum.isInitialized()) {
       throw std::runtime_error("cutensor: Initialization failed.");
     }
