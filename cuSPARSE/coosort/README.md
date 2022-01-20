@@ -28,9 +28,9 @@ This sample demonstrates the usage of `cusparseXcoosortByRow` to perform sorting
 * **Supported OSes:** Linux, Windows, QNX, Android
 * **Supported CPU Architectures**: x86_64, ppc64le, arm64
 * **Supported Compilers**: gcc, clang, Intel icc, IBM xlc, Microsoft msvc, Nvidia HPC SDK nvc
-* **Language**: `C++11`
+* **Language**: `C99`
 
 ## Prerequisites
 
 * [CUDA 11.0 toolkit](https://developer.nvidia.com/cuda-downloads) (or above) and compatible driver (see [CUDA Driver Release Notes](https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/index.html#cuda-major-component-versions)).
-* [CMake 3.18](https://cmake.org/download/) or above on Windows
+* [CMake 3.9](https://cmake.org/download/) or above on Windows

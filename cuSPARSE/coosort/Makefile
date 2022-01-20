@@ -50,14 +50,14 @@ LIBS         := -lcudart -lcusparse
 
 all: coosort_example
 
-coosort_example: coosort_example.cu
-	nvcc $(INC) coosort_example.cu -o coosort_example $(LIBS)
+coosort_example: coosort_example.c
+	nvcc $(INC) coosort_example.c -o coosort_example $(LIBS)
 
 clean:
 	rm -f coosort_example
 
 test:
-	@echo "\n==== Axpby Test ====\n"
+	@echo "\n==== CooSort Test ====\n"
 	./coosort_example
 
 .PHONY: clean all test

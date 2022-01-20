@@ -107,7 +107,7 @@ int main(void) {
     // Create dense vector y
     CHECK_CUSPARSE( cusparseCreateDnVec(&vecY, size, dY, CUDA_R_32F) )
 
-    // execute Axpby
+    // execute Gather
     CHECK_CUSPARSE( cusparseGather(handle, vecY, vecX) )
 
     // destroy matrix/vector descriptors
