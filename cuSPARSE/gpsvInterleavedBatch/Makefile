@@ -50,14 +50,15 @@ LIBS         := -lcudart -lcusparse -lcublas
 
 all: gpsvInterleavedBatch_example
 
-gpsvInterleavedBatch_example: gpsvInterleavedBatch_example.cu
-	nvcc $(INC) gpsvInterleavedBatch_example.cu -o gpsvInterleavedBatch_example $(LIBS)
+gpsvInterleavedBatch_example: gpsvInterleavedBatch_example.c
+	nvcc $(INC) gpsvInterleavedBatch_example.c \
+                -o gpsvInterleavedBatch_example $(LIBS)
 
 clean:
 	rm -f gpsvInterleavedBatch_example
 
 test:
-	@echo "\n==== Axpby Test ====\n"
+	@echo "\n==== gpsvInterleavedBatch Test ====\n"
 	./gpsvInterleavedBatch_example
 
 .PHONY: clean all test
