@@ -82,12 +82,19 @@ int main(void) {
     int   ldc          = A_num_rows;
     int   B_size       = ldb * B_num_cols;
     int   C_size       = ldc * B_num_cols;
-    int   num_batches = 2;
+    int   num_batches  = 2;
 
     int   hA_rows[]     = { 0, 0, 0, 1, 2, 2, 2, 3, 3 };
-    int   hA_columns[]  = { 0, 2, 3, 1, 0, 2, 3, 1, 3 };
-    float hA_values[]   = { 1.0f, 2.0f, 3.0f, 4.0f, 5.0f,
-                             6.0f, 7.0f, 8.0f, 9.0f };
+    int   hA_columns1[] = { 0, 2, 3, 1, 0, 2, 3, 1, 3 };
+    int   hA_columns2[] = { 1, 2, 3, 0, 0, 1, 3, 1, 2 };
+    float hA_values1[]  = { /*0*/ 1.0f, 2.0f, 3.0f,
+                            4.0f, /*0*/ /*0*/ /*0*/
+                            5.0f, /*0*/ 6.0f, 7.0f,
+                            /*0*/ 8.0f, /*0*/ 9.0f };
+    float hA_values2[]  = { /*0*/ 10.0f,  11.0f, 12.0f,
+                            13.0f, /*0*/  /*0*/ /*0*/
+                            14.0f, 15.0f, /*0*/ 16.0f,
+                            /*0*/ 17.0f, 18.0f  /*0*/ };
     float hB1[]         = { 1.0f,  2.0f,  3.0f,  4.0f,
                             5.0f,  6.0f,  7.0f,  8.0f,
                             9.0f, 10.0f, 11.0f, 12.0f };
@@ -105,27 +112,37 @@ int main(void) {
     float hC1_result[]  = { 19.0f,  8.0f,  51.0f,  52.0f,
                             43.0f, 24.0f, 123.0f, 120.0f,
                             67.0f, 40.0f, 195.0f, 188.0f };
-
-    float hC2_result[]     = { 18.0f,  16.0f,  62.0f,  50.0f,
-                               43.0f, 24.0f, 115.0f, 120.0f,
-                               28.0f, 12.0f, 92.0f, 69.0f };
+    float hC2_result[]  = { 97.0f,  78.0f,  176.0f, 122.0f,
+                            255.0f, 13.0f,  232.0f, 264.0f,
+                            112.0f, 117.0f, 251.0f, 87.0f };
     float  alpha        = 1.0f;
     float  beta         = 0.0f;
     //--------------------------------------------------------------------------
     // Device memory management
     int   *dA_rows, *dA_columns;
     float *dA_values, *dB, *dC;
-    CHECK_CUDA( cudaMalloc((void**) &dA_rows,    A_nnz * 2 * sizeof(int))    )
-    CHECK_CUDA( cudaMalloc((void**) &dA_columns, A_nnz * 2 * sizeof(int))    )
-    CHECK_CUDA( cudaMalloc((void**) &dA_values,  A_nnz * 2 * sizeof(float))  )
-    CHECK_CUDA( cudaMalloc((void**) &dB,         B_size * 2 * sizeof(float)) )
-    CHECK_CUDA( cudaMalloc((void**) &dC,         C_size * 2 * sizeof(float)) )
+    CHECK_CUDA( cudaMalloc((void**) &dA_rows,
+                           A_nnz * num_batches * sizeof(int)) )
+    CHECK_CUDA( cudaMalloc((void**) &dA_columns,
+                           A_nnz * num_batches * sizeof(int)) )
+    CHECK_CUDA( cudaMalloc((void**) &dA_values,
+                           A_nnz * num_batches * sizeof(float)) )
+    CHECK_CUDA( cudaMalloc((void**) &dB,
+                           B_size * num_batches * sizeof(float)) )
+    CHECK_CUDA( cudaMalloc((void**) &dC,
+                           C_size * num_batches * sizeof(float)) )
 
     CHECK_CUDA( cudaMemcpy(dA_rows, hA_rows, A_nnz * sizeof(int),
                            cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dA_columns, hA_columns, A_nnz * sizeof(int),
+    CHECK_CUDA( cudaMemcpy(dA_rows + A_nnz, hA_rows, A_nnz * sizeof(int),
                            cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dA_values, hA_values, A_nnz * sizeof(float),
+    CHECK_CUDA( cudaMemcpy(dA_columns, hA_columns1, A_nnz * sizeof(int),
+                           cudaMemcpyHostToDevice) )
+    CHECK_CUDA( cudaMemcpy(dA_columns + A_nnz, hA_columns2, A_nnz * sizeof(int),
+                           cudaMemcpyHostToDevice) )
+    CHECK_CUDA( cudaMemcpy(dA_values, hA_values1, A_nnz * sizeof(float),
+                           cudaMemcpyHostToDevice) )
+    CHECK_CUDA( cudaMemcpy(dA_values + A_nnz, hA_values2, A_nnz * sizeof(float),
                            cudaMemcpyHostToDevice) )
     CHECK_CUDA( cudaMemcpy(dB, hB1, B_size * sizeof(float),
                            cudaMemcpyHostToDevice) )
@@ -148,8 +165,9 @@ int main(void) {
                                       dA_rows, dA_columns, dA_values,
                                       CUSPARSE_INDEX_32I,
                                       CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F) )
-    // Multiple sparse matrices is currently not supported
-    CHECK_CUSPARSE( cusparseCooSetStridedBatch(matA, num_batches, 0) )
+    CHECK_CUSPARSE( cusparseCooSetStridedBatch(matA, num_batches, A_nnz) )
+    // Alternatively, the following code can be used for matA broadcast
+    // CHECK_CUSPARSE( cusparseCooSetStridedBatch(matA, num_batches, 0) )
     // Create dense matrix B
     CHECK_CUSPARSE( cusparseCreateDnMat(&matB, B_num_rows, B_num_cols, ldb, dB,
                                         CUDA_R_32F, CUSPARSE_ORDER_COL) )
