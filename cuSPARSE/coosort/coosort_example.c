@@ -86,6 +86,7 @@ int main(void) {
     double h_values[]  = {8.0, 5.0, 1.0, 9.0, 2.0, 11.0, 4.0, 3.0, 10.0, 6.0,
                           7.0};                                 // unsorted
     double h_values_sorted[11]; // nnz
+    int    h_permutation[11];   // nnz
     int    h_rows_ref[]    = {0, 0, 0, 1, 2, 2, 2, 3, 3, 4, 4}; // sorted
     int    h_columns_ref[] = {0, 2, 3, 1, 0, 2, 3, 1, 3, 1, 2}; // sorted
     double h_values_ref[]  = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0,
@@ -149,11 +150,14 @@ int main(void) {
                            cudaMemcpyDeviceToHost) )
     CHECK_CUDA( cudaMemcpy(h_values_sorted, d_values_sorted,
                            nnz * sizeof(double), cudaMemcpyDeviceToHost) )
+    CHECK_CUDA( cudaMemcpy(h_permutation, d_permutation,
+                           nnz * sizeof(int), cudaMemcpyDeviceToHost) )
     int correct = 1;
     for (int i = 0; i < nnz; i++) {
         if (h_rows[i]          != h_rows_ref[i]    ||
             h_columns[i]       != h_columns_ref[i] ||
-            h_values_sorted[i] != h_values_ref[i]) {
+            h_values_sorted[i] != h_values_ref[i]  ||
+            h_permutation[i]   != h_permutation_ref[i]) {
             correct = 0;
             break;
         }
