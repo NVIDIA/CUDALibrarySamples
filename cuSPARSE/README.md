@@ -14,6 +14,7 @@ This folder demonstrates cuSPARSE Generic APIs usage.
 - [Conversion](#conversion)
 - [Legacy APIs](#legacy-apis)
 - [Optimizations](#optimizations)
+- [Sparse Iterative Methods](#sparse-iterative-methods)
 
 ---
 
@@ -137,3 +138,8 @@ This folder demonstrates cuSPARSE Generic APIs usage.
 
     The sample demonstrates how to optimize *sparse vector - dense vector scaling and sum* (`cusparseAxpby`) by exploiting NVIDIA Ampere architecture *Hardware Memory Compression*
 
+##### Sparse Iterative Methods
+
+* [Preconditioned BiCGStab](bicgstab/)
+
+    The sample describes how to use the cuSPARSE and cuBLAS libraries to implement the Incomplete-LU preconditioned iterative *Biconjugate Gradient Stabilized Method (BiCGStab)*
