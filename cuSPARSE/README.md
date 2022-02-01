@@ -8,6 +8,15 @@ This folder demonstrates cuSPARSE Generic APIs usage.
 
 ## cuSPARSE Samples
 
+- [Vector - Vector Operations](#vector-vector-operations)
+- [Matrix - Vector Operations](#matrix-vector-operations)
+- [Matrix - Matrix Operations](#matrix-matrix-operations)
+- [Conversion](#conversion)
+- [Legacy APIs](#legacy-apis)
+- [Optimizations](#optimizations)
+
+---
+
 ##### Vector - Vector Operations
 
 * [cusparseAxpby](axpby/)
@@ -56,7 +65,11 @@ This folder demonstrates cuSPARSE Generic APIs usage.
 
 * [cusparseSpMM CSR - Batched](spmm_csr_batched/)
 
-    The sample demonstrates *batched sparse matrix - dense matrix multiplication = dense matrix*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
+    The sample demonstrates *batched sparse matrix - dense matrix multiplication = dense matrix* with custom operators, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
+
+* [cusparseSpMM CSR](spmm_csr_op/)
+
+    The sample demonstrates *sparse matrix - dense matrix multiplication = dense matrix*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
 
 * [cusparseSpMM COO](spmm_coo/)
 
@@ -104,6 +117,16 @@ This folder demonstrates cuSPARSE Generic APIs usage.
 
     The sample demonstrates *dense matrix to sparse matrix conversion*, where the sparse matrix is represented in Blocked-Ellpack storage format
 
+##### Legacy APIs
+
+* [cusparseXcoosortByRow](coosort/)
+
+    The sample demonstrates how to sort a COO format matrix
+
+* [cusparseSgpsvInterleavedBatch](gpsvInterleavedBatch/)
+
+    The sample demonstrates how to solves two penta-diagonal systems with NOT interleaved format
+
 ##### Optimizations
 
 * [CUDA Graph Capture](graph_capture/)
@@ -113,3 +136,4 @@ This folder demonstrates cuSPARSE Generic APIs usage.
 * [Hardware Memory Compression](compression/)
 
     The sample demonstrates how to optimize *sparse vector - dense vector scaling and sum* (`cusparseAxpby`) by exploiting NVIDIA Ampere architecture *Hardware Memory Compression*
+

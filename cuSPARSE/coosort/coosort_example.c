@@ -46,10 +46,10 @@
  * comments to the code, the above Disclaimer and U.S. Government End
  * Users Notice.
  */
-#include <cuda_runtime_api.h> // cudaMalloc, cudaMemcpy, etc.
-#include <cusparse.h>         // cusparseScatter
-#include <stdio.h>            // printf
-#include <stdlib.h>           // EXIT_FAILURE
+#include <cuda_runtime.h>
+#include <cusparse.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 #define CHECK_CUDA(func)                                                       \
 {                                                                              \
@@ -71,69 +71,107 @@
     }                                                                          \
 }
 
+//               | 1  0  2  3 |
+//               | 0  4  0  0 |
+// coo matrix:   | 5  0  6  7 |
+//               | 0  8  0  9 |
+//               | 0 10 11  0 |
+
 int main(void) {
-    // Host problem definition
-    int   size         = 8;
-    int   nnz          = 4;
-    int   hX_indices[] = { 0, 3, 4, 7 };
-    float hX_values[]  = { 1.0f, 2.0f, 3.0f, 4.0f };
-    float hY[]         = { 0.0f, 0.0f, 0.0f, 0.0f,
-                           0.0f, 0.0f, 0.0f, 0.0f };
-    float hY_result[]  = { 1.0f, 0.0f, 0.0f, 2.0f,
-                           3.0f, 0.0f, 0.0f, 4.0f };
+    int    num_rows     = 4;
+    int    num_columns  = 4;
+    int    nnz          = 11;
+    int    h_rows[]    = {3, 2, 0, 3, 0, 4, 1, 0, 4, 2, 2};     // unsorted
+    int    h_columns[] = {1, 0, 0, 3, 2, 2, 1, 3, 1, 2, 3};     // unsorted
+    double h_values[]  = {8.0, 5.0, 1.0, 9.0, 2.0, 11.0, 4.0, 3.0, 10.0, 6.0,
+                          7.0};                                 // unsorted
+    double h_values_sorted[11]; // nnz
+    int    h_permutation[11];   // nnz
+    int    h_rows_ref[]    = {0, 0, 0, 1, 2, 2, 2, 3, 3, 4, 4}; // sorted
+    int    h_columns_ref[] = {0, 2, 3, 1, 0, 2, 3, 1, 3, 1, 2}; // sorted
+    double h_values_ref[]  = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0,
+                              10.0, 11.0};                      // sorted
+    int    h_permutation_ref[] = {2, 4, 7, 6, 1, 9, 10, 0, 3, 8, 5};
+    // sort(h_coo_values)[i] = h_coo_values[h_permutation_ref[i]]
     //--------------------------------------------------------------------------
     // Device memory management
-    int   *dX_indices;
-    float *dY, *dX_values;
-    CHECK_CUDA( cudaMalloc((void**) &dX_indices, nnz * sizeof(int))    )
-    CHECK_CUDA( cudaMalloc((void**) &dX_values,  nnz * sizeof(float))  )
-    CHECK_CUDA( cudaMalloc((void**) &dY,         size * sizeof(float)) )
+    int    *d_rows, *d_columns, *d_permutation;
+    double *d_values, *d_values_sorted;
+    void   *d_buffer;
+    size_t bufferSize;
+    CHECK_CUDA( cudaMalloc((void**) &d_rows,          nnz * sizeof(int)) )
+    CHECK_CUDA( cudaMalloc((void**) &d_columns,       nnz * sizeof(int)) )
+    CHECK_CUDA( cudaMalloc((void**) &d_values,        nnz * sizeof(double)) )
+    CHECK_CUDA( cudaMalloc((void**) &d_values_sorted, nnz * sizeof(double)) )
+    CHECK_CUDA( cudaMalloc((void**) &d_permutation,   nnz * sizeof(int)) )
 
-    CHECK_CUDA( cudaMemcpy(dX_indices, hX_indices, nnz * sizeof(int),
+    CHECK_CUDA( cudaMemcpy(d_rows, h_rows, nnz * sizeof(int),
                            cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dX_values, hX_values, nnz * sizeof(float),
+    CHECK_CUDA( cudaMemcpy(d_columns, h_columns, nnz * sizeof(int),
                            cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dY, hY, size * sizeof(float),
+    CHECK_CUDA( cudaMemcpy(d_values, h_values, nnz * sizeof(double),
                            cudaMemcpyHostToDevice) )
     //--------------------------------------------------------------------------
     // CUSPARSE APIs
-    cusparseHandle_t     handle = NULL;
-    cusparseSpVecDescr_t vecX;
-    cusparseDnVecDescr_t vecY;
+    cusparseHandle_t handle = NULL;
+    cusparseSpVecDescr_t vec_permutation;
+    cusparseDnVecDescr_t vec_values;
     CHECK_CUSPARSE( cusparseCreate(&handle) )
-    // Create sparse vector X
-    CHECK_CUSPARSE( cusparseCreateSpVec(&vecX, size, nnz, dX_indices, dX_values,
+    // Create sparse vector for the permutation
+    CHECK_CUSPARSE( cusparseCreateSpVec(&vec_permutation, nnz, nnz,
+                                        d_permutation, d_values_sorted,
                                         CUSPARSE_INDEX_32I,
-                                        CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F) )
-    // Create dense vector y
-    CHECK_CUSPARSE( cusparseCreateDnVec(&vecY, size, dY, CUDA_R_32F) )
+                                        CUSPARSE_INDEX_BASE_ZERO, CUDA_R_64F) )
+    // Create dense vector for wrapping the original coo values
+    CHECK_CUSPARSE( cusparseCreateDnVec(&vec_values, nnz, d_values,
+                                        CUDA_R_64F) )
 
-    // execute Scatter
-    CHECK_CUSPARSE( cusparseScatter(handle, vecX, vecY) )
-
+    // Query working space of COO sort
+    CHECK_CUSPARSE( cusparseXcoosort_bufferSizeExt(handle, num_rows,
+                                                   num_columns, nnz, d_rows,
+                                                   d_columns, &bufferSize) )
+    CHECK_CUDA( cudaMalloc(&d_buffer, bufferSize) )
+    // Setup permutation vector to identity
+    CHECK_CUSPARSE( cusparseCreateIdentityPermutation(handle, nnz,
+                                                      d_permutation) )
+    CHECK_CUSPARSE( cusparseXcoosortByRow(handle, num_rows, num_columns, nnz,
+                                          d_rows, d_columns, d_permutation,
+                                          d_buffer) )
+    CHECK_CUSPARSE( cusparseGather(handle, vec_values, vec_permutation) )
     // destroy matrix/vector descriptors
-    CHECK_CUSPARSE( cusparseDestroySpVec(vecX) )
-    CHECK_CUSPARSE( cusparseDestroyDnVec(vecY) )
+    CHECK_CUSPARSE( cusparseDestroySpVec(vec_permutation) )
+    CHECK_CUSPARSE( cusparseDestroyDnVec(vec_values) )
     CHECK_CUSPARSE( cusparseDestroy(handle) )
     //--------------------------------------------------------------------------
     // device result check
-    CHECK_CUDA( cudaMemcpy(hY, dY, nnz * sizeof(float),
+    CHECK_CUDA( cudaMemcpy(h_rows, d_rows, nnz * sizeof(int),
                            cudaMemcpyDeviceToHost) )
+    CHECK_CUDA( cudaMemcpy(h_columns, d_columns, nnz * sizeof(int),
+                           cudaMemcpyDeviceToHost) )
+    CHECK_CUDA( cudaMemcpy(h_values_sorted, d_values_sorted,
+                           nnz * sizeof(double), cudaMemcpyDeviceToHost) )
+    CHECK_CUDA( cudaMemcpy(h_permutation, d_permutation,
+                           nnz * sizeof(int), cudaMemcpyDeviceToHost) )
     int correct = 1;
     for (int i = 0; i < nnz; i++) {
-        if (hY[i] != hY_result[i]) {
+        if (h_rows[i]          != h_rows_ref[i]    ||
+            h_columns[i]       != h_columns_ref[i] ||
+            h_values_sorted[i] != h_values_ref[i]  ||
+            h_permutation[i]   != h_permutation_ref[i]) {
             correct = 0;
             break;
         }
     }
     if (correct)
-        printf("scatter_example test PASSED\n");
+        printf("coosort_example test PASSED\n");
     else
-        printf("scatter_example test FAILED: wrong result\n");
+        printf("coosort_example test FAILED: wrong result\n");
     //--------------------------------------------------------------------------
     // device memory deallocation
-    CHECK_CUDA( cudaFree(dX_indices) )
-    CHECK_CUDA( cudaFree(dX_values)  )
-    CHECK_CUDA( cudaFree(dY) )
+    CHECK_CUDA( cudaFree(d_rows) )
+    CHECK_CUDA( cudaFree(d_columns) )
+    CHECK_CUDA( cudaFree(d_permutation) )
+    CHECK_CUDA( cudaFree(d_values) )
+    CHECK_CUDA( cudaFree(d_buffer) )
     return EXIT_SUCCESS;
 }
