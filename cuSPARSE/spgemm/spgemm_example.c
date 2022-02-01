@@ -1,5 +1,5 @@
 /*
- * Copyright 1993-2021 NVIDIA Corporation.  All rights reserved.
+ * Copyright 1993-2022 NVIDIA Corporation.  All rights reserved.
  *
  * NOTICE TO LICENSEE:
  *
@@ -195,6 +195,10 @@ int main(void) {
     // allocate matrix C
     CHECK_CUDA( cudaMalloc((void**) &dC_columns, C_nnz1 * sizeof(int))   )
     CHECK_CUDA( cudaMalloc((void**) &dC_values,  C_nnz1 * sizeof(float)) )
+
+    // NOTE: if 'beta' != 0, the values of C must be update after the allocation
+    //       of dC_values, and before the call of cusparseSpGEMM_copy
+
     // update matC with the new pointers
     CHECK_CUSPARSE(
         cusparseCsrSetPointers(matC, dC_csrOffsets, dC_columns, dC_values) )
