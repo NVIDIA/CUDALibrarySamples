@@ -1,4 +1,4 @@
-# Biconjugate Gradient Stabilized Method (BiCGStab)
+# Preconditioned Biconjugate Gradient Stabilized Method (BiCGStab)
 
 ## Description
 
@@ -13,7 +13,7 @@ The solution of large sparse linear systems is an important problem in computati
 
 The iterative methods are more amenable to parallelism and therefore can be used to solve larger problems. Currently, the most popular iterative schemes belong to the Krylov subspace family of methods. They include Bi-Conjugate Gradient Stabilized (BiCGStab) and Conjugate Gradient (CG) iterative methods for non-symmetric and symmetric positive definite (s.p.d.) linear systems. We describe the BiCGStab method in more detail in the next section.
 
-In practice, we typically use a variety of preconditioning techniques to improve the convergence of the iterative methods. In this sample, we focus on the Incomplete-LU which is one of the most popular of these preconditioning techniques. It computes an incomplete factorization of the coefficient matrix and requires a solution of lower and upper triangular linear systems in every iteration of the iterative method.
+In practice, we typically use a variety of preconditioning techniques to improve the convergence of the iterative methods. In this sample, we focus on the Incomplete-LU preconditioning which is one of the most popular of these preconditioning techniques. It computes an incomplete factorization of the coefficient matrix and requires a solution of lower and upper triangular linear systems in every iteration of the iterative method.
 
 In order to implement the preconditioned BiCGStab, we use the sparse matrix-vector multiplication and the sparse triangular solve implemented in the cuSPARSE library. We point out that the parallelism available in these iterative methods depends highly on the sparsity pattern of the coefficient matrix at hand.
 
@@ -63,46 +63,44 @@ the code contains the line references to the above algorithm
 Input files -> https://sparse.tamu.edu/
 
 ```bash
-$ wget https://suitesparse-collection-website.herokuapp.com/MM/Botonakis/FEM_3D_thermal2.tar.gz
-$ tar xf FEM_3D_thermal2.tar.gz
-$ ./bicgstab_example FEM_3D_thermal2/FEM_3D_thermal2.mtx
+$ wget https://suitesparse-collection-website.herokuapp.com/MM/Wissgott/parabolic_fem.tar.gz
+$ tar xf parabolic_fem.tar.gz
+$ ./bicgstab_example parabolic_fem/parabolic_fem.mtx
 ```
 
 Sample example output:
 
 ```
-matrix name: FEM_3D_thermal2/FEM_3D_thermal2.mtx
-num. rows:   147900
-num. cols:   147900
-nnz:         3489300
-structure:   unsymmetric
+matrix name: parabolic_fem/parabolic_fem.mtx
+num. rows:   525825
+num. cols:   525825
+nnz:         4200450
+structure:   symmetric
 
 Matrix parsing...
 Testing BiCGStab
-A(-1,-1) is missing
-U(-1,-1) is zero
 BiCGStab loop:
-  Initial Residual: Norm 2.913525e+00' threshold 2.913525e-10
-  Iteration = 1; Error Norm = 2.913525e+00
-  Iteration = 2; Error Norm = 3.013470e-02
-  Iteration = 3; Error Norm = 1.234002e-01
-  Iteration = 4; Error Norm = 2.893113e-03
-  Iteration = 5; Error Norm = 9.122037e-04
-  Iteration = 6; Error Norm = 3.418270e-04
-  Iteration = 7; Error Norm = 2.657349e-04
-  Iteration = 8; Error Norm = 1.042150e-04
-  Iteration = 9; Error Norm = 7.515743e-05
-  Iteration = 10; Error Norm = 3.131400e-05
-  Iteration = 11; Error Norm = 2.206263e-05
-  Iteration = 12; Error Norm = 9.736421e-06
-  Iteration = 13; Error Norm = 6.742005e-06
-  Iteration = 14; Error Norm = 3.137997e-06
-  Iteration = 15; Error Norm = 2.136315e-06
-  Iteration = 16; Error Norm = 1.043664e-06
-  Iteration = 17; Error Norm = 6.987928e-07
-  Iteration = 18; Error Norm = 3.564072e-07
-  Iteration = 19; Error Norm = 2.349326e-07
-  Iteration = 20; Error Norm = 1.243880e-07
+  Initial Residual: Norm 2.170672e+02' threshold 2.170672e-08
+  Iteration = 1; Error Norm = 2.170672e+02
+  Iteration = 2; Error Norm = 2.361113e+01
+  Iteration = 3; Error Norm = 1.319608e+02
+  Iteration = 4; Error Norm = 3.670778e+01
+  Iteration = 5; Error Norm = 3.488150e+01
+  Iteration = 6; Error Norm = 1.719376e+01
+  Iteration = 7; Error Norm = 1.463979e+01
+  Iteration = 8; Error Norm = 8.805470e+00
+  Iteration = 9; Error Norm = 7.035572e+00
+  Iteration = 10; Error Norm = 4.633854e+00
+  Iteration = 11; Error Norm = 3.568345e+00
+  Iteration = 12; Error Norm = 2.466218e+00
+  Iteration = 13; Error Norm = 1.862108e+00
+  Iteration = 14; Error Norm = 1.324990e+00
+  Iteration = 15; Error Norm = 9.914012e-01
+  Iteration = 16; Error Norm = 7.191100e-01
+  Iteration = 17; Error Norm = 5.366529e-01
+  Iteration = 18; Error Norm = 3.945207e-01
+  Iteration = 19; Error Norm = 2.947479e-01
+  Iteration = 20; Error Norm = 2.188237e-01
 Check Solution
-Final error norm = 8.084749e-08
+Final error norm = 1.639804e-01
 ```
