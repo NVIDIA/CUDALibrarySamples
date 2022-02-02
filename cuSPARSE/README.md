@@ -140,6 +140,10 @@ This folder demonstrates cuSPARSE Generic APIs usage.
 
 ##### Sparse Iterative Methods
 
+* [Preconditioned CG](cg/)
+
+    The sample describes how to use the cuSPARSE and cuBLAS libraries to implement the Incomplete-Cholesky preconditioned iterative *Conjugate Gradient (CG)*
+
 * [Preconditioned BiCGStab](bicgstab/)
 
     The sample describes how to use the cuSPARSE and cuBLAS libraries to implement the Incomplete-LU preconditioned iterative *Biconjugate Gradient Stabilized Method (BiCGStab)*
