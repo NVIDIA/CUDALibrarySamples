@@ -1,4 +1,4 @@
-/* Copyright 2021 NVIDIA Corporation.  All rights reserved.
+/* Copyright 2021 NVIDIA CORPORATION AND AFFILIATES.  All rights reserved.
   * 
   * NOTICE TO LICENSEE: 
   * 
@@ -58,9 +58,9 @@
 #include <fstream>
 
 #include <npp.h>
-#include <nppdefs.h>
-#include <nppcore.h>
-#include <nppi_filtering_functions.h>
+
+// Remove this if compiling on a pre-NPP 11.5 release
+#define USE_NPP_11_5
 
 // Note:  If you want to view these images we HIGHLY recommend using imagej which is free on the internet and works on most platforms 
 //        because it is one of the few image viewing apps that can display 32 bit integer image data.  While it normalizes the data
@@ -90,14 +90,26 @@
     NppiContourPixelDirectionInfo * pContoursDirectionImageHost = 0;
     Npp32u * pContoursPixelCountsListDev = 0;
     Npp32u * pContoursPixelCountsListHost = 0;
+    Npp32u * pContoursPixelsFoundListDev = 0;
     Npp32u * pContoursPixelsFoundListHost = 0;
+    Npp32u * pContoursPixelStartingOffsetDev = 0;
     Npp32u * pContoursPixelStartingOffsetHost = 0;
     Npp8u * pContoursGeometryImageHost = 0;
+    Npp8u * pContoursOrderedGeometryImageHost = 0;
+
+#ifdef USE_NPP_11_5
+    NppiContourBlockSegment * pContoursBlockSegmentListDev = 0;
+    NppiContourBlockSegment * pContoursBlockSegmentListHost = 0;
+#endif
 
     NppiContourTotalsInfo oContoursTotalsInfoHost;
 
 void tearDown() // Clean up and tear down
 {
+#ifdef USE_NPP_11_5
+    if (pContoursBlockSegmentListDev != 0)
+        cudaFree(pContoursBlockSegmentListDev);
+#endif
     if (pUFCompressedLabelsScratchBufferDev != 0)
         cudaFree(pUFCompressedLabelsScratchBufferDev);
     if (pUFGenerateLabelsScratchBufferDev != 0)
@@ -106,8 +118,12 @@ void tearDown() // Clean up and tear down
         cudaFree(pUFLabelDev);
     if (pInputImageDev != 0)
         cudaFree(pInputImageDev);
+    if (pContoursPixelStartingOffsetDev != 0)
+        cudaFree(pContoursPixelStartingOffsetDev); 
     if (pContoursPixelCountsListDev != 0)
         cudaFree(pContoursPixelCountsListDev);
+    if (pContoursPixelsFoundListDev != 0)
+        cudaFree(pContoursPixelsFoundListDev);
     if (pMarkerLabelsInfoListDev != 0)
         cudaFree(pMarkerLabelsInfoListDev);
     if (pContoursImageDev != 0)
@@ -129,8 +145,14 @@ void tearDown() // Clean up and tear down
         free(pContoursPixelsFoundListHost);
     if (pContoursPixelStartingOffsetHost != 0)
         free(pContoursPixelStartingOffsetHost);
+#ifdef USE_NPP_11_5
+    if (pContoursBlockSegmentListHost != 0)
+        free(pContoursBlockSegmentListHost); 
+#endif
     if (pContoursGeometryImageHost != 0)
         free(pContoursGeometryImageHost);
+    if (pContoursOrderedGeometryImageHost != 0)
+        free(pContoursOrderedGeometryImageHost); 
 }
 
 const std::string & Path = std::string("images/");
@@ -210,6 +232,10 @@ main( int argc, char** argv )
     pContoursPixelsFoundListHost = 0;
     pContoursPixelStartingOffsetHost = 0;
     pContoursGeometryImageHost = 0;
+#ifdef USE_NPP_11_5
+    pContoursBlockSegmentListDev = 0;
+    pContoursBlockSegmentListHost = 0;
+#endif
 
     nppStreamCtx.hStream = 0; // The NULL stream by default, set this to whatever your stream ID is if not the NULL stream.
 
@@ -223,6 +249,9 @@ main( int argc, char** argv )
     const NppLibraryVersion *libVer   = nppGetLibVersion();
 
     printf("NPP Library Version %d.%d.%d\n", libVer->major, libVer->minor, libVer->build);
+
+//    if (libVer->major > 11 || (libVer->major == 11 && libVer->minor >= 5))
+//        bUse115 = 1;
 
     int driverVersion, runtimeVersion;
     cudaDriverGetVersion(&driverVersion);
@@ -254,7 +283,6 @@ main( int argc, char** argv )
     nppStreamCtx.nMaxThreadsPerBlock = oDeviceProperties.maxThreadsPerBlock;
     nppStreamCtx.nSharedMemPerBlock = oDeviceProperties.sharedMemPerBlock;
 
-    printf("file loading started 1");
     NppiSize oSizeROI;
 
     oSizeROI.width = 2048;
@@ -279,19 +307,16 @@ main( int argc, char** argv )
     pInputImageHost = reinterpret_cast<Npp8u *>(malloc(oSizeROI.width * sizeof(Npp8u) * oSizeROI.height));
     pUFLabelHost = reinterpret_cast<Npp32u *>(malloc(oSizeROI.width * sizeof(Npp32u) * oSizeROI.height));
 
-    printf("file loading started 3");
     // Use UF functions throughout this sample.
 
     nppStatus = nppiLabelMarkersUFGetBufferSize_32u_C1R(oSizeROI, &aGenerateLabelsScratchBufferSize);
 
-    printf("file loading started2 ");
     // One at a time image processing
 
     cudaError = cudaMalloc ((void **)&pUFGenerateLabelsScratchBufferDev, aGenerateLabelsScratchBufferSize);
     if (cudaError != cudaSuccess)
         return NPP_MEMORY_ALLOCATION_ERR;
 
-    printf("file loading started");
     if (loadRaw8BitImage(pInputImageHost, oSizeROI.width * sizeof(Npp8u), oSizeROI.height, 0) == 0)
     {
         cudaError = cudaMemcpy2DAsync(pInputImageDev, oSizeROI.width * sizeof(Npp8u), pInputImageHost, 
@@ -348,8 +373,8 @@ main( int argc, char** argv )
         nCompressedLabelCount = 0;
 
         nppStatus = nppiCompressMarkerLabelsUF_32u_C1IR_Ctx(pUFLabelDev, oSizeROI.width * sizeof(Npp32u), oSizeROI, 
-                                                        oSizeROI.width * oSizeROI.height, &nCompressedLabelCount, 
-                                                        pUFCompressedLabelsScratchBufferDev, nppStreamCtx);
+                                                            oSizeROI.width * oSizeROI.height, &nCompressedLabelCount, 
+                                                            pUFCompressedLabelsScratchBufferDev, nppStreamCtx);
 
         if (nppStatus != NPP_SUCCESS)  
         {
@@ -401,28 +426,58 @@ main( int argc, char** argv )
         if (cudaError != cudaSuccess)
             return NPP_MEMORY_ALLOCATION_ERR;
 
-        cudaError = cudaMalloc ((void **)&pContoursPixelCountsListDev, sizeof(Npp32u) * nCompressedLabelCount);
+        cudaError = cudaMalloc ((void **)&pContoursPixelCountsListDev, sizeof(Npp32u) * (nCompressedLabelCount + 4));
+        if (cudaError != cudaSuccess)
+            return NPP_MEMORY_ALLOCATION_ERR;
+
+        cudaError = cudaMalloc ((void **)&pContoursPixelsFoundListDev, sizeof(Npp32u) * (nCompressedLabelCount + 4));
+        if (cudaError != cudaSuccess)
+            return NPP_MEMORY_ALLOCATION_ERR;
+
+        cudaError = cudaMalloc ((void **)&pContoursPixelStartingOffsetDev, sizeof(Npp32u) * (nCompressedLabelCount + 4));
         if (cudaError != cudaSuccess)
             return NPP_MEMORY_ALLOCATION_ERR;
 
         pMarkerLabelsInfoListHost = reinterpret_cast<NppiCompressedMarkerLabelsInfo *>(malloc(nInfoListSize));
         pContoursImageHost = reinterpret_cast<Npp8u *>(malloc(oSizeROI.width * sizeof(Npp8u) * oSizeROI.height));
         pContoursDirectionImageHost = reinterpret_cast<NppiContourPixelDirectionInfo *>(malloc(oSizeROI.width * sizeof(NppiContourPixelDirectionInfo) * oSizeROI.height));
-        pContoursPixelCountsListHost = reinterpret_cast<Npp32u *>(malloc(sizeof(Npp32u) * nCompressedLabelCount));
-        pContoursPixelsFoundListHost = reinterpret_cast<Npp32u *>(malloc(sizeof(Npp32u) * nCompressedLabelCount));
-        pContoursPixelStartingOffsetHost = reinterpret_cast<Npp32u *>(malloc(sizeof(Npp32u) * (nCompressedLabelCount + 8)));
+        pContoursPixelCountsListHost = reinterpret_cast<Npp32u *>(malloc(sizeof(Npp32u) * (nCompressedLabelCount + 4)));
+        pContoursPixelsFoundListHost = reinterpret_cast<Npp32u *>(malloc(sizeof(Npp32u) * (nCompressedLabelCount + 4)));
+        pContoursPixelStartingOffsetHost = reinterpret_cast<Npp32u *>(malloc(sizeof(Npp32u) * (nCompressedLabelCount + 4)));
 
-        nppStatus = nppiCompressedMarkerLabelsUFInfo_32u_C1R_Ctx(pUFLabelDev, (oSizeROI.width * sizeof(Npp32u)), oSizeROI,
-                                                                 nCompressedLabelCount, pMarkerLabelsInfoListDev,
-                                                                 pContoursImageDev, (oSizeROI.width * sizeof(Npp8u)), 
-                                                                 pContoursDirectionImageDev, (oSizeROI.width * sizeof(NppiContourPixelDirectionInfo)), 
+#ifdef USE_NPP_11_5
+        nppStatus = nppiCompressedMarkerLabelsUFInfo_32u_C1R_Ctx(pUFLabelDev, 
+                                                                 oSizeROI.width * sizeof(Npp32u), 
+                                                                 oSizeROI,
+                                                                 nCompressedLabelCount, 
+                                                                 pMarkerLabelsInfoListDev,
+                                                                 pContoursImageDev, 
+                                                                 oSizeROI.width * sizeof(Npp8u),
+                                                                 pContoursDirectionImageDev, 
+                                                                 oSizeROI.width * sizeof(NppiContourPixelDirectionInfo),
                                                                  &oContoursTotalsInfoHost, 
-                                                                 pContoursPixelCountsListDev, 
+                                                                 pContoursPixelCountsListDev,
                                                                  pContoursPixelCountsListHost, 
+                                                                 pContoursPixelStartingOffsetDev, 
                                                                  pContoursPixelStartingOffsetHost, 
                                                                  nppStreamCtx);
-
-
+#else
+        nppStatus = nppiCompressedMarkerLabelsUFInfo_32u_C1R_Ctx(pUFLabelDev, 
+                                                                 oSizeROI.width * sizeof(Npp32u), 
+                                                                 oSizeROI,
+                                                                 nCompressedLabelCount, 
+                                                                 pMarkerLabelsInfoListDev,
+                                                                 pContoursImageDev, 
+                                                                 oSizeROI.width * sizeof(Npp8u),
+                                                                 pContoursDirectionImageDev, 
+                                                                 oSizeROI.width * sizeof(NppiContourPixelDirectionInfo),
+                                                                 &oContoursTotalsInfoHost, 
+                                                                 pContoursPixelCountsListDev,
+                                                                 pContoursPixelCountsListHost, 
+                                                                 NULL,
+                                                                 pContoursPixelStartingOffsetHost, 
+                                                                 nppStreamCtx);
+#endif
         cudaError = cudaMemcpy2DAsync(pContoursImageHost, oSizeROI.width * sizeof(Npp8u), 
                                       pContoursImageDev, oSizeROI.width * sizeof(Npp8u), oSizeROI.width * sizeof(Npp8u), oSizeROI.height,
                                       cudaMemcpyDeviceToHost, nppStreamCtx.hStream);
@@ -450,25 +505,58 @@ main( int argc, char** argv )
         }
         fclose(bmpFile);
 
+        unsigned int nStartID = 1;
+        unsigned int nStopID = nCompressedLabelCount;
+
+#ifdef USE_NPP_11_5
+        unsigned int nContoursBlockSegmentListSize;
+
+        nppStatus = nppiCompressedMarkerLabelsUFGetContoursBlockSegmentListSize_C1R(pContoursPixelCountsListHost,
+                                                                                    oContoursTotalsInfoHost.nTotalImagePixelContourCount, 
+                                                                                    nCompressedLabelCount,
+                                                                                    nStartID,
+                                                                                    nStopID,
+                                                                                    &nContoursBlockSegmentListSize);
+
+        cudaError = cudaMalloc ((void **)&pContoursBlockSegmentListDev, nContoursBlockSegmentListSize);
+        if (cudaError != cudaSuccess)
+            return NPP_MEMORY_ALLOCATION_ERR;
+
+        pContoursBlockSegmentListHost = reinterpret_cast<NppiContourBlockSegment *>(malloc(nContoursBlockSegmentListSize));
+#endif
+
         unsigned int nGeometryListSize;
 
         nppStatus = nppiCompressedMarkerLabelsUFGetGeometryListsSize_C1R(pContoursPixelStartingOffsetHost[nCompressedLabelCount],
                                                                          &nGeometryListSize);
 
         NppiContourPixelGeometryInfo * pContoursPixelGeometryListsHost = reinterpret_cast<NppiContourPixelGeometryInfo *>(malloc(nGeometryListSize));
+        NppiContourPixelGeometryInfo * pContoursPixelGeometryListsDev;
+
+        cudaError = cudaMalloc ((void **)&pContoursPixelGeometryListsDev, nGeometryListSize);
+        if (cudaError != cudaSuccess)
+            return NPP_MEMORY_ALLOCATION_ERR;
 
         cudaStreamSynchronize(nppStreamCtx.hStream);
 
         cudaError = cudaMemcpyAsync(pContoursDirectionImageHost, pContoursDirectionImageDev, oSizeROI.width * sizeof(NppiContourPixelDirectionInfo) * oSizeROI.height,
                                     cudaMemcpyDeviceToHost, nppStreamCtx.hStream);
 
+        pContoursGeometryImageHost = reinterpret_cast<Npp8u *>(malloc(oSizeROI.width * sizeof(Npp8u) * oSizeROI.height));
+        pContoursOrderedGeometryImageHost = reinterpret_cast<Npp8u *>(malloc(oSizeROI.width * sizeof(Npp8u) * oSizeROI.height));
+
+        if (pContoursOrderedGeometryImageHost != 0)
+            memset(pContoursOrderedGeometryImageHost, 255, oSizeROI.width * sizeof(Npp8u) * oSizeROI.height);
+
         cudaStreamSynchronize(nppStreamCtx.hStream);
 
 /*
- * Due to the nature of some imput images contour ID 0 can sometimes contain ALL contours in the image which 
- * can significantly increase the time taken to output the geometry lists.  For a large number of long contours this can 
- * range from less than a minute to a half hour or longer.  In these cases setting nStartID to >= 1 
- * significantly speed up geometry list output performance and all individual contours will still be output. 
+ * Note that to significantly improve performance by default a contour that contains more than 256K pixels will be bypassed when generating the 
+ * output geometry list. The contour ID and number of contour pixels will be output in the contour list however. You can still get this function 
+ * to output the geometry of this size contour however by calling the function with a starting contour ID of that contour ID and ending contour 
+ * ID of that contour ID + 1.  Note that doing so for contours approaching a million pixels can take many minutes. Also, due to the structure of 
+ * some images contour ID 0 can contain ALL contours in the image so setting the starting contour ID to 1 can significantly increase output 
+ * preprocessing performance. 
  *  
  * Once nppiCompressedMarkerLabelsUFContoursGenerateGeometryLists_C1R_Ctx() has been called with a particular 
  * range of contour IDs nppiCompressedMarkerLabelsUFContoursOutputGeometryLists_C1R() can be recalled any number of times 
@@ -479,9 +567,37 @@ main( int argc, char** argv )
  * extra pixels will be at the end of the geometry list otherwise they will be at the start of the list.
  *  
  */
-        unsigned int nStartID = 1;
-        unsigned int nStopID = nCompressedLabelCount;
+#ifdef USE_NPP_11_5
+        nppStatus = nppiCompressedMarkerLabelsUFContoursGenerateGeometryLists_C1R_Ctx(pMarkerLabelsInfoListDev,
+                                                                                      pMarkerLabelsInfoListHost,
+                                                                                      pContoursDirectionImageDev, 
+                                                                                      oSizeROI.width * sizeof(NppiContourPixelDirectionInfo),
+                                                                                      pContoursPixelGeometryListsDev,
+                                                                                      pContoursPixelGeometryListsHost,
+                                                                                      pContoursGeometryImageHost,
+                                                                                      oSizeROI.width * sizeof(Npp8u),
+                                                                                      pContoursPixelCountsListDev,
+                                                                                      pContoursPixelsFoundListDev,
+                                                                                      pContoursPixelsFoundListHost,
+                                                                                      pContoursPixelStartingOffsetDev,
+                                                                                      pContoursPixelStartingOffsetHost,
+                                                                                      oContoursTotalsInfoHost.nTotalImagePixelContourCount,
+                                                                                      nCompressedLabelCount,
+                                                                                      nStartID,
+                                                                                      nStopID,
+                                                                                      pContoursBlockSegmentListDev,
+                                                                                      pContoursBlockSegmentListHost,
+                                                                                      1, // Counterclockwise contoure geometry list output
+                                                                                      oSizeROI,
+                                                                                      nppStreamCtx);
 
+        if ((cudaError = cudaStreamSynchronize(nppStreamCtx.hStream)) != cudaSuccess || nCompressedLabelCount == 0) 
+        {
+            printf ("Post geometry list generation cudaStreamSynchronize failed\n");
+            tearDown();
+            return -1;
+        }
+#else
         nppStatus = nppiCompressedMarkerLabelsUFContoursGenerateGeometryLists_C1R_Ctx(pMarkerLabelsInfoListDev,
                                                                                       pMarkerLabelsInfoListHost, 
                                                                                       pContoursDirectionImageHost, oSizeROI.width * sizeof(NppiContourPixelDirectionInfo),
@@ -501,7 +617,6 @@ main( int argc, char** argv )
             tearDown();
             return -1;
         }
-        pContoursGeometryImageHost = reinterpret_cast<Npp8u *>(malloc(oSizeROI.width * sizeof(Npp8u) * oSizeROI.height));
 
         nppStatus = nppiCompressedMarkerLabelsUFContoursOutputGeometryLists_C1R(pContoursPixelGeometryListsHost,
                                                                                 pMarkerLabelsInfoListHost, 
@@ -516,6 +631,9 @@ main( int argc, char** argv )
                                                                                 1, // Counterclockwise contoure geometry list output
                                                                                 oSizeROI);
 
+#endif
+        unsigned int nContourPixelCountLimit = 262144;
+
         for (unsigned int nID = nStartID; nID < nStopID; nID++)
         {
             NppiContourPixelGeometryInfo * pCurContoursPixelGeometryListHost = &pContoursPixelGeometryListsHost[pContoursPixelStartingOffsetHost[nID]]; 
@@ -523,24 +641,43 @@ main( int argc, char** argv )
             int nCurPixelX;
             int nCurPixelY;
             unsigned int nContourPixelCount = 0;
+            unsigned char nGrayLevel;
 
-            printf("nID %d BB %d %d %d %d  \n", nID, pCurContoursPixelGeometryListHost[0].oContourPrevPixelLocation.x, 
-                                                     pCurContoursPixelGeometryListHost[0].oContourPrevPixelLocation.y, 
-                                                     pCurContoursPixelGeometryListHost[0].oContourNextPixelLocation.x, 
-                                                     pCurContoursPixelGeometryListHost[0].oContourNextPixelLocation.y);
+            printf("nID %d Cnt %d BB %d %d %d %d  \n", nID, 
+                                                       nMaxContourPixelCount, 
+                                                       pCurContoursPixelGeometryListHost[0].oContourPrevPixelLocation.x, 
+                                                       pCurContoursPixelGeometryListHost[0].oContourPrevPixelLocation.y, 
+                                                       pCurContoursPixelGeometryListHost[0].oContourNextPixelLocation.x, 
+                                                       pCurContoursPixelGeometryListHost[0].oContourNextPixelLocation.y);
 
-            while (nContourPixelCount < static_cast<int>(nMaxContourPixelCount - 1))
+            unsigned int bOKToOutput = 0;
+            if (nMaxContourPixelCount < nContourPixelCountLimit)
+                bOKToOutput = 1;
+            if (nStopID - nStartID <= 1)
+                bOKToOutput = 1;
+
+            if (bOKToOutput)
             {
-                nCurPixelX = pCurContoursPixelGeometryListHost[nContourPixelCount].oContourOrderedGeometryLocation.x;
-                nCurPixelY = pCurContoursPixelGeometryListHost[nContourPixelCount].oContourOrderedGeometryLocation.y;
-                if (nCurPixelX >= 0)
-                    printf("ID %d Cnt %d %d %d  \n", nID, nContourPixelCount, nCurPixelX, nCurPixelY);
-                nContourPixelCount += 1;
+                nGrayLevel = 240;
+                while (nContourPixelCount < static_cast<int>(nMaxContourPixelCount - 1))
+                {
+                    nCurPixelX = pCurContoursPixelGeometryListHost[nContourPixelCount].oContourOrderedGeometryLocation.x;
+                    nCurPixelY = pCurContoursPixelGeometryListHost[nContourPixelCount].oContourOrderedGeometryLocation.y;
+//                    if (nCurPixelX >= 0)
+                        printf("ID %d Cnt %d %d %d  \n", nID, nContourPixelCount, nCurPixelX, nCurPixelY);
+                    if (nCurPixelX >= 0 && nCurPixelY >= 0)
+                    {
+                        pContoursOrderedGeometryImageHost[oSizeROI.width * nCurPixelY + nCurPixelX] = nGrayLevel;
+                        if (nGrayLevel > 0)
+                            nGrayLevel -= 1;
+                        else
+                            nGrayLevel = 240;
+                    }
+                    nContourPixelCount += 1;
+                }
             }
         }
 
-        // Note that this file is just full of data structures and does not contain a viewable image.
-        // There should really be no reason to save it to a file unless you want to reload it and examine it in binary form.
 #if 0
         bmpFile = fopen(ContoursDirectionOutputFile0.c_str(), "wb");
 
@@ -570,6 +707,4 @@ main( int argc, char** argv )
 
     return 0;
 }
-
-
 
