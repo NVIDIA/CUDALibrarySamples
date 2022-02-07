@@ -112,7 +112,7 @@ int main(void) {
     // Create dense vector y
     CHECK_CUSPARSE( cusparseCreateDnVec(&vecY, size, dY, CUDA_R_32F) )
 
-    // execute Axpby
+    // execute Rot
     CHECK_CUSPARSE( cusparseRot(handle, &c_coeff, &s_coeff, vecX, vecY) )
 
     // destroy matrix/vector descriptors

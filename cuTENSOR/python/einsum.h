@@ -36,6 +36,7 @@
 
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
+#include <cuComplex.h>
 #include "cutensor.h"
 
 #define HANDLE_ERROR(x) { const auto err = x;\
@@ -60,6 +61,20 @@ struct CuTensorTypeTraits<float> {
 };
 
 template<>
+struct CuTensorTypeTraits<cuComplex> {
+  static const cudaDataType_t cudaType = CUDA_C_32F;
+  static const cutensorComputeType_t cutensorType = CUTENSOR_COMPUTE_32F;
+  typedef cuComplex ScalarType;
+};
+
+template<>
+struct CuTensorTypeTraits<cuDoubleComplex> {
+  static const cudaDataType_t cudaType = CUDA_C_64F;
+  static const cutensorComputeType_t cutensorType = CUTENSOR_COMPUTE_64F;
+  typedef cuDoubleComplex ScalarType;
+};
+
+template<>
 struct CuTensorTypeTraits<__half> {
   static const cudaDataType_t cudaType = CUDA_R_16F;
   static const cutensorComputeType_t cutensorType = CUTENSOR_COMPUTE_32F;
@@ -74,10 +89,15 @@ struct Einsum
 
     Einsum(const std::string &equation,
            const std::vector<IntType> &A_shape,
-           const std::vector<IntType> &B_shape = emptyVec) :
+           const std::vector<IntType> &B_shape = emptyVec,
+           const cutensorOperator_t opA = CUTENSOR_OP_IDENTITY,
+           const cutensorOperator_t opB = CUTENSOR_OP_IDENTITY
+           ) :
         numModesA_(A_shape.size()),
         numModesB_(B_shape.size()),
         numModesC_(0),
+        opA_(opA),
+        opB_(opB),
         isInitialized_(false)
     {
         const auto arrow_pos = equation.find("->");
@@ -278,7 +298,7 @@ struct Einsum
                     numModesA_,
                     extentA_.data(),
                     NULL /* = stride */,
-                    cudaType, CUTENSOR_OP_IDENTITY));
+                    cudaType, opA_));
 
         cutensorTensorDescriptor_t descC;
         HANDLE_ERROR(cutensorInitTensorDescriptor(handle,
@@ -307,7 +327,7 @@ struct Einsum
                         numModesB_,
                         extentB_.data(),
                         NULL /* = stride*/,
-                        cudaType, CUTENSOR_OP_IDENTITY));
+                        cudaType, opB_));
 
             HANDLE_ERROR(cutensorGetAlignmentRequirement(handle,
                         B_raw, &descB, &alignmentRequirementB));
@@ -366,6 +386,8 @@ struct Einsum
     std::array<int64_t, kMaxNumModes_> extentA_;
     std::array<int64_t, kMaxNumModes_> extentB_;
     std::array<int64_t, kMaxNumModes_> extentC_;
+    cutensorOperator_t opA_ = CUTENSOR_OP_IDENTITY;
+    cutensorOperator_t opB_ = CUTENSOR_OP_IDENTITY;
 };
 
 inline cutensorHandle_t CreateCuTensorHandle() {

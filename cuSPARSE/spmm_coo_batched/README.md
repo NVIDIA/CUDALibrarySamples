@@ -8,8 +8,8 @@ This sample demonstrates the usage of `cusparseSpMM` for performing *batched spa
 
 <center>
 
-`C[1] = alpha * A * B[1] + beta * C[1]`
-`C[2] = alpha * A * B[2] + beta * C[2]`
+`C[1] = alpha * A[1] * B[1] + beta * C[1]`
+`C[2] = alpha * A[2] * B[2] + beta * C[2]`
 
 ![](spmm_coo_batched.png)
 </center>
