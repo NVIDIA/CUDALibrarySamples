@@ -69,11 +69,11 @@ int main(int argc, char *argv[]) {
     const int ldb = 2;
     const int ldc = 2;
     /*
-     *   A = | 1.0 | 2.0 |
-     *       | 3.0 | 4.0 |
+     *   A = | 1.0 | 3.0 |
+     *       | 2.0 | 4.0 |
      *
-     *   B = | 5.0 | 6.0 |
-     *       | 7.0 | 8.0 |
+     *   B = | 5.0 | 7.0 |
+     *       | 6.0 | 8.0 |
      */
 
     const std::vector<data_type> A = {1.0, 2.0, 3.0, 4.0};
