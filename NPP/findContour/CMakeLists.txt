@@ -36,12 +36,10 @@ endif (UNIX)
 
 if (MSVC OR WIN32 OR MSYS)
     MESSAGE( STATUS "CMAKE_CUDA_COMPILER:         " ${CMAKE_CUDA_COMPILER} )
-    set(CUDA_LIBRARY_PATH "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.2/lib/x64")
     set(CUDART_LIBRARY ${CUDA_LIBRARY_PATH}/cudart.lib)
     set(NPPIF_LIBRARY ${CUDA_LIBRARY_PATH}/nppif.lib)
     set(NPPC_LIBRARY ${CUDA_LIBRARY_PATH}/nppc.lib)
     set(NPPISU_LIBRARY ${CUDA_LIBRARY_PATH}/nppisu.lib)
-    set(CULIBOS ${CUDA_LIBRARY_PATH}/culibos.lib)
 endif()
 
 PROJECT(${PROJECT_NAME} C CXX CUDA)
