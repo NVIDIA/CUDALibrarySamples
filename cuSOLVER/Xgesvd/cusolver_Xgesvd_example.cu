@@ -121,7 +121,7 @@ int main(int argc, char *argv[]) {
 
     /* step 4: compute SVD */
     signed char jobu = 'A';  // all m columns of U
-    signed char jobvt = 'A'; // all n columns of VT
+    signed char jobvt = 'A'; // all n rows of VT
 
     CUSOLVER_CHECK(cusolverDnDgesvd(cusolverH, jobu, jobvt, m, n, d_A, lda, d_S, d_U,
                                     lda, // ldu
