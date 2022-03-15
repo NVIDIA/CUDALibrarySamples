@@ -18,107 +18,107 @@ This folder demonstrates cuSPARSE Generic APIs usage.
 
 ---
 
-##### Vector - Vector Operations
+#### Vector - Vector Operations
 
 * [cusparseAxpby](axpby/)
 
-    The sample demonstrates *sparse vector - dense vector scaling and sum*
+    The sample demonstrates *Sparse Vector - Dense Vector scaling and sum*
 
 * [cusparseGather](gather/)
 
-    The sample demonstrates *dense vector to sparse vector element gathering*
+    The sample demonstrates *Dense Vector to Sparse Vector element gathering*
 
 * [cusparseRot](rot/)
 
-    The sample demonstrates *sparse vector - dense vector Givens rotation*
+    The sample demonstrates *Sparse Vector - Dense Vector Givens rotation*
 
 * [cusparseScatter](scatter/)
 
-    The sample demonstrates *sparse vector to dense vector element scattering*
+    The sample demonstrates *Sparse Vector to Dense Vector element scattering*
 
 * [cusparseSpVV](spvv/)
 
-    The sample demonstrates *sparse vector - dense vector dot product*
+    The sample demonstrates *Sparse Vector - Dense Vector dot product*
 
-##### Matrix - Vector Operations
+#### Matrix - Vector Operations
 
 * [cusparseSpMV CSR](spmv_csr/)
 
-    The sample demonstrates *sparse matrix - dense vector multiplication*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
+    The sample demonstrates *Sparse Matrix - Dense Vector multiplication*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
 
 * [cusparseSpMV COO](spmv_coo/)
 
-    The sample demonstrates *sparse matrix - dense vector multiplication*, where the sparse matrix is represented in COO (Coordinate) storage format
+    The sample demonstrates *Sparse Matrix - Dense Vector multiplication*, where the sparse matrix is represented in COO (Coordinate) storage format
 
 * [cusparseSpSV CSR](spsv_csr/)
 
-    The sample demonstrates *sparse triangular solver with single right-hand side*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
+    The sample demonstrates *Sparse triangular solver with single right-hand side*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
 
 * [cusparseSpSV COO](spsv_coo/)
 
-    The sample demonstrates *sparse triangular solver with single right-hand side*, where the sparse matrix is represented in COO (Coordinate) storage format
+    The sample demonstrates *Sparse triangular solver with single right-hand side*, where the sparse matrix is represented in COO (Coordinate) storage format
 
-##### Matrix - Matrix Operations
+#### Matrix - Matrix Operations
 
 * [cusparseSpMM CSR](spmm_csr/)
 
-    The sample demonstrates *sparse matrix - dense matrix multiplication = dense matrix*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
+    The sample demonstrates *Sparse Matrix - Dense Matrix multiplication = Dense Matrix*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
 
 * [cusparseSpMM CSR - Batched](spmm_csr_batched/)
 
-    The sample demonstrates *batched sparse matrix - dense matrix multiplication = dense matrix* with custom operators, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
+    The sample demonstrates *Batched Sparse Matrix - Dense Matrix multiplication = Dense Matrix* , where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
 
-* [cusparseSpMM CSR](spmm_csr_op/)
+* [cusparseSpMMOp CSR](spmm_csr_op/)
 
-    The sample demonstrates *sparse matrix - dense matrix multiplication = dense matrix*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
+    The sample demonstrates *Sparse Matrix - Dense Matrix multiplication = Dense Matrix* *with Custom Operators*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
 
 * [cusparseSpMM COO](spmm_coo/)
 
-    The sample demonstrates *sparse matrix - dense matrix multiplication = dense matrix*, where the sparse matrix is represented in COO (Coordinate) storage format
+    The sample demonstrates *Sparse Matrix - Dense Matrix multiplication = Dense Matrix*, where the sparse matrix is represented in COO (Coordinate) storage format
 
 * [cusparseSpMM COO - Batched](spmm_coo_batched/)
 
-    The sample demonstrates *batched sparse matrix - dense matrix multiplication = dense matrix*, where the sparse matrix is represented in COO (Coordinate) storage format
+    The sample demonstrates *Batched Sparse Matrix - Dense Matrix multiplication = Dense Matrix*, where the sparse matrix is represented in COO (Coordinate) storage format
 
 * [cusparseSpMM SDDMM](sddmm_csr/)
 
-    The sample demonstrates *dense matrix - dense matrix multiplication = sparse matrix*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
+    The sample demonstrates *Dense Matrix - Dense Matrix multiplication = Sparse Matrix*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
 
 * [cusparseSpMM Blocked-ELL](spmm_blockedell/)
 
-    The sample demonstrates *sparse matrix - dense matrix multiplication = dense matrix*, where the sparse matrix is represented in Blocked-ELL storage format
+    The sample demonstrates *Sparse Matrix - Dense Matrix multiplication = Dense Matrix*, where the sparse matrix is represented in Blocked-ELL storage format
 
 * [cusparseSpGEMM](spgemm/)
 
-    The sample demonstrates *sparse matrix - sparse matrix multiplication = sparse matrix*, where all operands are sparse matrices represented in CSR (Compressed Sparse Row) storage format
+    The sample demonstrates *Sparse Matrix - Sparse Matrix multiplication = Sparse Matrix*, where all operands are sparse matrices represented in CSR (Compressed Sparse Row) storage format
 
 * [cusparseSpGEMM_reuse](spgemm_reuse/)
 
-    The sample demonstrates *sparse matrix - sparse matrix multiplication = sparse matrix*, where all operands are sparse matrices represented in CSR (Compressed Sparse Row) storage format and the structure of the output matrix can be reused multiple times
+    The sample demonstrates *Sparse Matrix - Sparse Matrix multiplication = Sparse Matrix*, where all operands are sparse matrices represented in CSR (Compressed Sparse Row) storage format and the structure of the output matrix can be reused multiple times
 
 * [cusparseSpSM CSR](spsm_csr/)
 
-    The sample demonstrates *sparse triangular solver with multiple right-hand sides*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
+    The sample demonstrates *Sparse triangular solver with multiple right-hand sides*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
 
 * [cusparseSpSM COO](spsm_coo/)
 
-    The sample demonstrates *sparse triangular solver with multiple right-hand sides*, where the sparse matrix is represented in COO (Coordinate) storage format
+    The sample demonstrates *Sparse triangular solver with multiple right-hand sides*, where the sparse matrix is represented in COO (Coordinate) storage format
 
-##### Conversion
+#### Conversion
 
 * [cusparseSparseToDense](sparse2dense_csr/)
 
-    The sample demonstrates *sparse matrix to dense matrix conversion*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
+    The sample demonstrates *Sparse Matrix to Dense Matrix conversion*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
 
 * [cusparseDenseToSparse](dense2sparse_csr/)
 
-    The sample demonstrates *dense matrix to sparse matrix conversion*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
+    The sample demonstrates *Dense Matrix to Sparse Matrix conversion*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
 
 * [cusparseDenseToSparse (Blocked-ELL)](dense2sparse_blockedell/)
 
-    The sample demonstrates *dense matrix to sparse matrix conversion*, where the sparse matrix is represented in Blocked-Ellpack storage format
+    The sample demonstrates *Dense Matrix to Sparse Matrix conversion*, where the sparse matrix is represented in Blocked-Ellpack storage format
 
-##### Legacy APIs
+#### Legacy APIs
 
 * [cusparseXcoosortByRow](coosort/)
 
@@ -128,17 +128,17 @@ This folder demonstrates cuSPARSE Generic APIs usage.
 
     The sample demonstrates how to solves two penta-diagonal systems with NOT interleaved format
 
-##### Optimizations
+#### Optimizations
 
 * [CUDA Graph Capture](graph_capture/)
 
-    The sample demonstrates how to optimize *sparse vector - dense vector dot product* (`cusparseSpVV`) by exploiting *CUDA Graph Capture functionality*
+    The sample demonstrates how to optimize *Sparse vector - Dense vector dot product* (`cusparseSpVV`) by exploiting *CUDA Graph Capture functionality*
 
 * [Hardware Memory Compression](compression/)
 
-    The sample demonstrates how to optimize *sparse vector - dense vector scaling and sum* (`cusparseAxpby`) by exploiting NVIDIA Ampere architecture *Hardware Memory Compression*
+    The sample demonstrates how to optimize *Sparse vector - Dense vector scaling and sum* (`cusparseAxpby`) by exploiting NVIDIA Ampere architecture *Hardware Memory Compression*
 
-##### Sparse Iterative Methods
+#### Sparse Iterative Methods
 
 * [Preconditioned CG](cg/)
 
