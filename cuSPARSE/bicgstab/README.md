@@ -4,8 +4,9 @@
 
 This sample describes how to use the cuSPARSE and cuBLAS libraries to implement the Incomplete-LU preconditioned iterative method **BiCGStab**.
 
-[cuBLAS Documentation](https://docs.nvidia.com/cuda/cublas/index.html)
 [cuSPARSE Documentation](https://docs.nvidia.com/cuda/cusparse/index.html)
+
+[cuBLAS Documentation](https://docs.nvidia.com/cuda/cublas/index.html)
 
 #### Introduction
 
