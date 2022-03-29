@@ -4,8 +4,9 @@
 
 This sample describes how to use the cuSPARSE and cuBLAS libraries to implement the Incomplete-Cholesky preconditioned iterative method **CG**.
 
-[cuBLAS Documentation](https://docs.nvidia.com/cuda/cublas/index.html)
 [cuSPARSE Documentation](https://docs.nvidia.com/cuda/cusparse/index.html)
+
+[cuBLAS Documentation](https://docs.nvidia.com/cuda/cublas/index.html)
 
 #### Introduction
 

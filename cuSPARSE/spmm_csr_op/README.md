@@ -36,7 +36,7 @@ This sample demonstrates the usage of `cusparseSpMMOp` for performing *sparse ma
 ## Support
 
 * **Supported SM Architectures:** SM 3.5, SM 3.7, SM 5.0, SM 5.2, SM 5.3, SM 6.0, SM 6.1, SM 6.2, SM 7.0, SM 7.2, SM 7.5, SM 8.0, SM 8.6
-* **Supported OSes:** Linux, Windows, QNX, Android
+* **Supported OSes:** Linux, Windows, QNX
 * **Supported CPU Architectures**: x86_64, ppc64le, arm64
 * **Supported Compilers**: gcc, clang, Intel icc, IBM xlc, Microsoft msvc, Nvidia HPC SDK nvc
 * **Language**: `C99`

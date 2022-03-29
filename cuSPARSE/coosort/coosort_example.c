@@ -172,6 +172,7 @@ int main(void) {
     CHECK_CUDA( cudaFree(d_columns) )
     CHECK_CUDA( cudaFree(d_permutation) )
     CHECK_CUDA( cudaFree(d_values) )
+    CHECK_CUDA( cudaFree(d_values_sorted) )
     CHECK_CUDA( cudaFree(d_buffer) )
     return EXIT_SUCCESS;
 }
