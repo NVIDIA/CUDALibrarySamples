@@ -1,4 +1,4 @@
-# TIFF Image decoding Example using nvJPEG 2000 Library
+# TIFF Image decoding Example using nvTIFF Library
 
 ## Description
 
@@ -42,9 +42,9 @@ $ cd build
 $
 $ export CUDACXX=nvcc
 $
-$ cmake ..  -DNVTIFF_PATH= nvTIFF location
+$ cmake ..  -DNVTIFF_PATH=nvTIFF Library location
 #
-# example  cmake .. -DNVTIFF_PATH==/home/mahesh/project/cudalibrarysamples-mirror/nvTIFF/libnvtiff
+# example  cmake .. -DNVTIFF_PATH==~/project/cudalibrarysamples-mirror/nvTIFF/libnvtiff
 #
 $ make
 ```
