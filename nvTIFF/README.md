@@ -11,6 +11,7 @@ TIFF Image Decoding and Encoding from nvTIFF Library
 ## Examples
 
 [TIFF Image Decoder Encoder](nvTIFF-Decode-Encode/)
+
 [TIFF Image Decoder - Python](nvTIFF-Python-Example/)
 
 
