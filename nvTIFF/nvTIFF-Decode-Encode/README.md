@@ -1,4 +1,4 @@
-# TIFF Image decoding Example using nvTIFF Library
+# TIFF Image decoding / encoding Example using nvTIFF Library
 
 ## Description
 
