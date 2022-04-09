@@ -48,10 +48,20 @@ $
 [tifffile](https://pypi.org/project/tifffile/) 
 ```
 $  pip install tifffile
-$
+$  pip install imagecodecs
 ```
 
-# Install nvTIFF from python wheel located in folder [nvTIFF Python Wheel](nvTIFF-Python-Whl/)
+# Install nvTIFF from python wheel 
+
+[nvTIFF Python Wheel](nvTIFF-Python-Whl/)
+
+Linux 64Bit
+Python 2.7 - nvtiff-0.1.0-cp27-cp27mu-linux_x86_64
+Python 3.6 - nvtiff-0.1.0-cp36-cp36m-linux_x86_64.Whl
+
+Windows 64Bit 
+Python 3.7 - nvtiff-0.1.0-cp37-cp37m-win_amd64.Whl
+
 ```
 $  pip install nvtiff-0.1.0-cp36-cp36m-linux_x86_64.whl
 $
