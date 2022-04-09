@@ -55,11 +55,14 @@ $  pip install imagecodecs
 
 [nvTIFF Python Wheel](nvTIFF-Python-Whl/)
 
-Linux 64Bit
+## Linux 64Bit:
+
 Python 2.7 - nvtiff-0.1.0-cp27-cp27mu-linux_x86_64
+
 Python 3.6 - nvtiff-0.1.0-cp36-cp36m-linux_x86_64.Whl
 
-Windows 64Bit 
+## Windows 64Bit:
+
 Python 3.7 - nvtiff-0.1.0-cp37-cp37m-win_amd64.Whl
 
 ```
@@ -84,7 +87,7 @@ Successfully installed nvtiff-0.1.0
 
 ```
 
-# Set the nvTIFF library path 
+## Set the nvTIFF library path 
 ```
 $  export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/libnvtiff/lib64/
 $
@@ -92,7 +95,7 @@ $
 
 # Usage
 
-## Testing Python scripts
+## Testing Python script
 ```
 $ python3 nvtiff_test.py -h
 ```
