@@ -22,7 +22,7 @@ x86_64
 
 ## CUDA APIs involved
 
-[NVTIFF](https://docs.nvidia.com/cuda/nvTIFF/index.html)
+[NVTIFF](https://docs.nvidia.com/cuda/nvtiff/index.html)
 
 
 # Building (make)

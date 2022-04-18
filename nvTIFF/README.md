@@ -28,7 +28,7 @@ Linux, Windows
 x86_64
 
 ## CUDA APIs involved
-[nvTIFF](https://docs.nvidia.com/cuda/nvTIFF/index.html)
+[nvTIFF](https://docs.nvidia.com/cuda/nvtiff/index.html)
 
 
 # Prerequisites
