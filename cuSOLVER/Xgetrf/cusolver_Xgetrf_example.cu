@@ -151,7 +151,10 @@ int main(int argc, char *argv[]) {
         cusolverDnXgetrf_bufferSize(cusolverH, params, m, m, traits<data_type>::cuda_data_type, d_A,
                                     lda, traits<data_type>::cuda_data_type, &d_lwork, &h_lwork));
 
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_work), sizeof(data_type) * d_lwork));
+    /* d_lwork is in bytes */
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_work), d_lwork));
+    
+    /* todo: check or malloc host workspace; currently assumes h_lwork == 0 */
 
     /* step 4: LU factorization */
     if (pivot_on) {
