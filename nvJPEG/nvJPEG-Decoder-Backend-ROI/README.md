@@ -56,10 +56,10 @@ Command: ./nvJPEGROIDecode -i ../input_images/ -backend 0
 ```
 ...
 ...
-Total decoding time: 17.238
-Avg decoding time per image: 1.4365
-Avg images per sec: 0.696136
-Avg decoding time per batch: 1.4365
+Total decoding time: 14834.7
+Avg decoding time per image: 1236.22
+Avg images per sec: 0.000808915
+Avg decoding time per batch: 1236.22
 ```
 
 **Hybrid BackEnd**
@@ -68,10 +68,10 @@ Command: ./nvJPEGROIDecode -i ../input_images/ -backend 1
 ```
 ...
 ...
-Total decoding time: 13.9479
-Avg decoding time per image: 1.16233
-Avg images per sec: 0.860344
-Avg decoding time per batch: 1.16233
+Total decoding time: 16642
+Avg decoding time per image: 1386.84
+Avg images per sec: 0.000721065
+Avg decoding time per batch: 1386.84
 ```
 
 **GPU Backend**
@@ -80,10 +80,10 @@ Command: ./nvJPEGROIDecode -i ../input_images/ -backend 2
 ```
 ...
 ...
-Total decoding time: 20.5875
-Avg decoding time per image: 1.71563
-Avg images per sec: 0.582877
-Avg decoding time per batch: 1.71563
+Total decoding time: 19088.4
+Avg decoding time per image: 1590.7
+Avg images per sec: 0.000628656
+Avg decoding time per batch: 1590.7
 ```
 
 # Example 2 - Decode with ROI
