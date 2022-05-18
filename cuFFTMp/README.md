@@ -1,7 +1,7 @@
 # cuFFTMp C++ and Fortran Code Samples
 
 ## Requirements
-- HPC SDK 21.9 and up 
+- HPC SDK 21.9 and up (HPC SDK 22.3+ includes a preview of cuFFTMp and is recommended.)   
 - A system with at least one Ampere (SM80) or Volta (SM70) GPU. When using multi GPUs, GPUs have to be peer-to-peer accessible to/from each other or connected using Infiniband. 
     - The `c2c_pencils` and `r2c_c2r_pencils` samples require at least 4 GPUs.
 
@@ -14,7 +14,9 @@ The following environmental variables need to be defined in order to build and r
  - `CUFFT_INC=/hpc_sdk/Linux_x86_64/.../math_libs/include/cufftmp`, where all the cuFFT and cuFFTMp headers files are located
  - `NVSHMEM_LIB=/hpc_sdk/Linux_x86_64/.../comm_libs/nvshmem/lib`, where `nvshmem_bootstrap_mpi.so` is located
 
-Note that cuFFTMP library build is released in HPC SDK 22.3 and up. If you are using older version of HPC SDK, you can find the cuFFTMP build from [cuFFTMP EA](https://developer.nvidia.com/cudamathlibraryea). 
+As cuFFTMP is released in HPC SDK 22.3 and up, to build and run the samples (or your applications) with cuFFTMp it is highly recommended to have $MPI_HOME, $CUFFT_LIB, $CUFFT_INC, and $NVSHMEM_LIB all pointing to the same HPC SDK version.   
+
+If you have to use an older version of HPC SDK (21.9 or 21.11), you can find the early-access version of cuFFTMp in [cuFFTMP EA](https://developer.nvidia.com/cudamathlibraryea). 
 
 Then build and run the C2C sample by:
 ```
@@ -47,6 +49,7 @@ The Fortran samples can be built and run similarly with `make run` in each of th
 - `Fortran_samples/r2c_c2r`
 - `Fortran_samples/r2c_c2r_shared_scratch`
 - `Fortran_samples/r2c_c2r_pencils`
+- `Fortran_samples/reshape`
 
 ## General tips
 
@@ -74,5 +77,5 @@ In this case a custom bootstrap library can be built to enable users to use its 
 ### Container
 HPC-SDK containers contain all the required dependencies. For instance,
 ```
-docker pull nvcr.io/nvidia/nvhpc:21.9-devel-cuda11.4-ubuntu20.04
+docker pull nvcr.io/nvidia/nvhpc:22.3-devel-cuda11.6-ubuntu20.04
 ```
