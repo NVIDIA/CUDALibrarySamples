@@ -1,7 +1,7 @@
 # Building bootstraps for other versions of MPI
 
-cuFFTMp ships with an NVSHMEM bootstrap designed for OpenMPI 3 and 4.
-However, you can easily build you own bootstrap, compatible with another version of OpenMPI or another MPI implementation. To do so,
+cuFFTMp uses NVSHMEM. In order to interoperate with MPI, a bootstrap plugin is required. NVSHMEM ships with a bootstrap compatible with HPC-X.
+However, you can easily build you own bootstrap, compatible with another MPI implementation. To do so,
 ```
 MPICC=mpicc DEST=myMPI make mpi_bootstrap
 ```
