@@ -8,29 +8,33 @@
 ! - Element wise kernel
 ! - Inverse FFT
 ! 
+module cufft_required
+    integer :: plan
+    integer :: local_cshape_in(3), local_cshape_out(3)
+
+end module cufft_required
+
 program cufftmp_c2c_pencils
     use iso_c_binding
     use cudafor
     use cufftXt
     use cufft
     use mpi
+    use cufft_required
     implicit none
 
     integer :: size, rank, ndevices, ierr
     integer :: n, nx, ny, nz ! nx slowest
     integer :: i, j, k, nranks1d
-    integer :: my_nx, my_ny, my_nz, ranks_cutoff, whichgpu(1)
-    complex, dimension(:, :, :), allocatable :: u, ref, u_permuted
+    complex, dimension(:, :, :), allocatable :: u, ref, u_out
     real :: max_norm, max_diff
     
     ! cufft-related
-    integer :: plan
     integer(c_size_t) :: worksize(1)
     type(cudaLibXtDesc), pointer :: u_desc
     type(cudaXtDesc), pointer    :: u_descptr
     complex, pointer, device     :: u_dptr(:,:,:)
     integer(kind=cuda_stream_kind) :: stream
-    integer :: local_cshape_in(3), local_cshape_out(3)
     type(cufftBox3d), dimension(:), allocatable :: input_boxes, output_boxes
 
 
@@ -46,7 +50,6 @@ program cufftmp_c2c_pencils
     end if  
 
     call checkCuda(cudaSetDevice(mod(rank, ndevices)))
-    whichgpu(1) = mod(rank, ndevices)
     print*,"Hello from rank ", rank, " gpu id", mod(rank, ndevices), "size", size
 
     ! Define custom data distribution
@@ -60,8 +63,8 @@ program cufftmp_c2c_pencils
     local_cshape_in = [nz, n, n]
     local_cshape_out = [n, ny, n]
     if (rank == 0) then
-        write(*,*) "local_cshape_in (z,y,x) z fast  :", local_cshape_in(1), local_cshape_in(2), local_cshape_in(3)
-        write(*,*) "local_cshape_out (z,y,x) z fast:", local_cshape_out(1), local_cshape_out(2), local_cshape_out(3)
+        write(*,*) "local_cshape_in (x,y,z) z fast  :", local_cshape_in(3), local_cshape_in(2), local_cshape_in(1)
+        write(*,*) "local_cshape_out (x,y,z) z fast:", local_cshape_out(3), local_cshape_out(2), local_cshape_out(1)
     end if
 
     ! cufftBox3d boxes are defined as { {x_start, y_start, z_start}, {x_end, y_end, z_end}, {x%strides, y%strides, z%strides} }
@@ -83,17 +86,20 @@ program cufftmp_c2c_pencils
         end do  
     end do
 
-	write(*,'(A18, I1, A10, 3I10)') "my rank", rank, "lower", input_boxes(rank)%lower
-    write(*,'(A18, I1, A10, 3I10)') "my rank", rank, "upper", input_boxes(rank)%upper
-    write(*,'(A18, I1, A10, 3I10)') "my rank", rank, "strides", input_boxes(rank)%strides
+	write(*,'(A18, I1, A20, 3I10)') "my rank", rank, "input lower", input_boxes(rank)%lower
+    write(*,'(A18, I1, A20, 3I10)') "my rank", rank, "input upper", input_boxes(rank)%upper
+    write(*,'(A18, I1, A20, 3I10)') "my rank", rank, "input strides", input_boxes(rank)%strides
+	write(*,'(A18, I1, A20, 3I10)') "my rank", rank, "output lower", output_boxes(rank)%lower
+    write(*,'(A18, I1, A20, 3I10)') "my rank", rank, "output upper", output_boxes(rank)%upper
+    write(*,'(A18, I1, A20, 3I10)') "my rank", rank, "output strides", output_boxes(rank)%strides
 
     ! Generate local, distributed CPU data
     allocate(u(local_cshape_in(1), local_cshape_in(2), local_cshape_in(3)))
-    allocate(u_permuted(local_cshape_out(1), local_cshape_out(2), local_cshape_out(3)))
+    allocate(u_out(local_cshape_out(1), local_cshape_out(2), local_cshape_out(3)))
     allocate(ref(local_cshape_in(1), local_cshape_in(2), local_cshape_in(3)))
     call generate_random(local_cshape_in(1), local_cshape_in(2), local_cshape_in(3), u)
     ref = u
-    u_permuted = (0.0,0.0)
+    u_out = (0.0,0.0)
 
     call checkNorm(local_cshape_in(1), local_cshape_in(2), local_cshape_in(3), u, max_norm)
     print*, "initial data on ", rank, " max_norm is ", max_norm
@@ -101,13 +107,15 @@ program cufftmp_c2c_pencils
     call checkCufft(cufftCreate(plan))
     call checkCuda(cudaStreamCreate(stream))
     call checkCufft(cufftMpAttachComm(plan, CUFFT_COMM_MPI, MPI_COMM_WORLD), 'cufftMpAttachComm error')
-    call checkCufft(cufftXtSetDistribution(plan, input_boxes(rank), output_boxes(rank)))
-
-    call checkCufft(cufftMakePlan3d(plan, nz, ny, nx, CUFFT_C2C, worksize), 'cufftMakePlan3d error')
+    
     call checkCufft(cufftSetStream(plan, stream), 'cufftSetStream error')
+    call checkCufft(cufftXtSetDistribution(plan, input_boxes(rank), output_boxes(rank)))
+    
+    call checkCufft(cufftMakePlan3d(plan, nz, ny, nx, CUFFT_C2C, worksize), 'cufftMakePlan3d error')
 
     call checkCufft(cufftXtMalloc(plan, u_desc, CUFFT_XT_FORMAT_DISTRIBUTED_INPUT), 'cufftXtMalloc error')
     call checkCufft(cufftXtMemcpy(plan, u_desc, u, CUFFT_COPY_HOST_TO_DEVICE), 'cufftXtMemcpy error')
+    
     ! now reset u to make sure the check later is valid 
     u = (0.0,0.0)
     
@@ -116,8 +124,8 @@ program cufftmp_c2c_pencils
     call checkCuda(cudaStreamSynchronize(stream))
 
     ! in case we want to check the results after Forward 
-    call checkCufft(cufftXtMemcpy(plan, u_permuted, u_desc, CUFFT_COPY_DEVICE_TO_HOST), 'permuted D2H error')
-    call checkNorm(local_cshape_out(1), local_cshape_out(2), local_cshape_out(3), u_permuted, max_norm)
+    call checkCufft(cufftXtMemcpy(plan, u_out, u_desc, CUFFT_COPY_DEVICE_TO_HOST), 'permuted D2H error')
+    call checkNorm(local_cshape_out(1), local_cshape_out(2), local_cshape_out(3), u_out, max_norm)
     write(*,'(A18, I1, A14, F25.8)') "after C2C forward ", rank, " max_norm is ", max_norm
 
     ! Data is now distributed as Y-Slab. We need to scale the output
@@ -133,14 +141,10 @@ program cufftmp_c2c_pencils
     end do
     call checkCuda(cudaDeviceSynchronize())
 
-    ! in case we want to check again after scaling 
-    call checkCufft(cufftXtMemcpy(plan, u_permuted, u_desc, CUFFT_COPY_DEVICE_TO_HOST), 'permuted D2H error')
-    call checkNorm(local_cshape_out(1), local_cshape_out(2), local_cshape_out(3), u_permuted, max_norm)
-    write(*,'(A18, I1, A14, F25.8)') "after scaling ", rank, " max_norm is ", max_norm
-
-
     !xxxxxxxxxxxxxxxxxxxxxxxxxxxx inverse
     call checkCufft(cufftXtExecDescriptor(plan, u_desc, u_desc, CUFFT_INVERSE), 'inverse fft failed')
+    call checkCuda(cudaStreamSynchronize(stream))
+    
     call checkCufft(cufftXtMemcpy(plan, u, u_desc, CUFFT_COPY_DEVICE_TO_HOST), 'D2H failed')
     call checkCufft(cufftXtFree(u_desc))
     call checkCufft(cufftDestroy(plan))
