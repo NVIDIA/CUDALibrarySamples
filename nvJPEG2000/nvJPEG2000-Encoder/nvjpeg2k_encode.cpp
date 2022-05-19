@@ -28,6 +28,7 @@
 
 #include "nvjpeg2k_encode.h"
 #include <cmath>
+#include <sstream>
 
 struct bmpHeader
 {
