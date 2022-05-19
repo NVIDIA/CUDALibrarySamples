@@ -163,11 +163,8 @@ Channel #1 size: 240 x 320
 Channel #2 size: 240 x 320
 YUV 4:2:0 chroma subsampling
 Done writing decoded image to file: /tmp/img8.bmp
-Total decoding time: 10511.3
-Avg decoding time per image: 875.944
-Avg images per sec: 0.00114163
-Avg decoding time per batch: 875.944
-
-
+Total decoding time: 0.0135301 (s)
+Avg decoding time per image: 0.00112751 (s)
+Avg images per sec: 886.911
+Avg decoding time per batch: 0.00112751 (s)
 ```
-

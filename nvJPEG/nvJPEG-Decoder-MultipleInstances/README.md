@@ -76,7 +76,7 @@ Example:
 Sample example output on GV100, Ubuntu 16.04, CUDA 11.5
 
 ```
-$  ./nvJPEGDecMultipleInstances -i ../input_images/ -o ~/tmp
+$  ./nvJPEGDecMultipleInstances -i ../../nvJPEG-Decoder/input_images/ -o ~/tmp
 ```
 ```
 Decoding images in directory: ../../nvJPEG-Decoder/input_images/, total 12, batchsize 1
@@ -162,10 +162,8 @@ Channel #1 size: 240 x 320
 Channel #2 size: 240 x 320
 YUV 4:2:0 chroma subsampling
 Done writing decoded image to file: /tmp/img8.bmp
-Total decoding time: 34582.5
-Avg decoding time per image: 2881.88
-Avg images per sec: 0.000346996
-Avg decoding time per batch: 2881.88
-
+Total decoding time: 0.0139448 (s)
+Avg decoding time per image: 0.00116207 (s)
+Avg images per sec: 860.534
+Avg decoding time per batch: 0.00116207 (s)
 ```
-
