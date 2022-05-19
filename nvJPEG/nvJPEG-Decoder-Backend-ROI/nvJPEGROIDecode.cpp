@@ -295,7 +295,7 @@ int decode_images(const FileData &img_data, const std::vector<size_t> &img_len,
   CHECK_CUDA(cudaEventRecord(stopEvent, params.global_stream));
   CHECK_CUDA(cudaEventSynchronize(stopEvent));
   CHECK_CUDA(cudaEventElapsedTime(&loopTime, startEvent, stopEvent));
-  time = static_cast<double>(1000 * loopTime);
+  time = 0.001 * static_cast<double>(loopTime);
 
   return EXIT_SUCCESS;
 }
@@ -564,15 +564,15 @@ int main(int argc, const char *argv[]) {
 
   double total;
   if (process_images(image_names, params, total)) return EXIT_FAILURE;
-  std::cout << "Total decoding time: " << total << std::endl;
+  std::cout << "Total decoding time: " << total << " (s)" << std::endl;
   std::cout << "Avg decoding time per image: " << total / params.total_images
-            << std::endl;
+            << " (s)" << std::endl;
   std::cout << "Avg images per sec: " << params.total_images / total
             << std::endl;
   std::cout << "Avg decoding time per batch: "
             << total / ((params.total_images + params.batch_size - 1) /
                         params.batch_size)
-            << std::endl;
+            << " (s)" << std::endl;
 
   for(auto& nvjpeg_data : params.nvjpeg_per_thread_data)
     destroy_nvjpeg_data(nvjpeg_data);
