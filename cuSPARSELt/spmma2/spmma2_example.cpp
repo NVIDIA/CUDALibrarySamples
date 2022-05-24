@@ -268,17 +268,41 @@ int main(void) {
     CHECK_CUSPARSE( cusparseLtMatmulDescSetAttribute(&handle, &matmul,
                                                 CUSPARSELT_MATMUL_BIAS_POINTER,
                                                 &dBias, sizeof(dBias)) )
+
     //--------------------------------------------------------------------------
     // Algorithm selection, and plan initialization
     CHECK_CUSPARSE( cusparseLtMatmulAlgSelectionInit(
                                             &handle, &alg_sel, &matmul,
                                             CUSPARSELT_MATMUL_ALG_DEFAULT) )
     size_t workspace_size, compressed_size;
-    CHECK_CUSPARSE( cusparseLtMatmulGetWorkspace(&handle, &alg_sel,
-                                                 &workspace_size))
 
     CHECK_CUSPARSE( cusparseLtMatmulPlanInit(&handle, &plan, &matmul, &alg_sel,
                                              workspace_size) )
+    CHECK_CUSPARSE( cusparseLtMatmulGetWorkspace(&handle, &plan,
+                                                 &workspace_size))
+
+    //--------------------------------------------------------------------------
+    // Split-K Mode
+    int splitK, splitKBuffers;
+    cusparseLtSplitKMode_t splitKMode;
+    CHECK_CUSPARSE( cusparseLtMatmulAlgGetAttribute(&handle, &alg_sel,
+                                       CUSPARSELT_MATMUL_SPLIT_K,
+                                       &splitK, sizeof(splitK)) )
+
+    CHECK_CUSPARSE( cusparseLtMatmulAlgGetAttribute(&handle, &alg_sel,
+                                       CUSPARSELT_MATMUL_SPLIT_K_MODE,
+                                       &splitKMode, sizeof(splitKMode)) )
+
+    CHECK_CUSPARSE( cusparseLtMatmulAlgGetAttribute(&handle, &alg_sel,
+                                       CUSPARSELT_MATMUL_SPLIT_K_BUFFERS,
+                                       &splitKBuffers, sizeof(splitKBuffers)) )
+    auto mode = splitKMode == CUSPARSELT_SPLIT_K_MODE_ONE_KERNEL
+                    ? "ONE_KERNEL"  :
+                splitKMode == CUSPARSELT_SPLIT_K_MODE_TWO_KERNELS
+                    ? "TWO_KERNELS" : "invalid";
+    printf("splitK=%d, splitK-mode=%d, splitK-buffers=%d\n\n",
+           splitK, splitKMode, splitKBuffers);
+
     //--------------------------------------------------------------------------
     // Prune the A matrix (in-place) and check the correcteness
     CHECK_CUSPARSE( cusparseLtSpMMAPrune(&handle, &matmul, dA, dA,
@@ -362,8 +386,6 @@ int main(void) {
                 auto host_value   = hC_result[pos + b * batch_strideC];
                 if (device_value != host_value) {
                     // direct floating point comparison is not reliable
-                    std::printf("(%d, %d, %d):\t%f vs. %f\n",
-                                b, i, j, host_value, device_value);
                     correct = 0;
                     break;
                 }

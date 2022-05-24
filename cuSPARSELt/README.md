@@ -14,4 +14,4 @@ This folder demonstrates cuSPARSELt Generic APIs usage.
 
 * [Batched GEMM, Activation Function, and Bias](spmma2/)
 
-    The sample extends the previous code to demonstrate how to perform batched GEMM computation and how to set up the activation function and bias
+    The sample extends the previous code to demonstrate how to perform batched GEMM computation, Split-K, and how to set up the activation function and bias
