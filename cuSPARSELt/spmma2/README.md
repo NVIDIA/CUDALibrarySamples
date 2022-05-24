@@ -3,7 +3,7 @@
 ## Description
 
 This sample demonstrates the usage of `cuSPARSELt` library and `cusparseMatMul` APIs for performing *structured matrix - dense matrix multiplication* by exploiting NVIDIA *Sparse Tensor Cores*, where the structured matrix is compressed with 50% sparsity ratio.
-The sample also demonstrates the usage of batched computation, ReLU activation function, and bias.
+The sample also demonstrates the usage of batched computation, Split-K, ReLU activation function, and bias.
 
 [cusparseLt Documentation](https://docs.nvidia.com/cuda/cusparselt/index.html)
 
