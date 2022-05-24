@@ -173,11 +173,12 @@ int main(void) {
                                             CUSPARSELT_MATMUL_ALG_CONFIG_ID,
                                             &alg, sizeof(alg)))
     size_t workspace_size, compressed_size;
-    CHECK_CUSPARSE( cusparseLtMatmulGetWorkspace(&handle, &alg_sel,
-                                                 &workspace_size))
-
     CHECK_CUSPARSE( cusparseLtMatmulPlanInit(&handle, &plan, &matmul, &alg_sel,
                                              workspace_size) )
+
+    CHECK_CUSPARSE( cusparseLtMatmulGetWorkspace(&handle, &plan,
+                                                 &workspace_size))
+
     //--------------------------------------------------------------------------
     // Prune the A matrix (in-place) and check the correcteness
     CHECK_CUSPARSE( cusparseLtSpMMAPrune(&handle, &matmul, dA, dA,
@@ -206,15 +207,15 @@ int main(void) {
     void*         d_workspace = nullptr;
     int           num_streams = 0;
     cudaStream_t* streams     = nullptr;
-    CHECK_CUSPARSE( cusparseLtMatmulSearch(&handle, &plan, &alpha, dA_compressed,
-                                           dB, &beta, dC,dD, d_workspace,
+    CHECK_CUSPARSE( cusparseLtMatmulSearch(&handle, &plan, &alpha,
+                                           dA_compressed, dB, &beta,
+                                           dC, dD, d_workspace,
                                            streams, num_streams) )
     int alg_id;
     CHECK_CUSPARSE( cusparseLtMatmulAlgGetAttribute(
                                            &handle, &alg_sel,
                                            CUSPARSELT_MATMUL_ALG_CONFIG_ID,
                                            &alg_id, sizeof(alg_id)) )
-    printf("best alg: %d\n", alg_id);
     //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Perform the matrix multiplication
     CHECK_CUSPARSE( cusparseLtMatmul(&handle, &plan, &alpha, dA_compressed, dB,
