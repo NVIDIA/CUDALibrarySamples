@@ -50,6 +50,7 @@
 #include <cusparse.h>         // cusparseSpMM
 #include <stdio.h>            // printf
 #include <stdlib.h>           // EXIT_FAILURE
+#include <cusp/coo_matrix.h> // cusp::csr_matrix
 
 #define CHECK_CUDA(func)                                                       \
 {                                                                              \
@@ -75,121 +76,122 @@ int main(void) {
     // Host problem definition
     int   A_num_rows   = 4;
     int   A_num_cols   = 4;
+    int   A_nnz        = 9;
     int   B_num_rows   = A_num_cols;
     int   B_num_cols   = 3;
-    int   C_nnz        = 9;
-    int   lda          = A_num_cols;
-    int   ldb          = B_num_cols;
-    int   A_size       = lda * A_num_rows;
-    int   B_size       = ldb * B_num_rows;
-    float hA[]         = { 1.0f,   2.0f,  3.0f,  4.0f,
-                           5.0f,   6.0f,  7.0f,  8.0f,
-                           9.0f,  10.0f, 11.0f, 12.0f,
-                           13.0f, 14.0f, 15.0f, 16.0f };
-    float hB[]         = {  1.0f,  2.0f,  3.0f,
-                            4.0f,  5.0f,  6.0f,
-                            7.0f,  8.0f,  9.0f,
-                           10.0f, 11.0f, 12.0f };
-    int   hC_offsets[] = { 0, 3, 4, 7, 9 };
-    int   hC_columns[] = { 0, 1, 2, 1, 0, 1, 2, 0, 2 };
-    float hC_values[]  = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+    int   ldb          = B_num_rows;
+    int   ldc          = A_num_rows;
+    int   B_size       = ldb * B_num_cols;
+    int   C_size       = ldc * B_num_cols;
+    int   hA_rows[]    = { 0, 0, 0, 1, 2, 2, 2, 3, 3 };
+    int   hA_columns[] = { 0, 2, 3, 1, 0, 2, 3, 1, 3 };
+    float hA_values[]  = { 1.0f, 2.0f, 3.0f, 4.0f, 5.0f,
+                           6.0f, 7.0f, 8.0f, 9.0f };
+    float  hB[]        = { 1.0f,  2.0f,  3.0f,  4.0f,
+                           5.0f,  6.0f,  7.0f,  8.0f,
+                           9.0f, 10.0f, 11.0f, 12.0f };
+    float  hC[]        = { 0.0f, 0.0f, 0.0f, 0.0f,
+                           0.0f, 0.0f, 0.0f, 0.0f,
                            0.0f, 0.0f, 0.0f, 0.0f };
-    float hC_result[]  = { 70.0f, 80.0f, 90.0f,
-                           184.0f,
-                           246.0f, 288.0f, 330.0f,
-                           334.0f, 450.0f };
-    float alpha        = 1.0f;
-    float beta         = 0.0f;
+    float  hC_result[] = { 19.0f,  8.0f,  51.0f,  52.0f,
+                           43.0f, 24.0f, 123.0f, 120.0f,
+                           67.0f, 40.0f, 195.0f, 188.0f };
+    float  alpha       = 1.0f;
+    float  beta        = 0.0f;
     //--------------------------------------------------------------------------
+    cusp::coo_matrix<int, float, cusp::host_memory> hA(A_num_rows, A_num_cols,
+                                                        A_nnz);
+    std::copy(hA_columns, hA_columns + A_nnz, thrust::raw_pointer_cast(hA.column_indices.data()));
+    std::copy(hA_rows, hA_rows + A_nnz, thrust::raw_pointer_cast(hA.row_indices.data()));
+    std::copy(hA_values, hA_values + A_nnz, thrust::raw_pointer_cast(hA.values.data()));   
+    cusp::coo_matrix<int, float, cusp::device_memory> dA(hA);
     // Device memory management
-    int   *dC_offsets, *dC_columns;
-    float *dC_values, *dB, *dA;
-    CHECK_CUDA( cudaMalloc((void**) &dA, A_size * sizeof(float)) )
-    CHECK_CUDA( cudaMalloc((void**) &dB, B_size * sizeof(float)) )
-    CHECK_CUDA( cudaMalloc((void**) &dC_offsets,
-                           (A_num_rows + 1) * sizeof(int)) )
-    CHECK_CUDA( cudaMalloc((void**) &dC_columns, C_nnz * sizeof(int))   )
-    CHECK_CUDA( cudaMalloc((void**) &dC_values,  C_nnz * sizeof(float)) )
+    //int   *dA_rows, *dA_columns;
+    // float *dA_values, 
+    float* dB, *dC;
+    //CHECK_CUDA( cudaMalloc((void**) &dA_rows,    A_nnz * sizeof(int))    )
+    //CHECK_CUDA( cudaMalloc((void**) &dA_columns, A_nnz * sizeof(int))    )
+    //CHECK_CUDA( cudaMalloc((void**) &dA_values,  A_nnz * sizeof(float))  )
+    CHECK_CUDA( cudaMalloc((void**) &dB,         B_size * sizeof(float)) )
+    CHECK_CUDA( cudaMalloc((void**) &dC,         C_size * sizeof(float)) )
 
-    CHECK_CUDA( cudaMemcpy(dA, hA, A_size * sizeof(float),
-                           cudaMemcpyHostToDevice) )
+    // CHECK_CUDA( cudaMemcpy(dA_rows, hA_rows, A_nnz * sizeof(int),
+    //                        cudaMemcpyHostToDevice) )
+    // CHECK_CUDA( cudaMemcpy(dA_columns, hA_columns, A_nnz * sizeof(int),
+    //                        cudaMemcpyHostToDevice) )
+    // CHECK_CUDA( cudaMemcpy(dA_values, hA_values, A_nnz * sizeof(float),
+    //                        cudaMemcpyHostToDevice) )
     CHECK_CUDA( cudaMemcpy(dB, hB, B_size * sizeof(float),
                            cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dC_offsets, hC_offsets,
-                           (A_num_rows + 1) * sizeof(int),
-                           cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dC_columns, hC_columns, C_nnz * sizeof(int),
-                           cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dC_values, hC_values, C_nnz * sizeof(float),
+    CHECK_CUDA( cudaMemcpy(dC, hC, C_size * sizeof(float),
                            cudaMemcpyHostToDevice) )
     //--------------------------------------------------------------------------
     // CUSPARSE APIs
     cusparseHandle_t     handle = NULL;
-    cusparseDnMatDescr_t matA, matB;
-    cusparseSpMatDescr_t matC;
+    cusparseSpMatDescr_t matA;
+    cusparseDnMatDescr_t matB, matC;
     void*                dBuffer    = NULL;
     size_t               bufferSize = 0;
     CHECK_CUSPARSE( cusparseCreate(&handle) )
-    // Create dense matrix A
-    CHECK_CUSPARSE( cusparseCreateDnMat(&matA, A_num_rows, A_num_cols, lda, dA,
-                                        CUDA_R_32F, CUSPARSE_ORDER_ROW) )
-    // Create dense matrix B
-    CHECK_CUSPARSE( cusparseCreateDnMat(&matB, A_num_cols, B_num_cols, ldb, dB,
-                                        CUDA_R_32F, CUSPARSE_ORDER_ROW) )
-    // Create sparse matrix C in CSR format
-    CHECK_CUSPARSE( cusparseCreateCsr(&matC, A_num_rows, B_num_cols, C_nnz,
-                                      dC_offsets, dC_columns, dC_values,
-                                      CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
+    // Create sparse matrix A in COO format
+    CHECK_CUSPARSE( cusparseCreateCoo(&matA, A_num_rows, A_num_cols, A_nnz,
+                                      //dA_rows, dA_columns, dA_values,
+                                      (void*)thrust::raw_pointer_cast(dA.row_indices.data()),
+                                      (void*)thrust::raw_pointer_cast(dA.column_indices.data()),
+                                      (void*)thrust::raw_pointer_cast(dA.values.data()),
+                                      CUSPARSE_INDEX_32I,
                                       CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F) )
+    // Create dense matrix B
+    CHECK_CUSPARSE( cusparseCreateDnMat(&matB, B_num_rows, B_num_cols, ldb, dB,
+                                        CUDA_R_32F, CUSPARSE_ORDER_COL) )
+    // Create dense matrix C
+    CHECK_CUSPARSE( cusparseCreateDnMat(&matC, A_num_rows, B_num_cols, ldc, dC,
+                                        CUDA_R_32F, CUSPARSE_ORDER_COL) )
     // allocate an external buffer if needed
-    CHECK_CUSPARSE( cusparseSDDMM_bufferSize(
+    CHECK_CUSPARSE( cusparseSpMM_bufferSize(
                                  handle,
                                  CUSPARSE_OPERATION_NON_TRANSPOSE,
                                  CUSPARSE_OPERATION_NON_TRANSPOSE,
                                  &alpha, matA, matB, &beta, matC, CUDA_R_32F,
-                                 CUSPARSE_SDDMM_ALG_DEFAULT, &bufferSize) )
+                                 CUSPARSE_SPMM_ALG_DEFAULT, &bufferSize) )
     CHECK_CUDA( cudaMalloc(&dBuffer, bufferSize) )
 
-    // execute preprocess (optional)
-    CHECK_CUSPARSE( cusparseSDDMM_preprocess(
-                                  handle,
-                                  CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                  CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                  &alpha, matA, matB, &beta, matC, CUDA_R_32F,
-                                  CUSPARSE_SDDMM_ALG_DEFAULT, dBuffer) )
     // execute SpMM
-    CHECK_CUSPARSE( cusparseSDDMM(handle,
-                                  CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                  CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                  &alpha, matA, matB, &beta, matC, CUDA_R_32F,
-                                  CUSPARSE_SDDMM_ALG_DEFAULT, dBuffer) )
+    CHECK_CUSPARSE( cusparseSpMM(handle,
+                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                 &alpha, matA, matB, &beta, matC, CUDA_R_32F,
+                                 CUSPARSE_SPMM_ALG_DEFAULT, dBuffer) )
+
     // destroy matrix/vector descriptors
-    CHECK_CUSPARSE( cusparseDestroyDnMat(matA) )
+    CHECK_CUSPARSE( cusparseDestroySpMat(matA) )
     CHECK_CUSPARSE( cusparseDestroyDnMat(matB) )
-    CHECK_CUSPARSE( cusparseDestroySpMat(matC) )
+    CHECK_CUSPARSE( cusparseDestroyDnMat(matC) )
     CHECK_CUSPARSE( cusparseDestroy(handle) )
     //--------------------------------------------------------------------------
     // device result check
-    CHECK_CUDA( cudaMemcpy(hC_values, dC_values, C_nnz * sizeof(float),
+    CHECK_CUDA( cudaMemcpy(hC, dC, C_size * sizeof(float),
                            cudaMemcpyDeviceToHost) )
     int correct = 1;
-    for (int i = 0; i < C_nnz; i++) {
-        if (hC_values[i] != hC_result[i]) {
-            correct = 0; // direct floating point comparison is not reliable
-            break;
+    for (int i = 0; i < A_num_rows; i++) {
+        for (int j = 0; j < B_num_cols; j++) {
+            if (hC[i + j * ldc] != hC_result[i + j * ldc]) {
+                correct = 0; // direct floating point comparison is not reliable
+                break;
+            }
         }
     }
     if (correct)
-        printf("sddmm_csr_example test PASSED\n");
+        printf("spmm_coo_example test PASSED\n");
     else
-        printf("sddmm_csr_example test FAILED: wrong result\n");
+        printf("spmm_coo_example test FAILED: wrong result\n");
     //--------------------------------------------------------------------------
     // device memory deallocation
     CHECK_CUDA( cudaFree(dBuffer) )
-    CHECK_CUDA( cudaFree(dA) )
+    // CHECK_CUDA( cudaFree(dA_rows) )
+    // CHECK_CUDA( cudaFree(dA_columns) )
+    // CHECK_CUDA( cudaFree(dA_values) )
     CHECK_CUDA( cudaFree(dB) )
-    CHECK_CUDA( cudaFree(dC_offsets) )
-    CHECK_CUDA( cudaFree(dC_columns) )
-    CHECK_CUDA( cudaFree(dC_values) )
+    CHECK_CUDA( cudaFree(dC) )
     return EXIT_SUCCESS;
 }

@@ -45,13 +45,13 @@
 # comments to the code, the above Disclaimer and U.S. Government End
 # Users Notice.
 CUDA_TOOLKIT := $(shell dirname $$(command -v nvcc))/..
-INC          := -I$(CUDA_TOOLKIT)/include
-LIBS         := -lcusparse
+INC          := -I$(CUDA_TOOLKIT)/include -I../../3rdparty/cusplibrary
+LIBS         := -lcudart -lcusparse
 
 all: sddmm_csr_example
 
-sddmm_csr_example: sddmm_csr_example.c
-	nvcc $(INC) sddmm_csr_example.c -o sddmm_csr_example $(LIBS)
+sddmm_csr_example: sddmm_csr_example.cu
+	nvcc $(INC) sddmm_csr_example.cu -o sddmm_csr_example $(LIBS)
 
 clean:
 	rm -f sddmm_csr_example
