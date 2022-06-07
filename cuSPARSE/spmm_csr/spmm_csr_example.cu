@@ -46,10 +46,16 @@
  * comments to the code, the above Disclaimer and U.S. Government End
  * Users Notice.
  */
+
+
 #include <cuda_runtime_api.h> // cudaMalloc, cudaMemcpy, etc.
 #include <cusparse.h>         // cusparseSpMM
 #include <stdio.h>            // printf
 #include <stdlib.h>           // EXIT_FAILURE
+#include <cstddef>
+#include <cusp/csr_matrix.h> // cusp::csr_matrix
+// renamed this source file to .cpp to allow cstddef. Source: https://talk.pokitto.com/t/sudden-error-cstddef-no-such-file-or-directory/711/4
+// renamed to .cu to allow cusp::csr_matrix<.,.,cusp::device_memory> instants as elaborated here: https://talk.pokitto.com/t/sudden-error-cstddef-no-such-file-or-directory/711/4
 
 #define CHECK_CUDA(func)                                                       \
 {                                                                              \
@@ -98,23 +104,31 @@ int main(void) {
     float alpha           = 1.0f;
     float beta            = 0.0f;
     //--------------------------------------------------------------------------
+    cusp::csr_matrix<int, float, cusp::host_memory> hA(A_num_rows, A_num_cols, A_nnz);
+    std::copy(hA_csrOffsets, hA_csrOffsets + A_num_cols + 1, thrust::raw_pointer_cast(hA.row_offsets.data()));
+    std::copy(hA_columns, hA_columns + A_nnz, thrust::raw_pointer_cast(hA.column_indices.data()));
+    std::copy(hA_values, hA_values + A_nnz, thrust::raw_pointer_cast(hA.values.data()));
+    cusp::csr_matrix<int, float, cusp::device_memory> dA(hA);
+
+    
     // Device memory management
-    int   *dA_csrOffsets, *dA_columns;
-    float *dA_values, *dB, *dC;
-    CHECK_CUDA( cudaMalloc((void**) &dA_csrOffsets,
-                           (A_num_rows + 1) * sizeof(int)) )
-    CHECK_CUDA( cudaMalloc((void**) &dA_columns, A_nnz * sizeof(int))    )
-    CHECK_CUDA( cudaMalloc((void**) &dA_values,  A_nnz * sizeof(float))  )
+    //int   *dA_csrOffsets, *dA_columns;
+    //float *dA_values;
+    float *dB, *dC;
+    // CHECK_CUDA( cudaMalloc((void**) &dA_csrOffsets,
+    //                        (A_num_rows + 1) * sizeof(int)) )
+    // CHECK_CUDA( cudaMalloc((void**) &dA_columns, A_nnz * sizeof(int))    )
+    // CHECK_CUDA( cudaMalloc((void**) &dA_values,  A_nnz * sizeof(float))  )
     CHECK_CUDA( cudaMalloc((void**) &dB,         B_size * sizeof(float)) )
     CHECK_CUDA( cudaMalloc((void**) &dC,         C_size * sizeof(float)) )
 
-    CHECK_CUDA( cudaMemcpy(dA_csrOffsets, hA_csrOffsets,
-                           (A_num_rows + 1) * sizeof(int),
-                           cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dA_columns, hA_columns, A_nnz * sizeof(int),
-                           cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dA_values, hA_values, A_nnz * sizeof(float),
-                           cudaMemcpyHostToDevice) )
+    // CHECK_CUDA( cudaMemcpy(dA_csrOffsets, hA_csrOffsets,
+    //                        (A_num_rows + 1) * sizeof(int),
+    //                        cudaMemcpyHostToDevice) )
+    // CHECK_CUDA( cudaMemcpy(dA_columns, hA_columns, A_nnz * sizeof(int),
+    //                        cudaMemcpyHostToDevice) )
+    // CHECK_CUDA( cudaMemcpy(dA_values, hA_values, A_nnz * sizeof(float),
+    //                        cudaMemcpyHostToDevice) )
     CHECK_CUDA( cudaMemcpy(dB, hB, B_size * sizeof(float),
                            cudaMemcpyHostToDevice) )
     CHECK_CUDA( cudaMemcpy(dC, hC, C_size * sizeof(float),
@@ -129,7 +143,10 @@ int main(void) {
     CHECK_CUSPARSE( cusparseCreate(&handle) )
     // Create sparse matrix A in CSR format
     CHECK_CUSPARSE( cusparseCreateCsr(&matA, A_num_rows, A_num_cols, A_nnz,
-                                      dA_csrOffsets, dA_columns, dA_values,
+                                      //dA_csrOffsets, dA_columns, dA_values,
+                                      (void*)thrust::raw_pointer_cast(dA.row_offsets.data()), 
+                                      (void*)thrust::raw_pointer_cast(dA.column_indices.data()), 
+                                      (void*)thrust::raw_pointer_cast(dA.values.data()),
                                       CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
                                       CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F) )
     // Create dense matrix B
@@ -179,9 +196,9 @@ int main(void) {
     //--------------------------------------------------------------------------
     // device memory deallocation
     CHECK_CUDA( cudaFree(dBuffer) )
-    CHECK_CUDA( cudaFree(dA_csrOffsets) )
-    CHECK_CUDA( cudaFree(dA_columns) )
-    CHECK_CUDA( cudaFree(dA_values) )
+    // CHECK_CUDA( cudaFree(dA_csrOffsets) )
+    // CHECK_CUDA( cudaFree(dA_columns) )
+    // CHECK_CUDA( cudaFree(dA_values) )
     CHECK_CUDA( cudaFree(dB) )
     CHECK_CUDA( cudaFree(dC) )
     return EXIT_SUCCESS;
