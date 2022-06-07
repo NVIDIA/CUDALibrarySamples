@@ -50,6 +50,7 @@
 #include <cusparse.h>         // cusparseSparseToDense
 #include <stdio.h>            // printf
 #include <stdlib.h>           // EXIT_FAILURE
+#include <cusp/csr_matrix.h> // cusp::csr_matrix<>
 
 #define CHECK_CUDA(func)                                                       \
 {                                                                              \
@@ -94,24 +95,31 @@ int main(void) {
                                0.0f, 10.0f, 11.0f,  0.0f };
     //--------------------------------------------------------------------------
     // Device memory management
-    int   *d_csr_offsets, *d_csr_columns;
-    float *d_csr_values,  *d_dense;
-    CHECK_CUDA( cudaMalloc((void**) &d_csr_offsets,
-                           (num_rows + 1) * sizeof(int)) )
-    CHECK_CUDA( cudaMalloc((void**) &d_csr_columns, nnz * sizeof(int))         )
-    CHECK_CUDA( cudaMalloc((void**) &d_csr_values,  nnz * sizeof(float))       )
+    //int   *d_csr_offsets, *d_csr_columns;
+    //float *d_csr_values,
+    float *d_dense;
+    // CHECK_CUDA( cudaMalloc((void**) &d_csr_offsets,
+    //                        (num_rows + 1) * sizeof(int)) )
+    // CHECK_CUDA( cudaMalloc((void**) &d_csr_columns, nnz * sizeof(int))         )
+    // CHECK_CUDA( cudaMalloc((void**) &d_csr_values,  nnz * sizeof(float))       )
     CHECK_CUDA( cudaMalloc((void**) &d_dense,       dense_size * sizeof(float)))
 
-    CHECK_CUDA( cudaMemcpy(d_csr_offsets, h_csr_offsets,
-                           (num_rows + 1) * sizeof(int),
-                           cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(d_csr_columns, h_csr_columns, nnz * sizeof(int),
-                           cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(d_csr_values, h_csr_values, nnz * sizeof(float),
-                           cudaMemcpyHostToDevice) )
+    //CHECK_CUDA( cudaMemcpy(d_csr_offsets, h_csr_offsets,
+    //                       (num_rows + 1) * sizeof(int),
+    //                       cudaMemcpyHostToDevice) )
+    // CHECK_CUDA( cudaMemcpy(d_csr_columns, h_csr_columns, nnz * sizeof(int),
+    //                        cudaMemcpyHostToDevice) )
+    // CHECK_CUDA( cudaMemcpy(d_csr_values, h_csr_values, nnz * sizeof(float),
+    //                        cudaMemcpyHostToDevice) )
     CHECK_CUDA( cudaMemcpy(d_dense, h_dense, dense_size * sizeof(float),
                            cudaMemcpyHostToDevice) )
     //--------------------------------------------------------------------------
+    cusp::csr_matrix<int, float, cusp::host_memory> h_csr(num_rows, num_cols,
+                                                        nnz);
+    std::copy(h_csr_offsets, h_csr_offsets + num_rows + 1, thrust::raw_pointer_cast(h_csr.row_offsets.data()));
+    std::copy(h_csr_columns, h_csr_columns + nnz, thrust::raw_pointer_cast(h_csr.column_indices.data()));
+    std::copy(h_csr_values, h_csr_values + nnz, thrust::raw_pointer_cast(h_csr.values.data()));  
+    cusp::csr_matrix<int, float, cusp::device_memory> d_csr(h_csr);
     // CUSPARSE APIs
     cusparseHandle_t     handle = NULL;
     cusparseSpMatDescr_t matA;
@@ -121,8 +129,12 @@ int main(void) {
     CHECK_CUSPARSE( cusparseCreate(&handle) )
     // Create sparse matrix A in CSR format
     CHECK_CUSPARSE( cusparseCreateCsr(&matA, num_rows, num_cols, nnz,
-                                      d_csr_offsets, d_csr_columns,
-                                      d_csr_values, CUSPARSE_INDEX_32I,
+                                      //d_csr_offsets, d_csr_columns,
+                                      //d_csr_values, 
+                                      (void*)thrust::raw_pointer_cast(d_csr.row_offsets.data()),
+                                      (void*)thrust::raw_pointer_cast(d_csr.column_indices.data()),
+                                      (void*)thrust::raw_pointer_cast(d_csr.values.data()),
+                                      CUSPARSE_INDEX_32I,
                                       CUSPARSE_INDEX_32I,
                                       CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F) )
     // Create dense matrix B
@@ -152,7 +164,11 @@ int main(void) {
         for (int j = 0; j < num_cols; j++) {
             if (h_dense[i * ld + j] != h_dense_result[i * ld + j]) {
                 correct = 0;
+                printf("%d %d %f!=%f\n", i, j, h_dense[i * ld + j], h_dense_result[i * ld + j]);
                 break;
+            }
+            else{
+                printf("%d %d %f==%f\n", i, j, h_dense[i * ld + j]);
             }
         }
     }
@@ -163,9 +179,9 @@ int main(void) {
     //--------------------------------------------------------------------------
     // device memory deallocation
     CHECK_CUDA( cudaFree(dBuffer) )
-    CHECK_CUDA( cudaFree(d_csr_offsets) )
-    CHECK_CUDA( cudaFree(d_csr_columns) )
-    CHECK_CUDA( cudaFree(d_csr_values) )
+    // CHECK_CUDA( cudaFree(d_csr_offsets) )
+    // CHECK_CUDA( cudaFree(d_csr_columns) )
+    // CHECK_CUDA( cudaFree(d_csr_values) )
     CHECK_CUDA( cudaFree(d_dense) )
     return EXIT_SUCCESS;
 }

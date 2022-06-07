@@ -45,13 +45,13 @@
 # comments to the code, the above Disclaimer and U.S. Government End
 # Users Notice.
 CUDA_TOOLKIT := $(shell dirname $$(command -v nvcc))/..
-INC          := -I$(CUDA_TOOLKIT)/include
-LIBS         := -lcusparse
+INC          := -I$(CUDA_TOOLKIT)/include -I../../3rdparty/cusplibrary
+LIBS         := -lcudart -lcusparse
 
 all: sparse2dense_csr_example
 
-sparse2dense_csr_example: sparse2dense_csr_example.c
-	nvcc $(INC) sparse2dense_csr_example.c -o sparse2dense_csr_example $(LIBS)
+sparse2dense_csr_example: sparse2dense_csr_example.cu
+	nvcc $(INC) sparse2dense_csr_example.cu -o sparse2dense_csr_example $(LIBS)
 
 clean:
 	rm -f sparse2dense_csr_example
