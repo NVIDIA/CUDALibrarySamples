@@ -52,6 +52,7 @@
 #include <stdlib.h>           // EXIT_FAILURE
 #include <cusp/csr_matrix.h>
 #include <utils/generate_random_data.h>
+#include <utils/helper_string.h>
 
 #define CHECK_CUDA(func)                                               \
     {                                                                  \
@@ -75,16 +76,26 @@
         }                                                                  \
     }
 
-int main(void)
+int main(const int argc, const char** argv)
 {
     // Host problem definition
-    int A_num_rows = 4;
-    int A_num_cols = 4;
+    int A_num_rows = getCmdLineArgumentInt(argc, argv, "A_num_rows");
+    int A_num_cols = getCmdLineArgumentInt(argc, argv, "A_num_cols");
+    int B_num_cols = getCmdLineArgumentInt(argc, argv, "B_num_cols");
+    float C_sparsity = getCmdLineArgumentFloat(argc, argv, "C_sparsity");
+    if (argc != 5)
+    {
+        printf("Usage: %s --A_num_rows=## --A_num_cols=## --B_num_cols=## --C_sparsity=0.##\n", argv[0]);
+        return EXIT_FAILURE;
+    }
+    printf("A_num_rows: %d\n", A_num_rows);
+    printf("A_num_cols: %d\n", A_num_cols);
+    printf("B_num_cols: %d\n", B_num_cols);
+    printf("C_sparsity: %f\n", C_sparsity);
+    // ***** END OF HOST PROBLEM DEFINITION *****
     int B_num_rows = A_num_cols;
-    int B_num_cols = 3;
     // int   C_nnz        = 9;
-    float sparsity = 0.1f;
-    int C_nnz = A_num_rows * B_num_cols * sparsity;
+    int C_nnz = A_num_rows * B_num_cols * C_sparsity;
     int lda = A_num_cols;
     int ldb = B_num_cols;
     int A_size = lda * A_num_rows;

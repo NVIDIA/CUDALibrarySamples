@@ -52,6 +52,7 @@
 #include <stdlib.h>           // EXIT_FAILURE
 #include <cusp/csr_matrix.h>  // cusp::csr_matrix<>
 #include <utils/generate_random_data.h>
+#include <utils/helper_string.h>
 
 #define CHECK_CUDA(func)                                               \
     {                                                                  \
@@ -75,12 +76,21 @@
         }                                                                  \
     }
 
-int main(void)
+int main(const int argc, const char** argv)
 {
     // Host problem definition
-    int num_rows = 5;
-    int num_cols = 4;
-    float sparsity = 0.1f;
+    int num_rows = getCmdLineArgumentInt(argc, argv, "num_cols");
+    int num_cols = getCmdLineArgumentInt(argc, argv, "num_cols");
+    float sparsity = getCmdLineArgumentFloat(argc, argv, "sparsity");
+    if (argc != 4){
+        printf("Usage: %s --num_rows=## --num_cols=## --sparsity=0.##\n", argv[0]);
+        return EXIT_FAILURE;
+    }
+    printf("num_rows: %d\n", num_rows);
+    printf("num_cols: %d\n", num_cols);
+    printf("sparsity: %f\n", sparsity);
+
+    // ***** END OF HOST PROBLEM DEFINITION *****
     // int   nnz              = 11;
     int nnz = num_rows * num_cols * sparsity;
     int ld = num_cols;

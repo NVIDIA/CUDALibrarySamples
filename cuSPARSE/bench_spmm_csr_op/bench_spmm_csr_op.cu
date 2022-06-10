@@ -53,6 +53,7 @@
 #include <stdlib.h>           // EXIT_FAILURE
 #include <cusp/csr_matrix.h>
 #include <utils/generate_random_data.h>
+#include <utils/helper_string.h>
 
 #define CHECK_CUDA(func)                                               \
     {                                                                  \
@@ -161,25 +162,36 @@ float epilogue(float accumulation, float old_C_value) {                      \n\
 
 //------------------------------------------------------------------------------
 
-int main(void)
+int main(const int argc, const char** argv)
 {
     // Host problem definition
-    int A_num_rows = 4;
-    int A_num_cols = 4;
-    float sparsity = 0.1f;
+    int A_num_rows = getCmdLineArgumentInt(argc, argv, "A_num_rows");
+    int A_num_cols = getCmdLineArgumentInt(argc, argv, "A_num_cols");
+    int B_num_cols = getCmdLineArgumentInt(argc, argv, "B_num_cols");
+    float A_sparsity = getCmdLineArgumentFloat(argc, argv, "A_sparsity");
+    if (argc != 5){
+        printf("Usage: %s --A_num_rows=## --A_num_cols=## --B_num_cols=## --A_sparsity=0.##\n", argv[0]);
+        return EXIT_FAILURE;
+    }
+    printf("A_num_rows: %d\n", A_num_rows);
+    printf("A_num_cols: %d\n", A_num_cols);
+    printf("B_num_cols: %d\n", B_num_cols);
+    printf("A_sparsity: %f\n", A_sparsity);
+
+    // ***** END OF HOST PROBLEM DEFINITION *****
     // int   A_nnz           = 9;
-    int A_nnz = A_num_rows * A_num_cols * sparsity;
+    int A_nnz = A_num_rows * A_num_cols * A_sparsity;
     int B_num_rows = A_num_cols;
-    int B_num_cols = 3;
+    
     int ldb = B_num_cols;
     int ldc = B_num_cols;
     int B_size = ldb * B_num_rows;
     int C_size = ldc * A_num_rows;
     // initializing data
-    int hA_csrOffsets[] = {0, 3, 4, 7, 9};
-    int hA_columns[] = {0, 2, 3, 1, 0, 2, 3, 1, 3};
-    float hA_values[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f,
-                         6.0f, 7.0f, 8.0f, 9.0f};
+    // int hA_csrOffsets[] = {0, 3, 4, 7, 9};
+    // int hA_columns[] = {0, 2, 3, 1, 0, 2, 3, 1, 3};
+    // float hA_values[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f,
+    //                      6.0f, 7.0f, 8.0f, 9.0f};
 
     // float hB[]            = {  1.0f,  2.0f,  3.0f,
     //                            4.0f,  5.0f,  6.0f,
@@ -195,6 +207,7 @@ int main(void)
     for (int idx = 0; idx < C_size; idx++)
         hC[idx] = 1.0f;
     cusp::csr_matrix<int, float, cusp::host_memory> hA = generate_random_sparse_matrix<cusp::csr_matrix<int, float, cusp::host_memory>>(A_num_rows, A_num_cols, A_nnz);
+    generate_random_matrix(hB, B_size);
     cusp::csr_matrix<int, float, cusp::device_memory> dA(hA);
     //--------------------------------------------------------------------------
 
