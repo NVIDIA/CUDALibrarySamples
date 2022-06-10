@@ -118,6 +118,8 @@ int main(const int argc, const char** argv)
     generate_random_matrix(hB, B_size);
     cusp::csr_matrix<int, float, cusp::host_memory> hA = generate_random_sparse_matrix<cusp::csr_matrix<int, float, cusp::host_memory>>(A_num_rows, A_num_cols, A_nnz);
     cusp::csr_matrix<int, float, cusp::device_memory> dA(hA);
+    A_nnz = hA.values.size();
+    printf("actual A_nnz due to deduplication during random data generation: %d\n", A_nnz);
     float alpha = 1.0f;
     float beta = 0.0f;
     //--------------------------------------------------------------------------

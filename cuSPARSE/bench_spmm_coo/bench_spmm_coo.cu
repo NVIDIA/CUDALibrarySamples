@@ -107,7 +107,8 @@ int main(const int argc, const char** argv)
     float *hB = (float *)malloc(B_size * sizeof(float));
     generate_random_matrix(hB, B_size);
     cusp::coo_matrix<int, float, cusp::host_memory> hA = generate_random_sparse_matrix<cusp::coo_matrix<int, float, cusp::host_memory>>(A_num_rows, A_num_cols, A_nnz);
-
+    A_nnz = hA.values.size();
+    printf("actual A_nnz due to deduplication during random data generation: %d\n", A_nnz);
     float alpha = 1.0f;
     float beta = 0.0f;
     //--------------------------------------------------------------------------
