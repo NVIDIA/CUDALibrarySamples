@@ -1,4 +1,4 @@
-# Copyright 1993-2022 NVIDIA Corporation.  All rights reserved.
+# Copyright 1993-2021 NVIDIA Corporation.  All rights reserved.
 #
 # NOTICE TO LICENSEE:
 #
@@ -45,19 +45,19 @@
 # comments to the code, the above Disclaimer and U.S. Government End
 # Users Notice.
 CUDA_TOOLKIT := $(shell dirname $$(command -v nvcc))/..
-INC          := -I$(CUDA_TOOLKIT)/include -I../../3rdparty/cusplibrary -I../../3rdparty
+INC          := -I$(CUDA_TOOLKIT)/include -I../../3rdparty/cusplibrary -I../../3rdparty/
 LIBS         := -lcudart -lcusparse
 
-all: spmm_csr_example
+all: bench_sddmm_csr
 
-spmm_csr_example: spmm_csr_example.cu
-	nvcc $(INC) spmm_csr_example.cu -o spmm_csr_example $(LIBS)
+bench_sddmm_csr: bench_sddmm_csr.cu
+	nvcc $(INC) bench_sddmm_csr.cu -o bench_sddmm_csr $(LIBS)
 
 clean:
-	rm -f spmm_csr_example
+	rm -f bench_sddmm_csr
 
 test:
-	@echo "\n==== SpMM CSR Test ====\n"
-	./spmm_csr_example
+	@echo "\n==== SDDMM CSR Test ====\n"
+	./bench_sddmm_csr
 
 .PHONY: clean all test

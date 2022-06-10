@@ -52,7 +52,7 @@
 #include <cusparse.h>         // cusparseSpMM
 #include <stdio.h>            // printf
 #include <stdlib.h>           // EXIT_FAILURE
-#include <cstddef>
+#include <utils/generate_random_data.h>
 #include <cusp/csr_matrix.h> // cusp::csr_matrix
 // renamed this source file to .cpp to allow cstddef. Source: https://talk.pokitto.com/t/sudden-error-cstddef-no-such-file-or-directory/711/4
 // renamed to .cu to allow cusp::csr_matrix<.,.,cusp::device_memory> instants as elaborated here: https://talk.pokitto.com/t/sudden-error-cstddef-no-such-file-or-directory/711/4
@@ -88,6 +88,7 @@ int main(void) {
     int   ldc             = A_num_rows;
     int   B_size          = ldb * B_num_cols;
     int   C_size          = ldc * B_num_cols;
+    // instantiating data
     int   hA_csrOffsets[] = { 0, 3, 4, 7, 9 };
     int   hA_columns[]    = { 0, 2, 3, 1, 0, 2, 3, 1, 3 };
     float hA_values[]     = { 1.0f, 2.0f, 3.0f, 4.0f, 5.0f,
@@ -105,6 +106,8 @@ int main(void) {
     float beta            = 0.0f;
     //--------------------------------------------------------------------------
     cusp::csr_matrix<int, float, cusp::host_memory> hA(A_num_rows, A_num_cols, A_nnz);
+    cusp::csr_matrix<int, float, cusp::host_memory> hA_random = generate_random_sparse_matrix<cusp::csr_matrix<int, float, cusp::host_memory>>(A_num_rows, A_num_cols, A_nnz);
+    cusp::coo_matrix<int, float, cusp::host_memory> hA_random2 = generate_random_sparse_matrix<cusp::coo_matrix<int, float, cusp::host_memory>>(A_num_rows, A_num_cols, A_nnz);    
     std::copy(hA_csrOffsets, hA_csrOffsets + A_num_cols + 1, thrust::raw_pointer_cast(hA.row_offsets.data()));
     std::copy(hA_columns, hA_columns + A_nnz, thrust::raw_pointer_cast(hA.column_indices.data()));
     std::copy(hA_values, hA_values + A_nnz, thrust::raw_pointer_cast(hA.values.data()));

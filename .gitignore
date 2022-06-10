@@ -1,2 +1,13 @@
 .vscode/
 *_example
+!*_example/
+bench_sddmm_csr
+!bench_sddmm_csr/
+bench_sparse2dense_csr
+!bench_sparse2dense_csr/
+bench_spmm_coo
+!bench_spmm_coo/
+bench_spmm_csr
+!bench_spmm_csr/
+bench_spmm_csr_op
+!bench_spmm_csr_op/
