@@ -56,6 +56,7 @@
 // renamed this source file to .cpp to allow cstddef. Source: https://talk.pokitto.com/t/sudden-error-cstddef-no-such-file-or-directory/711/4
 // renamed to .cu to allow cusp::csr_matrix<.,.,cusp::device_memory> instants as elaborated here: https://talk.pokitto.com/t/sudden-error-cstddef-no-such-file-or-directory/711/4
 #include <utils/helper_string.h>
+#include <chrono>
 
 #define CHECK_CUDA(func)                                               \
     {                                                                  \
@@ -179,11 +180,19 @@ int main(const int argc, const char** argv)
     CHECK_CUDA(cudaMalloc(&dBuffer, bufferSize))
 
     // execute SpMM
+    std::chrono::time_point<std::chrono::system_clock> start, end;
+    cudaDeviceSynchronize();
+    start = std::chrono::system_clock::now();
     CHECK_CUSPARSE(cusparseSpMM(handle,
                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
                                 &alpha, matA, matB, &beta, matC, CUDA_R_32F,
                                 CUSPARSE_SPMM_ALG_DEFAULT, dBuffer))
+    cudaDeviceSynchronize();
+    end = std::chrono::system_clock::now();
+    printf("cusparseSpMM time (microseconds): %ld\n",
+           std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
+   
 
     // destroy matrix/vector descriptors
     CHECK_CUSPARSE(cusparseDestroySpMat(matA))
