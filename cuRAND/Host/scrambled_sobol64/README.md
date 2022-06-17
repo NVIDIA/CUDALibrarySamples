@@ -21,7 +21,6 @@ All GPUs supported by CUDA Toolkit (https://developer.nvidia.com/cuda-gpus)
 ## Supported OSes
 
 Linux  
-Windows
 
 ## Supported CPU Architecture
 
@@ -43,7 +42,7 @@ arm64-sbsa
 # Building (make)
 
 # Prerequisites
-- A Linux/Windows system with recent NVIDIA drivers.
+- A Linux system with recent NVIDIA drivers.
 - [CMake](https://cmake.org/download) version 3.18 minimum
 
 ## Build command on Linux
@@ -54,14 +53,6 @@ $ cmake ..
 $ make
 ```
 Make sure that CMake finds expected CUDA Toolkit. If that is not the case you can add argument `-DCMAKE_CUDA_COMPILER=/path/to/cuda/bin/nvcc` to cmake command.
-
-## Build command on Windows
-```
-$ mkdir build
-$ cd build
-$ cmake -DCMAKE_GENERATOR_PLATFORM=x64 ..
-$ Open curand_examples.sln project in Visual Studio and build
-```
 
 # Usage #1
 ```
