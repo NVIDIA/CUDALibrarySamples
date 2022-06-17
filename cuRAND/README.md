@@ -153,17 +153,3 @@ This folder demonstrates cuRAND APIs usage.
 * [cuRAND Scrambled SOBOL64 Poisson](Host/scrambled_sobol64/curand_scrambled_sobol64_poisson_example.cpp)
     
     The sample demonstrates poisson scrambled sobol64 pseudorandom generation using Host API.
-
-##### cuRAND Device APIs
-
-* [cuRAND XORWOW Uniform](Device/xorwow_uniform/)
-
-    The sample demonstrates uniform xorwow pseudorandom generation using Device API.
-
-* [cuRAND XORWOW Normal](Device/xorwow_normal/)
-
-    The sample demonstrates normal xorwow pseudorandom generation using Device API.
-
-* [cuRAND XORWOW LogNormal](Device/xorwow_lognormal/)
-
-    The sample demonstrates log-normal xorwow pseudorandom generation using Device API.
