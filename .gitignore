@@ -7,6 +7,8 @@ bench_sparse2dense_csr
 !bench_sparse2dense_csr/
 bench_spmm_coo
 !bench_spmm_coo/
+bench_spmm_coo_batched
+!bench_spmm_coo_batched/
 bench_spmm_csr
 !bench_spmm_csr/
 bench_spmm_csr_op
