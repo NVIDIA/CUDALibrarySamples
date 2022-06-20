@@ -325,7 +325,7 @@ int main(int argc, char** argv)
     }
     CHECK(cudaSetDevice(currentDeviceId));
 
-    printf("execution took: %.2e sec.\n", minElapsed);
+    printf("execution took: %.2e ms.\n", minElapsed);
 
     printf("Free resources ...\n");
 
