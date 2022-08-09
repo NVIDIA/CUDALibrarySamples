@@ -104,7 +104,7 @@ cutensorStatus_t cutensorContractionSimple(const cutensorHandle_t* handle,
      **********************/
 
     size_t worksize = 0;
-    HANDLE_ERROR(cutensorContractionGetWorkspace(handle,
+    HANDLE_ERROR(cutensorContractionGetWorkspaceSize(handle,
                  &desc,
                  &find,
                  workPref, &worksize));

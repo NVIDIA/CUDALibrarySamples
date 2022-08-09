@@ -29,7 +29,6 @@
 
 #include <ATen/ATen.h>
 #include <ATen/cuda/CUDAContext.h>
-#include <THC/THC.h>
 #include <torch/extension.h>
 
 #include <cuda.h>
@@ -54,7 +53,7 @@ struct CuTensorTypeTraits<at::BFloat16> {
 template<>
 struct CuTensorTypeTraits<c10::complex<float>> {
   static const cudaDataType_t cudaType = CUDA_C_32F;
-  static const cutensorComputeType_t cutensorType = CUTENSOR_COMPUTE_32F;
+  static const cutensorComputeType_t cutensorType = CUTENSOR_COMPUTE_TF32;
   typedef c10::complex<float> ScalarType;
 };
 

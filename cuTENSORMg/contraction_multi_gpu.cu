@@ -93,7 +93,7 @@ void printDeviceInfo(int deviceId)
     CHECK(cudaGetDevice(&currentDeviceId));
     CHECK(cudaSetDevice(deviceId));
     CHECK(cudaGetDeviceProperties(&prop, deviceId));
-    printf( "device %d (%s): SMs %2d  Capabilities %d.%d, SmClock %.1f Mhz, MemSize (Mb) %d, MemClock %.1f Mhz\n",
+    printf( "device %d (%s): SMs %2d  Capabilities %d.%d, SmClock %.1f Mhz, MemSize (MB) %d, MemClock %.1f Mhz\n",
             deviceId,
             prop.name,
             prop.multiProcessorCount, prop.major, prop.minor,
@@ -325,7 +325,7 @@ int main(int argc, char** argv)
     }
     CHECK(cudaSetDevice(currentDeviceId));
 
-    printf("execution took: %.2e sec.\n", minElapsed);
+    printf("execution took: %.2e millisec.\n", minElapsed);
 
     printf("Free resources ...\n");
 
