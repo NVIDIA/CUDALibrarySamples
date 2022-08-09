@@ -52,6 +52,7 @@ if 'CUTENSOR_ROOT' in os.environ:
     root = os.environ['CUTENSOR_ROOT']
     include_dirs.append(os.path.join(root, 'include'))
     library_dirs.append(os.path.join(root, 'lib'))
+    library_dirs.append(os.path.join(root, 'build/lib'))
     versioned_path = os.path.join(root, 'lib', cuda_version)
     if not os.path.exists(versioned_path):
         versioned_path = os.path.join(root, 'lib', cuda_version.split('.')[0])
