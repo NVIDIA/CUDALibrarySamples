@@ -93,11 +93,10 @@ class Einsum(torch.nn.Module):
 
 
 def _compute_target_tensor(in0, in1, target):
-    result = in0[:-1] + in1[:-1] + in1[-1] + in0[-1]
-    # remove duplicates
-    duplicates = set(in0) & set(in1)
-    for elem in duplicates:
-        result = result.replace(elem, '')
+    result = ""
+    for m in in0[:-1] + in1[:-1] + in1[-1] + in0[-1]:
+        if m in target and not m in result:
+            result += m
     # reorder target modes like target
     result = list(result)
     for i in range(len(result)):

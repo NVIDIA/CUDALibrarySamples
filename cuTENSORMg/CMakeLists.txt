@@ -156,6 +156,7 @@ endfunction()
 add_custom_target(cutensormg_examples)
 
 add_cutensormg_example(cutensormg_examples "cuTENSORMg.example.contraction_multi_gpu" contraction_multi_gpu.cu)
+add_cutensormg_example(cutensormg_examples "cuTENSORMg.example.blog_post" blog_post.cu)
 
 # ##########################################
 # cuTENSOR_example directories

@@ -308,7 +308,7 @@ int main()
      **********************/
 
     uint64_t worksize = 0;
-    HANDLE_ERROR(cutensorContractionGetWorkspace(&handle,
+    HANDLE_ERROR(cutensorContractionGetWorkspaceSize(&handle,
                  &desc,
                  &find,
                  CUTENSOR_WORKSPACE_MAX, &worksize)); // TODO

@@ -190,7 +190,7 @@ int main()
      **********************/
 
     uint64_t worksize = 0;
-    HANDLE_ERROR(cutensorReductionGetWorkspace(&handle, 
+    HANDLE_ERROR(cutensorReductionGetWorkspaceSize(&handle, 
                  A_d, &descA, modeA.data(),
                  C_d, &descC, modeC.data(),
                  C_d, &descC, modeC.data(),
