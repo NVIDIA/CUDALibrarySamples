@@ -42,7 +42,7 @@ float get_scale_factor(nvjpegChromaSubsampling_t chroma_subsampling)
   else if(chroma_subsampling == NVJPEG_CSS_410) {
     scale_factor = 1.25;
   }
-  else if(chroma_subsampling = NVJPEG_CSS_GRAY){
+  else if(chroma_subsampling == NVJPEG_CSS_GRAY){
     scale_factor = 1.0;
   }
 
@@ -151,7 +151,8 @@ int decode_images(const FileData &img_data, const std::vector<size_t> &img_len,
 
                   CHECK_CUDA(cudaEventRecord(per_thread_params.decode_events[buffer_indices[thread_idx]],  per_thread_params.stream))
                   // switch pinned buffer in pipeline mode to avoid an extra sync
-                  buffer_indices[thread_idx] = 1 - buffer_indices[thread_idx]; 
+                  buffer_indices[thread_idx] = 1 - buffer_indices[thread_idx];
+                  return EXIT_SUCCESS; // the CHECK_ statements returns 1 on failure, so we need to return a value here too.
                 }, i, std::placeholders::_1
                 )
             );
