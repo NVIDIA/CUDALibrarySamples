@@ -168,7 +168,7 @@ int decodeResizeEncodeOneImage(std::string sImagePath, std::string sOutputPath, 
         imgResize.channel[0] = pResizeBuffer;
         imgResize.channel[1] = pResizeBuffer + resizeWidth * resizeHeight;
         imgResize.channel[2] = pResizeBuffer + resizeWidth * resizeHeight * 2;
-        imgResize.pitch[0] = (unsigned int)(is_interleaved(oformat) ? resizeWidth * NVJPEG_MAX_COMPONENT : resizeWidth);;
+        imgResize.pitch[0] = (unsigned int)(is_interleaved(oformat) ? resizeWidth * NVJPEG_MAX_COMPONENT : resizeWidth);
         imgResize.pitch[1] = (unsigned int)resizeWidth;
         imgResize.pitch[2] = (unsigned int)resizeWidth;
 
