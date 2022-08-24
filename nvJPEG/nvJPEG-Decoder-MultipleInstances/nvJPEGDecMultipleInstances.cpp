@@ -101,7 +101,7 @@ int decode_images(const FileData &img_data, const std::vector<size_t> &img_len,
         CHECK_NVJPEG(nvjpegDecodeJpegHost(params.nvjpeg_handle, decoder, decoder_state,
             per_thread_params.nvjpeg_decode_params, per_thread_params.jpeg_streams[buffer_index]));
 
-        CHECK_CUDA(cudaEventSynchronize(per_thread_params.decode_events[buffer_index]));
+        CHECK_CUDA(cudaStreamSynchronize(per_thread_params.stream));
 
         CHECK_NVJPEG(nvjpegDecodeJpegTransferToDevice(params.nvjpeg_handle, decoder, decoder_state,
             per_thread_params.jpeg_streams[buffer_index], per_thread_params.stream));
@@ -109,13 +109,10 @@ int decode_images(const FileData &img_data, const std::vector<size_t> &img_len,
         CHECK_NVJPEG(nvjpegDecodeJpegDevice(params.nvjpeg_handle, decoder, decoder_state,
             &out[i], per_thread_params.stream));
 
-        CHECK_CUDA(cudaEventRecord(per_thread_params.decode_events[buffer_index],  per_thread_params.stream))
-        buffer_index = 1 - buffer_index; // switch pinned buffer in pipeline mode to avoid an extra sync
+        buffer_index = (buffer_index+1)%pipeline_stages; // switch pinned buffer in pipeline mode to avoid an extra sync
 
     }
-    for(int i = 0; i < pipeline_stages; i++ ) {
-      CHECK_CUDA(cudaEventSynchronize(per_thread_params.decode_events[i]));
-    }
+    CHECK_CUDA(cudaStreamSynchronize(per_thread_params.stream))
   }
   else
   {
@@ -141,7 +138,7 @@ int decode_images(const FileData &img_data, const std::vector<size_t> &img_len,
                   CHECK_NVJPEG(nvjpegDecodeJpegHost(params.nvjpeg_handle, decoder, decoder_state,
                     per_thread_params.nvjpeg_decode_params, per_thread_params.jpeg_streams[buffer_indices[thread_idx]]));
 
-                  CHECK_CUDA(cudaEventSynchronize(per_thread_params.decode_events[buffer_indices[thread_idx]]));
+                  CHECK_CUDA(cudaStreamSynchronize(per_thread_params.stream));
 
                   CHECK_NVJPEG(nvjpegDecodeJpegTransferToDevice(params.nvjpeg_handle, decoder, decoder_state,
                     per_thread_params.jpeg_streams[buffer_indices[thread_idx]], per_thread_params.stream));
@@ -149,9 +146,8 @@ int decode_images(const FileData &img_data, const std::vector<size_t> &img_len,
                   CHECK_NVJPEG(nvjpegDecodeJpegDevice(params.nvjpeg_handle, decoder, decoder_state,
                     &out[iidx], per_thread_params.stream));
 
-                  CHECK_CUDA(cudaEventRecord(per_thread_params.decode_events[buffer_indices[thread_idx]],  per_thread_params.stream))
                   // switch pinned buffer in pipeline mode to avoid an extra sync
-                  buffer_indices[thread_idx] = 1 - buffer_indices[thread_idx];
+                  buffer_indices[thread_idx] = (buffer_indices[thread_idx]+1)%pipeline_stages;
                   return EXIT_SUCCESS; // the CHECK_ statements returns 1 on failure, so we need to return a value here too.
                 }, i, std::placeholders::_1
                 )
@@ -159,9 +155,7 @@ int decode_images(const FileData &img_data, const std::vector<size_t> &img_len,
     }
     workers.wait();
     for ( auto& per_thread_params : params.nvjpeg_per_thread_data) {
-        for(int i = 0; i < pipeline_stages; i++) {
-          CHECK_CUDA(cudaEventSynchronize(per_thread_params.decode_events[i]));
-        }
+        CHECK_CUDA(cudaStreamSynchronize(per_thread_params.stream))
     }
   }
   
