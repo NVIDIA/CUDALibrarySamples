@@ -82,7 +82,6 @@ constexpr int pipeline_stages = 2;
 
 struct decode_per_thread_params {
   cudaStream_t stream;
-  cudaEvent_t decode_events[pipeline_stages];
   nvjpegJpegState_t dec_state_cpu;
   nvjpegJpegState_t dec_state_gpu;
   nvjpegBufferPinned_t pinned_buffers[pipeline_stages];
@@ -118,15 +117,12 @@ struct decode_params_t {
 
 };
 
-int create_nvjpeg_data(nvjpegHandle_t&  nvjpeg_handle, decode_per_thread_params& params){ 
-
+int create_nvjpeg_data(nvjpegHandle_t&  nvjpeg_handle, decode_per_thread_params& params){
+  static_assert(pipeline_stages >=2, "We need at least two stages in the pipeline to allow buffering of the states, "
+                                     "so the re-allocations won't interfere with asynchronous execution.");
    // stream for decoding
   CHECK_CUDA( cudaStreamCreateWithFlags(&params.stream, cudaStreamNonBlocking));
-  for( int i = 0; i < pipeline_stages; i++) {
-    CHECK_CUDA(cudaEventCreate(&params.decode_events[i]));
-    CHECK_CUDA(cudaEventRecord(params.decode_events[i], params.stream));
-  }
-  
+
   CHECK_NVJPEG(nvjpegDecoderCreate(nvjpeg_handle, NVJPEG_BACKEND_HYBRID, &params.nvjpeg_dec_cpu));
   CHECK_NVJPEG(nvjpegDecoderCreate(nvjpeg_handle, NVJPEG_BACKEND_GPU_HYBRID, &params.nvjpeg_dec_gpu));
   CHECK_NVJPEG(nvjpegDecoderStateCreate(nvjpeg_handle, params.nvjpeg_dec_cpu, &params.dec_state_cpu));
@@ -156,9 +152,6 @@ int destroy_nvjpeg_data(decode_per_thread_params& params) {
   CHECK_NVJPEG(nvjpegDecoderDestroy(params.nvjpeg_dec_cpu));
   CHECK_NVJPEG(nvjpegDecoderDestroy(params.nvjpeg_dec_gpu));
 
-  for( int i = 0; i < pipeline_stages; i++) {
-    CHECK_CUDA(cudaEventDestroy(params.decode_events[i]));
-  }
   CHECK_CUDA(cudaStreamDestroy(params.stream));
   return EXIT_SUCCESS;
 }
