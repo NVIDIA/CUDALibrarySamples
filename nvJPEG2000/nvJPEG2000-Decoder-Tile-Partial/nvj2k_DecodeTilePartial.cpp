@@ -191,7 +191,7 @@ void determine_tiles_to_decode(const nvjpeg2kImageInfo_t& image_info, decode_par
         {
             // include min and max functions in braces for windows builds issues
             uint32_t tile_y1 = (std::min)(tile_y0 + image_info.tile_height, image_info.image_height);
-            uint32_t tile_x1 = (std::min)(tile_x0 + image_info.tile_width, image_info.image_height);
+            uint32_t tile_x1 = (std::min)(tile_x0 + image_info.tile_width, image_info.image_width);
 
             if( params.win_x0 < tile_x1 && params.win_x1 > tile_x0 &&
                 params.win_y0 < tile_y1 && params.win_y1 > tile_y0)

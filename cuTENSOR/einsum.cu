@@ -33,6 +33,7 @@
 #include <functional>
 #include <vector>
 #include <array>
+#include <string>
 
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>

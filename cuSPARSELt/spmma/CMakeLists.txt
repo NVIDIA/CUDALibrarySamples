@@ -101,8 +101,7 @@ target_link_libraries(${ROUTINE}_example
 target_link_libraries(${ROUTINE}_example_static
     PUBLIC cudart
     PUBLIC cusparse
-    PUBLIC -Wl,--whole-archive ${CUSPARSELT_PATH}/lib64/libcusparseLt_static.a
-           -Wl,--no-whole-archive
+    PUBLIC ${CUSPARSELT_PATH}/lib64/libcusparseLt_static.a
     PUBLIC ${NVRTC_SHARED}
     PUBLIC ${CMAKE_DL_LIBS}
 )

@@ -11,7 +11,7 @@ Image Decoding from NVJPEG Library
 
 ## Supported SM Architectures
 
-[SM 3.0 ](https://developer.nvidia.com/cuda-gpus)  [SM 3.5 ](https://developer.nvidia.com/cuda-gpus)  [SM 3.7 ](https://developer.nvidia.com/cuda-gpus)  [SM 5.0 ](https://developer.nvidia.com/cuda-gpus)  [SM 5.2 ](https://developer.nvidia.com/cuda-gpus)  [SM 6.0 ](https://developer.nvidia.com/cuda-gpus)  [SM 6.1 ](https://developer.nvidia.com/cuda-gpus)  [SM 7.0 ](https://developer.nvidia.com/cuda-gpus)  [SM 7.2 ](https://developer.nvidia.com/cuda-gpus)  [SM 7.5 ](https://developer.nvidia.com/cuda-gpus)
+[SM 3.5 ](https://developer.nvidia.com/cuda-gpus)  [SM 3.7 ](https://developer.nvidia.com/cuda-gpus)  [SM 5.0 ](https://developer.nvidia.com/cuda-gpus)  [SM 5.2 ](https://developer.nvidia.com/cuda-gpus)  [SM 6.0 ](https://developer.nvidia.com/cuda-gpus)  [SM 6.1 ](https://developer.nvidia.com/cuda-gpus)  [SM 7.0 ](https://developer.nvidia.com/cuda-gpus)  [SM 7.2 ](https://developer.nvidia.com/cuda-gpus)  [SM 7.5 ](https://developer.nvidia.com/cuda-gpus)
 
 ## Supported OSes
 
@@ -73,100 +73,97 @@ Parameters:
 ```
 Example:
 
-Sample example output on GV100, Ubuntu 18.04, CUDA 10.2
+Sample example output on GV100, Ubuntu 16.04, CUDA 11.5
 
 ```
-$  ./nvJPEGDecMultipleInstances -i ../input_images/ -o ~/tmp
+$  ./nvJPEGDecMultipleInstances -i ../../nvJPEG-Decoder/input_images/ -o ~/tmp
 ```
 ```
-./build/nvJPEGDecMultipleInstances -i input_images/ -o ~/tmp 
-Decoding images in directory: input_images/, total 12, batchsize 1
-Processing: input_images/cat_baseline.jpg
-Image is 3 channels.
-Channel #0 size: 64 x 64
-Channel #1 size: 64 x 64
-Channel #2 size: 64 x 64
-YUV 4:4:4 chroma subsampling
-Done writing decoded image to file: /home/mahesh/tmp/cat_baseline.bmp
-Processing: input_images/img8.jpg
-Image is 3 channels.
-Channel #0 size: 480 x 640
-Channel #1 size: 240 x 320
-Channel #2 size: 240 x 320
-YUV 4:2:0 chroma subsampling
-Done writing decoded image to file: /home/mahesh/tmp/img8.bmp
-Processing: input_images/img5.jpg
-Image is 3 channels.
-Channel #0 size: 640 x 480
-Channel #1 size: 320 x 240
-Channel #2 size: 320 x 240
-YUV 4:2:0 chroma subsampling
-Done writing decoded image to file: /home/mahesh/tmp/img5.bmp
-Processing: input_images/img7.jpg
-Image is 3 channels.
-Channel #0 size: 480 x 640
-Channel #1 size: 240 x 320
-Channel #2 size: 240 x 320
-YUV 4:2:0 chroma subsampling
-Done writing decoded image to file: /home/mahesh/tmp/img7.bmp
-Processing: input_images/img2.jpg
-Image is 3 channels.
-Channel #0 size: 480 x 640
-Channel #1 size: 240 x 320
-Channel #2 size: 240 x 320
-YUV 4:2:0 chroma subsampling
-Done writing decoded image to file: /home/mahesh/tmp/img2.bmp
-Processing: input_images/img4.jpg
+Decoding images in directory: ../../nvJPEG-Decoder/input_images/, total 12, batchsize 1
+Processing: ../../nvJPEG-Decoder/input_images/img3.jpg
 Image is 3 channels.
 Channel #0 size: 640 x 426
 Channel #1 size: 320 x 213
 Channel #2 size: 320 x 213
 YUV 4:2:0 chroma subsampling
-Done writing decoded image to file: /home/mahesh/tmp/img4.bmp
-Processing: input_images/cat.jpg
+Done writing decoded image to file: /tmp/img3.bmp
+Processing: ../../nvJPEG-Decoder/input_images/img2.jpg
 Image is 3 channels.
-Channel #0 size: 64 x 64
-Channel #1 size: 64 x 64
-Channel #2 size: 64 x 64
-YUV 4:4:4 chroma subsampling
-Done writing decoded image to file: /home/mahesh/tmp/cat.bmp
-Processing: input_images/cat_grayscale.jpg
+Channel #0 size: 480 x 640
+Channel #1 size: 240 x 320
+Channel #2 size: 240 x 320
+YUV 4:2:0 chroma subsampling
+Done writing decoded image to file: /tmp/img2.bmp
+Processing: ../../nvJPEG-Decoder/input_images/img4.jpg
+Image is 3 channels.
+Channel #0 size: 640 x 426
+Channel #1 size: 320 x 213
+Channel #2 size: 320 x 213
+YUV 4:2:0 chroma subsampling
+Done writing decoded image to file: /tmp/img4.bmp
+Processing: ../../nvJPEG-Decoder/input_images/img5.jpg
+Image is 3 channels.
+Channel #0 size: 640 x 480
+Channel #1 size: 320 x 240
+Channel #2 size: 320 x 240
+YUV 4:2:0 chroma subsampling
+Done writing decoded image to file: /tmp/img5.bmp
+Processing: ../../nvJPEG-Decoder/input_images/cat_grayscale.jpg
 Image is 1 channels.
 Channel #0 size: 64 x 64
 Grayscale JPEG 
-Done writing decoded image to file: /home/mahesh/tmp/cat_grayscale.bmp
-Processing: input_images/img1.jpg
+Done writing decoded image to file: /tmp/cat_grayscale.bmp
+Processing: ../../nvJPEG-Decoder/input_images/cat.jpg
+Image is 3 channels.
+Channel #0 size: 64 x 64
+Channel #1 size: 64 x 64
+Channel #2 size: 64 x 64
+YUV 4:4:4 chroma subsampling
+Done writing decoded image to file: /tmp/cat.bmp
+Processing: ../../nvJPEG-Decoder/input_images/img9.jpg
+Image is 3 channels.
+Channel #0 size: 640 x 480
+Channel #1 size: 320 x 240
+Channel #2 size: 320 x 240
+YUV 4:2:0 chroma subsampling
+Done writing decoded image to file: /tmp/img9.bmp
+Processing: ../../nvJPEG-Decoder/input_images/img7.jpg
 Image is 3 channels.
 Channel #0 size: 480 x 640
 Channel #1 size: 240 x 320
 Channel #2 size: 240 x 320
 YUV 4:2:0 chroma subsampling
-Done writing decoded image to file: /home/mahesh/tmp/img1.bmp
-Processing: input_images/img3.jpg
-Image is 3 channels.
-Channel #0 size: 640 x 426
-Channel #1 size: 320 x 213
-Channel #2 size: 320 x 213
-YUV 4:2:0 chroma subsampling
-Done writing decoded image to file: /home/mahesh/tmp/img3.bmp
-Processing: input_images/img9.jpg
+Done writing decoded image to file: /tmp/img7.bmp
+Processing: ../../nvJPEG-Decoder/input_images/img6.jpg
 Image is 3 channels.
 Channel #0 size: 640 x 480
 Channel #1 size: 320 x 240
 Channel #2 size: 320 x 240
 YUV 4:2:0 chroma subsampling
-Done writing decoded image to file: /home/mahesh/tmp/img9.bmp
-Processing: input_images/img6.jpg
+Done writing decoded image to file: /tmp/img6.bmp
+Processing: ../../nvJPEG-Decoder/input_images/img1.jpg
 Image is 3 channels.
-Channel #0 size: 640 x 480
-Channel #1 size: 320 x 240
-Channel #2 size: 320 x 240
+Channel #0 size: 480 x 640
+Channel #1 size: 240 x 320
+Channel #2 size: 240 x 320
 YUV 4:2:0 chroma subsampling
-Done writing decoded image to file: /home/mahesh/tmp/img6.bmp
-Total decoding time: 15.1316
-Avg decoding time per image: 1.26097
-Avg images per sec: 0.79304
-Avg decoding time per batch: 1.26097
-
+Done writing decoded image to file: /tmp/img1.bmp
+Processing: ../../nvJPEG-Decoder/input_images/cat_baseline.jpg
+Image is 3 channels.
+Channel #0 size: 64 x 64
+Channel #1 size: 64 x 64
+Channel #2 size: 64 x 64
+YUV 4:4:4 chroma subsampling
+Done writing decoded image to file: /tmp/cat_baseline.bmp
+Processing: ../../nvJPEG-Decoder/input_images/img8.jpg
+Image is 3 channels.
+Channel #0 size: 480 x 640
+Channel #1 size: 240 x 320
+Channel #2 size: 240 x 320
+YUV 4:2:0 chroma subsampling
+Done writing decoded image to file: /tmp/img8.bmp
+Total decoding time: 0.0139448 (s)
+Avg decoding time per image: 0.00116207 (s)
+Avg images per sec: 860.534
+Avg decoding time per batch: 0.00116207 (s)
 ```
-

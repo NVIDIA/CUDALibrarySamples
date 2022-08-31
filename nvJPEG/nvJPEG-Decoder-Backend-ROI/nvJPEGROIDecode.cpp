@@ -79,7 +79,7 @@ float get_scale_factor(nvjpegChromaSubsampling_t chroma_subsampling)
   else if(chroma_subsampling == NVJPEG_CSS_410) {
     scale_factor = 1.25;
   }
-  else if(chroma_subsampling = NVJPEG_CSS_GRAY){
+  else if(chroma_subsampling == NVJPEG_CSS_GRAY){
     scale_factor = 1.0;
   }
 
@@ -206,7 +206,7 @@ int decode_images(const FileData &img_data, const std::vector<size_t> &img_len,
         CHECK_NVJPEG(nvjpegDecodeJpegHost(params.nvjpeg_handle, decoder, decoder_state,
             decode_params[i], per_thread_params.jpeg_streams[buffer_index]));
 
-        CHECK_CUDA(cudaEventSynchronize(per_thread_params.decode_events[buffer_index]));
+        CHECK_CUDA(cudaStreamSynchronize(per_thread_params.stream));
 
         CHECK_NVJPEG(nvjpegDecodeJpegTransferToDevice(params.nvjpeg_handle, decoder, decoder_state,
             per_thread_params.jpeg_streams[buffer_index], per_thread_params.stream));
@@ -214,16 +214,12 @@ int decode_images(const FileData &img_data, const std::vector<size_t> &img_len,
         CHECK_NVJPEG(nvjpegDecodeJpegDevice(params.nvjpeg_handle, decoder, decoder_state,
             &out[i], per_thread_params.stream));
 
-        CHECK_CUDA(cudaEventRecord(per_thread_params.decode_events[buffer_index],  per_thread_params.stream))
-
         CHECK_NVJPEG(nvjpegDecodeParamsDestroy(decode_params[i]));
 
-        buffer_index = 1 - buffer_index; // switch pinned buffer in pipeline mode to avoid an extra sync
+        buffer_index = (buffer_index+1)%pipeline_stages; // switch pinned buffer in pipeline mode to avoid an extra sync
 
     }
-    for(int i = 0; i < pipeline_stages; i++ ) {
-      CHECK_CUDA(cudaEventSynchronize(per_thread_params.decode_events[i]));
-    }
+    CHECK_CUDA(cudaStreamSynchronize(per_thread_params.stream));
   }
   else
   {
@@ -267,7 +263,7 @@ int decode_images(const FileData &img_data, const std::vector<size_t> &img_len,
                   CHECK_NVJPEG(nvjpegDecodeJpegHost(params.nvjpeg_handle, decoder, decoder_state,
                     decode_params, per_thread_params.jpeg_streams[buffer_indices[thread_idx]]));
 
-                  CHECK_CUDA(cudaEventSynchronize(per_thread_params.decode_events[buffer_indices[thread_idx]]));
+                  CHECK_CUDA(cudaStreamSynchronize(per_thread_params.stream));
 
                   CHECK_NVJPEG(nvjpegDecodeJpegTransferToDevice(params.nvjpeg_handle, decoder, decoder_state,
                     per_thread_params.jpeg_streams[buffer_indices[thread_idx]], per_thread_params.stream));
@@ -275,27 +271,24 @@ int decode_images(const FileData &img_data, const std::vector<size_t> &img_len,
                   CHECK_NVJPEG(nvjpegDecodeJpegDevice(params.nvjpeg_handle, decoder, decoder_state,
                     &out[iidx], per_thread_params.stream));
 
-                  CHECK_CUDA(cudaEventRecord(per_thread_params.decode_events[buffer_indices[thread_idx]],  per_thread_params.stream))
-
                   CHECK_NVJPEG(nvjpegDecodeParamsDestroy(decode_params));
                   // switch pinned buffer in pipeline mode to avoid an extra sync
-                  buffer_indices[thread_idx] = 1 - buffer_indices[thread_idx]; 
+                  buffer_indices[thread_idx] = (buffer_indices[thread_idx]+1)%pipeline_stages;
+                  return EXIT_SUCCESS; // the CHECK_ statements returns 1 on failure, so we need to return a value here too.
                 }, i, std::placeholders::_1
                 )
             );
     }
     workers.wait();
     for ( auto& per_thread_params : params.nvjpeg_per_thread_data) {
-        for(int i = 0; i < pipeline_stages; i++) {
-          CHECK_CUDA(cudaEventSynchronize(per_thread_params.decode_events[i]));
-        }
+        CHECK_CUDA(cudaStreamSynchronize(per_thread_params.stream));
     }
   }
   
   CHECK_CUDA(cudaEventRecord(stopEvent, params.global_stream));
   CHECK_CUDA(cudaEventSynchronize(stopEvent));
   CHECK_CUDA(cudaEventElapsedTime(&loopTime, startEvent, stopEvent));
-  time = static_cast<double>(loopTime);
+  time = 0.001 * static_cast<double>(loopTime);
 
   return EXIT_SUCCESS;
 }
@@ -317,7 +310,7 @@ int write_images(std::vector<nvjpegImage_t> &iout, std::vector<int> &widths,
                                                 : sFileName.substr(0, position);
     std::string fname(params.output_dir + "/" + sFileName + ".bmp");
 
-    int err;
+    int err = 0;
     if (params.fmt == NVJPEG_OUTPUT_RGB || params.fmt == NVJPEG_OUTPUT_BGR) {
       err = writeBMP(fname.c_str(), iout[i].channel[0], iout[i].pitch[0],
                      iout[i].channel[1], iout[i].pitch[1], iout[i].channel[2],
@@ -564,15 +557,15 @@ int main(int argc, const char *argv[]) {
 
   double total;
   if (process_images(image_names, params, total)) return EXIT_FAILURE;
-  std::cout << "Total decoding time: " << total << std::endl;
+  std::cout << "Total decoding time: " << total << " (s)" << std::endl;
   std::cout << "Avg decoding time per image: " << total / params.total_images
-            << std::endl;
+            << " (s)" << std::endl;
   std::cout << "Avg images per sec: " << params.total_images / total
             << std::endl;
   std::cout << "Avg decoding time per batch: "
             << total / ((params.total_images + params.batch_size - 1) /
                         params.batch_size)
-            << std::endl;
+            << " (s)" << std::endl;
 
   for(auto& nvjpeg_data : params.nvjpeg_per_thread_data)
     destroy_nvjpeg_data(nvjpeg_data);
