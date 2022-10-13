@@ -131,7 +131,7 @@ int main(void) {
     CHECK_CUDA( cudaMalloc((void**) &dA, A_size) )
     CHECK_CUDA( cudaMalloc((void**) &dB, B_size) )
     CHECK_CUDA( cudaMalloc((void**) &dC, C_size) )
-    CHECK_CUDA( cudaMalloc((void**) &d_valid, sizeof(d_valid)) )
+    CHECK_CUDA( cudaMalloc((void**) &d_valid, sizeof(int)) )
     dD = dC;
 
     CHECK_CUDA( cudaMemcpy(dA, hA, A_size, cudaMemcpyHostToDevice) )
@@ -172,12 +172,10 @@ int main(void) {
                                             &handle, &alg_sel,
                                             CUSPARSELT_MATMUL_ALG_CONFIG_ID,
                                             &alg, sizeof(alg)))
-    size_t workspace_size, compressed_size;
+
+    size_t workspace_size;
     CHECK_CUSPARSE( cusparseLtMatmulPlanInit(&handle, &plan, &matmul, &alg_sel,
                                              workspace_size) )
-
-    CHECK_CUSPARSE( cusparseLtMatmulGetWorkspace(&handle, &plan,
-                                                 &workspace_size))
 
     //--------------------------------------------------------------------------
     // Prune the A matrix (in-place) and check the correcteness
@@ -186,7 +184,7 @@ int main(void) {
     CHECK_CUSPARSE( cusparseLtSpMMAPruneCheck(&handle, &matmul, dA,
                                               d_valid, stream) )
     int is_valid;
-    CHECK_CUDA( cudaMemcpyAsync(&is_valid, d_valid, sizeof(d_valid),
+    CHECK_CUDA( cudaMemcpyAsync(&is_valid, d_valid, sizeof(int),
                                 cudaMemcpyDeviceToHost, stream) )
     CHECK_CUDA( cudaStreamSynchronize(stream) )
     if (is_valid != 0) {
@@ -196,6 +194,7 @@ int main(void) {
     }
     //--------------------------------------------------------------------------
     // Compress the A matrix
+    size_t compressed_size;
     CHECK_CUSPARSE( cusparseLtSpMMACompressedSize(&handle, &plan,
                                                   &compressed_size) )
     CHECK_CUDA( cudaMalloc((void**) &dA_compressed, compressed_size) )
@@ -216,7 +215,32 @@ int main(void) {
                                            &handle, &alg_sel,
                                            CUSPARSELT_MATMUL_ALG_CONFIG_ID,
                                            &alg_id, sizeof(alg_id)) )
+    int32_t splitK, splitKBuffers;
+    cusparseLtSplitKMode_t splitKMode;
+
+    CHECK_CUSPARSE( cusparseLtMatmulAlgGetAttribute(
+                                           &handle, &alg_sel,
+                                           CUSPARSELT_MATMUL_SPLIT_K,
+                                           &splitK, sizeof(splitK)) )
+
+    CHECK_CUSPARSE( cusparseLtMatmulAlgGetAttribute(
+                                           &handle, &alg_sel,
+                                           CUSPARSELT_MATMUL_SPLIT_K_MODE,
+                                           &splitKMode, sizeof(splitKMode)) )
+
+    CHECK_CUSPARSE( cusparseLtMatmulAlgGetAttribute(
+                                           &handle, &alg_sel,
+                                           CUSPARSELT_MATMUL_SPLIT_K_BUFFERS,
+                                           &splitKBuffers, sizeof(splitKBuffers)) )
+
     //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    CHECK_CUSPARSE( cusparseLtMatmulPlanInit(&handle, &plan, &matmul, &alg_sel,
+                                             workspace_size) )
+
+    CHECK_CUSPARSE( cusparseLtMatmulGetWorkspace(&handle, &plan,
+                                                 &workspace_size))
+
+    CHECK_CUDA( cudaMalloc((void**)&d_workspace, workspace_size) )
     // Perform the matrix multiplication
     CHECK_CUSPARSE( cusparseLtMatmul(&handle, &plan, &alpha, dA_compressed, dB,
                                      &beta, dC, dD, d_workspace, streams,
@@ -278,5 +302,6 @@ int main(void) {
     CHECK_CUDA( cudaFree(dB) )
     CHECK_CUDA( cudaFree(dC) )
     CHECK_CUDA( cudaFree(d_valid) )
+    CHECK_CUDA( cudaFree(d_workspace) )
     return EXIT_SUCCESS;
 }
