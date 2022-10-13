@@ -1,8 +1,11 @@
 # CUDA Library Samples
 
 CUDA Library Samples contains examples demonstrating the use of
-features in the math and image processing libraries cuBLAS, cuTENSOR,
-cuSPARSE, cuSOLVER, cuFFT, cuRAND, NPP and nvJPEG. 
+features in the math and image processing libraries, 
+cuBLAS, cuTENSOR,
+cuSPARSE, cuSOLVER, 
+cuFFT, cuRAND, 
+NPP and nvJPEG. 
 
 # About
 
@@ -11,9 +14,29 @@ released by NVIDIA Corporation as Open Source software under the
 3-clause "New" BSD license.
 
 
+# Library Examples
+
+*[cuBLAS](cuBLAS/)
+*[cuBLASLt](cuBLASLt/)
+*[cuFFT](cuFFT/)
+*[cuFFTMp](cuFFTMp/)
+*[cuRAND](cuRAND/)
+*[cuSOLVER](cuSOLVER/)
+*[cuSOLVERMp](cuSOLVERMp/)
+*[cuSPARSE](cuSPARSE/)
+*[cuSPARSELt](cuSPARSELt/)
+*[cuTENSOR](cuTENSOR/)
+*[cuTENSORMg](cuTENSORMg/)
+*[MathDx](MathDx/)
+*[NPP](NPP/)
+*[nvJPEG](nvJPEG/)
+*[nvJPEG2000](nvJPEG2000/)
+*[nvTIFF](nvTIFF/)
+
+
 # Copyright
 
-Copyright (c) 2017-2019, NVIDIA CORPORATION.  All rights reserved.
+Copyright (c) 2022 NVIDIA CORPORATION AND AFFILIATES.  All rights reserved.
 
 ```
   Redistribution and use in source and binary forms, with or without modification, are permitted
