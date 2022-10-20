@@ -275,10 +275,7 @@ int main(void) {
                                             &handle, &alg_sel, &matmul,
                                             CUSPARSELT_MATMUL_ALG_DEFAULT) )
 
-    void*  d_workspace    = nullptr;
-    size_t workspace_size = 0;
-    CHECK_CUSPARSE( cusparseLtMatmulPlanInit(&handle, &plan, &matmul, &alg_sel,
-                                             workspace_size) )
+    CHECK_CUSPARSE( cusparseLtMatmulPlanInit(&handle, &plan, &matmul, &alg_sel) )
     //--------------------------------------------------------------------------
     // Split-K Mode
     int splitK, splitKBuffers;
@@ -328,9 +325,10 @@ int main(void) {
     //--------------------------------------------------------------------------
     // Plan initialization 
 
-    CHECK_CUSPARSE( cusparseLtMatmulPlanInit(&handle, &plan, &matmul, &alg_sel,
-                                             workspace_size) )
+    CHECK_CUSPARSE( cusparseLtMatmulPlanInit(&handle, &plan, &matmul, &alg_sel) )
 
+    void*  d_workspace    = nullptr;
+    size_t workspace_size = 0;
     CHECK_CUSPARSE( cusparseLtMatmulGetWorkspace(&handle, &plan,
                                                  &workspace_size))
 

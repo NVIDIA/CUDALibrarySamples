@@ -173,9 +173,7 @@ int main(void) {
                                             CUSPARSELT_MATMUL_ALG_CONFIG_ID,
                                             &alg, sizeof(alg)))
 
-    size_t workspace_size;
-    CHECK_CUSPARSE( cusparseLtMatmulPlanInit(&handle, &plan, &matmul, &alg_sel,
-                                             workspace_size) )
+    CHECK_CUSPARSE( cusparseLtMatmulPlanInit(&handle, &plan, &matmul, &alg_sel) )
 
     //--------------------------------------------------------------------------
     // Prune the A matrix (in-place) and check the correcteness
@@ -234,8 +232,8 @@ int main(void) {
                                            &splitKBuffers, sizeof(splitKBuffers)) )
 
     //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    CHECK_CUSPARSE( cusparseLtMatmulPlanInit(&handle, &plan, &matmul, &alg_sel,
-                                             workspace_size) )
+    size_t workspace_size;
+    CHECK_CUSPARSE( cusparseLtMatmulPlanInit(&handle, &plan, &matmul, &alg_sel) )
 
     CHECK_CUSPARSE( cusparseLtMatmulGetWorkspace(&handle, &plan,
                                                  &workspace_size))
