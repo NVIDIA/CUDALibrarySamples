@@ -70,6 +70,25 @@ elseif (${CMAKE_HOST_SYSTEM_PROCESSOR} STREQUAL "x86_64" AND
 endif()
 set(NVRTC_SHARED ${CUDA_TOOLKIT_PATH}/targets/${OS_ARCH_NVRTC}/lib/libnvrtc.so)
 
+# cusparselt_example check-env utilities
+function(set_with_fallback VARIABLE FALLBACK)
+  if (NOT DEFINED ${VARIABLE} OR ${VARIABLE} STREQUAL "")
+    set(${VARIABLE} $ENV{${VARIABLE}} CACHE INTERNAL ${VARIABLE})
+    if (${VARIABLE} STREQUAL "")
+      if (NOT ${FALLBACK} STREQUAL "")
+        set(${VARIABLE} $ENV{${FALLBACK}} CACHE INTERNAL ${VARIABLE})
+      endif ()
+    endif ()
+  endif ()
+endfunction()
+
+set_with_fallback(CUSPARSELT_PATH CUSPARSELT_DIR)
+if (CUSPARSELT_PATH STREQUAL "")
+    message(FATAL_ERROR "Please set the environment variables CUSPARSELT_DIR to the path of the cuSPARSELt installation.")
+endif ()
+
+message(STATUS "Using CUSPARSELT_PATH = ${CUSPARSELT_DIR}")
+
 add_executable(${ROUTINE}_example)
 add_executable(${ROUTINE}_example_static)
 
@@ -91,17 +110,27 @@ target_include_directories(${ROUTINE}_example_static
     PUBLIC ${CUSPARSELT_PATH}/include
 )
 
+target_link_directories(${ROUTINE}_example
+    PUBLIC ${CUSPARSELT_PATH}/lib64
+    PUBLIC ${CUDA_TOOLKIT_PATH}/lib64
+)
+
+target_link_directories(${ROUTINE}_example_static
+    PUBLIC ${CUSPARSELT_PATH}/lib64
+    PUBLIC ${CUDA_TOOLKIT_PATH}/lib64
+)
+
 target_link_libraries(${ROUTINE}_example
     PUBLIC cudart
     PUBLIC cusparse
-    PUBLIC ${CUSPARSELT_PATH}/lib64/libcusparseLt.so
+    PUBLIC libcusparseLt.so
     PUBLIC ${NVRTC_SHARED}
 )
 
 target_link_libraries(${ROUTINE}_example_static
     PUBLIC cudart
     PUBLIC cusparse
-    PUBLIC ${CUSPARSELT_PATH}/lib64/libcusparseLt_static.a
+    PUBLIC libcusparseLt_static.a
     PUBLIC ${NVRTC_SHARED}
     PUBLIC ${CMAKE_DL_LIBS}
 )
