@@ -33,12 +33,27 @@
 #else
 #include <getopt.h>
 #endif
-
+#include <fstream>
+#include <iostream>
 #include <cuda_runtime.h>
 #include "nvTiff_utils.h"
 #include "cudamacro.h"
-#include <cuda_runtime_api.h>
 #include <nvTiff.h>
+
+#define CHECK_NVTIFF(call)                                                \
+    {                                                                       \
+        nvtiffStatus_t _e = (call);                                       \
+        if (_e != NVTIFF_STATUS_SUCCESS)                                   \
+        {                                                                   \
+            std::cerr<< "nvTiff failure: '#" << _e<<std::endl;            \
+            exit(EXIT_FAILURE);                                           \
+        }                                                                    \
+    }
+
+//#define LIBTIFF_TEST
+#ifdef LIBTIFF_TEST
+#include <tiffio.h>
+#endif
 
 #define MAX_STR_LEN	(256)
 
@@ -159,13 +174,68 @@ static void writeBMPFile(const char *filename, unsigned char *chan, int LD, int 
 	return;
 }
 
-/*
+
+void writePPM(const char * filename, unsigned char *chan, int LD, int WIDTH, int HEIGHT, int BPP, int NUMCOMP)
+{
+    std::ofstream rOutputStream(filename);
+    if (!rOutputStream)
+    {
+        std::cerr << "Cannot open output file: " << filename << std::endl;
+        return;   
+    }
+
+    
+    
+    if( NUMCOMP ==4)
+    {
+        rOutputStream << "P7\n";
+        rOutputStream << "#nvTIFF\n";
+        rOutputStream << "WIDTH "<<WIDTH<<"\n";
+        rOutputStream << "HEIGHT "<<HEIGHT<<"\n";
+        rOutputStream << "DEPTH "<<NUMCOMP<<"\n";
+        rOutputStream << "MAXVAL "<<(1<<BPP)-1<<"\n";
+        rOutputStream << "TUPLTYPE RGB_ALPHA\n";
+        rOutputStream << "ENDHDR\n";
+    }
+    else
+    {
+        rOutputStream << "P6\n";
+        rOutputStream << "#nvTIFF\n";
+        rOutputStream << WIDTH << " " << HEIGHT << "\n";
+        rOutputStream << (1<<BPP)-1<<"\n";
+    }
+    for(int y = 0; y < HEIGHT; y++)
+    {
+        for(int x = 0; x < WIDTH; x++)
+        {
+            if( BPP == 8)
+            {
+				rOutputStream << chan[(y*LD + x)*NUMCOMP];
+                rOutputStream << chan[(y*LD + x)*NUMCOMP + 1];
+                rOutputStream << chan[(y*LD + x)*NUMCOMP + 2];
+                if( NUMCOMP == 4)
+                {
+                    rOutputStream << chan[(y*LD + x)*NUMCOMP + 3];;
+                }
+            }
+            else
+            {
+                int pixel_offset = (y * LD *NUMCOMP*2 + (x*NUMCOMP*2 ));
+				for( int c = 0; c < NUMCOMP; c++)
+				{
+					rOutputStream << chan[pixel_offset + 2 * c +1]<<chan[pixel_offset + 2*c];
+				}
+
+            }
+            
+        }
+    }
+    return;
+}
+
+
 static void usage(const char *pname) {
 	
-	const char *bname = rindex(pname, '/');
-	if (!bname) bname = pname;
-	else	    bname++;
-
 	fprintf(stdout, 
 		"Usage:\n"
 		"%s [options] -f|--file <TIFF_FILE>\n"
@@ -267,11 +337,11 @@ static void usage(const char *pname) {
 		"\t\tEnables the writing of the compressed  images  to  an  output  TIFF  file named\n"
 		"\t\toutFile.tif.\n"
 		"\t\tDefualt: disabled.\n",
-		bname);
+		pname);
 
 	exit(EXIT_FAILURE);
 }
-*/
+
 int main(int argc, char **argv) {
 
 	int devId = 0;
@@ -285,7 +355,7 @@ int main(int argc, char **argv) {
 	int frameEnd = INT_MAX;
 	int decodeRange = 0;
 
-	int memType = nvTiff_MEM_REG;
+	int memType = NVTIFF_MEM_REG;
 	int doH2DFileCopy = 0;
 
 	int doEncode = 0;
@@ -335,9 +405,9 @@ int main(int argc, char **argv) {
 			case 'm':
 				if (optarg[0] != 'r' && optarg[0] != 'p') {
 					fprintf(stderr, "Unknown memory type specified (%c)!\n", optarg[0]);
-					//usage(argv[0]);
+					usage(argv[0]);
 				}
-				memType = (optarg[0] == 'r') ? nvTiff_MEM_REG : nvTiff_MEM_PIN;
+				memType = (optarg[0] == 'r') ? NVTIFF_MEM_REG : NVTIFF_MEM_PIN;
 				break;
 			case 'c':
 				doH2DFileCopy = 1;
@@ -368,21 +438,21 @@ int main(int argc, char **argv) {
 				break;
 			case 'h':
 			case '?':
-				//usage(argv[0]);
+				usage(argv[0]);
 			default:
 				fprintf(stderr, "unknown option: %c\n", och);
-				//usage(argv[0]);
+				usage(argv[0]);
 		}
 	}
 
 	if (!fname) {
 		fprintf(stderr, "Please specify a TIFF file with the -f option!\n");
-		//usage(argv[0]);
+		usage(argv[0]);
 	}
 
 	if (frameBeg > frameEnd) {
 		fprintf(stderr, "Invalid frame range!\n");
-		//usage(argv[0]);
+		usage(argv[0]);
 	}
 
 	CHECK_CUDA(cudaSetDevice(devId));
@@ -410,32 +480,33 @@ int main(int argc, char **argv) {
 		nvTiffDumpRaw(fname);
 	}
 
-	nvTiffFile_t *tiffData = nvTiffOpen(devId, fname, memType);
-	if (!tiffData) {
-		fprintf(stderr, "Error while reading file %s\n", fname);
-		exit(EXIT_FAILURE);
-	}
-	
-	if (doH2DFileCopy) {
-		// overlap H2D copy of file data with something else...
-		nvTiffH2DAsync(tiffData, stream);
-	}
+	nvtiffStream_t tiff_stream;
+	nvtiffDecoder_t decoder;
+	nvtiffFileInfo_t file_info;
+    CHECK_NVTIFF(nvtiffStreamCreate(&tiff_stream));
+	CHECK_NVTIFF(nvtiffDecoderCreate(&decoder,
+        nullptr, nullptr, 0));
+
+    CHECK_NVTIFF(nvtiffStreamParseFromFile(fname, tiff_stream));
+
+    
+    CHECK_NVTIFF(nvtiffStreamGetFileInfo(tiff_stream, &file_info));
 
 	// BEGIN work (possibly) overlapped with H2D copy of the file data
 	if (verbose) {
-		nvTiffPrint(tiffData);
+		CHECK_NVTIFF(nvtiffStreamPrint(tiff_stream));
 	}
 	
 	frameBeg = fmax(frameBeg, 0);
-	frameEnd = fmin(frameEnd, tiffData->nSubFiles-1);
+	frameEnd = fmin(frameEnd, file_info.num_images-1);
 	const int nDecode = frameEnd-frameBeg+1;
 
 	// allocate device memory for images
 	unsigned char **imageOut_d = NULL;
 
-	const size_t imageSize = sizeof(**imageOut_d)*tiffData->subFiles[0].nrow*
-						      tiffData->subFiles[0].ncol*
-						      (tiffData->subFiles[0].bitsPerPixel/8);
+	const size_t imageSize = sizeof(**imageOut_d)*file_info.image_width *
+						      file_info.image_height *
+						      (file_info.bits_per_pixel/8);
 
 	imageOut_d = (unsigned char **)Malloc(sizeof(*imageOut_d)*nDecode);
 	for(unsigned int i = 0; i < nDecode; i++) {
@@ -444,37 +515,25 @@ int main(int argc, char **argv) {
 
 	printf("Decoding %u, %s %ux%u images [%d, %d], from file %s... ",
 		nDecode,
-		tiffData->subFiles[0].photometricInt == 2 ? "RGB" : "Grayscale",
-		tiffData->subFiles[0].ncol,
-		tiffData->subFiles[0].nrow,
+		file_info.photometric_int == NVTIFF_PHOTOMETRIC_RGB ? "RGB" : "Grayscale",
+		file_info.image_width,
+		file_info.image_height,
 		frameBeg,
 		frameEnd,
 		fname);
 	fflush(stdout);
-	// END work (possibly) overlapped with H2D copy of the file data
 
-	if (doH2DFileCopy) {
-		// synchronize on the H2D file data copy;
-		// not necessary, done only to avoid including
-		// data copy in kernel time
-		CHECK_CUDA(cudaStreamSynchronize(stream));
-	}
-
-	int rv;
 
 	double __t = Wtime();
 	if (!decodeRange) {
-		rv = nvTiffDecode(tiffData, imageOut_d, stream);
+		CHECK_NVTIFF(nvtiffDecode(tiff_stream, decoder, imageOut_d, stream));
 	} else { 
-		rv = nvTiffDecodeRange(tiffData, frameBeg, nDecode, imageOut_d, stream);
+		CHECK_NVTIFF(nvtiffDecodeRange(tiff_stream, decoder, frameBeg, nDecode, imageOut_d, stream));
 	}
 	CHECK_CUDA(cudaStreamSynchronize(stream));
 	__t = Wtime()-__t;
 
-	if (rv != nvTiff_DECODE_SUCCESS) {
-		printf("error, while decoding file!\n");
-		exit(EXIT_FAILURE);
-	}
+
 
 	printf("done in %lf secs\n\n", __t);
 
@@ -494,21 +553,33 @@ int main(int argc, char **argv) {
 
 			char outfname[MAX_STR_LEN];
 
-			const int isgreyScale = (tiffData->subFiles[i].photometricInt == 1) ||
-						(tiffData->subFiles[i].photometricInt == 0);
+			const int isgreyScale = (file_info.photometric_int == NVTIFF_PHOTOMETRIC_MINISWHITE) ||
+						(file_info.photometric_int == NVTIFF_PHOTOMETRIC_MINISBLACK);
+			//void writePPM(const char * filename, unsigned char *chan, int LD, int WIDTH, int HEIGHT, int BPP, int NUMCOMP)
 
-			if (!isgreyScale || (isgreyScale && tiffData->subFiles[i].bitsPerPixel == 8)) {
+			if(file_info.bits_per_sample[0] == 16)
+			{
+					snprintf(outfname, MAX_STR_LEN, "outImage_%d.ppm", i);
+					 writePPM(outfname,
+					     imageOut_h,
+					     file_info.image_width,
+					     file_info.image_width, 
+					     file_info.image_height,
+					     file_info.bits_per_sample[0], file_info.samples_per_pixel);
+			}
+			else
+			if (!isgreyScale || (isgreyScale && file_info.bits_per_pixel == 8)) {
 
 				snprintf(outfname, MAX_STR_LEN, "outImage_%d.bmp", i);
 
 				printf("\t\timage %u... BMP format\n", i);
 				writeBMPFile(outfname,
 					     imageOut_h,
-					     tiffData->subFiles[i].ncol,
-					     tiffData->subFiles[i].ncol, 
-					     tiffData->subFiles[i].nrow,
+					     file_info.image_width,
+					     file_info.image_width, 
+					     file_info.image_height,
 					     //tiffData->subFiles[i].samplesPerPixel,
-					     tiffData->subFiles[i].bitsPerPixel/8,
+					     file_info.bits_per_pixel/8,
 					     isgreyScale);
 			} else {
 				snprintf(outfname, MAX_STR_LEN, "outImage_%d.raw", i);
@@ -525,24 +596,60 @@ int main(int argc, char **argv) {
 		free(imageOut_h);
 	}
 
+#ifdef LIBTIFF_TEST
+	TIFF* tif = TIFFOpen(fname, "r");
+	if (tif) {
+
+		// we alredy know that all subfiles have the same porperties
+		uint32_t *raster;
+		raster = (uint32_t *)_TIFFmalloc(tiffData->subFiles[0].ncol*tiffData->subFiles[0].nrow * sizeof (uint32_t));
+
+		printf("\tDecoding with libTIFF... "); fflush(stdout);
+		double __t = Wtime();
+		for(int i = 0; i < tiffData->nSubFiles; i++) {
+			if (!TIFFReadRGBAImage(tif,
+					       tiffData->subFiles[i].ncol,
+					       tiffData->subFiles[i].nrow,
+					       raster, 0)) {
+				fprintf(stderr, "Error while decoding image %d with libTiff\n", i);
+				break;
+			}
+			TIFFReadDirectory(tif);
+		}
+		__t = Wtime()-__t;
+		printf("done in %lf secs\n\n", __t);
+
+		_TIFFfree(raster);
+		TIFFClose(tif);
+	}
+#endif
 
 	if (doEncode) {
-		unsigned int nrow              = tiffData->subFiles[0].nrow;
-		unsigned int ncol              = tiffData->subFiles[0].ncol;
-		unsigned int photometricInt    = tiffData->subFiles[0].photometricInt;
-		unsigned int planarConf        = tiffData->subFiles[0].planarConf;
-		unsigned short pixelSize       = tiffData->subFiles[0].bitsPerPixel/8;
-		unsigned short samplesPerPixel = tiffData->subFiles[0].samplesPerPixel;
+#if 0
+		unsigned char *tmp = (unsigned char *)Malloc(imageSize);
+		for(int i = 0; i < imageSize; i++) {
+			tmp[i] = rand()%256;
+		}
+		CHECK_CUDA(cudaMemcpy(imageOut_d[0], tmp, imageSize, cudaMemcpyHostToDevice));
+		free(tmp);
+#endif
+		unsigned int nrow              = file_info.image_height;
+		unsigned int ncol              = file_info.image_width;
+		unsigned int photometricInt    = (unsigned int)file_info.photometric_int;
+		unsigned int planarConf        = (unsigned int)file_info.planar_config;
+		unsigned short pixelSize       = file_info.bits_per_pixel/8;
+		unsigned short samplesPerPixel = file_info.samples_per_pixel;
+		unsigned short sampleFormat    = file_info.sample_format[0];
 
 		unsigned short *bitsPerSample = (unsigned short *)Malloc(sizeof(*bitsPerSample)*samplesPerPixel);
 		memcpy(bitsPerSample,
-		       tiffData->subFiles[0].bitsPerSample,
+		       file_info.bits_per_sample,
 		       sizeof(*bitsPerSample)*samplesPerPixel);
 
-		// free device memory containing TIFF file
-		// used for decoding... 
-		nvTiffClose(tiffData);
-		tiffData = NULL;
+		CHECK_NVTIFF(nvtiffStreamDestroy(tiff_stream));
+        CHECK_NVTIFF(nvtiffDecoderDestroy(decoder, stream));
+		tiff_stream = NULL;
+		decoder = NULL;
 
 		unsigned int nSubFiles = nDecode;
 		unsigned int nStripOut = DIV_UP(nrow, encRowsPerStrip);
@@ -570,7 +677,7 @@ int main(int argc, char **argv) {
 			encRowsPerStrip,
 			encStripAllocSize);
 		fflush(stdout);
-
+		int rv;
 		__t = Wtime();
 		do {
 			rv = nvTiffEncode(ctx,
@@ -585,13 +692,13 @@ int main(int argc, char **argv) {
 					  stripOffs_d,
 					  stripData_d,
 					  stream);
-			if (rv != nvTiff_ENCODE_SUCCESS) {
+			if (rv != NVTIFF_ENCODE_SUCCESS) {
 				printf("error, while encoding images!\n");
 				exit(EXIT_FAILURE);
 			}
 			rv = nvTiffEncodeFinalize(ctx, stream);
-			if (rv != nvTiff_ENCODE_SUCCESS) {
-				if (rv == nvTiff_ENCODE_COMP_OVERFLOW) {
+			if (rv != NVTIFF_ENCODE_SUCCESS) {
+				if (rv == NVTIFF_ENCODE_COMP_OVERFLOW) {
 					printf("overflow, using %llu bytes per strip...", ctx->stripSizeMax);
 
 					// * free ctx mem
@@ -608,7 +715,7 @@ int main(int argc, char **argv) {
 					exit(EXIT_FAILURE);
 				}
 			}
-		} while(rv == nvTiff_ENCODE_COMP_OVERFLOW);
+		} while(rv == NVTIFF_ENCODE_COMP_OVERFLOW);
 
 		CHECK_CUDA(cudaStreamSynchronize(stream));
 		__t = Wtime()-__t;
@@ -636,6 +743,34 @@ int main(int argc, char **argv) {
 					      stripData_d,
 					      ctx->stripSizeTot,
 					      cudaMemcpyDeviceToHost));
+#if 0
+			FILE *fp = Fopen("stripData.txt", "w");
+
+			size_t stripSize = sizeof(*stripData_h)*encRowsPerStrip*ncol*pixelSize;
+			for(unsigned int i = 0; i < nSubFiles; i++) {
+
+				fprintf(fp, "compressed image %d:\n", i);
+				for(unsigned int j = 0; j < nStripOut; j++) {
+
+					unsigned long long off = stripOffs_h[i*nStripOut + j];
+					unsigned long long len = stripSize_h[i*nStripOut + j];
+
+					fprintf(fp, "\tstrip %5u, size: %6llu bytes (ratio: %5.2lfx), "
+						    "fingerprint: %02X %02X %02X %02X ... %02X %02X %02X %02X\n",
+						j, len, double(stripSize)/len,
+						stripData_h[off + 0],
+						stripData_h[off + 1],
+						stripData_h[off + 2],
+						stripData_h[off + 3],
+						stripData_h[off + len-4],
+						stripData_h[off + len-3],
+						stripData_h[off + len-2],
+						stripData_h[off + len-1]);
+				}
+				fprintf(fp, "\n");
+			}
+			fclose(fp);
+#endif
 			printf("\tWriting %u compressed images to TIFF file... ", nDecode); fflush(stdout);
 			__t = Wtime();
 			nvTiffWriteFile("outFile.tif",
@@ -650,7 +785,8 @@ int main(int argc, char **argv) {
 					planarConf,
 					stripSize_h,
 					stripOffs_h,
-					stripData_h);
+					stripData_h,
+					sampleFormat);
 			__t = Wtime()-__t;
 			printf("done in %lf secs\n\n", __t);
 		
@@ -658,6 +794,64 @@ int main(int argc, char **argv) {
 			free(stripOffs_h);
 			free(stripData_h);
 		}
+
+#ifdef LIBTIFF_TEST
+		tif = TIFFOpen("libTiffOut.tif", "w");
+		if (tif) {
+
+			unsigned char **imageOut_h = (unsigned char **)Malloc(sizeof(*imageOut_h)*nDecode);
+			for(unsigned int i = 0; i < nDecode; i++) {
+				imageOut_h[i] = (unsigned char *)Malloc(sizeof(*imageOut_h)*imageSize);
+				CHECK_CUDA(cudaMemcpy(imageOut_h[i],
+							imageOut_d[i],
+							imageSize,
+							cudaMemcpyDeviceToHost));
+			}
+
+			size_t stripSize = sizeof(**imageOut_h)*encRowsPerStrip*ncol*pixelSize;
+
+			printf("\tEncoding with libTIFF... "); fflush(stdout);
+			__t = Wtime();
+			for(unsigned int i = 0; i < nDecode; i++) {
+
+				TIFFSetField(tif, TIFFTAG_IMAGEWIDTH, nrow);
+				TIFFSetField(tif, TIFFTAG_IMAGELENGTH, ncol);
+				TIFFSetField(tif, TIFFTAG_BITSPERSAMPLE, 8);
+				TIFFSetField(tif, TIFFTAG_COMPRESSION, COMPRESSION_LZW);
+				TIFFSetField(tif, TIFFTAG_PHOTOMETRIC, photometricInt);
+				TIFFSetField(tif, TIFFTAG_FILLORDER, 1);
+				TIFFSetField(tif, TIFFTAG_SAMPLESPERPIXEL, samplesPerPixel);
+				TIFFSetField(tif, TIFFTAG_PLANARCONFIG, planarConf);
+				TIFFSetField(tif, TIFFTAG_ROWSPERSTRIP, encRowsPerStrip);
+
+				for(unsigned int j = 0; j < nStripOut; j++) {
+
+					unsigned int currStripSize = stripSize;
+					if (j == nStripOut-1) {
+						currStripSize = imageSize - j*stripSize;
+					}
+
+					if (-1 == TIFFWriteEncodedStrip(tif,
+								j,
+								imageOut_h[i]+j*stripSize,
+								currStripSize)) {
+
+						fprintf(stderr, "Error while encoding image %d with libTiff\n", i);
+						break;
+					}
+				}
+				// need to find a way to have libTiff to encode in 
+				// memory without writing to disk the last direnctory
+				// after each TIFFWriteDirectory() call
+				TIFFWriteDirectory(tif);
+				//TIFFRewriteDirectory(tif);
+			}
+			__t = Wtime()-__t;
+			printf("done in %lf secs\n\n", __t);
+
+			TIFFClose(tif);
+		}
+#endif
 
 		CHECK_CUDA(cudaFree(stripSize_d));
 		CHECK_CUDA(cudaFree(stripOffs_d));
@@ -675,10 +869,14 @@ int main(int argc, char **argv) {
 	free(imageOut_d);
 
 	free(fname);
-
-	if (tiffData) {
-		nvTiffClose(tiffData);
+	
+	if(tiff_stream)	{
+		CHECK_NVTIFF(nvtiffStreamDestroy(tiff_stream));
 	}
+    
+	if(decoder){
+	    CHECK_NVTIFF(nvtiffDecoderDestroy(decoder, stream));
+	 }
 	
 	CHECK_CUDA(cudaStreamDestroy(stream));
 
