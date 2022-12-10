@@ -95,7 +95,7 @@ This folder demonstrates cuSPARSE Generic APIs usage.
 
     The sample demonstrates *Sparse Matrix - Sparse Matrix multiplication = Sparse Matrix*, where all operands are sparse matrices represented in CSR (Compressed Sparse Row) storage format
 
-* [cusparseSpGEMM](spgemm_mem/)
+* [cusparseSpGEMM - Memory Optmization](spgemm_mem/)
 
     The sample demonstrates *Sparse Matrix - Sparse Matrix multiplication = Sparse Matrix*, where all operands are sparse matrices represented in CSR (Compressed Sparse Row) storage format and the memory usage is optimzed
 
