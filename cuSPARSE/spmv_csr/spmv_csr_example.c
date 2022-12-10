@@ -1,5 +1,5 @@
 /*
- * Copyright 1993-2021 NVIDIA Corporation.  All rights reserved.
+ * Copyright 1993-2022 NVIDIA Corporation.  All rights reserved.
  *
  * NOTICE TO LICENSEE:
  *
@@ -128,13 +128,13 @@ int main(void) {
     CHECK_CUSPARSE( cusparseSpMV_bufferSize(
                                  handle, CUSPARSE_OPERATION_NON_TRANSPOSE,
                                  &alpha, matA, vecX, &beta, vecY, CUDA_R_32F,
-                                 CUSPARSE_MV_ALG_DEFAULT, &bufferSize) )
+                                 CUSPARSE_SPMV_ALG_DEFAULT, &bufferSize) )
     CHECK_CUDA( cudaMalloc(&dBuffer, bufferSize) )
 
     // execute SpMV
     CHECK_CUSPARSE( cusparseSpMV(handle, CUSPARSE_OPERATION_NON_TRANSPOSE,
                                  &alpha, matA, vecX, &beta, vecY, CUDA_R_32F,
-                                 CUSPARSE_MV_ALG_DEFAULT, dBuffer) )
+                                 CUSPARSE_SPMV_ALG_DEFAULT, dBuffer) )
 
     // destroy matrix/vector descriptors
     CHECK_CUSPARSE( cusparseDestroySpMat(matA) )

@@ -1,5 +1,5 @@
 /*
- * Copyright 1993-2021 NVIDIA Corporation.  All rights reserved.
+ * Copyright 1993-2022 NVIDIA Corporation.  All rights reserved.
  *
  * NOTICE TO LICENSEE:
  *
@@ -88,8 +88,8 @@ int main(void) {
     int   hA_csrOffsets[]  = { 0, 3, 4, 7, 9 };
     int   hA_columns1[]    = { 0, 2, 3, 1, 0, 2, 3, 1, 3 };
     int   hA_columns2[]    = { 1, 2, 3, 0, 0, 1, 3, 1, 2 };
-    float hA_values1[]     = { /*0*/ 1.0f, 2.0f, 3.0f,
-                               4.0f, /*0*/ /*0*/ /*0*/
+    float hA_values1[]     = { 1.0f, /*0*/ 2.0f, 3.0f,
+                               /*0*/ 4.0f, /*0*/ /*0*/
                                5.0f, /*0*/ 6.0f, 7.0f,
                                /*0*/ 8.0f, /*0*/ 9.0f };
     float hA_values2[]     = { /*0*/ 10.0f,  11.0f, 12.0f,
