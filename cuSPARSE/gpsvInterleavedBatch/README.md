@@ -8,6 +8,11 @@ The example solves two penta-diagonal systems and assumes data layout is NOT int
 
 ## Building
 
+* Command line
+    ```bash
+    nvcc -I<cuda_toolkit_path>/include gpsvInterleavedBatch_example.c -o gpsvInterleavedBatch_example -lcusparse
+    ```
+
 * Linux
     ```bash
     make
@@ -24,7 +29,7 @@ The example solves two penta-diagonal systems and assumes data layout is NOT int
 
 ## Support
 
-* **Supported SM Architectures:** SM 3.5, SM 3.7, SM 5.0, SM 5.2, SM 5.3, SM 6.0, SM 6.1, SM 6.2, SM 7.0, SM 7.2, SM 7.5, SM 8.0, SM 8.6
+* **Supported SM Architectures:** SM 3.5, SM 3.7, SM 5.0, SM 5.2, SM 5.3, SM 6.0, SM 6.1, SM 6.2, SM 7.0, SM 7.2, SM 7.5, SM 8.0, SM 8.6, SM 8.9, SM 9.0
 * **Supported OSes:** Linux, Windows, QNX, Android
 * **Supported CPU Architectures**: x86_64, ppc64le, arm64
 * **Supported Compilers**: gcc, clang, Intel icc, IBM xlc, Microsoft msvc, Nvidia HPC SDK nvc

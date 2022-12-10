@@ -1,4 +1,4 @@
-# Copyright 1993-2021 NVIDIA Corporation.  All rights reserved.
+# Copyright 1993-2022 NVIDIA Corporation.  All rights reserved.
 #
 # NOTICE TO LICENSEE:
 #
@@ -46,7 +46,7 @@
 # Users Notice.
 CUDA_TOOLKIT := $(shell dirname $$(command -v nvcc))/..
 INC          := -I$(CUDA_TOOLKIT)/include
-LIBS         := -lcudart -lcusparse -lnvrtc
+LIBS         := -lcusparse -lnvrtc
 
 all: spmm_csr_op_example
 
