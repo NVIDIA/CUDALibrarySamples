@@ -88,9 +88,16 @@ This folder demonstrates cuSPARSE Generic APIs usage.
 
     The sample demonstrates *Sparse Matrix - Dense Matrix multiplication = Dense Matrix*, where the sparse matrix is represented in Blocked-ELL storage format
 
+* [cusparseSpMM SDDMM - Batched](sddmm_csr_batched/)
+    The sample demonstrates *Batched Dense matrix - Dense matrix multiplication = Sparse matrix*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format
+
 * [cusparseSpGEMM](spgemm/)
 
     The sample demonstrates *Sparse Matrix - Sparse Matrix multiplication = Sparse Matrix*, where all operands are sparse matrices represented in CSR (Compressed Sparse Row) storage format
+
+* [cusparseSpGEMM](spgemm_mem/)
+
+    The sample demonstrates *Sparse Matrix - Sparse Matrix multiplication = Sparse Matrix*, where all operands are sparse matrices represented in CSR (Compressed Sparse Row) storage format and the memory usage is optimzed
 
 * [cusparseSpGEMM_reuse](spgemm_reuse/)
 

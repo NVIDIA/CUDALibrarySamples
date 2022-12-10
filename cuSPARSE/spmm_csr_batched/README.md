@@ -16,6 +16,11 @@ This sample demonstrates the usage of `cusparseSpMM` for performing *batched spa
 
 ## Building
 
+* Command line
+    ```bash
+    nvcc -I<cuda_toolkit_path>/include spmm_csr_batched_example.c -o spmm_csr_batched_example -lcusparse
+    ```
+
 * Linux
     ```bash
     make
@@ -32,7 +37,7 @@ This sample demonstrates the usage of `cusparseSpMM` for performing *batched spa
 
 ## Support
 
-* **Supported SM Architectures:** SM 3.5, SM 3.7, SM 5.0, SM 5.2, SM 5.3, SM 6.0, SM 6.1, SM 6.2, SM 7.0, SM 7.2, SM 7.5, SM 8.0, SM 8.6
+* **Supported SM Architectures:** SM 3.5, SM 3.7, SM 5.0, SM 5.2, SM 5.3, SM 6.0, SM 6.1, SM 6.2, SM 7.0, SM 7.2, SM 7.5, SM 8.0, SM 8.6, SM 8.9, SM 9.0
 * **Supported OSes:** Linux, Windows, QNX, Android
 * **Supported CPU Architectures**: x86_64, ppc64le, arm64
 * **Supported Compilers**: gcc, clang, Intel icc, IBM xlc, Microsoft msvc, Nvidia HPC SDK nvc
@@ -40,5 +45,5 @@ This sample demonstrates the usage of `cusparseSpMM` for performing *batched spa
 
 ## Prerequisites
 
-* [CUDA 11.6u1 toolkit](https://developer.nvidia.com/cuda-downloads) (or above) and compatible driver (see [CUDA Driver Release Notes](https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/index.html#cuda-major-component-versions)).
+* [CUDA 11.6.1 toolkit](https://developer.nvidia.com/cuda-downloads) (or above) and compatible driver (see [CUDA Driver Release Notes](https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/index.html#cuda-major-component-versions)).
 * [CMake 3.9](https://cmake.org/download/) or above on Windows
