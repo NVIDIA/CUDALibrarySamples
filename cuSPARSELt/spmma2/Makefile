@@ -1,4 +1,4 @@
-# Copyright 1993-2021 NVIDIA Corporation.  All rights reserved.
+# Copyright 1993-2022 NVIDIA Corporation.  All rights reserved.
 #
 # NOTICE TO LICENSEE:
 #
@@ -44,7 +44,7 @@
 # software must include, in the user documentation and internal
 # comments to the code, the above Disclaimer and U.S. Government End
 # Users Notice.
-CUDA_TOOLKIT := $(abspath $(shell dirname $$(command -v nvcc))/..)
+CUDA_TOOLKIT ?= $(abspath $(shell dirname $$(command -v nvcc))/..)
 ifeq ($(shell uname -m), aarch64)
 ifeq ($(shell uname -s), Linux)
     OS_ARCH_NVRTC := "sbsa-linux"
@@ -62,14 +62,11 @@ all: spmma2_example spmma2_example_static
 
 spmma2_example: spmma2_example.cpp
 	nvcc --std=c++14  ${INCS}  spmma2_example.cpp -o spmma2_example \
-         -L${CUSPARSELT_PATH}/lib64 -lcusparseLt ${LIBS}
+         -L${CUSPARSELT_PATH}/lib -lcusparseLt ${LIBS}
 
 spmma2_example_static: spmma2_example.cpp
 	nvcc --std=c++14 ${INCS} spmma2_example.cpp -o spmma2_example_static \
-         -Xlinker=--whole-archive                                        \
-         -Xlinker=${CUSPARSELT_PATH}/lib64/libcusparseLt_static.a        \
-         -Xlinker=--no-whole-archive                                     \
-         ${LIBS}
+         -L${CUSPARSELT_PATH}/lib -lcusparseLt ${LIBS}
 
 clean:
 	rm -f spmma2_example spmma2_example_static
