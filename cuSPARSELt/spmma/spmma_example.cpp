@@ -1,5 +1,5 @@
 /*
- * Copyright 1993-2021 NVIDIA Corporation.  All rights reserved.
+ * Copyright 1993-2022 NVIDIA Corporation.  All rights reserved.
  *
  * NOTICE TO LICENSEE:
  *
@@ -172,11 +172,11 @@ int main(void) {
                                             &handle, &alg_sel,
                                             CUSPARSELT_MATMUL_ALG_CONFIG_ID,
                                             &alg, sizeof(alg)))
-
-    CHECK_CUSPARSE( cusparseLtMatmulPlanInit(&handle, &plan, &matmul, &alg_sel) )
-
+    size_t workspace_size;
+    CHECK_CUSPARSE( cusparseLtMatmulPlanInit(&handle, &plan, &matmul, &alg_sel,
+                                             workspace_size) )
     //--------------------------------------------------------------------------
-    // Prune the A matrix (in-place) and check the correcteness
+    // Prune the A matrix (in-place) and check the correctness
     CHECK_CUSPARSE( cusparseLtSpMMAPrune(&handle, &matmul, dA, dA,
                                          CUSPARSELT_PRUNE_SPMMA_TILE, stream) )
     CHECK_CUSPARSE( cusparseLtSpMMAPruneCheck(&handle, &matmul, dA,
@@ -229,11 +229,11 @@ int main(void) {
     CHECK_CUSPARSE( cusparseLtMatmulAlgGetAttribute(
                                            &handle, &alg_sel,
                                            CUSPARSELT_MATMUL_SPLIT_K_BUFFERS,
-                                           &splitKBuffers, sizeof(splitKBuffers)) )
-
+                                           &splitKBuffers,
+                                           sizeof(splitKBuffers)) )
     //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    size_t workspace_size;
-    CHECK_CUSPARSE( cusparseLtMatmulPlanInit(&handle, &plan, &matmul, &alg_sel) )
+    CHECK_CUSPARSE( cusparseLtMatmulPlanInit(&handle, &plan, &matmul, &alg_sel,
+                                             workspace_size) )
 
     CHECK_CUSPARSE( cusparseLtMatmulGetWorkspace(&handle, &plan,
                                                  &workspace_size))
