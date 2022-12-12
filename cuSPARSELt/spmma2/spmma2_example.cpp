@@ -1,5 +1,5 @@
 /*
- * Copyright 1993-2021 NVIDIA Corporation.  All rights reserved.
+ * Copyright 1993-2022 NVIDIA Corporation.  All rights reserved.
  *
  * NOTICE TO LICENSEE:
  *
@@ -274,8 +274,9 @@ int main(void) {
     CHECK_CUSPARSE( cusparseLtMatmulAlgSelectionInit(
                                             &handle, &alg_sel, &matmul,
                                             CUSPARSELT_MATMUL_ALG_DEFAULT) )
-
-    CHECK_CUSPARSE( cusparseLtMatmulPlanInit(&handle, &plan, &matmul, &alg_sel) )
+    size_t workspace_size = 0;
+    CHECK_CUSPARSE( cusparseLtMatmulPlanInit(&handle, &plan, &matmul, &alg_sel,
+                                             workspace_size) )
     //--------------------------------------------------------------------------
     // Split-K Mode
     int splitK, splitKBuffers;
@@ -299,7 +300,7 @@ int main(void) {
            splitK, splitKMode, splitKBuffers);
 
     //--------------------------------------------------------------------------
-    // Prune the A matrix (in-place) and check the correcteness
+    // Prune the A matrix (in-place) and check the correctness
     CHECK_CUSPARSE( cusparseLtSpMMAPrune(&handle, &matmul, dA, dA,
                                          CUSPARSELT_PRUNE_SPMMA_TILE, stream) )
     CHECK_CUSPARSE( cusparseLtSpMMAPruneCheck(&handle, &matmul, dA,
@@ -323,12 +324,11 @@ int main(void) {
     CHECK_CUSPARSE( cusparseLtSpMMACompress(&handle, &plan, dA,
                                             dA_compressed, stream) )
     //--------------------------------------------------------------------------
-    // Plan initialization 
+    // Plan initialization
 
-    CHECK_CUSPARSE( cusparseLtMatmulPlanInit(&handle, &plan, &matmul, &alg_sel) )
-
-    void*  d_workspace    = nullptr;
-    size_t workspace_size = 0;
+    CHECK_CUSPARSE( cusparseLtMatmulPlanInit(&handle, &plan, &matmul, &alg_sel,
+                                             workspace_size) )
+    void* d_workspace = nullptr;
     CHECK_CUSPARSE( cusparseLtMatmulGetWorkspace(&handle, &plan,
                                                  &workspace_size))
 
