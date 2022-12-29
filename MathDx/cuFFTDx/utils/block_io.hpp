@@ -40,8 +40,8 @@
 // must include, in the user documentation and internal comments to the code, the
 // above Disclaimer and U.S. Government End Users Notice.
 
-#ifndef MATHDX_CUFFTDX_EXAMPLE_BLOCK_IO_HPP_
-#define MATHDX_CUFFTDX_EXAMPLE_BLOCK_IO_HPP_
+#ifndef MATHDX_CUFFTDX_EXAMPLE_BLOCK_IO_HPP
+#define MATHDX_CUFFTDX_EXAMPLE_BLOCK_IO_HPP
 
 namespace example {
     template<class FFT>
@@ -174,8 +174,10 @@ namespace example {
             const unsigned int stride = stride_size();
             unsigned int       index  = offset + threadIdx.x;
             for (unsigned int i = 0; i < FFT::elements_per_thread; i++) {
-                thread_data[i] = input[index];
-                index += stride;
+                if ((i * stride + threadIdx.x) < cufftdx::size_of<FFT>::value) {
+                    thread_data[i] = input[index];
+                    index += stride;
+                }
             }
         }
 
@@ -187,8 +189,10 @@ namespace example {
             const unsigned int stride = stride_size();
             unsigned int       index  = offset + threadIdx.x;
             for (unsigned int i = 0; i < FFT::elements_per_thread; i++) {
-                output[index] = thread_data[i];
-                index += stride;
+                if ((i * stride + threadIdx.x) < cufftdx::size_of<FFT>::value) {
+                    output[index] = thread_data[i];
+                    index += stride;
+                }
             }
         }
 
@@ -208,8 +212,10 @@ namespace example {
             const unsigned int stride = stride_size();
             unsigned int       index  = offset + threadIdx.x;
             for (unsigned int i = 0; i < FFT::elements_per_thread; i++) {
-                reinterpret_cast<scalar_type*>(thread_data)[i] = input[index];
-                index += stride;
+                if ((i * stride + threadIdx.x) < cufftdx::size_of<FFT>::value) {
+                    reinterpret_cast<scalar_type*>(thread_data)[i] = input[index];
+                    index += stride;
+                }
             }
         }
 
@@ -220,17 +226,11 @@ namespace example {
             const unsigned int offset = batch_offset_r2c(local_fft_id);
             const unsigned int stride = stride_size();
             unsigned int       index  = offset + threadIdx.x;
-            for (unsigned int i = 0; i < FFT::elements_per_thread / 2; i++) {
-                output[index] = thread_data[i];
-                index += stride;
-            }
-            constexpr unsigned int threads_per_fft        = cufftdx::size_of<FFT>::value / FFT::elements_per_thread;
-            constexpr unsigned int output_values_to_store = (cufftdx::size_of<FFT>::value / 2) + 1;
-            // threads_per_fft == 1 means that EPT == SIZE, so we need to store one more element
-            constexpr unsigned int values_left_to_store =
-                threads_per_fft == 1 ? 1 : (output_values_to_store % threads_per_fft);
-            if (threadIdx.x < values_left_to_store) {
-                output[index] = thread_data[FFT::elements_per_thread / 2];
+            for (unsigned int i = 0; i < FFT::elements_per_thread / 2 + 1; i++) {
+                if ((i * stride + threadIdx.x) < ((cufftdx::size_of<FFT>::value / 2) + 1)) {
+                    output[index] = thread_data[i];
+                    index += stride;
+                }
             }
         }
 
@@ -249,17 +249,11 @@ namespace example {
             // Get stride, this shows how elements from batch should be split between threads
             const unsigned int stride = stride_size();
             unsigned int       index  = offset + threadIdx.x;
-            for (unsigned int i = 0; i < FFT::elements_per_thread / 2; i++) {
-                thread_data[i] = input[index];
-                index += stride;
-            }
-            constexpr unsigned int threads_per_fft       = cufftdx::size_of<FFT>::value / FFT::elements_per_thread;
-            constexpr unsigned int output_values_to_load = (cufftdx::size_of<FFT>::value / 2) + 1;
-            // threads_per_fft == 1 means that EPT == SIZE, so we need to load one more element
-            constexpr unsigned int values_left_to_load =
-                threads_per_fft == 1 ? 1 : (output_values_to_load % threads_per_fft);
-            if (threadIdx.x < values_left_to_load) {
-                thread_data[FFT::elements_per_thread / 2] = input[index];
+            for (unsigned int i = 0; i < FFT::elements_per_thread / 2 + 1; i++) {
+                if ((i * stride + threadIdx.x) < (cufftdx::size_of<FFT>::value / 2 + 1)) {
+                    thread_data[i] = input[index];
+                    index += stride;
+                }
             }
         }
 
@@ -271,11 +265,13 @@ namespace example {
             const unsigned int stride = stride_size();
             unsigned int       index  = offset + threadIdx.x;
             for (unsigned int i = 0; i < FFT::elements_per_thread; i++) {
-                output[index] = reinterpret_cast<const scalar_type*>(thread_data)[i];
-                index += stride;
+                if ((i * stride + threadIdx.x) < cufftdx::size_of<FFT>::value) {
+                    output[index] = reinterpret_cast<const scalar_type*>(thread_data)[i];
+                    index += stride;
+                }
             }
         }
     };
 } // namespace example
 
-#endif // MATHDX_CUFFTDX_HELPERS_EXAMPLE_BLOCK_IO_HPP_
+#endif // MATHDX_CUFFTDX_HELPERS_EXAMPLE_BLOCK_IO_HPP
