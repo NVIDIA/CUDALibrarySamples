@@ -28,3 +28,15 @@ The sample computes 1D FFT. See example for detailed description.
 * [Convolution](cuFFTDx/convolution)
 
 The sample computes convolution using FFTs. See example for detailed description.
+
+##### 2D FFTs
+
+* [2D FFTs](cuFFTDx/fft_2d)
+
+Multiple examples on how to use cuFFTDx to calculate 2D FFTs. See examples for detailed description.
+
+##### 3D FFTs
+
+* [3D FFTs](cuFFTDx/fft_3d)
+
+Examples on how to use cuFFTDx to calculate small 3D FFTs. See examples for detailed description.
