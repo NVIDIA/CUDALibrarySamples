@@ -101,9 +101,9 @@ namespace example {
     }
 
     struct fft_signal_error {
-        double l2_error;
+        double l2_relative_error;
         double peak_error;
-        double peak_relative_error;
+        double peak_error_relative;
         size_t peak_error_index;
 
         template<class T, class K>
@@ -115,7 +115,7 @@ namespace example {
                 calculate_for_real_value(results[i].x, reference[i].x, error, i, nerror, derror);
                 calculate_for_real_value(results[i].y, reference[i].y, error, i, nerror, derror);
             }
-            error.l2_error = std::sqrt(nerror) / std::sqrt(derror);
+            error.l2_relative_error = std::sqrt(nerror) / std::sqrt(derror);
             return error;
         }
 
@@ -127,7 +127,7 @@ namespace example {
             for (size_t i = 0; i < results.size(); i++) {
                 calculate_for_real_value(results[i], reference[i], error, i, nerror, derror);
             }
-            error.l2_error = std::sqrt(nerror) / std::sqrt(derror);
+            error.l2_relative_error = std::sqrt(nerror) / std::sqrt(derror);
             return error;
         }
 
@@ -142,7 +142,7 @@ namespace example {
             double serr = std::fabs(results_value - reference_value);
             if (serr > error.peak_error) {
                 error.peak_error          = serr;
-                error.peak_relative_error = std::fabs(serr / reference_value);
+                error.peak_error_relative = std::fabs(serr / reference_value);
                 error.peak_error_index    = i;
             }
             nerror += std::pow(serr, 2);
@@ -151,20 +151,22 @@ namespace example {
     };
 
     // Returns execution time in ms
-    template<unsigned int WarmUpRuns, typename Kernel>
-    float measure_execution(Kernel&& kernel, cudaStream_t stream) {
+    template<typename Kernel>
+    float measure_execution_ms(Kernel&& kernel, const unsigned int warm_up_runs, const unsigned int runs, cudaStream_t stream) {
         cudaEvent_t startEvent, stopEvent;
         CUDA_CHECK_AND_EXIT(cudaEventCreate(&startEvent));
         CUDA_CHECK_AND_EXIT(cudaEventCreate(&stopEvent));
         CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
-        for (size_t i = 0; i < WarmUpRuns; i++) {
+        for (size_t i = 0; i < warm_up_runs; i++) {
             kernel(stream);
         }
         CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
         CUDA_CHECK_AND_EXIT(cudaEventRecord(startEvent, stream));
-        kernel(stream);
+        for (size_t i = 0; i < runs; i++) {
+            kernel(stream);
+        }
         CUDA_CHECK_AND_EXIT(cudaEventRecord(stopEvent, stream));
         CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
