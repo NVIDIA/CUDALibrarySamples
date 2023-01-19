@@ -1,11 +1,11 @@
 # Copyright 1993-2022 NVIDIA Corporation.  All rights reserved.
-
+#
 # NOTICE TO LICENSEE:
-
+#
 # This source code and/or documentation ("Licensed Deliverables") are subject to
 # NVIDIA intellectual property rights under U.S. and international Copyright
 # laws.
-
+#
 # These Licensed Deliverables contained herein is PROPRIETARY and CONFIDENTIAL
 # to NVIDIA and is being provided under the terms and conditions of a form of
 # NVIDIA software license agreement by and between NVIDIA and Licensee ("License
@@ -13,7 +13,7 @@
 # or conditions to the contrary in the License Agreement, reproduction or
 # disclosure of the Licensed Deliverables to any third party without the express
 # written consent of NVIDIA is prohibited.
-
+#
 # NOTWITHSTANDING ANY TERMS OR CONDITIONS TO THE CONTRARY IN THE LICENSE
 # AGREEMENT, NVIDIA MAKES NO REPRESENTATION ABOUT THE SUITABILITY OF THESE
 # LICENSED DELIVERABLES FOR ANY PURPOSE.  IT IS PROVIDED "AS IS" WITHOUT EXPRESS
@@ -26,7 +26,7 @@
 # LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
 # OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 # PERFORMANCE OF THESE LICENSED DELIVERABLES.
-
+#
 # U.S. Government End Users.  These Licensed Deliverables are a "commercial
 # item" as that term is defined at 48 C.F.R. 2.101 (OCT 1995), consisting of
 # "commercial computer software" and "commercial computer software
@@ -35,7 +35,7 @@
 # with 48 C.F.R.12.212 and 48 C.F.R. 227.7202-1 through 227.7202-4 (JUNE 1995),
 # all U.S. Government End Users acquire the Licensed Deliverables with only
 # those rights set forth herein.
-
+#
 # Any use of the Licensed Deliverables in individual and commercial software
 # must include, in the user documentation and internal comments to the code, the
 # above Disclaimer and U.S. Government End Users Notice.
@@ -51,6 +51,9 @@ project(cufftdx_examples LANGUAGES CXX CUDA)
 
 # Find cuFFTDx from mathDx package
 find_package(mathdx REQUIRED COMPONENTS cufftdx CONFIG)
+
+# Find cuFFT
+find_package(CUDAToolkit REQUIRED)
 
 # Global CXX/CUDA flags
 if(NOT MSVC)
@@ -97,7 +100,7 @@ function(add_cufftdx_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
     get_filename_component(EXAMPLE_TARGET ${EXAMPLE_MAIN_SOURCE} NAME_WE)
     set_source_files_properties(${EXAMPLE_SOURCES} PROPERTIES LANGUAGE CUDA)
     add_executable(${EXAMPLE_TARGET} ${EXAMPLE_SOURCES})
-    target_link_libraries(${EXAMPLE_TARGET} PRIVATE cufftdx_cuda_architectures mathdx::cufftdx)
+    target_link_libraries(${EXAMPLE_TARGET} PRIVATE cufftdx_cuda_architectures mathdx::cufftdx CUDA::cufft)
     target_compile_options(${EXAMPLE_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xfatbin -compress-all>")
     add_test(NAME ${EXAMPLE_NAME} COMMAND ${EXAMPLE_TARGET})
     add_dependencies(${GROUP_TARGET} ${EXAMPLE_TARGET})
@@ -106,4 +109,5 @@ endfunction()
 
 add_custom_target(cufftdx_examples)
 
-add_cufftdx_example(cufftdx_examples "mathDx.cuFFTDx.convolution" convolution.cu)
+add_cufftdx_example(cufftdx_examples "mathDx.cuFFTDx.fft_3d_box_single_block" fft_3d_box_single_block.cu)
+add_cufftdx_example(cufftdx_examples "mathDx.cuFFTDx.fft_3d_cube_single_block" fft_3d_cube_single_block.cu)

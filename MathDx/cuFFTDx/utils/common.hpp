@@ -40,8 +40,8 @@
 // must include, in the user documentation and internal comments to the code, the
 // above Disclaimer and U.S. Government End Users Notice.
 
-#ifndef MATHDX_CUFFTDX_EXAMPLE_COMMON_HPP_
-#define MATHDX_CUFFTDX_EXAMPLE_COMMON_HPP_
+#ifndef MATHDX_CUFFTDX_EXAMPLE_COMMON_HPP
+#define MATHDX_CUFFTDX_EXAMPLE_COMMON_HPP
 
 #include <algorithm>
 #include <random>
@@ -64,22 +64,18 @@
         }
 #endif // CUDA_CHECK_AND_EXIT
 
-namespace example {
-    template<class T>
-    inline auto get_random_complex_data(size_t size, T min, T max) ->
-        typename std::enable_if<std::is_floating_point<T>::value,
-                                std::vector<cufftdx::make_complex_type_t<T>>>::type {
-        using complex_type = cufftdx::make_complex_type_t<T>;
-        std::random_device                rd;
-        std::default_random_engine        gen(rd());
-        std::uniform_real_distribution<T> distribution(min, max);
-        std::vector<complex_type>         output(size);
-        std::generate(output.begin(), output.end(), [&]() {
-            return complex_type {distribution(gen), distribution(gen)};
-        });
-        return output;
-    }
+#ifndef CUFFT_CHECK_AND_EXIT
+#    define CUFFT_CHECK_AND_EXIT(error)                                                 \
+        {                                                                               \
+            auto status = static_cast<cufftResult>(error);                              \
+            if (status != CUFFT_SUCCESS) {                                              \
+                std::cout << status << " " << __FILE__ << ":" << __LINE__ << std::endl; \
+                std::exit(status);                                                      \
+            }                                                                           \
+        }
+#endif // CUFFT_CHECK_AND_EXIT
 
+namespace example {
     inline unsigned int get_cuda_device_arch() {
         int device;
         CUDA_CHECK_AND_EXIT(cudaGetDevice(&device));
@@ -104,40 +100,124 @@ namespace example {
         return get_multiprocessor_count(device);
     }
 
+    struct fft_signal_error {
+        double l2_relative_error;
+        double peak_error;
+        double peak_error_relative;
+        size_t peak_error_index;
+
+        template<class T, class K>
+        static inline fft_signal_error calculate_for_complex_values(const std::vector<T>& results, const std::vector<K>& reference) {
+            fft_signal_error error {0.0, 0.0, 0.0, 0};
+            double           nerror = 0.0;
+            double           derror = 0.0;
+            for (size_t i = 0; i < results.size(); i++) {
+                calculate_for_real_value(results[i].x, reference[i].x, error, i, nerror, derror);
+                calculate_for_real_value(results[i].y, reference[i].y, error, i, nerror, derror);
+            }
+            error.l2_relative_error = std::sqrt(nerror) / std::sqrt(derror);
+            return error;
+        }
+
+        template<class T, class K>
+        static inline fft_signal_error calculate_for_real_values(const std::vector<T>& results, const std::vector<K>& reference) {
+            fft_signal_error error {0.0, 0.0, 0.0, 0};
+            double           nerror = 0.0;
+            double           derror = 0.0;
+            for (size_t i = 0; i < results.size(); i++) {
+                calculate_for_real_value(results[i], reference[i], error, i, nerror, derror);
+            }
+            error.l2_relative_error = std::sqrt(nerror) / std::sqrt(derror);
+            return error;
+        }
+
+    private:
+        template<class T, class K>
+        static inline void calculate_for_real_value(const T&          results_value,
+                                                    const K&          reference_value,
+                                                    fft_signal_error& error,
+                                                    const size_t      i,
+                                                    double&           nerror,
+                                                    double&           derror) {
+            double serr = std::fabs(results_value - reference_value);
+            if (serr > error.peak_error) {
+                error.peak_error          = serr;
+                error.peak_error_relative = std::fabs(serr / reference_value);
+                error.peak_error_index    = i;
+            }
+            nerror += std::pow(serr, 2);
+            derror += std::pow(results_value, 2);
+        }
+    };
+
+    // Returns execution time in ms
+    template<typename Kernel>
+    float measure_execution_ms(Kernel&& kernel, const unsigned int warm_up_runs, const unsigned int runs, cudaStream_t stream) {
+        cudaEvent_t startEvent, stopEvent;
+        CUDA_CHECK_AND_EXIT(cudaEventCreate(&startEvent));
+        CUDA_CHECK_AND_EXIT(cudaEventCreate(&stopEvent));
+        CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
+
+        for (size_t i = 0; i < warm_up_runs; i++) {
+            kernel(stream);
+        }
+        CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
+
+        CUDA_CHECK_AND_EXIT(cudaEventRecord(startEvent, stream));
+        for (size_t i = 0; i < runs; i++) {
+            kernel(stream);
+        }
+        CUDA_CHECK_AND_EXIT(cudaEventRecord(stopEvent, stream));
+        CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
+
+        float time;
+        CUDA_CHECK_AND_EXIT(cudaEventElapsedTime(&time, startEvent, stopEvent));
+        CUDA_CHECK_AND_EXIT(cudaEventDestroy(startEvent));
+        CUDA_CHECK_AND_EXIT(cudaEventDestroy(stopEvent));
+        return time;
+    }
+
+    template<class T>
+    struct fft_results {
+        std::vector<T> output;
+        float avg_time_in_ms;
+    };
+
     template<template<unsigned int> class Functor>
     inline int sm_runner() {
         // Get CUDA device compute capability
         const auto cuda_device_arch = get_cuda_device_arch();
 
         switch (cuda_device_arch) {
-#ifdef SM_70
+// If examples are compiled via Makefile all cases are enabled, if via CMake only the SMs
+// that are part of CUFFTDX_TARGET_ARCHS/CUFFTDX_CUDA_ARCHITECTURES are enabled.
+#if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_70)
             case 700: Functor<700>()(); return 0;
 #endif
-#ifdef SM_72
+#if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_72)
             case 720: Functor<720>()(); return 0;
 #endif
-#ifdef SM_75
+#if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_75)
             case 750: Functor<750>()(); return 0;
 #endif
-#ifdef SM_80
+#if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_80)
             case 800: Functor<800>()(); return 0;
 #endif
-#ifdef SM_86
+#if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_86)
             case 860: Functor<860>()(); return 0;
 #endif
-            default: {
-                if (cuda_device_arch > 860) {
-#ifdef SM_86
-                    Functor<860>()();
-                    return 0;
-#else
-                    return 1;
+#if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_87)
+            case 870: Functor<870>()(); return 0;
 #endif
-                }
-            }
+#if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_89)
+            case 890: Functor<890>()(); return 0;
+#endif
+#if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_90)
+            case 900: Functor<900>()(); return 0;
+#endif
         }
         return 1;
     }
 } // namespace example
 
-#endif // CUFFTDX_EXAMPLE_COMMON_HPP_
+#endif // MATHDX_CUFFTDX_EXAMPLE_COMMON_HPP
