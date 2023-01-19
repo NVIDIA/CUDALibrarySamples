@@ -9,8 +9,8 @@
 #include "common.hpp"
 #include "random.hpp"
 
-// #define CUFFTDX_EXAMLE_DETAIL_DEBUG_FFT_3D
-// #define CUFFTDX_EXAMLE_DETAIL_DEBUG_FFT_3D_SIMPLE_IO
+// #define CUFFTDX_EXAMPLE_DETAIL_DEBUG_FFT_3D
+// #define CUFFTDX_EXAMPLE_DETAIL_DEBUG_FFT_3D_SIMPLE_IO
 
 template<unsigned int MaxThreadsPerBlock, class FFT, class ComplexType = typename FFT::value_type>
 __launch_bounds__(MaxThreadsPerBlock) __global__
@@ -69,7 +69,7 @@ __launch_bounds__(MaxThreadsPerBlock) __global__
     FFT().execute(thread_data);
 
     // Save results
-#ifdef CUFFTDX_EXAMLE_DETAIL_DEBUG_FFT_3D_SIMPLE_IO
+#ifdef CUFFTDX_EXAMPLE_DETAIL_DEBUG_FFT_3D_SIMPLE_IO
     // Simple IO with poor global memory pattern:
     // Storing the data with stride=1 results in poor global memory
     // write pattern with little or none coalescing
@@ -155,7 +155,7 @@ int main(int, char**) {
 
     // Generate random input data on host
     const unsigned int flat_fft_size = fft_size * fft_size * fft_size;
-#ifdef CUFFTDX_EXAMLE_DETAIL_DEBUG_FFT_3D
+#ifdef CUFFTDX_EXAMPLE_DETAIL_DEBUG_FFT_3D
     std::vector<float2> host_input(flat_fft_size);
     for (size_t i = 0; i < flat_fft_size; i++) {
         float sign      = (i % 3 == 0) ? -1.0f : 1.0f;
@@ -201,7 +201,7 @@ int main(int, char**) {
     // Check if cuFFTDx results are correct
     auto fft_error = example::fft_signal_error::calculate_for_complex_values(cufftdx_output, cufft_output);
 
-#ifdef CUFFTDX_EXAMLE_DETAIL_DEBUG_FFT_3D
+#ifdef CUFFTDX_EXAMPLE_DETAIL_DEBUG_FFT_3D
     std::cout << "cuFFT, cuFFTDx\n";
     for (size_t i = 0; i < 8; i++) {
         std::cout << i << ": ";
@@ -213,10 +213,10 @@ int main(int, char**) {
 #endif
 
     std::cout << "Correctness results:\n";
-    std::cout << "L2 error: " << fft_error.l2_error << "\n";
+    std::cout << "L2 error: " << fft_error.l2_relative_error << "\n";
     std::cout << "Peak error (index: " << fft_error.peak_error_index << "): " << fft_error.peak_error << "\n";
 
-    if(fft_error.l2_error < 0.001) {
+    if(fft_error.l2_relative_error < 0.001) {
         std::cout << "Success\n";
         return 0;
     } else {

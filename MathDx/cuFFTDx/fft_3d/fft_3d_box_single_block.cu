@@ -1,6 +1,7 @@
 #include <iostream>
 #include <iomanip>
 #include <vector>
+#include <limits>
 
 #include <cuda_runtime_api.h>
 #include <cufftdx.hpp>
@@ -10,10 +11,10 @@
 #include "common.hpp"
 #include "random.hpp"
 
-// #define CUFFTDX_EXAMLE_DETAIL_DEBUG_FFT_3D
-// #define CUFFTDX_EXAMLE_DETAIL_DEBUG_FFT_3D_SIMPLE_IO
-#define CUFFTDX_EXAMPLE_WARMUP_RUNS 5
-#define CUFFTDX_EXAMPLE_PERFORMANCE_RUNS 50
+// #define CUFFTDX_EXAMPLE_DETAIL_DEBUG_FFT_3D
+// #define CUFFTDX_EXAMPLE_DETAIL_DEBUG_FFT_3D_SIMPLE_IO
+inline constexpr unsigned int cufftdx_example_warm_up_runs = 5;
+inline constexpr unsigned int cufftdx_example_performance_runs = 50;
 
 template<unsigned int MaxThreadsPerBlock,
          class FFTX,
@@ -87,7 +88,7 @@ __launch_bounds__(MaxThreadsPerBlock) __global__
     }
 
     // Save results
-#ifdef CUFFTDX_EXAMLE_DETAIL_DEBUG_FFT_3D_SIMPLE_IO
+#ifdef CUFFTDX_EXAMPLE_DETAIL_DEBUG_FFT_3D_SIMPLE_IO
     // Simple IO with poor global memory pattern:
     // Storing the data with stride=1 results in poor global memory
     // write pattern with little or none coalescing
@@ -148,24 +149,22 @@ example::fft_results<float2> cufft_3d_fft(unsigned int  fft_size_x,
     // Copy results to host
     const size_t        flat_fft_size       = fft_size_x * fft_size_y * fft_size_z;
     const size_t        flat_fft_size_bytes = flat_fft_size * sizeof(float2);
-    std::vector<float2> output_host(flat_fft_size, {std::nanf("1"), std::nanf("1")});
+    std::vector<float2> output_host(flat_fft_size, {std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN()});
     CUDA_CHECK_AND_EXIT(cudaMemcpy(output_host.data(), output, flat_fft_size_bytes, cudaMemcpyDeviceToHost));
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     // Performance measurements
-    auto time = example::measure_execution<CUFFTDX_EXAMPLE_WARMUP_RUNS>(
-        [&](cudaStream_t stream) {
-            for (auto i = 0; i < CUFFTDX_EXAMPLE_PERFORMANCE_RUNS; i++) {
-                cufft_execution(stream);
-            }
-        },
+    auto time = example::measure_execution_ms(
+        cufft_execution,
+        cufftdx_example_warm_up_runs,
+        cufftdx_example_performance_runs,
         stream);
 
     // Clean-up
     CUFFT_CHECK_AND_EXIT(cufftDestroy(plan));
 
     // Return results
-    return example::fft_results<float2> {output_host, (time / CUFFTDX_EXAMPLE_PERFORMANCE_RUNS)};
+    return example::fft_results<float2> {output_host, (time / cufftdx_example_performance_runs)};
 }
 
 template<unsigned int FFTSizeX, unsigned int FFTSizeY, unsigned int FFTSizeZ>
@@ -206,19 +205,21 @@ example::fft_results<float2> cufftdx_3d_fft_single_block(float2* input, float2* 
     // Copy results to host
     static constexpr size_t flat_fft_size       = fft_size_x * fft_size_y * fft_size_z;
     static constexpr size_t flat_fft_size_bytes = flat_fft_size * sizeof(float2);
-    std::vector<float2> output_host(flat_fft_size, {std::nanf("1"), std::nanf("1")});
+    std::vector<float2> output_host(flat_fft_size, {std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN()});
     CUDA_CHECK_AND_EXIT(cudaMemcpy(output_host.data(), cufftdx_output, flat_fft_size_bytes, cudaMemcpyDeviceToHost));
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     // Performance measurements
-    auto time = example::measure_execution<CUFFTDX_EXAMPLE_WARMUP_RUNS>([&](cudaStream_t stream){
-        for(auto i = 0; i < CUFFTDX_EXAMPLE_PERFORMANCE_RUNS; i++) {
+    auto time = example::measure_execution_ms(
+        [&](cudaStream_t stream) {
             fft_3d_execution(stream);
-        }
-    }, stream);
+        },
+        cufftdx_example_warm_up_runs,
+        cufftdx_example_performance_runs,
+        stream);
 
     // Return results
-    return example::fft_results<float2>{ output_host, (time / CUFFTDX_EXAMPLE_PERFORMANCE_RUNS) };
+    return example::fft_results<float2>{ output_host, (time / cufftdx_example_performance_runs) };
 }
 
 int main(int, char**) {
@@ -229,7 +230,7 @@ int main(int, char**) {
 
     // Generate random input data on host
     const unsigned int flat_fft_size = fft_size_x * fft_size_y * fft_size_z;
-#ifdef CUFFTDX_EXAMLE_DETAIL_DEBUG_FFT_3D
+#ifdef CUFFTDX_EXAMPLE_DETAIL_DEBUG_FFT_3D
     std::vector<float2> host_input(flat_fft_size);
     for (size_t i = 0; i < flat_fft_size; i++) {
         float sign      = (i % 3 == 0) ? -1.0f : 1.0f;
@@ -271,7 +272,7 @@ int main(int, char**) {
 
     std::cout << "FFT: (" << fft_size_x << ", " << fft_size_y << ", " << fft_size_z <<")\n";
 
-#ifdef CUFFTDX_EXAMLE_DETAIL_DEBUG_FFT_3D
+#ifdef CUFFTDX_EXAMPLE_DETAIL_DEBUG_FFT_3D
     std::cout << "cuFFT, cuFFTDx\n";
     for (size_t i = 0; i < 8; i++) {
         std::cout << i << ": ";
@@ -282,9 +283,9 @@ int main(int, char**) {
     }
 #endif
 
-    bool success = fft_error.l2_error < 0.001;
+    bool success = fft_error.l2_relative_error < 0.001;
     std::cout << "Correctness results:\n";
-    std::cout << "L2 error: " << fft_error.l2_error << "\n";
+    std::cout << "L2 error: " << fft_error.l2_relative_error << "\n";
     std::cout << "Peak error (index: " << fft_error.peak_error_index << "): " << fft_error.peak_error << "\n";
 
     // Print performance results

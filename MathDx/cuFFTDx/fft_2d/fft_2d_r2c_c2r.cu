@@ -1,6 +1,7 @@
 #include <iostream>
 #include <iomanip>
 #include <vector>
+#include <limits>
 
 #include <cuda_runtime_api.h>
 #include <cufftdx.hpp>
@@ -11,9 +12,9 @@
 #include "common.hpp"
 #include "random.hpp"
 
-// #define CUFFTDX_EXAMLE_DETAIL_DEBUG_FFT_2D
-#define CUFFTDX_EXAMPLE_WARMUP_RUNS 5
-#define CUFFTDX_EXAMPLE_PERFORMANCE_RUNS 20
+// #define CUFFTDX_EXAMPLE_DETAIL_DEBUG_FFT_2D
+inline constexpr unsigned int cufftdx_example_warm_up_runs = 5;
+inline constexpr unsigned int cufftdx_example_performance_runs = 20;
 
 template<class FFT, class InputType, class OutputType>
 __launch_bounds__(FFT::max_threads_per_block) __global__
@@ -121,17 +122,15 @@ example::fft_results<RealType> cufft_fft_2d_r2c_c2r(unsigned int fft_size_x,
     // Copy results to host
     const size_t           flat_fft_size       = fft_size_x * fft_size_y;
     const size_t           flat_fft_size_bytes = flat_fft_size * sizeof(real_type);
-    std::vector<real_type> output_host(flat_fft_size, std::nanf("1"));
+    std::vector<real_type> output_host(flat_fft_size, std::numeric_limits<real_type>::quiet_NaN());
     CUDA_CHECK_AND_EXIT(cudaMemcpy(output_host.data(), cufft_output_c2r, flat_fft_size_bytes, cudaMemcpyDeviceToHost));
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     // Performance measurements
-    auto time = example::measure_execution<CUFFTDX_EXAMPLE_WARMUP_RUNS>(
-        [&](cudaStream_t stream) {
-            for (auto i = 0; i < CUFFTDX_EXAMPLE_PERFORMANCE_RUNS; i++) {
-                cufft_execution(stream);
-            }
-        },
+    auto time = example::measure_execution_ms(
+        cufft_execution,
+        cufftdx_example_warm_up_runs,
+        cufftdx_example_performance_runs,
         stream);
 
     // Clean-up
@@ -139,7 +138,7 @@ example::fft_results<RealType> cufft_fft_2d_r2c_c2r(unsigned int fft_size_x,
     CUFFT_CHECK_AND_EXIT(cufftDestroy(plan_c2r));
 
     // Return results
-    return example::fft_results<RealType> {output_host, (time / CUFFTDX_EXAMPLE_PERFORMANCE_RUNS)};
+    return example::fft_results<RealType> {output_host, (time / cufftdx_example_performance_runs)};
 }
 
 template<class FFTR2CX, class FFTR2CY, class FFTC2RX, class FFTC2RY, bool UseSharedMemoryStridedIO, class RealType, class ComplexType>
@@ -239,26 +238,27 @@ example::fft_results<RealType> cufftdx_fft_2d_r2c_c2r(RealType* real_values, Com
     // Copy results to host
     static constexpr size_t flat_fft_size       = fft_size_x * fft_size_y;
     static constexpr size_t flat_fft_size_bytes = flat_fft_size * sizeof(real_type);
-    std::vector<real_type>  output_host(flat_fft_size, std::nanf("1"));
+    std::vector<real_type>  output_host(flat_fft_size, std::numeric_limits<real_type>::quiet_NaN());
     CUDA_CHECK_AND_EXIT(cudaMemcpy(output_host.data(), cufftdx_real_values, flat_fft_size_bytes, cudaMemcpyDeviceToHost));
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     // Performance measurements
-    auto time = example::measure_execution<CUFFTDX_EXAMPLE_WARMUP_RUNS>(
+    auto time = example::measure_execution_ms(
         [&](cudaStream_t stream) {
-            for (auto i = 0; i < CUFFTDX_EXAMPLE_PERFORMANCE_RUNS; i++) {
-                fft_2d_execution(stream);
-            }
+            fft_2d_execution(stream);
         },
+        cufftdx_example_warm_up_runs,
+        cufftdx_example_performance_runs,
         stream);
 
     // Return results
-    return example::fft_results<RealType> {output_host, (time / CUFFTDX_EXAMPLE_PERFORMANCE_RUNS)};
+    return example::fft_results<RealType> {output_host, (time / cufftdx_example_performance_runs)};
 }
 
 // Notes:
 // * This examples shows how to use cuFFTDx to run multi-dimensional FFT. Final performance will vary depending on the
-// FFT definitions (precision, size, type, ept, fpb) and other user customizations. The best possible performance is not promised.
+// FFT definitions (precision, size, type, ept, fpb) and other user customizations.
+// * Best possible performance requires adapting parameters in the sample to particular set of parameters and code customizations.
 // * Only FP32 supported in this example.
 // * cuFFTDx with enabled shared memory IO usually be the faster cuFFTDx option for larger (>512) sizes.
 // * The shared memory IO cuFFTDx has high shared memory requirements and will not work for all possible sizes in X dimension.
@@ -315,7 +315,7 @@ void fft_2d() {
     static constexpr size_t flat_fft_size_complex       = fft_size_x * ((fft_size_y / 2) + 1);
     static constexpr size_t flat_fft_size_real_bytes    = flat_fft_size_real * sizeof(precision_type);
     static constexpr size_t flat_fft_size_complex_bytes = flat_fft_size_complex * sizeof(complex_type);
-#ifdef CUFFTDX_EXAMLE_DETAIL_DEBUG_FFT_2D
+#ifdef CUFFTDX_EXAMPLE_DETAIL_DEBUG_FFT_2D
     std::vector<precision_type> input_host(flat_fft_size_real);
     for (size_t i = 0; i < flat_fft_size_real; i++) {
         float sign    = (i % 3 == 0) ? -1.0f : 1.0f;
@@ -371,7 +371,7 @@ void fft_2d() {
 
     std::cout << "FFT: (" << fft_size_x << ", " << fft_size_y << ")\n";
 
-#ifdef CUFFTDX_EXAMLE_DETAIL_DEBUG_FFT_2D
+#ifdef CUFFTDX_EXAMPLE_DETAIL_DEBUG_FFT_2D
     std::cout << "cuFFT, cuFFTDx\n";
     for (size_t i = 0; i < 8; i++) {
         std::cout << i << ": ";
@@ -388,11 +388,11 @@ void fft_2d() {
         auto fft_error =
             example::fft_signal_error::calculate_for_real_values(cufftdx_results.output, cufft_results.output);
         std::cout << "cuFFTDx\n";
-        std::cout << "L2 error: " << fft_error.l2_error << "\n";
+        std::cout << "L2 error: " << fft_error.l2_relative_error << "\n";
         std::cout << "Peak error (index: " << fft_error.peak_error_index << "): " << fft_error.peak_error << "\n";
-        std::cout << "Peak relative error (index: " << fft_error.peak_error_index << "): " << fft_error.peak_relative_error << "\n";
+        std::cout << "Peak relative error (index: " << fft_error.peak_error_index << "): " << fft_error.peak_error_relative << "\n";
         if (success) {
-            success = (fft_error.l2_error < 0.001);
+            success = (fft_error.l2_relative_error < 0.001);
         }
     }
     // Check cuFFTDx with shared memory io
@@ -400,11 +400,11 @@ void fft_2d() {
         auto fft_error =
             example::fft_signal_error::calculate_for_real_values(cufftdx_smemio_results.output, cufft_results.output);
         std::cout << "cuFFTDx (shared memory IO)\n";
-        std::cout << "L2 error: " << fft_error.l2_error << "\n";
+        std::cout << "L2 error: " << fft_error.l2_relative_error << "\n";
         std::cout << "Peak error (index: " << fft_error.peak_error_index << "): " << fft_error.peak_error << "\n";
-        std::cout << "Peak relative error (index: " << fft_error.peak_error_index << "): " << fft_error.peak_relative_error << "\n";
+        std::cout << "Peak relative error (index: " << fft_error.peak_error_index << "): " << fft_error.peak_error_relative << "\n";
         if (success) {
-            success = (fft_error.l2_error < 0.001);
+            success = (fft_error.l2_relative_error < 0.001);
         }
     }
 
