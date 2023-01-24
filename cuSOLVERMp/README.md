@@ -14,6 +14,12 @@ Distributed decompositions and linear system solutions
 
 [Dense matrix Cholesky factorization and linear system solve](mp_potrf_potrs.cpp)
 
+[Dense matrix Symmetric Eigensolver](mp_syevd.cpp)
+
+[Dense matrix QR factorization](mp_geqrf.cpp)
+
+[Dense matrix QR factorization and linear system solve](mp_gels.cpp)
+
 Examples are bootstrapped by MPI and use it to set up distributed data. Those examples are intended just to show how API is used and not for performance benchmarking. For same reasons process grid is hardcoded to `2x1` in the examples, however you can change it to other values in following lines:
 ```
 /* Define grid of processors */
@@ -40,6 +46,8 @@ x86_64
 
 [SM 8.0 ](https://developer.nvidia.com/cuda-gpus)
 
+[SM 9.0 ](https://developer.nvidia.com/cuda-gpus)
+
 ### Documentation
 
 [cuSOLVERMp documentation](https://docs.nvidia.com/hpc-sdk/index.html)
@@ -52,7 +60,7 @@ Samples require c++11 compatible compiler.
 cusolverMp is distributed as a part of [HPC SDK](https://developer.nvidia.com/hpc-sdk) starting with version 21.11 and requires 
 HPC SDK to be installed in the system. Also you need to set up `HPCX` environment which is part of `HPC SDK` using one of the provided scripts before building and running examples, i.e.:
 ```
-HPCSDKVER=21.11
+HPCSDKVER=23.1
 HPCSDKARCH=Linux_x86_64
 HPCSDKPATH=/opt/nvidia/hpc_sdk
 HPCSDKROOT=$HPCSDKPATH/$HPCSDKARCH/$HPCSDKVER
@@ -64,7 +72,7 @@ hpcx_load
 
 Build examples using `make` command:
 
-`make HPCSDKVER=21.11 CUDAVER=11.5 all`
+`make`
 
 ### Running
 
@@ -73,3 +81,9 @@ Run examples with mpi command and number of processes according to process grid 
 `mpirun -n 2 ./mp_getrf_getrs`
 
 `mpirun -n 2 ./mp_potrf_potrs`
+
+`mpirun -n 2 ./mp_syevd`
+
+`mpirun -n 2 ./mp_geqrf`
+
+`mpirun -n 2 ./mp_gels`
