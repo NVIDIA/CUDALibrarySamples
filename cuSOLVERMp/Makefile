@@ -1,5 +1,5 @@
 # 
-# Copyright 2021 NVIDIA Corporation.  All rights reserved.
+# Copyright 2023 NVIDIA Corporation.  All rights reserved.
 # 
 # NOTICE TO LICENSEE:
 # 
@@ -51,39 +51,25 @@
 #     Defines, includes and libraries
 # --------------------------------------------
 
-# HPC SDK version and installation path
-HPCSDKVER?=21.11
-CUDAVER?=11.5
-HPCSDKARCH?=Linux_x86_64
-HPCSDKPATH?=/opt/nvidia/hpc_sdk
-HPCSDKROOT?=$(HPCSDKPATH)/$(HPCSDKARCH)/$(HPCSDKVER)
-
 # cusolverMp depends on HPC-X inside HPC SDK distribution, so it's required to 
 # initialize HPC-X using one of the initialization scripts 
 # (i.e. $HPCSDKROOT/comm_libs/hpcx/latest/hpcx-init-ompi.sh)
 # and load HPC-X environment with `hpcx_load` function
 # This will make `mpicc` command available which will provide required MPI compile 
 # and link flags for compiler
-COMPILER?=g++ -std=c++11
-
-# HPC SDK provides CUDA components.
-CUDAMATHLIBSPATH?=$(HPCSDKROOT)/math_libs/$(CUDAVER)
-CUDAPATH?=$(HPCSDKROOT)/cuda/$(CUDAVER)
+COMPILER?=nvc++ -cuda -gpu cuda11.8
 
 # Includes and linker flags
-INCS = -I./ -I$(CUDAMATHLIBSPATH)/include -I$(CUDAPATH)/include
-COMMLIBS = -L$(HPCSDKROOT)/comm_libs/$(CUDAVER)/nccl/lib -lnccl -Wl,-rpath=$(HPCSDKROOT)/comm_libs/$(CUDAVER)/nccl/lib -lcal
-EXTRALIBS = -L$(CUDAPATH)/lib64/stubs -lcuda -lnvToolsExt -ldl -lrt
-LIBS = $(COMMLIBS) -L$(CUDAMATHLIBSPATH)/lib64 -Wl,-rpath=$(CUDAMATHLIBSPATH)/lib64 -lcusolverMp -L$(CUDAPATH)/lib64 -lcudart_static -Wl,-rpath=$(CUDAPATH)/lib64 $(EXTRALIBS)
+LIBS = -cudalib=cublas,cusolver,nccl,cusolvermp
 
 # --------------------------------------------
 #     Define targets
 # --------------------------------------------
 
-clean:
-	rm mp_getrf_getrs mp_potrf_potrs
+all: mp_getrf_getrs mp_potrf_potrs mp_geqrf mp_syevd mp_gels
 
-all: mp_getrf_getrs mp_potrf_potrs
+clean:
+	rm -f mp_getrf_getrs mp_potrf_potrs mp_geqrf mp_syevd mp_gels
 
 # --------------------------------------------
 #     Build commands
@@ -92,6 +78,15 @@ mp_getrf_getrs: mp_getrf_getrs.cpp
 	$(COMPILER) $(INCS) `mpicc --showme:compile` $+ -o $@ $(LIBS) `mpicc --showme:link`
 
 mp_potrf_potrs: mp_potrf_potrs.cpp
+	$(COMPILER) $(INCS) `mpicc --showme:compile` $+ -o $@ $(LIBS) `mpicc --showme:link`
+
+mp_geqrf: mp_geqrf.cpp
+	$(COMPILER) $(INCS) `mpicc --showme:compile` $+ -o $@ $(LIBS) `mpicc --showme:link`
+
+mp_syevd: mp_syevd.cpp
+	$(COMPILER) $(INCS) `mpicc --showme:compile` $+ -o $@ $(LIBS) `mpicc --showme:link`
+
+mp_gels: mp_gels.cpp
 	$(COMPILER) $(INCS) `mpicc --showme:compile` $+ -o $@ $(LIBS) `mpicc --showme:link`
 
 .PHONY: all clean
