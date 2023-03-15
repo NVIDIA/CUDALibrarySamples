@@ -29,7 +29,7 @@
 #include "nvjpeg2000DecodeSample.h"
 
 int write_image(std::string output_path, std::string filename, const nvjpeg2kImage_t &imgdesc, int width, int height,
-               uint32_t num_components, uint8_t precision, bool verbose)
+               uint32_t num_components, uint8_t precision, uint8_t sgn, bool verbose)
 {
     // Get the file name, without extension.
     // This will be used to rename the output file.
@@ -51,19 +51,22 @@ int write_image(std::string output_path, std::string filename, const nvjpeg2kIma
         if (imgdesc.pixel_type == NVJPEG2K_UINT8)
         {
             err = writePGM<unsigned char>(fname.c_str(), (unsigned char *)imgdesc.pixel_data[0], 
-                imgdesc.pitch_in_bytes[0], width, height, precision);
+                imgdesc.pitch_in_bytes[0], width, height, precision, sgn);
         }
         else if (imgdesc.pixel_type == NVJPEG2K_UINT16)
         {
             err = writePGM<unsigned short>(fname.c_str(), (unsigned short *)imgdesc.pixel_data[0],
-                 imgdesc.pitch_in_bytes[0], width, height, precision);
+                 imgdesc.pitch_in_bytes[0], width, height, precision, sgn);
         }
-        
+        else if(imgdesc.pixel_type == NVJPEG2K_INT16)
+        {
+            err = writePGM<short>(fname.c_str(), (short *)imgdesc.pixel_data[0],
+                imgdesc.pitch_in_bytes[0], width, height, precision, sgn);
+        }
         if (err)
         {
             std::cout << "Cannot write output file: " << fname << std::endl;
         }
-       
     }
     else if (num_components == 3 || num_components == 4)
     {
@@ -95,7 +98,7 @@ int write_image(std::string output_path, std::string filename, const nvjpeg2kIma
     }
     else
     {
-        std::cout << "only 1 and 3 channel outputs supported\n";
+        std::cout << "num channels not supported"<<std::endl;
         return EXIT_FAILURE;
     }
     
@@ -160,10 +163,11 @@ int decode_images(FileNames &current_names, const FileData &img_data, const std:
     std::vector<size_t> decode_output_pitch;
     for( int i =0; i < params.batch_size; i++)
     {
-        double parse_time = Wtime();
+        auto io_start = perfclock::now();
         CHECK_NVJPEG2K(nvjpeg2kStreamParse(params.nvjpeg2k_handle, (unsigned char*)img_data[i].data(), img_len[i],
              0, 0, params.jpeg2k_stream));
-        parse_time = Wtime() - parse_time;
+        auto io_end = perfclock::now();
+        double parse_time = std::chrono::duration_cast<std::chrono::seconds>(io_end-io_start).count();
         
         CHECK_NVJPEG2K(nvjpeg2kStreamGetImageInfo(params.jpeg2k_stream, &image_info));
 
@@ -181,7 +185,7 @@ int decode_images(FileNames &current_names, const FileData &img_data, const std:
         {
             decode_output_u16.resize(image_info.num_components);
             output_image.pixel_data = (void **)decode_output_u16.data();
-            output_image.pixel_type = NVJPEG2K_UINT16;
+            output_image.pixel_type = image_comp_info[0].sgn ? NVJPEG2K_INT16 : NVJPEG2K_UINT16;
             bytes_per_element = 2;
         }
         else if (image_comp_info[0].precision == 8)
@@ -203,13 +207,8 @@ int decode_images(FileNames &current_names, const FileData &img_data, const std:
         }
         CHECK_CUDA(cudaEventRecord(startEvent, params.stream));
 
-#if (NVJPEG2K_VER_MAJOR == 0 && NVJPEG2K_VER_MINOR >= 3)
         CHECK_NVJPEG2K(nvjpeg2kDecodeImage(params.nvjpeg2k_handle, params.nvjpeg2k_decode_state,
             params.jpeg2k_stream, decode_params, &output_image, params.stream));
-#else   
-        CHECK_NVJPEG2K(nvjpeg2kDecode(params.nvjpeg2k_handle, params.nvjpeg2k_decode_state,
-            params.jpeg2k_stream, &output_image, params.stream));
-#endif            
         CHECK_CUDA(cudaEventRecord(stopEvent, params.stream));
 
         CHECK_CUDA(cudaEventSynchronize(stopEvent));
@@ -233,7 +232,7 @@ int decode_images(FileNames &current_names, const FileData &img_data, const std:
             }
             write_image(params.output_dir, current_names[i], output_image, image_info.image_width, 
                 image_info.image_height, image_info.num_components, image_comp_info[0].precision, 
-                params.verbose);
+                image_comp_info[0].sgn, params.verbose);
         }
 
         if(free_output_buffers(output_image))
