@@ -32,6 +32,7 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <chrono>
 
 #include <string.h> // strcmpi
 
@@ -41,7 +42,6 @@
 const std::string separator = "\\";
 namespace fs = std::filesystem;
 #else
-#include <sys/time.h> // timings
 #include <experimental/filesystem>
 const std::string separator = "/";
 namespace fs = std::experimental::filesystem::v1;
@@ -72,6 +72,8 @@ namespace fs = std::experimental::filesystem::v1;
             return EXIT_FAILURE;                                                                            \
         }                                                                                                   \
     }
+
+typedef std::chrono::high_resolution_clock perfclock;
 
 int dev_malloc(void **p, size_t s) { return (int)cudaMalloc(p, s); }
 
@@ -154,7 +156,6 @@ int read_next_batch(FileNames &image_names, int batch_size,
             continue;
         }
         raw_len[counter] = file_size;
-
         current_names[counter] = *cur_iter;
 
         counter++;
@@ -163,40 +164,6 @@ int read_next_batch(FileNames &image_names, int batch_size,
     return EXIT_SUCCESS;
 }
 
-double Wtime(void)
-{
-#if defined(_WIN32)
-    LARGE_INTEGER t;
-    static double oofreq;
-    static int checkedForHighResTimer;
-    static BOOL hasHighResTimer;
-
-    if (!checkedForHighResTimer)
-    {
-        hasHighResTimer = QueryPerformanceFrequency(&t);
-        oofreq = 1.0 / (double)t.QuadPart;
-        checkedForHighResTimer = 1;
-    }
-    if (hasHighResTimer)
-    {
-        QueryPerformanceCounter(&t);
-        return (double)t.QuadPart * oofreq;
-    }
-    else
-    {
-        return (double)GetTickCount() / 1000.0;
-    }
-#else
-    struct timespec tp;
-    int rv = clock_gettime(CLOCK_MONOTONIC, &tp);
-
-    if (rv)
-        return 0;
-
-    return tp.tv_nsec / 1.0E+9 + (double)tp.tv_sec;
-
-#endif
-}
 // *****************************************************************************
 // reading input directory to file list
 // -----------------------------------------------------------------------------
@@ -305,13 +272,13 @@ int getInputDir(std::string &input_dir, const char *executable_path)
 
 // write PGM, input - single channel, device
 template <typename D>
-int writePGM(const char *filename, const D *pSrc, size_t nSrcStep, int nWidth, int nHeight, uint8_t precision)
+int writePGM(const char *filename, const D *pSrc, size_t nSrcStep, int nWidth, int nHeight, uint8_t precision, uint8_t sgn)
 {
     std::ofstream rOutputStream(filename, std::fstream::binary);
     if (!rOutputStream)
     {
         std::cerr << "Cannot open output file: " << filename << std::endl;
-        return 1;
+        return EXIT_FAILURE;
     }
     std::vector<D> img(nHeight * (nSrcStep / sizeof(D)));
     D *hpSrc = img.data();
@@ -331,13 +298,26 @@ int writePGM(const char *filename, const D *pSrc, size_t nSrcStep, int nWidth, i
         const D *pEndColumn = pRow + nWidth;
         for (; pRow < pEndColumn; ++pRow)
         {
-            if (precision == 8)
+            if (precision <= 8)
             {
                 rOutputStream << static_cast<unsigned char>(*pRow);
             }
-            else
+            else if (precision <= 16)
             {
-                rOutputStream << static_cast<unsigned char>((*pRow) >> 8) << static_cast<unsigned char>((*pRow) & 0xff);
+                int pix_val = *pRow;
+                if(sgn)
+                {
+                    pix_val += (1 << (precision - 1));
+                    if (pix_val > 65535) 
+                    {
+                        pix_val = 65535;
+                    } 
+                    else if (pix_val < 0) 
+                    {
+                        pix_val = 0;
+                    }
+                }
+                rOutputStream << static_cast<unsigned char>((pix_val) >> 8) << static_cast<unsigned char>((pix_val) & 0xff);
             }
         }
     }
