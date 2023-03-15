@@ -13,6 +13,7 @@ cmake_minimum_required(VERSION 3.10.0)
 project(cublasLtSamples)
 
 add_subdirectory(LtSgemm)
+add_subdirectory(LtFp8Matmul)
 add_subdirectory(LtDgemmPresetAlgo)
 add_subdirectory(LtIgemmTensor)
 add_subdirectory(LtHSHgemmStridedBatchSimple)
