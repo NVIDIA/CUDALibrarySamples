@@ -14,7 +14,7 @@
 #include "../common/error_checks.hpp"
 
 /**
- * This sample illustrates the use of cufftBox3d and cufftXtSetDistribution
+ * This sample illustrates the use of cufftXtSetDistribution
  * to support arbitrary user data distributions.
  * 
  * It performs
@@ -47,19 +47,19 @@ int main(int argc, char** argv) {
     }
 
     // Define custom data distribution
-    size_t N = 2;
-    size_t nx = N * nranks1d;
-    size_t ny = N * nranks1d;
-    size_t nz = N * nranks1d;
+    int64 N = 2;
+    int64 nx = N * nranks1d;
+    int64 ny = N * nranks1d;
+    int64 nz = N * nranks1d;
 
-    // Describing a data distribution is done using cufftBox3d boxes.
+    // Describing a data distribution is done using 3D "boxes"
     // 
-    // cufftBox3d boxes are defined as { {x_start, y_start, z_start}, {x_end, y_end, z_end}, {x_strides, y_strides, z_strides} }
+    // A 3D box is defined as { {x_start, y_start, z_start}, {x_end, y_end, z_end}, {x_strides, y_strides, z_strides} }
     // where
     // - {x/y/z}_{start/end} are the lower and upper corner of the boxes relatived to the global 3D box (of size nx * ny * nz)
     // - {x/y/z}_strides are the local strides
-    std::vector<cufftBox3d> input_boxes;
-    std::vector<cufftBox3d> output_boxes;
+    std::vector<Box3D> input_boxes;
+    std::vector<Box3D> output_boxes;
     for(int i = 0; i < nranks1d; i++) {
         for(int j = 0; j < nranks1d; j++) {
             // Input data are pencils in X & Y, along Z
@@ -70,7 +70,7 @@ int main(int argc, char** argv) {
     }
 
     // Generate CPU data
-    cufftBox3d in = input_boxes[rank];
+    Box3D in = input_boxes[rank];
     std::vector<std::complex<float>> input_cpu_data((in.upper[0] - in.lower[0]) * in.strides[0]);
     generate_random(input_cpu_data, rank);
     
@@ -88,7 +88,10 @@ int main(int argc, char** argv) {
     CUFFT_CHECK(cufftCreate(&plan));
     CUFFT_CHECK(cufftMpAttachComm(plan, CUFFT_COMM_MPI, &mpi_comm));
     CUFFT_CHECK(cufftSetStream(plan, stream));
-    CUFFT_CHECK(cufftXtSetDistribution(plan, &input_boxes[rank], &output_boxes[rank]));
+    CUFFT_CHECK(cufftXtSetDistribution(plan, 3, 
+        input_boxes[rank].lower,   input_boxes[rank].upper, 
+        output_boxes[rank].lower,  output_boxes[rank].upper, 
+        input_boxes[rank].strides, output_boxes[rank].strides));
 
     // Make the cuFFT plan
     size_t scratch;
@@ -103,7 +106,7 @@ int main(int argc, char** argv) {
     CUFFT_CHECK(cufftXtExecDescriptor(plan, desc, desc, CUFFT_FORWARD));
 
     // Manipulate GPU data using a user kernel in the same stream as cuFFT
-    cufftBox3d out = output_boxes[rank];
+    Box3D out = output_boxes[rank];
     auto[out_begin_d, out_end_d] = BoxIterators(out, (cufftComplex*)desc->descriptor->data[0]);
     const size_t num_elements = std::distance(out_begin_d, out_end_d);
     const size_t num_threads  = 128;

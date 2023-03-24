@@ -2,6 +2,7 @@
 #include <vector>
 #include <algorithm>
 #include <stdio.h>
+#include <nvshmem.h>
 #include <cufftMp.h>
 #include <mpi.h>
 
@@ -18,18 +19,12 @@
  * 2. Call cufftSetAutoAllocation(plan, false) on all plans
  * 3. Call cufftMakePlan3d(plan, ..., scratch_size) on all plans and retrieve the required scratch size per plan
  * 4. Compute the maximum scratch size accros plans _AND_ accross MPI ranks (see note below on nvshmem_malloc)
- * 5. Allocate memory using _cufftMpNvshmemMalloc
+ * 5. Allocate memory using nvshmem_malloc
  * 6. Call cufftSetWorkArea(plan, buffer) on all plans
  * 7. Call cufftExec, cufftXtMemcpy, etc
- * 8. Free memory using _cufftMpNvshmemFree
+ * 8. Free memory using nvshmem_free
  * 9. Destroy the plans
  */
-
-/**
- * Those functions are defined in libcufft.so but not defined in the cufftMp.h header
- */
-extern "C" cufftResult CUFFTAPI _cufftMpNvshmemMalloc(size_t size, void **buff);
-extern "C" cufftResult CUFFTAPI _cufftMpNvshmemFree(void *buff);
 
 /**
  * Computes the maximum of `local` accross MPI ranks
@@ -51,7 +46,7 @@ size_t allreduce_max(size_t local, MPI_Comm comm) {
  * Except for FFT kernels that don't require any scratch (like powers of 2), there
  * is no guarantees that cuFFT requires the same amount of scratch on all ranks.
  * Hence, the user should compute the max across MPI ranks (e.g. using MPI_Allreduce)
- * and pass this to cufftMpNvshmemMalloc.
+ * and pass this to nvshmem_malloc.
  */
 
 /**
@@ -90,8 +85,7 @@ void run_r2c_c2r(size_t nx, size_t ny, size_t nz, float* cpu_data, const int ran
     size_t scratch_size = allreduce_max(std::max(scratch_sizes[0], scratch_sizes[1]), comm);
 
     // Allocate scratch size using NVSHMEM
-    void* scratch;
-    CUFFT_CHECK(_cufftMpNvshmemMalloc(scratch_size, &scratch));
+    void* scratch = nvshmem_malloc(scratch_size);
     printf("Allocated %zu B of user scratch at %p on rank %d/%d\n", scratch_size, scratch, rank, size);
 
     // Pass the scratch to cuFFT
@@ -127,7 +121,7 @@ void run_r2c_c2r(size_t nx, size_t ny, size_t nz, float* cpu_data, const int ran
 
     // Free the sratch
     // We need to do this before cufftDestroy because we need to keep NVSHMEM initialized
-    CUFFT_CHECK(_cufftMpNvshmemFree(scratch));
+    nvshmem_free(scratch);
 
     CUFFT_CHECK(cufftDestroy(plan_r2c));
     CUFFT_CHECK(cufftDestroy(plan_c2r));
@@ -170,7 +164,7 @@ int main(int argc, char** argv) {
     run_r2c_c2r(nx, ny, nz, data.data(), rank, size, MPI_COMM_WORLD);
 
     // Compute error
-    double error = compute_error(ref, data, buildCufftBox3d(CUFFT_XT_FORMAT_INPLACE, CUFFT_R2C, rank, size, nx, ny, nz));
+    double error = compute_error(ref, data, buildBox3D(CUFFT_XT_FORMAT_INPLACE, CUFFT_R2C, rank, size, nx, ny, nz));
     
     MPI_Finalize();
 

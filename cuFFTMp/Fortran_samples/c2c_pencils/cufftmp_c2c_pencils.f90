@@ -1,6 +1,6 @@
 
 !
-! This sample illustrates the use of cufftBox3d and cufftXtSetDistribution
+! This sample illustrates the use of cufftXtSetDistribution
 ! to support arbitrary user data distributions.
 ! 
 ! It performs
@@ -35,7 +35,17 @@ program cufftmp_c2c_pencils
     type(cudaXtDesc), pointer    :: u_descptr
     complex, pointer, device     :: u_dptr(:,:,:)
     integer(kind=cuda_stream_kind) :: stream
-    type(cufftBox3d), dimension(:), allocatable :: input_boxes, output_boxes
+
+    ! Box3D is defined as { {x_lower, y_lower, z_lower}, {x_upper, y_upper, z_upper}, {x%strides, y%strides, z%strides} }
+    ! where
+    ! - {x/y/z}_{lower/uppper} are the lower and upper corner of the boxes relatived to the global 3D box (of size nx * ny * nz)
+    ! - {x/y/z} strides are the local strides
+    type :: Box3D
+        integer(c_long_long), dimension(0:2) :: lower
+        integer(c_long_long), dimension(0:2) :: upper
+        integer(c_long_long), dimension(0:2) :: strides
+    end type Box3D
+    type(Box3D), dimension(:), allocatable :: input_boxes, output_boxes
 
 
     call mpi_init(ierr)
@@ -67,10 +77,7 @@ program cufftmp_c2c_pencils
         write(*,*) "local_cshape_out (x,y,z) z fast:", local_cshape_out(3), local_cshape_out(2), local_cshape_out(1)
     end if
 
-    ! cufftBox3d boxes are defined as { {x_start, y_start, z_start}, {x_end, y_end, z_end}, {x%strides, y%strides, z%strides} }
-    ! where
-    ! - {x/y/z}_{start/end} are the lower and upper corner of the boxes relatived to the global 3D box (of size nx * ny * nz)
-    ! - {x/y/z} strides are the local strides
+
     allocate(input_boxes(0:size-1), output_boxes(0:size-1) )
     do i = 0 , nranks1d - 1
         do j = 0, nranks1d - 1
@@ -109,7 +116,9 @@ program cufftmp_c2c_pencils
     call checkCufft(cufftMpAttachComm(plan, CUFFT_COMM_MPI, MPI_COMM_WORLD), 'cufftMpAttachComm error')
     
     call checkCufft(cufftSetStream(plan, stream), 'cufftSetStream error')
-    call checkCufft(cufftXtSetDistribution(plan, input_boxes(rank), output_boxes(rank)))
+    call checkCufft(cufftXtSetDistribution(plan, 3, input_boxes(rank)%lower, input_boxes(rank)%upper, &
+                    output_boxes(rank)%lower, output_boxes(rank)%upper, &
+                    input_boxes(rank)%strides, output_boxes(rank)%strides), 'cufftXtSetDistribution error')
     
     call checkCufft(cufftMakePlan3d(plan, nz, ny, nx, CUFFT_C2C, worksize), 'cufftMakePlan3d error')
 

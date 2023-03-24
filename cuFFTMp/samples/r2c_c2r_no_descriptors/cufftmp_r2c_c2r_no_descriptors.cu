@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <cufftMp.h>
 #include <mpi.h>
+#include <nvshmem.h>
 
 #include "../common/error_checks.hpp"
 #include "../common/generate_random.hpp"
@@ -20,7 +21,12 @@
  * - inverse transform
  */
 
-void run_r2c_c2r(size_t nx, size_t ny, size_t nz, float* cpu_data, const int rank, const int size, MPI_Comm comm) {
+void run_r2c_c2r(size_t nx, size_t ny, size_t nz, std::vector<float>& cpu_data, const int rank, const int size, MPI_Comm comm) {
+
+    // Allocate GPU memory, copy CPU data to GPU
+    // Data is initially distributed according to CUFFT_XT_FORMAT_INPLACE
+    cuComplex* gpu_data = (cuComplex*)nvshmem_malloc(cpu_data.size() * sizeof(float));
+    CUDA_CHECK(cudaMemcpy(gpu_data, cpu_data.data(), cpu_data.size() * sizeof(float), cudaMemcpyDefault));
 
     // Initialize plans and stream
     cufftHandle plan_r2c = 0;
@@ -40,42 +46,45 @@ void run_r2c_c2r(size_t nx, size_t ny, size_t nz, float* cpu_data, const int ran
     CUFFT_CHECK(cufftSetStream(plan_r2c, stream));
     CUFFT_CHECK(cufftSetStream(plan_c2r, stream));
 
+    // Set default subformats
+    CUFFT_CHECK(cufftXtSetSubformatDefault(plan_r2c, CUFFT_XT_FORMAT_INPLACE, CUFFT_XT_FORMAT_INPLACE_SHUFFLED));
+    CUFFT_CHECK(cufftXtSetSubformatDefault(plan_c2r, CUFFT_XT_FORMAT_INPLACE, CUFFT_XT_FORMAT_INPLACE_SHUFFLED));
+
     // Make the plan
     size_t workspace;
     CUFFT_CHECK(cufftMakePlan3d(plan_r2c, nx, ny, nz, CUFFT_R2C, &workspace));
     CUFFT_CHECK(cufftMakePlan3d(plan_c2r, nx, ny, nz, CUFFT_C2R, &workspace));
 
-    // Allocate GPU memory, copy CPU data to GPU
-    // Data is initially distributed according to CUFFT_XT_FORMAT_INPLACE
-    cudaLibXtDesc *desc;
-    CUFFT_CHECK(cufftXtMalloc(plan_r2c, &desc, CUFFT_XT_FORMAT_INPLACE));
-    CUFFT_CHECK(cufftXtMemcpy(plan_r2c, (void*)desc, (void*)cpu_data, CUFFT_COPY_HOST_TO_DEVICE));
-
     // Run R2C
-    CUFFT_CHECK(cufftXtExecDescriptor(plan_r2c, desc, desc, CUFFT_FORWARD));
+    // cufftXtSetSubformatDefault(plan_r2c, CUFFT_XT_FORMAT_INPLACE, CUFFT_XT_FORMAT_INPLACE_SHUFFLED) + CUFFT_FORWARD
+    // means gpu_data is distributed according to CUFFT_XT_FORMAT_INPLACE
+    // Note: R2C transforms are implicitly forward
+    CUFFT_CHECK(cufftExecR2C(plan_r2c, (cufftReal*)gpu_data, (cufftComplex*)gpu_data));
 
     // At this point, data is distributed according to CUFFT_XT_FORMAT_INPLACE_SHUFFLED
-    // This applies an element-wise scaling function to the GPU data located in desc->descriptor->data[0]
     auto [begin_d, end_d] = BoxIterators(CUFFT_XT_FORMAT_INPLACE_SHUFFLED, CUFFT_R2C, 
-                                         rank, size, nx, ny, nz, (cufftComplex*)desc->descriptor->data[0]);
+                                         rank, size, nx, ny, nz, gpu_data);
     const size_t num_elements = std::distance(begin_d, end_d);
     const size_t num_threads  = 128;
     const size_t num_blocks   = (num_elements + num_threads - 1) / num_threads;
     scaling_kernel<<<num_blocks, num_threads, 0, stream>>>(begin_d, end_d, rank, size, nx, ny, nz);
     
     // Run C2R
-    CUFFT_CHECK(cufftXtExecDescriptor(plan_c2r, desc, desc, CUFFT_INVERSE));
+    // cufftXtSetSubformatDefault(plan_c2r, CUFFT_XT_FORMAT_INPLACE, CUFFT_XT_FORMAT_INPLACE_SHUFFLED) + CUFFT_INVERSE
+    // means gpu_data is distributed according to CUFFT_XT_FORMAT_INPLACE_SHUFFLED
+    // Note: C2R transforms are implicitly inverse
+    CUFFT_CHECK(cufftExecC2R(plan_c2r, (cufftComplex*)gpu_data, (cufftReal*)gpu_data));
 
     // Copy back to CPU and free
     // Data is again distributed according to CUFFT_XT_FORMAT_INPLACE
     CUDA_CHECK(cudaStreamSynchronize(stream));
-    CUFFT_CHECK(cufftXtMemcpy(plan_c2r, (void*)cpu_data, (void*)desc, CUFFT_COPY_DEVICE_TO_HOST));
-    CUFFT_CHECK(cufftXtFree(desc));
+    CUDA_CHECK(cudaMemcpy(cpu_data.data(), gpu_data, cpu_data.size() * sizeof(float), cudaMemcpyDefault));
 
     CUFFT_CHECK(cufftDestroy(plan_r2c));
     CUFFT_CHECK(cufftDestroy(plan_c2r));
 
     CUDA_CHECK(cudaStreamDestroy(stream));
+    nvshmem_free(gpu_data);
 };
 
 int main(int argc, char** argv) {
@@ -90,6 +99,11 @@ int main(int argc, char** argv) {
     CUDA_CHECK(cudaGetDeviceCount(&ndevices));
     CUDA_CHECK(cudaSetDevice(rank % ndevices));
     printf("Hello from rank %d/%d using GPU %d\n", rank, size, rank % ndevices);
+
+    nvshmemx_init_attr_t attr;
+    MPI_Comm comm = MPI_COMM_WORLD;
+    attr.mpi_comm = (void*)&comm;
+    nvshmemx_init_attr(NVSHMEMX_INIT_WITH_MPI_COMM, &attr);
 
     // Logical transform size
     size_t nx = size;      // any value >= size is OK
@@ -111,11 +125,12 @@ int main(int argc, char** argv) {
     std::vector<float> ref = data;
 
     // R2C + scaling + C2R
-    run_r2c_c2r(nx, ny, nz, data.data(), rank, size, MPI_COMM_WORLD);
+    run_r2c_c2r(nx, ny, nz, data, rank, size, MPI_COMM_WORLD);
 
     // Compute error
     double error = compute_error(ref, data, buildBox3D(CUFFT_XT_FORMAT_INPLACE, CUFFT_R2C, rank, size, nx, ny, nz));
 
+    nvshmem_init();
     MPI_Finalize();
 
     return assess_error(error);

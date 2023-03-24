@@ -1,6 +1,6 @@
 
 !
-! This sample illustrates the use of cufftBox3d and cufftXtSetDistribution
+! This sample illustrates the use of cufftXtSetDistribution
 ! to support arbitrary user data distributions in the case of an R2C - C2R transform
 ! 
 ! It performs
@@ -40,7 +40,13 @@ program cufftmp_r2c_c2r_pencils
     type(cudaXtDesc), pointer    :: u_descptr
     complex, pointer, device     :: u_dptr(:,:,:)
     integer(kind=cuda_stream_kind) :: stream
-    type(cufftBox3d), dimension(:), allocatable :: input_boxes, output_boxes
+
+    type :: Box3D
+        integer(c_long_long), dimension(0:2) :: lower
+        integer(c_long_long), dimension(0:2) :: upper
+        integer(c_long_long), dimension(0:2) :: strides
+    end type Box3D
+    type(Box3D), dimension(:), allocatable :: input_boxes, output_boxes
 
     call mpi_init(ierr)
     call mpi_comm_size(MPI_COMM_WORLD,size,ierr)
@@ -119,8 +125,12 @@ program cufftmp_r2c_c2r_pencils
 
     call checkCufft(cufftSetStream(planr2c, stream), 'cufftSetStream error')
     call checkCufft(cufftSetStream(planc2r, stream), 'cufftSetStream error')
-    call checkCufft(cufftXtSetDistribution(planr2c, input_boxes(rank), output_boxes(rank)))
-    call checkCufft(cufftXtSetDistribution(planc2r, input_boxes(rank), output_boxes(rank)))
+    call checkCufft(cufftXtSetDistribution(planr2c, 3, input_boxes(rank)%lower, input_boxes(rank)%upper, &
+                    output_boxes(rank)%lower, output_boxes(rank)%upper, &
+                    input_boxes(rank)%strides, output_boxes(rank)%strides), 'cufftXtSetDistribution error')
+    call checkCufft(cufftXtSetDistribution(planc2r, 3, input_boxes(rank)%lower, input_boxes(rank)%upper, &
+                    output_boxes(rank)%lower, output_boxes(rank)%upper, &
+                    input_boxes(rank)%strides, output_boxes(rank)%strides), 'cufftXtSetDistribution error')
 
     call checkCufft(cufftMakePlan3d(planr2c, nz, ny, nx, CUFFT_R2C, worksize), 'cufftMakePlan3d r2c error')
     call checkCufft(cufftMakePlan3d(planc2r, nz, ny, nx, CUFFT_C2R, worksize), 'cufftMakePlan3d c2r error')
@@ -345,7 +355,7 @@ subroutine cufft_memcpyD2H(u_h, ulibxt, data_format,ismemcpy)
       else
         call c_f_pointer(ulibxt%descriptor, uxt)
         call c_f_pointer(uxt%data(1), u_d, local_rshape_out)
-        call checkCuda(cudaMemcpy(u, u_d, product(int(local_rshape_out,kind=8))), "cudamemcpy D2H Error")
+        call checkCuda(cudaMemcpy(u_h, u_d, product(int(local_rshape_out,kind=8))), "cudamemcpy D2H Error")
         nullify(u_d, uxt)
       endif 
     endif
@@ -356,7 +366,7 @@ subroutine cufft_memcpyD2H(u_h, ulibxt, data_format,ismemcpy)
       else
         call c_f_pointer(ulibxt%descriptor, uxt)
         call c_f_pointer(uxt%data(1), u_d, local_rshape_in)
-        call checkCufft(cudamemcpy(u, u_d, product(int(local_rshape_in,kind=8))), "cufft_memcpyD2H error")
+        call checkCufft(cudamemcpy(u_h, u_d, product(int(local_rshape_in,kind=8))), "cufft_memcpyD2H error")
         nullify(u_d, uxt)
       endif
     endif 

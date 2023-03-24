@@ -21,7 +21,7 @@
  * - inverse transform
  */
 
-void run_r2c_c2r_pencils(size_t nx, size_t ny, size_t nz, float* cpu_data, cufftBox3d box_real, cufftBox3d box_complex, const int rank, const int size, MPI_Comm comm) {
+void run_r2c_c2r_pencils(size_t nx, size_t ny, size_t nz, float* cpu_data, Box3D box_real, Box3D box_complex, const int rank, const int size, MPI_Comm comm) {
 
     // Initialize plans and stream
     cufftHandle plan_r2c = 0;
@@ -41,8 +41,8 @@ void run_r2c_c2r_pencils(size_t nx, size_t ny, size_t nz, float* cpu_data, cufft
     // R2C plans only support CUFFT_XT_FORMAT_DISTRIBUTED_INPUT and always perform a CUFFT_FORWARD transform
     // C2R plans only support CUFFT_XT_FORMAT_DISTRIBUTED_OUTPUT ans always perform a CUFFT_INVERSE transform
     // So, in both, the "input" box should be the real box and the "output" box should be the complex box
-    CUFFT_CHECK(cufftXtSetDistribution(plan_r2c, &box_real, &box_complex));
-    CUFFT_CHECK(cufftXtSetDistribution(plan_c2r, &box_real, &box_complex));
+    CUFFT_CHECK(cufftXtSetDistribution(plan_r2c, 3, box_real.lower, box_real.upper, box_complex.lower, box_complex.upper, box_real.strides, box_complex.strides));
+    CUFFT_CHECK(cufftXtSetDistribution(plan_c2r, 3, box_real.lower, box_real.upper, box_complex.lower, box_complex.upper, box_real.strides, box_complex.strides));
 
     // Set the stream
     CUFFT_CHECK(cufftSetStream(plan_r2c, stream));
@@ -106,17 +106,17 @@ int main(int argc, char** argv) {
     }
 
     // Define custom data distribution
-    size_t nx               = 5;
-    size_t ny               = 6;
-    size_t nz               = 7;
-    size_t nz_real          = nz;
-    size_t nz_complex       = (nz/2+1);
-    size_t nz_real_padded   = 2*nz_complex;
+    int64 nx               = 5;
+    int64 ny               = 6;
+    int64 nz               = 7;
+    int64 nz_real          = nz;
+    int64 nz_complex       = (nz/2+1);
+    int64 nz_real_padded   = 2*nz_complex;
 
     // Describe the data distribution using boxes
-    auto make_box = [](size_t lower[3], size_t upper[3], size_t strides[3]) {
-        cufftBox3d box;
-        for(size_t i = 0; i < 3; i++) {
+    auto make_box = [](int64 lower[3], int64 upper[3], int64 strides[3]) {
+        Box3D box;
+        for(int i = 0; i < 3; i++) {
             box.lower[i] = lower[i];
             box.upper[i] = upper[i];
             box.strides[i] = strides[i];
@@ -124,21 +124,21 @@ int main(int argc, char** argv) {
         return box;
     };
 
-    auto displacement = [](size_t length, size_t rank, size_t size) {
+    auto displacement = [](int64 length, int rank, int size) {
         int ranks_cutoff = length % size;
         return (rank < ranks_cutoff ? rank * (length / size + 1) : ranks_cutoff * (length / size + 1) + (rank - ranks_cutoff) * (length / size));
     };
 
-    std::vector<cufftBox3d> boxes_real;
-    std::vector<cufftBox3d> boxes_complex;
+    std::vector<Box3D> boxes_real;
+    std::vector<Box3D> boxes_complex;
     for(int i = 0; i < nranks1d; i++) {
         for(int j = 0; j < nranks1d; j++) {
             {
                 // Input data are real pencils in X & Y, along Z
                 // Strides are packed and in-place (i.e., real is padded)
-                size_t lower[3]   = {displacement(nx, i,   nranks1d), displacement(ny, j,   nranks1d), 0};
-                size_t upper[3]   = {displacement(nx, i+1, nranks1d), displacement(ny, j+1, nranks1d), nz_real};
-                size_t strides[3] = {(upper[1]-lower[1])*nz_real_padded, nz_real_padded, 1};
+                int64 lower[3]   = {displacement(nx, i,   nranks1d), displacement(ny, j,   nranks1d), 0};
+                int64 upper[3]   = {displacement(nx, i+1, nranks1d), displacement(ny, j+1, nranks1d), nz_real};
+                int64 strides[3] = {(upper[1]-lower[1])*nz_real_padded, nz_real_padded, 1};
                 boxes_real.push_back(make_box(lower, upper, strides));
             }
             {
@@ -147,16 +147,16 @@ int main(int argc, char** argv) {
                 // For best performances, the local dimension in the input (Z, here) and output (Y, here) should be different
                 // to ensure cuFFTMp will only perform two communication phases.
                 // If Z was also local in the output, cuFFTMp would perform three communication phases, decreasing performances.
-                size_t lower[3]   = {displacement(nx, i,   nranks1d), 0,  displacement(nz_complex, j,   nranks1d)};
-                size_t upper[3]   = {displacement(nx, i+1, nranks1d), ny, displacement(nz_complex, j+1, nranks1d)};
-                size_t strides[3] = {(upper[1]-lower[1])*(upper[2]-lower[2]), (upper[2]-lower[2]), 1};
+                int64 lower[3]   = {displacement(nx, i,   nranks1d), 0,  displacement(nz_complex, j,   nranks1d)};
+                int64 upper[3]   = {displacement(nx, i+1, nranks1d), ny, displacement(nz_complex, j+1, nranks1d)};
+                int64 strides[3] = {(upper[1]-lower[1])*(upper[2]-lower[2]), (upper[2]-lower[2]), 1};
                 boxes_complex.push_back(make_box(lower, upper, strides));
             }
         }
     }
 
     // Generate CPU data
-    cufftBox3d box_real = boxes_real[rank];
+    Box3D box_real = boxes_real[rank];
     std::vector<float> input_cpu_data((box_real.upper[0] - box_real.lower[0]) * box_real.strides[0]);
     generate_random(input_cpu_data, rank);
     auto ref = input_cpu_data;
