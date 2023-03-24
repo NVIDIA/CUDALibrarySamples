@@ -1,20 +1,24 @@
 # cuFFTMp C++ and Fortran Code Samples
 
 ## Requirements
-- HPC SDK 21.9 and up (HPC SDK 22.3+ includes a preview of cuFFTMp and is recommended.)   
-- A system with at least one Ampere (SM80) or Volta (SM70) GPU. When using multi GPUs, GPUs have to be peer-to-peer accessible to/from each other or connected using Infiniband. 
+- HPC SDK 23.3 and up
+- CUDA 11.0 and up
+- A system with at least two Hopper (SM90), Ampere (SM80) or Volta (SM70) GPU.
     - The `c2c_pencils` and `r2c_c2r_pencils` samples require at least 4 GPUs.
 
-Please see the "Hardware and software requirments" session of [documentation](https://docs.nvidia.com/hpc-sdk/cufftmp) for the full list of requirements.
+Please see the "Hardware and software requirements" sections of the [documentation](https://docs.nvidia.com/hpc-sdk/cufftmp/usage/requirements.html) for the full list of requirements.
 
 ## Quick start for C++ samples
-The following environmental variables need to be defined in order to build and run the samples, for example: 
+The following environmental variables need to be defined in order to build and run the samples, for example:
  - `MPI_HOME=/hpc_sdk/Linux_x86_64/.../comm_libs/hpcx/latest/ompi`, the path to your MPI installation and should contain a `lib` and `include` folder
- - `CUFFT_LIB=/hpc_sdk/Linux_x86_64/.../math_libs/lib64/`, where `libcufftMp.so` is located 
+ - `CUFFT_LIB=/hpc_sdk/Linux_x86_64/.../math_libs/lib64/`, where `libcufftMp.so` is located
  - `CUFFT_INC=/hpc_sdk/Linux_x86_64/.../math_libs/include/cufftmp`, where all the cuFFT and cuFFTMp headers files are located
- - `NVSHMEM_LIB=/hpc_sdk/Linux_x86_64/.../comm_libs/nvshmem/lib`, where `nvshmem_bootstrap_mpi.so` is located
+ - `NVSHMEM_LIB=/hpc_sdk/Linux_x86_64/.../comm_libs/nvshmem/lib`, where all the NVSHMEM libraries, such as `libnvshmem_host.so`, are located
+ - `NVSHMEM_LIB=/hpc_sdk/Linux_x86_64/.../comm_libs/nvshmem/include`, where all the NVSHMEM headers, such as `nvshmem.h`, are located
 
-As cuFFTMP is released in HPC SDK 22.3 and up, to build and run the samples (or your applications) with cuFFTMp it is highly recommended to have $MPI_HOME, $CUFFT_LIB, $CUFFT_INC, and $NVSHMEM_LIB all pointing to the same HPC SDK version.   
+Note that cuFFTMp requires a specific version of NVSHMEM, as indicated [here](https://docs.nvidia.com/hpc-sdk/cufftmp/usage/nvshmem_and_cufftmp.html). If HPC SDK contains multiple versions of NVSHMEM, compatible versions are available in `/hpc_sdk/Linux_x86_64/.../lib/compat/` and `/hpc_sdk/Linux_x86_64/.../include/compat/`. Note that NVSHMEM can also be downloaded individually from [here](https://docs.nvidia.com/nvshmem/install-guide/index.html).
+
+As cuFFTMp is released in HPC SDK 22.3 and up, to build and run the samples or your applications with cuFFTMp it is highly recommended to have $MPI_HOME, $CUFFT_LIB, $CUFFT_INC, and $NVSHMEM_LIB all pointing to the same HPC SDK version.
 
 If you have to use an older version of HPC SDK (21.9 or 21.11), you can find the early-access version of cuFFTMp in [cuFFTMP EA](https://developer.nvidia.com/cudamathlibraryea). 
 
@@ -36,9 +40,11 @@ If you see `PASSED`, the test ran successfully.
 
 - You can repeat the same procedure for the other samples
   - `samples/c2c_pencils` 
+  - `samples/c2c_no_descriptors`
   - `samples/r2c_c2r`
   - `samples/r2c_c2r_shared_scratch`
-  - `samples/r2c_c2r_pencils` 
+  - `samples/r2c_c2r_pencils`
+  - `samples/r2c_c2r_no_descriptors`
   - `samples/reshape`
 
 ## Fortran samples
@@ -75,7 +81,7 @@ In this case a custom bootstrap library can be built to enable users to use its 
 
 
 ### Container
-HPC-SDK containers contain all the required dependencies. For instance,
+HPC SDK containers contain all the required dependencies. For instance,
 ```
-docker pull nvcr.io/nvidia/nvhpc:22.3-devel-cuda11.6-ubuntu20.04
+docker pull nvcr.io/nvidia/nvhpc:23.3-devel-cuda_multi-ubuntu20.04
 ```

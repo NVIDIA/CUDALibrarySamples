@@ -1,14 +1,12 @@
 #include <vector>
 #include <cstdio>
+#include <nvshmem.h>
 #include <cufftMp.h>
 #include <iostream>
 #include <cassert>
 #include <mpi.h>
 
 #include "../common/error_checks.hpp"
-
-extern "C" cufftResult CUFFTAPI _cufftMpNvshmemMalloc(size_t size, void **buff);
-extern "C" cufftResult CUFFTAPI _cufftMpNvshmemFree(void *buff);
 
 int main(int argc, char** argv) {
 
@@ -62,16 +60,16 @@ int main(int argc, char** argv) {
     // - The output boxes are [ (0,0)-(2,4), (2,0)--(4,4) ]
     //
     // Since our data is 2D, in the following, the first dimension is always 0-1
-    cufftBox3d in_box_0 = {
+    Box3D in_box_0 = {
         {0, 0, 0}, {1, 4, 2}, {8, 2, 1}
     };
-    cufftBox3d in_box_1 = {
+    Box3D in_box_1 = {
         {0, 0, 2}, {1, 4, 4}, {8, 2, 1}
     };
-    cufftBox3d out_box_0 = {
+    Box3D out_box_0 = {
         {0, 0, 0}, {1, 2, 4}, {8, 4, 1}
     };
-    cufftBox3d out_box_1 = {
+    Box3D out_box_1 = {
         {0, 2, 0}, {1, 4, 4}, {8, 4, 1}
     };
 
@@ -91,20 +89,20 @@ int main(int argc, char** argv) {
     cudaStream_t stream;
     CUDA_CHECK(cudaStreamCreate(&stream));
 
-    CUFFT_CHECK(cufftMpMakeReshape(
-        handle, 
-        sizeof(int),
-        (rank == 0 ? &in_box_0  : &in_box_1),
-        (rank == 0 ? &out_box_0 : &out_box_1)));
+    Box3D &in_box  = (rank == 0 ? in_box_0  : in_box_1);
+    Box3D &out_box = (rank == 0 ? out_box_0 : out_box_1);
+    CUFFT_CHECK(cufftMpMakeReshape(handle, sizeof(int), 3,
+        in_box.lower,   in_box.upper,
+        out_box.lower,  out_box.upper,
+        in_box.strides, out_box.strides));
 
     size_t workspace;
     CUFFT_CHECK(cufftMpGetReshapeSize(handle, &workspace));
     assert(workspace == 0);
     
     // Move CPU data to GPU
-    void *src, *dst;
-    CUFFT_CHECK(_cufftMpNvshmemMalloc(8 * sizeof(int), &src));
-    CUFFT_CHECK(_cufftMpNvshmemMalloc(8 * sizeof(int), &dst));
+    void *src = nvshmem_malloc(8 * sizeof(int));
+    void *dst = nvshmem_malloc(8 * sizeof(int));
     CUDA_CHECK(cudaMemcpy(src, src_host.data(), 8 * sizeof(int), cudaMemcpyDefault));
 
     // Apply reshape
@@ -114,8 +112,8 @@ int main(int argc, char** argv) {
     std::vector<int> dst_host(8);
     CUDA_CHECK(cudaStreamSynchronize(stream));
     CUDA_CHECK(cudaMemcpy(dst_host.data(), dst, 8 * sizeof(int), cudaMemcpyDefault));
-    CUFFT_CHECK(_cufftMpNvshmemFree(src));
-    CUFFT_CHECK(_cufftMpNvshmemFree(dst));
+    nvshmem_free(src);
+    nvshmem_free(dst);
     CUFFT_CHECK(cufftMpDestroyReshape(handle));
     CUDA_CHECK(cudaStreamDestroy(stream));
 

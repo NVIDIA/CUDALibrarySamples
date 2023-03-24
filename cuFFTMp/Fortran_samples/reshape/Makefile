@@ -5,7 +5,7 @@ exe = cufftmp_reshape
 all : $(exe)  
 
 $(exe) : $(exe).o   
-	$(f90) -o $@ $+ $(FLAGS) $(LINKER)
+	$(f90) -o $@ $+ $(FLAGS) $(LINKER) 
 
 %.o : %.f90
 	$(f90) -c $< -o $@ $(FLAGS)

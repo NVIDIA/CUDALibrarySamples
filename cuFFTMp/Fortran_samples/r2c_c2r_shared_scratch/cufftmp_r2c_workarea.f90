@@ -5,10 +5,10 @@
 ! 2. Call cufftSetAutoAllocation(plan, false) on all plans
 ! 3. Call cufftMakePlan3d(plan, ..., scratch_size) on all plans and retrieve the required scratch size per plan
 ! 4. Compute the maximum scratch size accros plans _AND_ accross MPI ranks (see note below on nvshmem_malloc)
-! 5. Allocate memory using _cufftMpNvshmemMalloc
+! 5. Allocate memory using nvshmem_malloc
 ! 6. Call cufftSetWorkArea(plan, buffer) on all plans
 ! 7. Call cufftExec, cufftXtMemcpy, etc
-! 8. Free memory using _cufftMpNvshmemFree
+! 8. Free memory using nvshmem_free
 ! 9. Destroy the plans
 
 module cufft_required
@@ -20,6 +20,7 @@ end module cufft_required
 program cufftmp_r2c_workarea
     use iso_c_binding
     use cudafor
+    use nvshmem
     use cufftXt
     use cufft
     use openacc
@@ -95,6 +96,7 @@ program cufftmp_r2c_workarea
     call checkCufft(cufftCreate(planc2r))
 
 #ifdef SHARED_WORKAREA
+    print*, "Use shared area"
     call checkCufft(cufftSetAutoAllocation(planr2c, 0));
     call checkCufft(cufftSetAutoAllocation(planc2r, 0));
 #endif
@@ -111,7 +113,7 @@ program cufftmp_r2c_workarea
     call MPI_Allreduce(localScratchSize, scratchSize, 1, MPI_LONG_LONG_INT, MPI_MAX, MPI_COMM_WORLD, ierr)
 
     ! Allocate scratch size using NVSHMEM
-    call checkCufft(cufftMpNvshmemMalloc(scratchSize, workArea_ptr))
+    workArea_ptr = nvshmem_malloc(scratchSize)
 
     if (rank .eq. 0) then
         write(*,'(A30,F20.2,A)') 'cuFFT Plans allocated workarea on each GPU is : ', real(scratchSize)/1024, " KB"
@@ -128,7 +130,6 @@ program cufftmp_r2c_workarea
     u = 0.0
     
     !xxxxxxxxxxxxxxxxxxxxxxxxxx Forward 
-    !print*,2.5
     call checkCufft(cufftXtExecDescriptor(planr2c, u_desc, u_desc, CUFFT_FORWARD),'forward fft failed')
     ! in case we want to check the results after Forward 
     !call checkCufft(cufftXtMemcpy(planr2c, u_permuted, u_desc, CUFFT_COPY_DEVICE_TO_HOST), 'permuted D2H error')
@@ -138,7 +139,6 @@ program cufftmp_r2c_workarea
     ! Data is now distributed as Y-Slab. We need to scale the output
     call c_f_pointer(u_desc%descriptor, u_descptr)
     
-    ! print*,'doris rank ', rank, u_descptr%nGPUs, " " , u_descptr%GPUs(0)
     call c_f_pointer(u_descptr%data(1), u_dptr, [local_permuted_cshape(1), local_permuted_cshape(2), local_permuted_cshape(3)])
     !$cuf kernel do (3)
     do k =1, local_permuted_cshape(3)
@@ -162,7 +162,7 @@ program cufftmp_r2c_workarea
     !call cufft_memcpyD2H(u, u_desc, CUFFT_XT_FORMAT_INPLACE, .true.)
     call checkCufft(cufftXtFree(u_desc))
 #ifdef SHARED_WORKAREA
-    call checkCufft(cufftMpNvshmemFree(workArea_ptr))
+    call nvshmem_free(workArea_ptr)
 #endif
     call checkCufft(cufftDestroy(planr2c))
     call checkCufft(cufftDestroy(planc2r))
@@ -348,7 +348,7 @@ subroutine cufft_memcpyD2H(u_h, ulibxt, data_format,ismemcpy)
       else
         call c_f_pointer(ulibxt%descriptor, uxt)
         call c_f_pointer(uxt%data(1), u_d, local_rshape_permuted)
-        call checkCuda(cudaMemcpy(u, u_d, product(int(local_rshape_permuted,kind=8))), "cudamemcpy D2H Error")
+        call checkCuda(cudaMemcpy(u_h, u_d, product(int(local_rshape_permuted,kind=8))), "cudamemcpy D2H Error")
         nullify(u_d, uxt)
       endif 
     endif
@@ -359,7 +359,7 @@ subroutine cufft_memcpyD2H(u_h, ulibxt, data_format,ismemcpy)
       else
         call c_f_pointer(ulibxt%descriptor, uxt)
         call c_f_pointer(uxt%data(1), u_d, local_rshape)
-        call checkCufft(cudamemcpy(u, u_d, product(int(local_rshape,kind=8))), "cufft_memcpyD2H error")
+        call checkCufft(cudamemcpy(u_h, u_d, product(int(local_rshape,kind=8))), "cufft_memcpyD2H error")
         nullify(u_d, uxt)
       endif
     endif 

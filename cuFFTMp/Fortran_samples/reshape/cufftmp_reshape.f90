@@ -5,6 +5,7 @@ program cufftmp_reshape
     use cufftXt
     use cufft
     use mpi
+    use nvshmem
     implicit none
 
     integer :: size, rank, ndevices, ierr, err
@@ -16,8 +17,14 @@ program cufftmp_reshape
     type(c_ptr) :: reshapeHandle
     integer(c_size_t) :: worksize(1), dataSize, elementSize
     integer(kind=cuda_stream_kind) :: stream
-    type(cufftBox3d), dimension(:), allocatable :: input_boxes, output_boxes
     type(c_devptr)  :: workArea, dst, src
+
+    type :: Box3D
+        integer(c_long_long), dimension(0:2) :: lower
+        integer(c_long_long), dimension(0:2) :: upper
+        integer(c_long_long), dimension(0:2) :: strides
+    end type Box3D
+    type(Box3D), dimension(:), allocatable :: input_boxes, output_boxes
     
     call mpi_init(ierr)
     call mpi_comm_size(MPI_COMM_WORLD,size,ierr)
@@ -105,15 +112,17 @@ program cufftmp_reshape
     call checkCuda(cudaStreamCreate(stream))
 
     elementSize = 4  ! size of integer
-    call checkCufft(cufftMpMakeReshape(reshapeHandle, elementSize, input_boxes(rank), output_boxes(rank)), 'cufftMpMakeReshape error')
+    call checkCufft(cufftMpMakeReshape(reshapeHandle, elementSize, 3, input_boxes(rank)%lower, input_boxes(rank)%upper, &
+                    output_boxes(rank)%lower, output_boxes(rank)%upper, &
+                    input_boxes(rank)%strides, output_boxes(rank)%strides),  'cufftMpMakeReshape error')
 
     ! Optional: For now workArea is not needed
     call checkCufft(cufftMpGetReshapeSize(reshapeHandle, worksize), 'cufftMpGetReshapeSize error')
 
     ! Move CPU data to GPU
     dataSize = nsize*4
-    call checkCufft(cufftMpNvshmemMalloc(dataSize, src), 'cufftMpNvshmemMalloc error src')
-    call checkCufft(cufftMpNvshmemMalloc(dataSize, dst), 'cufftMpNvshmemMalloc error dst')
+    src = nvshmem_malloc(dataSize)
+    dst = nvshmem_malloc(dataSize)
     call checkCuda(cudaMemcpy(src, c_loc(src_host), dataSize, cudaMemcpyHostToDevice))
 
     ! Apply reshape
@@ -125,8 +134,8 @@ program cufftmp_reshape
     dst_host=0
     call checkCuda(cudaMemcpy(c_loc(dst_host), dst, dataSize, cudaMemcpyDeviceToHost), 'cudaMemcpy error')
     write(*,'(A30, I1, A1, 8I3)') "  Output data on rank ", rank, ":", dst_host
-    call checkCufft(cufftMpNvshmemFree(src))
-    call checkCufft(cufftMpNvshmemFree(dst))
+    call nvshmem_free(src)
+    call nvshmem_free(dst)
     call checkCufft(cufftMpDestroyReshape(reshapeHandle))
     call checkCuda(cudaStreamDestroy(stream))
     

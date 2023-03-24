@@ -5,10 +5,10 @@ exe = cufftmp_r2c_workarea
 all : $(exe) 
 
 $(exe) : $(exe).o   
-	$(f90) -o $@ $+ $(FLAGS) $(LINKER)
+	$(f90) -o $@ $+ $(FLAGS) $(LINKER) 
 
 %.o : %.f90
-	$(f90) -c $< -o $@ $(FLAGS)
+	$(f90) -c $< -o $@ $(FLAGS) -DSHARED_WORKAREA
 
 .PHONY: clean
 

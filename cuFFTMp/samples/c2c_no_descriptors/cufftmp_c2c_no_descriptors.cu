@@ -7,6 +7,7 @@
 #include <cufft.h>
 #include <cufftMp.h>
 #include <mpi.h>
+#include <nvshmem.h>
 
 #include "../common/error_checks.hpp"
 #include "../common/scaling.cuh"
@@ -40,7 +41,12 @@
  * Data is finally copied back to CPU and compared to the input data. They should be almost identical.
  */
 
-void run_c2c_fwd_inv(size_t nx, size_t ny, size_t nz, std::complex<float>* cpu_data, int rank, int size, MPI_Comm comm) {
+void run_c2c_fwd_inv(size_t nx, size_t ny, size_t nz, std::vector<std::complex<float>>& cpu_data, int rank, int size, MPI_Comm comm) {
+
+    // Allocate GPU memory, copy CPU data to GPU
+    // Data is initially distributed according to CUFFT_XT_FORMAT_INPLACE
+    cuComplex* gpu_data = (cuComplex*)nvshmem_malloc(cpu_data.size() * sizeof(cuComplex));
+    CUDA_CHECK(cudaMemcpy(gpu_data, cpu_data.data(), cpu_data.size() * sizeof(cuComplex), cudaMemcpyDefault));
 
     cufftHandle plan = 0;
     cudaStream_t stream = nullptr;
@@ -53,35 +59,30 @@ void run_c2c_fwd_inv(size_t nx, size_t ny, size_t nz, std::complex<float>* cpu_d
 
     CUFFT_CHECK(cufftSetStream(plan, stream));
 
+    CUFFT_CHECK(cufftXtSetSubformatDefault(plan, CUFFT_XT_FORMAT_INPLACE, CUFFT_XT_FORMAT_INPLACE_SHUFFLED));
+
     size_t workspace;
     CUFFT_CHECK(cufftMakePlan3d(plan, nx, ny, nz, CUFFT_C2C, &workspace));
 
-    // Allocate memory, copy CPU data to GPU
-    // Data is distributed as X-Slabs
-    cudaLibXtDesc *desc;
-    CUFFT_CHECK(cufftXtMalloc(plan, &desc, CUFFT_XT_FORMAT_INPLACE));
-    CUFFT_CHECK(cufftXtMemcpy(plan, (void*)desc, (void*)cpu_data, CUFFT_COPY_HOST_TO_DEVICE));
-
     // Run C2C Fwd
-    CUFFT_CHECK(cufftXtExecDescriptor(plan, desc, desc, CUFFT_FORWARD));
+    CUFFT_CHECK(cufftExecC2C(plan, gpu_data, gpu_data, CUFFT_FORWARD));
 
     // Data is now distributed as Y-Slabs
     // We run a kernel on the distributed data, using the BoxIterator's for convenience
     auto[begin_d, end_d] = BoxIterators(CUFFT_XT_FORMAT_INPLACE_SHUFFLED, CUFFT_C2C, 
-                                        rank, size, nx, ny, nz, (cufftComplex*)desc->descriptor->data[0]);
+                                        rank, size, nx, ny, nz, gpu_data);
     const size_t num_elements = std::distance(begin_d, end_d);
     const size_t num_threads  = 128;
     const size_t num_blocks   = (num_elements + num_threads - 1) / num_threads;
     scaling_kernel<<<num_blocks, num_threads, 0, stream>>>(begin_d, end_d, rank, size, nx, ny, nz);
     
     // Run C2C Bwd
-    CUFFT_CHECK(cufftXtExecDescriptor(plan, desc, desc, CUFFT_INVERSE));
+    CUFFT_CHECK(cufftExecC2C(plan, gpu_data, gpu_data, CUFFT_INVERSE));
 
     // Copy back and free
     // Data is distributed as X-Slabs again
     CUDA_CHECK(cudaStreamSynchronize(stream));
-    CUFFT_CHECK(cufftXtMemcpy(plan, (void*)cpu_data, (void*)desc, CUFFT_COPY_DEVICE_TO_HOST));
-    CUFFT_CHECK(cufftXtFree(desc));
+    CUDA_CHECK(cudaMemcpy(cpu_data.data(), gpu_data, cpu_data.size() * sizeof(cuComplex), cudaMemcpyDefault));
 
     CUFFT_CHECK(cufftDestroy(plan));
 
@@ -99,6 +100,11 @@ int main(int argc, char** argv) {
     int ndevices;
     CUDA_CHECK(cudaGetDeviceCount(&ndevices));
     CUDA_CHECK(cudaSetDevice(rank % ndevices));
+
+    nvshmemx_init_attr_t attr;
+    MPI_Comm comm = MPI_COMM_WORLD;
+    attr.mpi_comm = (void*)&comm;
+    nvshmemx_init_attr(NVSHMEMX_INIT_WITH_MPI_COMM, &attr);
 
     size_t nx = (argc >= 2 ? atoi(argv[1]) : 8*size);  // any value >= size is OK
     size_t ny = (argc >= 2 ? atoi(argv[1]) : 8*size);  // any value >= size is OK
@@ -120,11 +126,12 @@ int main(int argc, char** argv) {
     std::vector<std::complex<float>> ref = data;
 
     // Run Forward and Inverse FFT
-    run_c2c_fwd_inv(nx, ny, nz, data.data(), rank, size, MPI_COMM_WORLD);
+    run_c2c_fwd_inv(nx, ny, nz, data, rank, size, MPI_COMM_WORLD);
 
     // Compute error
     double error = compute_error(ref, data, buildBox3D(CUFFT_XT_FORMAT_INPLACE, CUFFT_C2C, rank, size, nx, ny, nz));
 
+    nvshmem_init();
     MPI_Finalize();
 
     return assess_error(error);

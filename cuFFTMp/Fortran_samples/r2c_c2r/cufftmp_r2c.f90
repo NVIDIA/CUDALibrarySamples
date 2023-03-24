@@ -350,7 +350,7 @@ subroutine cufft_memcpyD2H(u_h, ulibxt, data_format,ismemcpy)
       else
         call c_f_pointer(ulibxt%descriptor, uxt)
         call c_f_pointer(uxt%data(1), u_d, local_rshape_permuted)
-        call checkCuda(cudaMemcpy(u, u_d, product(int(local_rshape_permuted,kind=8))), "cudamemcpy D2H Error")
+        call checkCuda(cudaMemcpy(u_h, u_d, product(int(local_rshape_permuted,kind=8))), "cudamemcpy D2H Error")
         nullify(u_d, uxt)
       endif 
     endif
@@ -361,7 +361,7 @@ subroutine cufft_memcpyD2H(u_h, ulibxt, data_format,ismemcpy)
       else
         call c_f_pointer(ulibxt%descriptor, uxt)
         call c_f_pointer(uxt%data(1), u_d, local_rshape)
-        call checkCufft(cudamemcpy(u, u_d, product(int(local_rshape,kind=8))), "cufft_memcpyD2H error")
+        call checkCufft(cudamemcpy(u_h, u_d, product(int(local_rshape,kind=8))), "cufft_memcpyD2H error")
         nullify(u_d, uxt)
       endif
     endif 

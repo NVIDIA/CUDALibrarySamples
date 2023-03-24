@@ -1,6 +1,6 @@
 include ../common.mk
 
-exe = cufftmp_r2c_c2r
+exe = cufftmp_r2c_c2r_no_descriptors
 
 all: $(exe)
 
