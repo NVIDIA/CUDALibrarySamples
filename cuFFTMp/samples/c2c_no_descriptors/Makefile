@@ -1,6 +1,6 @@
 include ../common.mk
 
-exe = cufftmp_r2c_c2r
+exe = cufftmp_c2c_no_descriptors
 
 all: $(exe)
 
@@ -15,4 +15,4 @@ $(exe): $(exe).cu
 build: $(exe)
 
 run: $(exe)
-	LD_LIBRARY_PATH="${NVSHMEM_LIB}:${CUFFT_LIB}:${LD_LIBRARY_PATH}" mpirun -oversubscribe -n 2 $(exe) 
+	LD_LIBRARY_PATH="${NVSHMEM_LIB}:${CUFFT_LIB}:${LD_LIBRARY_PATH}" mpirun -oversubscribe -n 2 $(exe)

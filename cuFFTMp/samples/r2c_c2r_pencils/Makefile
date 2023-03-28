@@ -10,9 +10,7 @@ clean:
 	rm -rf $(exe)
 
 $(exe): $(exe).cu
-	${CUDA_HOME}/bin/nvcc $< -o $@ -lcuda -std=c++17 \
-		-L${CUFFT_LIB} -I${CUFFT_INC} -lcufftMp \
-		-I${MPI_HOME}/include -L${MPI_HOME}/lib -l${MPI}
+	${CUDA_HOME}/bin/nvcc $< -o $@ ${CXXFLAGS} ${INCFLAGS} ${LDFLAGS}
 
 build: $(exe)
 
