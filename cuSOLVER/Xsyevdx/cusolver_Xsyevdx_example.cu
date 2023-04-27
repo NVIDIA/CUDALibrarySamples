@@ -78,13 +78,16 @@ int main(int argc, char *argv[]) {
 
     data_type *d_A = nullptr;
     data_type *d_W = nullptr;
+    data_type vl;
+    data_type vu;
+    int64_t h_meig = 0;
     int *d_info = nullptr;
 
     int info = 0;
 
-    size_t d_lwork = 0;     /* size of workspace */
+    size_t workspaceInBytesOnDevice = 0; /* size of workspace */
     void *d_work = nullptr; /* device workspace */
-    size_t h_lwork = 0;     /* size of workspace */
+    size_t workspaceInBytesOnHost = 0; /* size of workspace */
     void *h_work = nullptr; /* host workspace for */
 
     std::printf("A = (matlab base-1)\n");
@@ -107,19 +110,25 @@ int main(int argc, char *argv[]) {
     // step 3: query working space of syevd
     cusolverEigMode_t jobz = CUSOLVER_EIG_MODE_VECTOR; // compute eigenvalues and eigenvectors.
     cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
+    cusolverEigRange_t range = CUSOLVER_EIG_RANGE_ALL;
 
-    CUSOLVER_CHECK(cusolverDnXsyevd_bufferSize(
-        cusolverH, NULL, jobz, uplo, m, traits<data_type>::cuda_data_type, d_A, lda,
-        traits<data_type>::cuda_data_type, d_W, traits<data_type>::cuda_data_type, &d_lwork,
-        &h_lwork));
+    CUSOLVER_CHECK(cusolverDnXsyevdx_bufferSize(
+        cusolverH, NULL, jobz, range, uplo, m, traits<data_type>::cuda_data_type, d_A, lda, &vl,
+        &vu, 0L, 0L, &h_meig, traits<data_type>::cuda_data_type, d_W,
+        traits<data_type>::cuda_data_type, &workspaceInBytesOnDevice, &workspaceInBytesOnHost));
 
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_work), sizeof(data_type) * d_lwork));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_work), workspaceInBytesOnDevice));
+    h_work = malloc(workspaceInBytesOnHost);
+    if (!h_work)
+    {
+        throw std::bad_alloc();
+    }
 
     // step 4: compute spectrum
-    CUSOLVER_CHECK(cusolverDnXsyevd(
-        cusolverH, NULL, jobz, uplo, m, traits<data_type>::cuda_data_type, d_A, lda,
-        traits<data_type>::cuda_data_type, d_W, traits<data_type>::cuda_data_type, d_work, d_lwork,
-        h_work, h_lwork, d_info));
+    CUSOLVER_CHECK(cusolverDnXsyevdx(
+        cusolverH, NULL, jobz, range, uplo, m, traits<data_type>::cuda_data_type, d_A, lda, &vl,
+        &vu, 0L, 0L, &h_meig, traits<data_type>::cuda_data_type, d_W, traits<data_type>::cuda_data_type,
+        d_work, workspaceInBytesOnDevice, h_work, workspaceInBytesOnHost, d_info));
 
     CUDA_CHECK(cudaMemcpyAsync(V.data(), d_A, sizeof(data_type) * V.size(), cudaMemcpyDeviceToHost,
                                stream));
@@ -159,6 +168,7 @@ int main(int argc, char *argv[]) {
     CUDA_CHECK(cudaFree(d_W));
     CUDA_CHECK(cudaFree(d_info));
     CUDA_CHECK(cudaFree(d_work));
+    free(h_work);
 
     CUSOLVER_CHECK(cusolverDnDestroy(cusolverH));
 
