@@ -83,10 +83,12 @@ int main(int argc, char *argv[]) {
     data_type *d_VT = nullptr;
     int *d_info = nullptr;
     data_type *d_work = nullptr;
+    data_type *h_work = nullptr;
     data_type *d_rwork = nullptr;
     data_type *d_W = nullptr; // W = S*VT
 
-    int lwork = 0;
+    size_t workspaceInBytesOnDevice = 0;
+    size_t workspaceInBytesOnHost = 0;
     int info = 0;
     const data_type h_one = 1;
     const data_type h_minus_one = -1;
@@ -114,20 +116,64 @@ int main(int argc, char *argv[]) {
     CUDA_CHECK(cudaMemcpyAsync(d_A, A.data(), sizeof(data_type) * lda * n, cudaMemcpyHostToDevice,
                                stream));
 
-    /* step 3: query working space of SVD */
-    CUSOLVER_CHECK(cusolverDnDgesvd_bufferSize(cusolverH, m, n, &lwork));
-
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_work), sizeof(data_type) * lwork));
-
-    /* step 4: compute SVD */
     signed char jobu = 'A';  // all m columns of U
     signed char jobvt = 'A'; // all n columns of VT
 
-    CUSOLVER_CHECK(cusolverDnDgesvd(cusolverH, jobu, jobvt, m, n, d_A, lda, d_S, d_U,
-                                    lda, // ldu
-                                    d_VT,
-                                    lda, // ldvt,
-                                    d_work, lwork, d_rwork, d_info));
+    /* step 3: query working space of SVD */
+    CUSOLVER_CHECK(cusolverDnXgesvd_bufferSize(
+        cusolverH,
+        nullptr,
+        jobu,
+        jobvt,
+        m,
+        n,
+        traits<data_type>::cuda_data_type,
+        d_A,
+        lda,
+        traits<data_type>::cuda_data_type,
+        d_S,
+        traits<data_type>::cuda_data_type,
+        d_U,
+        lda,
+        traits<data_type>::cuda_data_type,
+        d_VT,
+        lda,
+        traits<data_type>::cuda_data_type,
+        &workspaceInBytesOnDevice,
+        &workspaceInBytesOnHost));
+
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_work), workspaceInBytesOnDevice));
+    h_work = (data_type*)malloc(workspaceInBytesOnHost);
+    if (!h_work)
+    {
+        throw std::bad_alloc();
+    }
+
+    /* step 4: compute SVD */
+    CUSOLVER_CHECK(cusolverDnXgesvd(
+        cusolverH,
+        nullptr,
+        jobu,
+        jobvt,
+        m,
+        n,
+        traits<data_type>::cuda_data_type,
+        d_A,
+        lda,
+        traits<data_type>::cuda_data_type,
+        d_S,
+        traits<data_type>::cuda_data_type,
+        d_U,
+        lda,
+        traits<data_type>::cuda_data_type,
+        d_VT,
+        lda,
+        traits<data_type>::cuda_data_type,
+        d_work,
+        workspaceInBytesOnDevice,
+        h_work,
+        workspaceInBytesOnHost,
+        d_info));
 
     CUDA_CHECK(cudaMemcpyAsync(U.data(), d_U, sizeof(data_type) * U.size(), cudaMemcpyDeviceToHost,
                                stream));
@@ -202,6 +248,7 @@ int main(int argc, char *argv[]) {
     CUDA_CHECK(cudaFree(d_work));
     CUDA_CHECK(cudaFree(d_rwork));
     CUDA_CHECK(cudaFree(d_W));
+    free(h_work);
 
     CUSOLVER_CHECK(cusolverDnDestroy(cusolverH));
     CUBLAS_CHECK(cublasDestroy(cublasH));
