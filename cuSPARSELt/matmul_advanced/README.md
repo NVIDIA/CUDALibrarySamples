@@ -19,20 +19,20 @@ where `A`, `B`, `C` are dense matrices
 
 * Linux
     ```bash
-    make
+    make CUSPARSELT_PATH=<cusparseLt_path>
     ```
 
 * or in alternative:
     ```bash
     mkdir build
     cd build
-    cmake ..
+    cmake -DCUSPARSELT_PATH=<cusparseLt_path> ..
     make
     ```
 
 ## Support
 
-* **Supported SM Architectures:** SM 8.0, SM 8.6
+* **Supported SM Architectures:** SM 8.0, SM 8.6, SM 8.9
 * **Supported OSes:** Linux, Windows
 * **Supported CPU Architectures**: x86_64, arm64
 * **Supported Compilers**: gcc, clang, Intel icc, IBM xlc, Microsoft msvc, Nvidia HPC SDK nvc
@@ -40,6 +40,6 @@ where `A`, `B`, `C` are dense matrices
 
 ## Prerequisites
 
-* [CUDA 11.2 toolkit](https://developer.nvidia.com/cuda-downloads) (or above) and compatible driver (see [CUDA Driver Release Notes](https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/index.html#cuda-major-component-versions)).
-* [cusparseLt 0.2.0 or above](https://developer.nvidia.com/cusparselt/downloads)
+* [CUDA 11.4 toolkit](https://developer.nvidia.com/cuda-downloads) (or above) and compatible driver (see [CUDA Driver Release Notes](https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/index.html#cuda-major-component-versions)).
+* [cusparseLt 0.4.0 or above](https://developer.nvidia.com/cusparselt/downloads)
 * [CMake 3.9](https://cmake.org/download/) or above
