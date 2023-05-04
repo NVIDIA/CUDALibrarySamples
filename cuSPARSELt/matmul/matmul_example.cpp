@@ -1,5 +1,5 @@
 /*
- * Copyright 1993-2022 NVIDIA Corporation.  All rights reserved.
+ * Copyright 1993-2023 NVIDIA Corporation.  All rights reserved.
  *
  * NOTICE TO LICENSEE:
  *
@@ -80,20 +80,22 @@ int main(void) {
     CHECK_CUDA( cudaDeviceGetAttribute(&minor_cc,
                                        cudaDevAttrComputeCapabilityMinor, 0) )
     if (!(major_cc == 8 && minor_cc == 0) &&
-        !(major_cc == 8 && minor_cc == 6)) {
+        !(major_cc == 8 && minor_cc == 6) &&
+        !(major_cc == 8 && minor_cc == 9)) {
         std::printf("\ncusparseLt is supported only on GPU devices with"
-                    " compute capability == 8.0, 8.6 current: %d.%d\n\n",
+                    " compute capability == 8.0, 8.6, 8.9 current: %d.%d\n\n",
                      major_cc, minor_cc);
         return EXIT_UNSUPPORTED;
     }
     // Host problem definition, row-major order
-    constexpr int m     = 32; // bigger sizes may require dynamic allocations
-    constexpr int n     = 32; // bigger sizes may require dynamic allocations
-    constexpr int k     = 32; // bigger sizes may require dynamic allocations
-    auto          order = CUSPARSE_ORDER_ROW;
-    auto          opA   = CUSPARSE_OPERATION_NON_TRANSPOSE;
-    auto          opB   = CUSPARSE_OPERATION_NON_TRANSPOSE;
-    auto          type  = CUDA_R_16F;
+    // bigger sizes may require dynamic allocations
+    constexpr int m            = 32;
+    constexpr int n            = 32;
+    constexpr int k            = 32;
+    auto          order        = CUSPARSE_ORDER_ROW;
+    auto          opA          = CUSPARSE_OPERATION_NON_TRANSPOSE;
+    auto          opB          = CUSPARSE_OPERATION_NON_TRANSPOSE;
+    auto          type         = CUDA_R_16F;
     auto          compute_type = CUSPARSE_COMPUTE_16F;
 
     bool     is_rowmajor    = (order == CUSPARSE_ORDER_ROW);
@@ -167,14 +169,8 @@ int main(void) {
     CHECK_CUSPARSE( cusparseLtMatmulAlgSelectionInit(
                                             &handle, &alg_sel, &matmul,
                                             CUSPARSELT_MATMUL_ALG_DEFAULT) )
-    int alg = 0;
-    CHECK_CUSPARSE( cusparseLtMatmulAlgSetAttribute(
-                                            &handle, &alg_sel,
-                                            CUSPARSELT_MATMUL_ALG_CONFIG_ID,
-                                            &alg, sizeof(alg)))
-    size_t workspace_size;
-    CHECK_CUSPARSE( cusparseLtMatmulPlanInit(&handle, &plan, &matmul, &alg_sel,
-                                             workspace_size) )
+    CHECK_CUSPARSE( cusparseLtMatmulPlanInit(&handle, &plan, &matmul, &alg_sel))
+
     //--------------------------------------------------------------------------
     // Prune the A matrix (in-place) and check the correctness
     CHECK_CUSPARSE( cusparseLtSpMMAPrune(&handle, &matmul, dA, dA,
@@ -192,53 +188,39 @@ int main(void) {
     }
     //--------------------------------------------------------------------------
     // Compress the A matrix
-    size_t compressed_size;
+    size_t compressed_size, compressed_buffer_size;
+    void*  dA_compressedBuffer;
     CHECK_CUSPARSE( cusparseLtSpMMACompressedSize(&handle, &plan,
-                                                  &compressed_size) )
+                                                  &compressed_size,
+                                                  &compressed_buffer_size) )
     CHECK_CUDA( cudaMalloc((void**) &dA_compressed, compressed_size) )
+    CHECK_CUDA( cudaMalloc((void**) &dA_compressedBuffer,
+                           compressed_buffer_size) )
 
-    CHECK_CUSPARSE( cusparseLtSpMMACompress(&handle, &plan, dA,
-                                            dA_compressed, stream) )
+    CHECK_CUSPARSE( cusparseLtSpMMACompress(&handle, &plan, dA, dA_compressed,
+                                            dA_compressedBuffer,stream) )
     //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Search the best kernel
-    void*         d_workspace = nullptr;
     int           num_streams = 0;
     cudaStream_t* streams     = nullptr;
     CHECK_CUSPARSE( cusparseLtMatmulSearch(&handle, &plan, &alpha,
                                            dA_compressed, dB, &beta,
-                                           dC, dD, d_workspace,
+                                           dC, dD, nullptr,
                                            streams, num_streams) )
-    int alg_id;
-    CHECK_CUSPARSE( cusparseLtMatmulAlgGetAttribute(
-                                           &handle, &alg_sel,
-                                           CUSPARSELT_MATMUL_ALG_CONFIG_ID,
-                                           &alg_id, sizeof(alg_id)) )
-    int32_t splitK, splitKBuffers;
-    cusparseLtSplitKMode_t splitKMode;
-
-    CHECK_CUSPARSE( cusparseLtMatmulAlgGetAttribute(
-                                           &handle, &alg_sel,
-                                           CUSPARSELT_MATMUL_SPLIT_K,
-                                           &splitK, sizeof(splitK)) )
-
-    CHECK_CUSPARSE( cusparseLtMatmulAlgGetAttribute(
-                                           &handle, &alg_sel,
-                                           CUSPARSELT_MATMUL_SPLIT_K_MODE,
-                                           &splitKMode, sizeof(splitKMode)) )
-
-    CHECK_CUSPARSE( cusparseLtMatmulAlgGetAttribute(
-                                           &handle, &alg_sel,
-                                           CUSPARSELT_MATMUL_SPLIT_K_BUFFERS,
-                                           &splitKBuffers,
-                                           sizeof(splitKBuffers)) )
+    // otherwise, it is possible to set it directly:
+    //int alg = 0;
+    //CHECK_CUSPARSE( cusparseLtMatmulAlgSetAttribute(
+    //                                        &handle, &alg_sel,
+    //                                        CUSPARSELT_MATMUL_ALG_CONFIG_ID,
+    //                                        &alg, sizeof(alg)))
     //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    CHECK_CUSPARSE( cusparseLtMatmulPlanInit(&handle, &plan, &matmul, &alg_sel,
-                                             workspace_size) )
+    size_t workspace_size;
+    CHECK_CUSPARSE( cusparseLtMatmulPlanInit(&handle, &plan, &matmul, &alg_sel))
 
     CHECK_CUSPARSE( cusparseLtMatmulGetWorkspace(&handle, &plan,
                                                  &workspace_size))
-
-    CHECK_CUDA( cudaMalloc((void**)&d_workspace, workspace_size) )
+    void* d_workspace;
+    CHECK_CUDA( cudaMalloc((void**) &d_workspace, workspace_size) )
     // Perform the matrix multiplication
     CHECK_CUSPARSE( cusparseLtMatmul(&handle, &plan, &alpha, dA_compressed, dB,
                                      &beta, dC, dD, d_workspace, streams,
@@ -290,9 +272,9 @@ int main(void) {
         }
     }
     if (correct)
-        std::printf("spmma_example test PASSED\n");
+        std::printf("matmul_example test PASSED\n");
     else
-        std::printf("spmma_example test FAILED: wrong result\n");
+        std::printf("matmul_example test FAILED: wrong result\n");
     //--------------------------------------------------------------------------
     // device memory deallocation
     CHECK_CUDA( cudaFree(dA_compressed) )
@@ -301,5 +283,6 @@ int main(void) {
     CHECK_CUDA( cudaFree(dC) )
     CHECK_CUDA( cudaFree(d_valid) )
     CHECK_CUDA( cudaFree(d_workspace) )
+    CHECK_CUDA( cudaFree(dA_compressedBuffer) )
     return EXIT_SUCCESS;
 }
