@@ -1,4 +1,4 @@
-# Copyright 1993-2022 NVIDIA Corporation.  All rights reserved.
+# Copyright 1993-2023 NVIDIA Corporation.  All rights reserved.
 #
 # NOTICE TO LICENSEE:
 #
@@ -44,35 +44,64 @@
 # software must include, in the user documentation and internal
 # comments to the code, the above Disclaimer and U.S. Government End
 # Users Notice.
-CUDA_TOOLKIT ?= $(abspath $(shell dirname $$(command -v nvcc))/..)
-ifeq ($(shell uname -m), aarch64)
-ifeq ($(shell uname -s), Linux)
-    OS_ARCH_NVRTC := "sbsa-linux"
-endif
-endif
-ifeq ($(shell uname -m), x86_64)
-ifeq ($(shell uname -s), Linux)
-    OS_ARCH_NVRTC := "x86_64-linux"
-endif
-endif
-INCS := -I$(CUDA_TOOLKIT)/include -I${CUSPARSELT_PATH}/include
-LIBS := -lcudart -lcusparse -ldl
+cmake_minimum_required(VERSION 3.9)
 
-all: spmma2_example spmma2_example_static
+set(ROUTINE matmul_advanced)
 
-spmma2_example: spmma2_example.cpp
-	nvcc --std=c++14  ${INCS}  spmma2_example.cpp -o spmma2_example \
-         -L${CUSPARSELT_PATH}/lib -lcusparseLt ${LIBS}
+project("${ROUTINE}_example"
+        DESCRIPTION  "cuSPARSELt"
+        HOMEPAGE_URL "https://docs.nvidia.com/cuda/cusparselt/index.html"
+        LANGUAGES    CXX CUDA)
 
-spmma2_example_static: spmma2_example.cpp
-	nvcc --std=c++14 ${INCS} spmma2_example.cpp -o spmma2_example_static \
-         -L${CUSPARSELT_PATH}/lib -lcusparseLt ${LIBS}
+set(CMAKE_CXX_STANDARD           14)
+set(CMAKE_CXX_STANDARD_REQUIRED  ON)
+set(CMAKE_CXX_EXTENSIONS         OFF)
+set(CMAKE_CUDA_STANDARD          14)
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+set(CMAKE_CUDA_EXTENSIONS        OFF)
 
-clean:
-	rm -f spmma2_example spmma2_example_static
+string(REPLACE "/bin/nvcc" "" CUDA_TOOLKIT_PATH ${CMAKE_CUDA_COMPILER})
+if (${CMAKE_HOST_SYSTEM_PROCESSOR} STREQUAL "aarch64" AND
+    ${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+    set(OS_ARCH_NVRTC "sbsa-linux")
+elseif (${CMAKE_HOST_SYSTEM_PROCESSOR} STREQUAL "x86_64" AND
+        ${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+    set(OS_ARCH_NVRTC "x86_64-linux")
+endif()
+set(NVRTC_SHARED ${CUDA_TOOLKIT_PATH}/targets/${OS_ARCH_NVRTC}/lib/libnvrtc.so)
 
-test:
-	@echo "\n==== cusparseLt SpMMA Test ====\n"
-	./spmma2_example
+add_executable(${ROUTINE}_example)
+add_executable(${ROUTINE}_example_static)
 
-.PHONY: clean all test
+target_sources(${ROUTINE}_example
+    PUBLIC ${PROJECT_SOURCE_DIR}/${ROUTINE}_example.cpp
+)
+
+target_sources(${ROUTINE}_example_static
+    PUBLIC ${PROJECT_SOURCE_DIR}/${ROUTINE}_example.cpp
+)
+
+target_include_directories(${ROUTINE}_example
+    PUBLIC ${CUDA_TOOLKIT_PATH}/include
+    PUBLIC ${CUSPARSELT_PATH}/include
+)
+
+target_include_directories(${ROUTINE}_example_static
+    PUBLIC ${CUDA_TOOLKIT_PATH}/include
+    PUBLIC ${CUSPARSELT_PATH}/include
+)
+
+target_link_libraries(${ROUTINE}_example
+    PUBLIC cudart
+    PUBLIC cusparse
+    PUBLIC ${CUSPARSELT_PATH}/lib64/libcusparseLt.so
+    PUBLIC ${NVRTC_SHARED}
+)
+
+target_link_libraries(${ROUTINE}_example_static
+    PUBLIC cudart
+    PUBLIC cusparse
+    PUBLIC ${CUSPARSELT_PATH}/lib64/libcusparseLt_static.a
+    PUBLIC ${NVRTC_SHARED}
+    PUBLIC ${CMAKE_DL_LIBS}
+)
