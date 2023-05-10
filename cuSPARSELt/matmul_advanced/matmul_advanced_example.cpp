@@ -1,5 +1,5 @@
 /*
- * Copyright 1993-2021 NVIDIA Corporation.  All rights reserved.
+ * Copyright 1993-2023 NVIDIA Corporation.  All rights reserved.
  *
  * NOTICE TO LICENSEE:
  *
@@ -107,9 +107,10 @@ int main(void) {
     CHECK_CUDA( cudaDeviceGetAttribute(&minor_cc,
                                        cudaDevAttrComputeCapabilityMinor, 0) )
     if (!(major_cc == 8 && minor_cc == 0) &&
-        !(major_cc == 8 && minor_cc == 6)) {
+        !(major_cc == 8 && minor_cc == 6) &&
+        !(major_cc == 8 && minor_cc == 9)) {
         std::printf("\ncusparseLt is supported only on GPU devices with"
-                    " compute capability == 8.0, 8.6 current: %d.%d\n\n",
+                    " compute capability == 8.0, 8.6, 8.9 current: %d.%d\n\n",
                      major_cc, minor_cc);
         return EXIT_UNSUPPORTED;
     }
@@ -143,19 +144,17 @@ int main(void) {
     auto     ldc            = (is_rowmajor) ? num_C_cols : num_C_rows;
     auto     A_height       = (is_rowmajor) ? num_A_rows : num_A_cols;
     auto     B_height       = (is_rowmajor) ? num_B_rows : num_B_cols;
-    auto     C_height       = (is_rowmajor) ? num_C_rows : num_C_cols;
     auto     A_width        = (is_rowmajor) ? num_A_cols : num_A_rows;
     auto     B_width        = (is_rowmajor) ? num_B_cols : num_B_rows;
-    auto     C_width        = (is_rowmajor) ? num_C_cols : num_C_rows;
     auto     A_size         = num_batches * batch_strideA;
     auto     B_size         = num_batches * batch_strideB;
     auto     C_size         = num_batches * batch_strideC;
     auto     A_size_bytes   = num_batches * batch_strideA * sizeof(__half);
     auto     B_size_bytes   = num_batches * batch_strideB * sizeof(__half);
     auto     C_size_bytes   = num_batches * batch_strideC * sizeof(__half);
-    auto hA = new __half[A_size];
-    auto hB = new __half[B_size];
-    auto hC = new __half[C_size]();
+    auto     hA             = new __half[A_size];
+    auto     hB             = new __half[B_size];
+    auto     hC             = new __half[C_size]();
     for (int b = 0; b < num_batches; b++) {
         for (int i = 0; i < A_height; i++) {
             for (int j = 0; j < A_width; j++)
@@ -179,7 +178,7 @@ int main(void) {
     CHECK_CUDA( cudaMalloc((void**) &dA, A_size_bytes) )
     CHECK_CUDA( cudaMalloc((void**) &dB, B_size_bytes) )
     CHECK_CUDA( cudaMalloc((void**) &dC, C_size_bytes) )
-    CHECK_CUDA( cudaMalloc((void**) &d_valid, sizeof(d_valid)) )
+    CHECK_CUDA( cudaMalloc((void**) &d_valid, sizeof(int)) )
     dD = dC;
 
     CHECK_CUDA( cudaMemcpy(dA, hA, A_size_bytes, cudaMemcpyHostToDevice) )
@@ -274,13 +273,8 @@ int main(void) {
     CHECK_CUSPARSE( cusparseLtMatmulAlgSelectionInit(
                                             &handle, &alg_sel, &matmul,
                                             CUSPARSELT_MATMUL_ALG_DEFAULT) )
-    size_t workspace_size, compressed_size;
 
-    CHECK_CUSPARSE( cusparseLtMatmulPlanInit(&handle, &plan, &matmul, &alg_sel,
-                                             workspace_size) )
-    CHECK_CUSPARSE( cusparseLtMatmulGetWorkspace(&handle, &plan,
-                                                 &workspace_size))
-
+    CHECK_CUSPARSE( cusparseLtMatmulPlanInit(&handle, &plan, &matmul, &alg_sel) )
     //--------------------------------------------------------------------------
     // Split-K Mode
     int splitK, splitKBuffers;
@@ -298,19 +292,19 @@ int main(void) {
                                        &splitKBuffers, sizeof(splitKBuffers)) )
     auto mode = splitKMode == CUSPARSELT_SPLIT_K_MODE_ONE_KERNEL
                     ? "ONE_KERNEL"  :
-                splitKMode == CUSPARSELT_SPLIT_K_MODE_TWO_KERNELS
-                    ? "TWO_KERNELS" : "invalid";
-    printf("splitK=%d, splitK-mode=%d, splitK-buffers=%d\n\n",
-           splitK, splitKMode, splitKBuffers);
+                (splitKMode == CUSPARSELT_SPLIT_K_MODE_TWO_KERNELS
+                    ? "TWO_KERNELS" : "invalid");
+    printf("splitK=%d, splitK-mode=%s, splitK-buffers=%d\n\n",
+           splitK, mode, splitKBuffers);
 
     //--------------------------------------------------------------------------
-    // Prune the A matrix (in-place) and check the correcteness
+    // Prune the A matrix (in-place) and check the correctness
     CHECK_CUSPARSE( cusparseLtSpMMAPrune(&handle, &matmul, dA, dA,
                                          CUSPARSELT_PRUNE_SPMMA_TILE, stream) )
     CHECK_CUSPARSE( cusparseLtSpMMAPruneCheck(&handle, &matmul, dA,
                                               d_valid, stream) )
     int is_valid;
-    CHECK_CUDA( cudaMemcpyAsync(&is_valid, d_valid, sizeof(d_valid),
+    CHECK_CUDA( cudaMemcpyAsync(&is_valid, d_valid, sizeof(int),
                                 cudaMemcpyDeviceToHost, stream) )
     CHECK_CUDA( cudaStreamSynchronize(stream) )
     if (is_valid != 0) {
@@ -320,17 +314,32 @@ int main(void) {
     }
     //--------------------------------------------------------------------------
     // Compress the A matrix
+    size_t compressed_size, compressed_buffer_size;
+    void*  dA_compressedBuffer;
     CHECK_CUSPARSE( cusparseLtSpMMACompressedSize(&handle, &plan,
-                                                  &compressed_size) )
+                                                  &compressed_size,
+                                                  &compressed_buffer_size) )
     CHECK_CUDA( cudaMalloc((void**) &dA_compressed, compressed_size) )
+    CHECK_CUDA( cudaMalloc((void**) &dA_compressedBuffer,
+                           compressed_buffer_size) )
 
-    CHECK_CUSPARSE( cusparseLtSpMMACompress(&handle, &plan, dA,
-                                            dA_compressed, stream) )
+    CHECK_CUSPARSE( cusparseLtSpMMACompress(&handle, &plan, dA, dA_compressed,
+                                            dA_compressedBuffer,stream) )
+    //--------------------------------------------------------------------------
+    // Plan initialization
+    CHECK_CUSPARSE( cusparseLtMatmulPlanInit(&handle, &plan, &matmul, &alg_sel))
+
+    void*  d_workspace    = nullptr;
+    size_t workspace_size = 0;
+    CHECK_CUSPARSE( cusparseLtMatmulGetWorkspace(&handle, &plan,
+                                                 &workspace_size) )
+
+    CHECK_CUDA( cudaMalloc((void**) &d_workspace, workspace_size) )
     //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Perform the matrix multiplication
-    void*         d_workspace = nullptr;
     int           num_streams = 0;
     cudaStream_t* streams     = nullptr;
+
     CHECK_CUSPARSE( cusparseLtMatmul(&handle, &plan, &alpha, dA_compressed, dB,
                                      &beta, dC, dD, d_workspace, streams,
                                      num_streams) )
@@ -357,16 +366,16 @@ int main(void) {
         return std::min(value, relu_upper_bound);
     };
     // host computation
-    float hC_result[m * n];
+    auto hC_result = new float[C_size];
     for (int b = 0; b < num_batches; b++) {
         for (int i = 0; i < m; i++) {
             for (int j = 0; j < n; j++) {
-                float sum  = 0.0f;
+                float sum = 0.0f;
                 for (int k1 = 0; k1 < k; k1++) {
                     auto posA = (A_std_layout) ? i * lda + k1 : i + k1 * lda;
                     auto posB = (B_std_layout) ? k1 * ldb + j : k1 + j * ldb;
                     posA     += b * batch_strideA;
-                    posB     += b * batch_strideA;
+                    posB     += b * batch_strideB;
                     sum      += static_cast<float>(hA[posA]) *  // [i][k]
                                 static_cast<float>(hB[posB]);   // [k][j]
                 }
@@ -382,8 +391,9 @@ int main(void) {
         for (int i = 0; i < m; i++) {
             for (int j = 0; j < n; j++) {
                 auto pos          = (is_rowmajor) ? i * ldc + j : i + j * ldc;
+                pos              += b * batch_strideC;
                 auto device_value = static_cast<float>(hC[pos]);
-                auto host_value   = hC_result[pos + b * batch_strideC];
+                auto host_value   = hC_result[pos];
                 if (device_value != host_value) {
                     // direct floating point comparison is not reliable
                     correct = 0;
@@ -393,14 +403,15 @@ int main(void) {
         }
     }
     if (correct)
-        std::printf("spmma2_example test PASSED\n");
+        std::printf("matmul_advanced_example test PASSED\n");
     else
-        std::printf("spmma2_example test FAILED: wrong result\n");
+        std::printf("matmul_advanced_example test FAILED: wrong result\n");
     //--------------------------------------------------------------------------
     // host memory deallocation
     delete[] hA;
     delete[] hB;
     delete[] hC;
+    delete[] hC_result;
     delete[] hBias;
     //--------------------------------------------------------------------------
     // device memory deallocation
@@ -410,5 +421,7 @@ int main(void) {
     CHECK_CUDA( cudaFree(dC) )
     CHECK_CUDA( cudaFree(dBias) )
     CHECK_CUDA( cudaFree(d_valid) )
+    CHECK_CUDA( cudaFree(d_workspace) )
+    CHECK_CUDA( cudaFree(dA_compressedBuffer) )
     return EXIT_SUCCESS;
 }

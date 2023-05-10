@@ -19,6 +19,11 @@ This sample demonstrates the usage of `cusparseSpMMOp` for performing *sparse ma
 
 ## Building
 
+* Command line
+    ```bash
+    nvcc -I<cuda_toolkit_path>/include spmm_csr_op_example.c -o spmm_csr_op_example -lcusparse
+    ```
+
 * Linux
     ```bash
     make
@@ -35,7 +40,7 @@ This sample demonstrates the usage of `cusparseSpMMOp` for performing *sparse ma
 
 ## Support
 
-* **Supported SM Architectures:** SM 3.5, SM 3.7, SM 5.0, SM 5.2, SM 5.3, SM 6.0, SM 6.1, SM 6.2, SM 7.0, SM 7.2, SM 7.5, SM 8.0, SM 8.6
+* **Supported SM Architectures:** SM 3.5, SM 3.7, SM 5.0, SM 5.2, SM 5.3, SM 6.0, SM 6.1, SM 6.2, SM 7.0, SM 7.2, SM 7.5, SM 8.0, SM 8.6, SM 8.9, SM 9.0
 * **Supported OSes:** Linux, Windows, QNX
 * **Supported CPU Architectures**: x86_64, ppc64le, arm64
 * **Supported Compilers**: gcc, clang, Intel icc, IBM xlc, Microsoft msvc, Nvidia HPC SDK nvc

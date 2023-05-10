@@ -3,7 +3,7 @@
 cuFFTMp uses NVSHMEM. In order to interoperate with MPI, a bootstrap plugin is required. NVSHMEM ships with a bootstrap compatible with HPC-X.
 However, you can easily build you own bootstrap, compatible with another MPI implementation. To do so,
 ```
-MPICC=mpicc DEST=myMPI make mpi_bootstrap
+MPI_HOME=/path/to/mpi/home/ CUDA_HOME=/path/to/cuda/home DEST=myMPI make mpi_bootstrap
 ```
 will download NVSHMEM, build the bootstrap library and place it in the `myMPI` folder.
 

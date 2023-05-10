@@ -1,5 +1,5 @@
 /*
- * Copyright 1993-2021 NVIDIA Corporation.  All rights reserved.
+ * Copyright 1993-2022 NVIDIA Corporation.  All rights reserved.
  *
  * NOTICE TO LICENSEE:
  *
@@ -157,7 +157,7 @@ int main(void) {
     CHECK_CUDA( cudaStreamEndCapture(stream, &graph) )
     CHECK_CUDA( cudaDeviceSynchronize() )
     CHECK_CUDA( cudaGetLastError() )
-    CHECK_CUDA( cudaGraphInstantiate(&graph_exec, graph, NULL, NULL, 0) )
+    CHECK_CUDA( cudaGraphInstantiateWithFlags(&graph_exec, graph, 0) )
     //==========================================================================
     // GRAPH EXECUTION
     //==========================================================================

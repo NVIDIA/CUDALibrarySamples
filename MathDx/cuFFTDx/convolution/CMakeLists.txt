@@ -43,7 +43,7 @@ cmake_minimum_required(VERSION 3.18.0)
 
 # All supported CUDA architectures
 if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-    set(CMAKE_CUDA_ARCHITECTURES 70-real 72-real 75-real 80-real 86-real 86-virtual)
+    set(CMAKE_CUDA_ARCHITECTURES 70-real 72-real 75-real 80-real 86-real 87-real 89-real 90-real 90-virtual)
 endif()
 
 # cuFFTDx Examples project
@@ -56,7 +56,13 @@ find_package(mathdx REQUIRED COMPONENTS cufftdx CONFIG)
 if(NOT MSVC)
     set(CUFFTDX_CUDA_CXX_FLAGS "${CUFFTDX_CUDA_CXX_FLAGS} -Wall -Wextra -Werror")
 else()
-    message(FATAL_ERROR "MSVC not supported yet")
+    add_definitions(-D_CRT_SECURE_NO_WARNINGS)
+    add_definitions(-D_CRT_NONSTDC_NO_WARNINGS)
+    add_definitions(-D_SCL_SECURE_NO_WARNINGS)
+    add_definitions(-DNOMINMAX)
+    set(CUFFTDX_CUDA_CXX_FLAGS "${CUFFTDX_CUDA_CXX_FLAGS} /W3") # Warning level
+    set(CUFFTDX_CUDA_CXX_FLAGS "${CUFFTDX_CUDA_CXX_FLAGS} /WX") # All warnings are errors
+    set(CUFFTDX_CUDA_CXX_FLAGS "${CUFFTDX_CUDA_CXX_FLAGS} /Zc:__cplusplus") # Enable __cplusplus macro
 endif()
 
 # Global CXX flags/options
@@ -75,11 +81,12 @@ set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcompiler \"${CUFFTDX_CUDA_CXX_FLAGS}
 # Enable testing (ctest)
 enable_testing()
 
+add_compile_definitions(CUFFTDX_EXAMPLE_CMAKE)
 add_library(cufftdx_cuda_architectures INTERFACE)
 foreach(CUDA_ARCHITECTURE ${CMAKE_CUDA_ARCHITECTURES})
     string(REPLACE "-" ";" CUDA_ARCHITECTURE_LIST ${CUDA_ARCHITECTURE})
     list(GET CUDA_ARCHITECTURE_LIST 0 ARCH)
-    target_compile_definitions(cufftdx_cuda_architectures INTERFACE SM_${ARCH})
+    target_compile_definitions(cufftdx_cuda_architectures INTERFACE CUFFTDX_EXAMPLE_ENABLE_SM_${ARCH})
 endforeach()
 
 # ###############################################################

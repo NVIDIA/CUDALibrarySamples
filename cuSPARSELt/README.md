@@ -8,10 +8,10 @@ This folder demonstrates cuSPARSELt Generic APIs usage.
 
 ## cuSPARSELt Samples
 
-* [Structured Matrix-Matrix Multiplication - Basic Concepts](spmma/)
+* [Structured Matrix-Matrix Multiplication - Basic Concepts](matmul/)
 
-    The sample demonstrates how to exploit NVIDIA Ampere architecture *Sparse Tensor Cores* for performing Structured Matrix-Matrix Multiplication
+    The sample demonstrates how to exploit *Sparse Tensor Cores* for performing Structured Matrix-Matrix Multiplication
 
-* [Batched GEMM, Activation Function, and Bias](spmma2/)
+* [Batched GEMM, Activation Function, and Bias](matmul_advanced/)
 
     The sample extends the previous code to demonstrate how to perform batched GEMM computation, Split-K, and how to set up the activation function and bias

@@ -1,4 +1,4 @@
-# JPEG2000 Encode example using nvJPEG2000 Library
+# JPEG 2000 Encode example using nvJPEG2000 Library
 
 ## Description
 
@@ -20,30 +20,28 @@ Linux, Windows
 
 x86_64
 
-## CUDA APIs involved
+## API Documentation
 
-[NVJPEG2000](https://docs.nvidia.com/cuda/nvjpeg2000/index.html)
+[nvJPEG2000](https://docs.nvidia.com/cuda/nvjpeg2000/index.html)
 
-
-# Building (make)
 
 # Prerequisites
-- A Linux system with recent NVIDIA drivers.
-- Install the [CUDA 11.0 toolkit](https://developer.nvidia.com/cuda-downloads).
-- CMake (3.13 or later)
-- nvjpeg2k package
+- Recent NVIDIA drivers.
+- [CUDA toolkit](https://developer.nvidia.com/cuda-downloads).
+- CMake (3.17 or later).
+- Install [nvJPEG2000](https://developer.nvidia.com/nvjpeg2000/downloads).
 
 
-## Build command on Linux
+## Build Instructions on Linux
 ```
 $ mkdir build
 $
 $ cd build 
 $
-$ export CUDACXX=nvcc
+$ export CUDACXX=/usr/local/cuda/bin/nvcc
 $
-$ cmake ..  -DCMAKE_BUILD_TYPE=Release -DNVJPEG2K_PATH= nvjpeg2k location
-#
+$ cmake ..  -DCMAKE_BUILD_TYPE=Release
+# Use -DNVJPEG2K_PATH, if nvJPEG2000 is not installed at the default location.
 # example  cmake .. -DCMAKE_BUILD_TYPE=Release -DNVJPEG2K_PATH=/opt/libnvjpeg_2k
 #
 $ make
@@ -72,7 +70,7 @@ Parameters:
 
 ```
 
-```
+
 Example:
 
 Sample example on GV100, Ubuntu 18.04, CUDA 11.2

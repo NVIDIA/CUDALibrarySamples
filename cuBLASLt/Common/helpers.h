@@ -34,6 +34,7 @@
 #include <functional>
 
 #include <cublasLt.h>
+#include <cuda_fp8.h>
 #include <cuda_runtime_api.h>
 
 inline void checkCudaStatus(cudaError_t status) {
@@ -54,9 +55,10 @@ template <typename InType, typename OutType = InType, typename ComputeType = Out
 struct TestBench {
     using SampleRunner = std::function<void()>;
 
-    TestBench(int m, int n, int k, ComputeType alpha = 0.0f, ComputeType beta = 0.0f, size_t workspaceSize = 1024 * 1024 * 4, int N = 1) :
+    TestBench(int m, int n, int k, ComputeType alpha = 0.0f, ComputeType beta = 0.0f, size_t workspaceSize = 1024 * 1024 * 4, int N = 1,
+            ComputeType Ascale = 2.0, ComputeType Bscale = 0.5, ComputeType Cscale = 1.0, ComputeType Dscale = 1.0) :
         m(m), n(n), k(k), N(N), alpha(alpha), beta(beta), workspaceSize(workspaceSize), Ahost(m * k * N), Bhost(n * k * N),
-        Chost(m * n * N), biasHost(m * N) {
+        Chost(m * n * N), biasHost(m * N), AscaleHost(Ascale), BscaleHost(Bscale), CscaleHost(Cscale), DscaleHost(Dscale) {
         checkCublasStatus(cublasLtCreate(&ltHandle));
         checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&Adev), m * k * N * sizeof(InType)));
         checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&Bdev), n * k * N  * sizeof(InType)));
@@ -64,6 +66,17 @@ struct TestBench {
         checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&biasDev), m * N * sizeof(OutType)));
         checkCudaStatus(cudaMalloc(&workspace, workspaceSize));
         checkCudaStatus(cudaStreamCreate(&stream));
+
+        // Currently only fp8 supports per-tensor scaling
+        perTensorScalingEnabled = std::is_same<InType, __nv_fp8_e4m3>::value || std::is_same<InType, __nv_fp8_e5m2>::value;
+
+        if (perTensorScalingEnabled) {
+            checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&AscaleDev), sizeof(*AscaleDev)));
+            checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&BscaleDev), sizeof(*BscaleDev)));
+            checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&CscaleDev), sizeof(*CscaleDev)));
+            checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&DscaleDev), sizeof(*DscaleDev)));
+            checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&DamaxDev), sizeof(*DamaxDev)));
+        }
 
         fillData();
     }
@@ -75,6 +88,13 @@ struct TestBench {
         checkCudaStatus(cudaFree(Cdev));
         checkCudaStatus(cudaFree(biasDev));
         checkCudaStatus(cudaFree(workspace));
+        if (perTensorScalingEnabled) {
+            checkCudaStatus(cudaFree(AscaleDev));
+            checkCudaStatus(cudaFree(BscaleDev));
+            checkCudaStatus(cudaFree(CscaleDev));
+            checkCudaStatus(cudaFree(DscaleDev));
+            checkCudaStatus(cudaFree(DamaxDev));
+        }
         checkCudaStatus(cudaStreamDestroy(stream));
     }
 
@@ -88,6 +108,13 @@ struct TestBench {
         checkCudaStatus(cudaMemcpyAsync(Adev, Ahost.data(), Ahost.size() * sizeof(Ahost[0]), cudaMemcpyHostToDevice, stream));
         checkCudaStatus(cudaMemcpyAsync(Bdev, Bhost.data(), Bhost.size() * sizeof(Bhost[0]), cudaMemcpyHostToDevice, stream));
         checkCudaStatus(cudaMemcpyAsync(biasDev, biasHost.data(), biasHost.size() * sizeof(biasHost[0]), cudaMemcpyHostToDevice));
+        if (perTensorScalingEnabled) {
+            checkCudaStatus(cudaMemcpyAsync(AscaleDev, &AscaleHost, sizeof(AscaleHost), cudaMemcpyHostToDevice));
+            checkCudaStatus(cudaMemcpyAsync(BscaleDev, &BscaleHost, sizeof(BscaleHost), cudaMemcpyHostToDevice));
+            checkCudaStatus(cudaMemcpyAsync(CscaleDev, &CscaleHost, sizeof(CscaleHost), cudaMemcpyHostToDevice));
+            checkCudaStatus(cudaMemcpyAsync(DscaleDev, &DscaleHost, sizeof(DscaleHost), cudaMemcpyHostToDevice));
+            checkCudaStatus(cudaMemcpyAsync(DamaxDev, &DamaxHost, sizeof(DamaxHost), cudaMemcpyHostToDevice));
+        }
     }
 
     void copyDataFromDevice() {
@@ -107,6 +134,7 @@ struct TestBench {
         streamSynchronize();
     }
 
+    bool perTensorScalingEnabled;
     int m, n, k, N;
     ComputeType alpha, beta;
     size_t workspaceSize;
@@ -117,6 +145,8 @@ struct TestBench {
     OutType *Cdev, *biasDev;
     cudaStream_t stream;
     cublasLtHandle_t ltHandle;
+    ComputeType AscaleHost, BscaleHost, CscaleHost, DscaleHost, DamaxHost;
+    ComputeType *AscaleDev, *BscaleDev, *CscaleDev, *DscaleDev, *DamaxDev;
 };
 
 template <>

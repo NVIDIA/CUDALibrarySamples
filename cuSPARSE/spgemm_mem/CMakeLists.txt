@@ -1,4 +1,4 @@
-# Copyright 1993-2021 NVIDIA Corporation.  All rights reserved.
+# Copyright 1993-2022 NVIDIA Corporation.  All rights reserved.
 #
 # NOTICE TO LICENSEE:
 #
@@ -46,62 +46,23 @@
 # Users Notice.
 cmake_minimum_required(VERSION 3.9)
 
-set(ROUTINE spmma)
+set(ROUTINE spgemm_mem)
 
 project("${ROUTINE}_example"
         DESCRIPTION  "GPU-Accelerated Sparse Linear Algebra"
         HOMEPAGE_URL "https://docs.nvidia.com/cuda/cusparse/index.html"
-        LANGUAGES    CXX CUDA)
-
-set(CMAKE_CXX_STANDARD           14)
-set(CMAKE_CXX_STANDARD_REQUIRED  ON)
-set(CMAKE_CXX_EXTENSIONS         OFF)
-set(CMAKE_CUDA_STANDARD          14)
-set(CMAKE_CUDA_STANDARD_REQUIRED ON)
-set(CMAKE_CUDA_EXTENSIONS        OFF)
-
-string(REPLACE "/bin/nvcc" "" CUDA_TOOLKIT_PATH ${CMAKE_CUDA_COMPILER})
-if (${CMAKE_HOST_SYSTEM_PROCESSOR} STREQUAL "aarch64" AND
-    ${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
-    set(OS_ARCH_NVRTC "sbsa-linux")
-elseif (${CMAKE_HOST_SYSTEM_PROCESSOR} STREQUAL "x86_64" AND
-        ${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
-    set(OS_ARCH_NVRTC "x86_64-linux")
-endif()
-set(NVRTC_SHARED ${CUDA_TOOLKIT_PATH}/targets/${OS_ARCH_NVRTC}/lib/libnvrtc.so)
+        LANGUAGES    C CUDA)
 
 add_executable(${ROUTINE}_example)
-add_executable(${ROUTINE}_example_static)
 
 target_sources(${ROUTINE}_example
-    PUBLIC ${PROJECT_SOURCE_DIR}/${ROUTINE}_example.cpp
-)
-
-target_sources(${ROUTINE}_example_static
-    PUBLIC ${PROJECT_SOURCE_DIR}/${ROUTINE}_example.cpp
+    PUBLIC ${PROJECT_SOURCE_DIR}/${ROUTINE}_example.c
 )
 
 target_include_directories(${ROUTINE}_example
-    PUBLIC ${CUDA_TOOLKIT_PATH}/include
-    PUBLIC ${CUSPARSELT_PATH}/include
-)
-
-target_include_directories(${ROUTINE}_example_static
-    PUBLIC ${CUDA_TOOLKIT_PATH}/include
-    PUBLIC ${CUSPARSELT_PATH}/include
+    PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
 )
 
 target_link_libraries(${ROUTINE}_example
-    PUBLIC cudart
-    PUBLIC cusparse
-    PUBLIC ${CUSPARSELT_PATH}/lib64/libcusparseLt.so
-    PUBLIC ${NVRTC_SHARED}
-)
-
-target_link_libraries(${ROUTINE}_example_static
-    PUBLIC cudart
-    PUBLIC cusparse
-    PUBLIC ${CUSPARSELT_PATH}/lib64/libcusparseLt_static.a
-    PUBLIC ${NVRTC_SHARED}
-    PUBLIC ${CMAKE_DL_LIBS}
+    PUBLIC cudart cusparse
 )

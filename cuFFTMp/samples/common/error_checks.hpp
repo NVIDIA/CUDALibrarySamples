@@ -22,7 +22,7 @@ inline void cufft_check(int code, const char *file, int line, bool abort=true)
 }
 
 template<typename T>
-double compute_error(const T& ref, const T& test, cufftBox3d box) {
+double compute_error(const T& ref, const T& test, Box3D box) {
     auto[begin, end] = BoxIterators(box, ref.data());
     double max_diff = 0;
     double max_norm = 0;

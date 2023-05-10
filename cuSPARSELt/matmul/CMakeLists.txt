@@ -1,4 +1,4 @@
-# Copyright 1993-2021 NVIDIA Corporation.  All rights reserved.
+# Copyright 1993-2023 NVIDIA Corporation.  All rights reserved.
 #
 # NOTICE TO LICENSEE:
 #
@@ -46,11 +46,11 @@
 # Users Notice.
 cmake_minimum_required(VERSION 3.9)
 
-set(ROUTINE spmma2)
+set(ROUTINE matmul)
 
 project("${ROUTINE}_example"
-        DESCRIPTION  "GPU-Accelerated Sparse Linear Algebra"
-        HOMEPAGE_URL "https://docs.nvidia.com/cuda/cusparse/index.html"
+        DESCRIPTION  "cuSPARSELt"
+        HOMEPAGE_URL "https://docs.nvidia.com/cuda/cusparselt/index.html"
         LANGUAGES    CXX CUDA)
 
 set(CMAKE_CXX_STANDARD           14)

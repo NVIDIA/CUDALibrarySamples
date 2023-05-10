@@ -123,7 +123,7 @@ int main(int argc, char** argv) {
     run_c2c_fwd_inv(nx, ny, nz, data.data(), rank, size, MPI_COMM_WORLD);
 
     // Compute error
-    double error = compute_error(ref, data, buildCufftBox3d(CUFFT_XT_FORMAT_INPLACE, CUFFT_C2C, rank, size, nx, ny, nz));
+    double error = compute_error(ref, data, buildBox3D(CUFFT_XT_FORMAT_INPLACE, CUFFT_C2C, rank, size, nx, ny, nz));
 
     MPI_Finalize();
 
