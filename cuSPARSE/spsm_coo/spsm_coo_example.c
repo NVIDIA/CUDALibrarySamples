@@ -84,7 +84,9 @@ int main(void) {
     float     hA_values[]   = { 1.0f, 2.0f, 3.0f, 4.0f, 5.0f,
                                 6.0f, 7.0f, 8.0f, 9.0f };
     float     hB[]            = { 1.0f, 8.0f, 23.0f, 52.0f,
-                                  1.0f, 8.0f, 23.0f, 52.0f };
+                                  1.0f, 8.0f, 23.0f, 52.0f }; 
+    // the correct hB[] should be { 19.0f, 8.0f, 51.0f, 52.0f, 19.0f, 8.0f, 51.0f, 52.0f }
+    // but can not pass the test, why????
     float     hC[]            = { 0.0f, 0.0f, 0.0f, 0.0f,
                                   0.0f, 0.0f, 0.0f, 0.0f };
     float     hY_result[]     = { 1.0f, 2.0f, 3.0f, 4.0f,
