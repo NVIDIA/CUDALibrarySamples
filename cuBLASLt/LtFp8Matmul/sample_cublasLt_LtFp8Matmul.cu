@@ -38,8 +38,6 @@
 /// attribute matmul is not using cublas handle's configuration of math mode, here tensor ops are implicitly allowed; to
 /// change this configure appropriate attribute in the preference handle
 void LtFp8Matmul(cublasLtHandle_t ltHandle,
-                 cublasOperation_t transa,
-                 cublasOperation_t transb,
                  int m,
                  int n,
                  int k,
@@ -50,9 +48,8 @@ void LtFp8Matmul(cublasLtHandle_t ltHandle,
                  const float *b_scale, /* device pointer */
                  const __nv_fp8_e4m3 *B,
                  int ldb,
-                 const float *beta, /* host pointer */
                  const float *c_scale, /* device pointer */
-                 __nv_fp8_e4m3 *C,
+                 __nv_fp8_e4m3 *D,
                  int ldc,
                  const float *d_scale, /* device pointer */
                  float *amax_d, /* device pointer */
@@ -61,6 +58,10 @@ void LtFp8Matmul(cublasLtHandle_t ltHandle,
     cublasLtMatmulDesc_t operationDesc = NULL;
     cublasLtMatrixLayout_t Adesc = NULL, Bdesc = NULL, Cdesc = NULL, Ddesc = NULL;
     cublasLtMatmulPreference_t preference = NULL;
+
+    cublasOperation_t transa = CUBLAS_OP_T;
+    cublasOperation_t transb = CUBLAS_OP_N;
+    float beta = 0.0; // Can be non-zero starting from 12.0
 
     int returnedResults                             = 0;
     cublasLtMatmulHeuristicResult_t heuristicResult = {};
@@ -79,6 +80,7 @@ void LtFp8Matmul(cublasLtHandle_t ltHandle,
     checkCublasStatus(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_AMAX_D_POINTER, &amax_d, sizeof(amax_d)));
 
     // create matrix descriptors, we are good with the details here so no need to set any extra attributes
+    // table of supported type combinations can be found in the documentation: https://docs.nvidia.com/cuda/cublas/index.html#cublasltmatmul
     checkCublasStatus(cublasLtMatrixLayoutCreate(&Adesc, CUDA_R_8F_E4M3, transa == CUBLAS_OP_N ? m : k, transa == CUBLAS_OP_N ? k : m, lda));
     checkCublasStatus(cublasLtMatrixLayoutCreate(&Bdesc, CUDA_R_8F_E4M3, transb == CUBLAS_OP_N ? k : n, transb == CUBLAS_OP_N ? n : k, ldb));
     checkCublasStatus(cublasLtMatrixLayoutCreate(&Cdesc, CUDA_R_16BF, m, n, ldc));
@@ -105,11 +107,11 @@ void LtFp8Matmul(cublasLtHandle_t ltHandle,
                                      Adesc,
                                      B,
                                      Bdesc,
-                                     beta,
-                                     C,
+                                     &beta,
+                                     nullptr,
                                      Cdesc,
-                                     C,
-                                     Cdesc,
+                                     D,
+                                     Ddesc,
                                      &heuristicResult.algo,
                                      workspace,
                                      workspaceSize,
@@ -117,6 +119,7 @@ void LtFp8Matmul(cublasLtHandle_t ltHandle,
 
     // descriptors are no longer needed as all GPU work was already enqueued
     if (preference) checkCublasStatus(cublasLtMatmulPreferenceDestroy(preference));
+    if (Ddesc) checkCublasStatus(cublasLtMatrixLayoutDestroy(Ddesc));
     if (Cdesc) checkCublasStatus(cublasLtMatrixLayoutDestroy(Cdesc));
     if (Bdesc) checkCublasStatus(cublasLtMatrixLayoutDestroy(Bdesc));
     if (Adesc) checkCublasStatus(cublasLtMatrixLayoutDestroy(Adesc));
