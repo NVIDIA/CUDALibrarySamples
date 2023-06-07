@@ -153,9 +153,9 @@ int main(int argc, char *argv[]) {
                                cudaMemcpyHostToDevice, stream));
 
     /* step 3: compute */
-    CUBLAS_CHECK(cublasGemmBatchedEx(cublasH, transa, transb, m, n, k, &alpha, d_A_array,
-                                     traits<data_type>::cuda_data_type, lda, d_B_array,
-                                     traits<data_type>::cuda_data_type, ldb, &beta, d_C_array,
+    CUBLAS_CHECK(cublasGemmBatchedEx(cublasH, transa, transb, m, n, k, &alpha, (const void**)d_A_array,
+                                     traits<data_type>::cuda_data_type, lda, (const void**)d_B_array,
+                                     traits<data_type>::cuda_data_type, ldb, &beta, (void**)d_C_array,
                                      traits<data_type>::cuda_data_type, ldc, batch_count,
                                      compute_type, CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 
