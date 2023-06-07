@@ -6,7 +6,7 @@ This code demonstrates a usage of cuBLAS `scal` function to compute the product 
 
 ```
 A = | 1.0 | 2.0 | 3.0 | 4.0 |
-```
+``` 
 
 This function scales the vector _x_ by the scalar α and overwrites it with the result
 
@@ -14,21 +14,21 @@ See documentation for further details.
 
 ## Supported SM Architectures
 
-All GPUs supported by CUDA Toolkit (https://developer.nvidia.com/cuda-gpus)
+All GPUs supported by CUDA Toolkit (https://developer.nvidia.com/cuda-gpus)  
 
 ## Supported OSes
 
-Linux
+Linux  
 Windows
 
 ## Supported CPU Architecture
 
-x86_64
-ppc64le
+x86_64  
+ppc64le  
 arm64-sbsa
 
 ## CUDA APIs involved
-- [cublas\<t>scal API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-t-scal)
+- [cublas\<t>scal API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-scal)
 
 # Building (make)
 

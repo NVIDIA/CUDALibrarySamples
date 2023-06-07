@@ -12,21 +12,21 @@ See documentation for further details.
 
 ## Supported SM Architectures
 
-All GPUs supported by CUDA Toolkit (https://developer.nvidia.com/cuda-gpus)
+All GPUs supported by CUDA Toolkit (https://developer.nvidia.com/cuda-gpus)  
 
 ## Supported OSes
 
-Linux
+Linux  
 Windows
 
 ## Supported CPU Architecture
 
-x86_64
-ppc64le
+x86_64  
+ppc64le  
 arm64-sbsa
 
 ## CUDA APIs involved
-- [cublas\<t>amin API](https://docs.nvidia.com/cuda/cublas/index.html#cublasi-t-amin)
+- [cublas\<t>amin API](https://docs.nvidia.com/cuda/cublas/index.html#cublasi-lt-t-gt-amin)
 
 # Building (make)
 
@@ -60,7 +60,7 @@ Sample example output:
 
 ```
 A
-1.00 2.00 3.00 4.00
+1.00 2.00 3.00 4.00 
 =====
 result
 1

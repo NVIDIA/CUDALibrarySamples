@@ -6,27 +6,27 @@ This code demonstrates a usage of cuBLAS `nrm2` function to compute the Euclidea
 
 ```
 A = | 1.0 | 2.0 | 3.0 | 4.0 |
-```
+``` 
 
 See documentation for further details.
 
 ## Supported SM Architectures
 
-All GPUs supported by CUDA Toolkit (https://developer.nvidia.com/cuda-gpus)
+All GPUs supported by CUDA Toolkit (https://developer.nvidia.com/cuda-gpus)  
 
 ## Supported OSes
 
-Linux
+Linux  
 Windows
 
 ## Supported CPU Architecture
 
-x86_64
-ppc64le
+x86_64  
+ppc64le  
 arm64-sbsa
 
 ## CUDA APIs involved
-- [cublas\<t>nrm2 API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-t-nrm2)
+- [cublas\<t>nrm2 API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-nrm2)
 
 # Building (make)
 

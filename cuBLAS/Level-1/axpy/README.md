@@ -15,21 +15,21 @@ See documentation for further details.
 
 ## Supported SM Architectures
 
-All GPUs supported by CUDA Toolkit (https://developer.nvidia.com/cuda-gpus)
+All GPUs supported by CUDA Toolkit (https://developer.nvidia.com/cuda-gpus)  
 
 ## Supported OSes
 
-Linux
+Linux  
 Windows
 
 ## Supported CPU Architecture
 
-x86_64
-ppc64le
+x86_64  
+ppc64le  
 arm64-sbsa
 
 ## CUDA APIs involved
-- [cublas\<t>axpy API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-t-axpy)
+- [cublas\<t>axpy API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-axpy)
 
 # Building (make)
 
