@@ -1,8 +1,8 @@
-# cuBLAS Extension APIs - `cublas<t>dgmm`
+# cuBLAS Extension APIs - `cublas<t>geam`
 
 ## Description
 
-This code demonstrates a usage of cuBLAS `dgmm` function to matrix-matrix multiplication
+This code demonstrates a usage of cuBLAS `geam` function to matrix-matrix addition
 
 ```
 A = | 1.0 | 2.0 |
@@ -30,7 +30,7 @@ ppc64le
 arm64-sbsa
 
 ## CUDA APIs involved
-- [cublas\<t>dgmm() API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-dgmm)
+- [cublas\<t>geam() API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-t-geam)
 
 # Building (make)
 
@@ -57,7 +57,7 @@ $ Open cublas_examples.sln project in Visual Studio and build
 
 # Usage
 ```
-$  ./cublas_dgmm_example
+$  ./cublas_geam_example
 ```
 
 Sample example output:
