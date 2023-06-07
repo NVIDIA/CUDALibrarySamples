@@ -13,21 +13,21 @@ See documentation for further details.
 
 ## Supported SM Architectures
 
-All GPUs supported by CUDA Toolkit (https://developer.nvidia.com/cuda-gpus)  
+All GPUs supported by CUDA Toolkit (https://developer.nvidia.com/cuda-gpus)
 
 ## Supported OSes
 
-Linux  
+Linux
 Windows
 
 ## Supported CPU Architecture
 
-x86_64  
-ppc64le  
+x86_64
+ppc64le
 arm64-sbsa
 
 ## CUDA APIs involved
-- [cublas\<t>rotmg API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-rotmg)
+- [cublas\<t>rotmg API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-t-rotmg)
 
 # Building (make)
 
@@ -73,7 +73,7 @@ Y
 1.20
 =====
 param
-1.00 5.00 6.00 7.00 8.00 
+1.00 5.00 6.00 7.00 8.00
 =====
 A
 3.10

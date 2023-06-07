@@ -14,21 +14,21 @@ See documentation for further details.
 
 ## Supported SM Architectures
 
-All GPUs supported by CUDA Toolkit (https://developer.nvidia.com/cuda-gpus)  
+All GPUs supported by CUDA Toolkit (https://developer.nvidia.com/cuda-gpus)
 
 ## Supported OSes
 
-Linux  
+Linux
 Windows
 
 ## Supported CPU Architecture
 
-x86_64  
-ppc64le  
+x86_64
+ppc64le
 arm64-sbsa
 
 ## CUDA APIs involved
-- [cublas\<t>swap API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-swap)
+- [cublas\<t>swap API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-t-swap)
 
 # Building (make)
 
@@ -62,15 +62,15 @@ Sample example output:
 
 ```
 A
-1.00 2.00 3.00 4.00 
+1.00 2.00 3.00 4.00
 =====
 B
-5.00 6.00 7.00 8.00 
+5.00 6.00 7.00 8.00
 =====
 A
-5.00 6.00 7.00 8.00 
+5.00 6.00 7.00 8.00
 =====
 B
-1.00 2.00 3.00 4.00 
+1.00 2.00 3.00 4.00
 =====
 ```
