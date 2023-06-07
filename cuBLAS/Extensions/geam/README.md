@@ -1,8 +1,8 @@
-# cuBLAS Extension APIs - `cublas<t>dgmm`
+# cuBLAS Extension APIs - `cublas<t>dgeam`
 
 ## Description
 
-This code demonstrates a usage of cuBLAS `dgmm` function to matrix-matrix multiplication
+This code demonstrates a usage of cuBLAS `dgeam` function for matrix-matrix addition
 
 ```
 A = | 1.0 | 2.0 |
@@ -16,21 +16,21 @@ See documentation for further details.
 
 ## Supported SM Architectures
 
-All GPUs supported by CUDA Toolkit (https://developer.nvidia.com/cuda-gpus)  
+All GPUs supported by CUDA Toolkit (https://developer.nvidia.com/cuda-gpus)
 
 ## Supported OSes
 
-Linux  
+Linux
 Windows
 
 ## Supported CPU Architecture
 
-x86_64  
-ppc64le  
+x86_64
+ppc64le
 arm64-sbsa
 
 ## CUDA APIs involved
-- [cublas\<t>dgmm() API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-dgmm)
+- [cublas\<t>dgeam() API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-t-geam)
 
 # Building (make)
 
@@ -64,15 +64,15 @@ Sample example output:
 
 ```
 A
-1.00 2.00 
-3.00 4.00 
+1.00 2.00
+3.00 4.00
 =====
 B
-5.00 6.00 
-7.00 8.00 
+5.00 6.00
+7.00 8.00
 =====
 C
-11.00 14.00 
-17.00 20.00 
+11.00 14.00
+17.00 20.00
 =====
 ```
