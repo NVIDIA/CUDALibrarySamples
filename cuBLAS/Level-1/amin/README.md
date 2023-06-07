@@ -26,7 +26,7 @@ ppc64le
 arm64-sbsa
 
 ## CUDA APIs involved
-- [cublas\<t>amin API](https://docs.nvidia.com/cuda/cublas/index.html#cublasi-lt-t-gt-amin)
+- [cublas\<t>amin API](https://docs.nvidia.com/cuda/cublas/index.html#cublasi-t-amin)
 
 # Building (make)
 

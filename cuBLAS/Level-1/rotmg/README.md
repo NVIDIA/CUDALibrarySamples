@@ -27,7 +27,7 @@ ppc64le
 arm64-sbsa
 
 ## CUDA APIs involved
-- [cublas\<t>rotmg API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-rotmg)
+- [cublas\<t>rotmg API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-t-rotmg)
 
 # Building (make)
 

@@ -29,7 +29,7 @@ ppc64le
 arm64-sbsa
 
 ## CUDA APIs involved
-- [cublas\<t>gbmv API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-gbmv)
+- [cublas\<t>gbmv API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-t-gbmv)
 
 # Building (make)
 

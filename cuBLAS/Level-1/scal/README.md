@@ -28,7 +28,7 @@ ppc64le
 arm64-sbsa
 
 ## CUDA APIs involved
-- [cublas\<t>scal API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-scal)
+- [cublas\<t>scal API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-t-scal)
 
 # Building (make)
 
