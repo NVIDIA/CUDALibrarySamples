@@ -49,10 +49,12 @@
 
 #pragma once
 
+#include <stdbool.h>
+#include <string.h>
 #include <mpi.h>
 #include <cal.h>
 
-struct Options
+typedef struct _Options
 {
     // problem properties
     int m;
@@ -64,194 +66,250 @@ struct Options
     int nbB;
     int mbQ;
     int nbQ;
+    int mbZ;
+    int nbZ;
     int ia;
     int ja;
     int ib;
     int jb;
     int iq;
     int jq;
+    int iz;
+    int jz;
 
     // grid
-    int p;
-    int q;
+    int  p;
+    int  q;
+    char grid_layout;
 
     // others
     bool verbose;
+} Options;
 
-    void printHelp() const
+void printHelp(const Options* opts)
+{
+    printf("Available options:\n"
+           "    -m\n"
+           "    -n\n"
+           "    -nrhs\n"
+           "    -mbA\n"
+           "    -nbA\n"
+           "    -mbB\n"
+           "    -nbB\n"
+           "    -mbQ\n"
+           "    -nbQ\n"
+           "    -mbZ\n"
+           "    -nbZ\n"
+           "    -ia\n"
+           "    -ja\n"
+           "    -ib\n"
+           "    -jb\n"
+           "    -iq\n"
+           "    -jq\n"
+           "    -iz\n"
+           "    -jz\n"
+           "    -p\n"
+           "    -q\n"
+           "    -grid_layout\n"
+           "    -verbose\n");
+}
+
+void print(const Options* opts)
+{
+    printf("Parameters: "
+           "m=%d n=%d nrhs=%d "
+           "mbA=%d nbA=%d mbB=%d nbB=%d mbQ=%d nbQ=%d mbZ=%d nbZ=%d"
+           "ia=%d ja=%d ib=%d jb=%d iq=%d jq=%d iz=%d jz=%d p=%d q=%d grid_layout=%c verbose=%d\n",
+           opts->m,
+           opts->n,
+           opts->nrhs,
+           opts->mbA,
+           opts->nbA,
+           opts->mbB,
+           opts->nbB,
+           opts->mbQ,
+           opts->nbQ,
+           opts->mbZ,
+           opts->nbZ,
+           opts->ia,
+           opts->ja,
+           opts->ib,
+           opts->jb,
+           opts->iq,
+           opts->jq,
+           opts->iz,
+           opts->jz,
+           opts->p,
+           opts->q,
+           opts->grid_layout,
+           opts->verbose);
+}
+
+void parse(Options* opts, int argc, char** argv)
+{
+    for (int i = 1; i < argc; i++)
     {
-        printf("Available options:\n"
-            "    -m\n"
-            "    -n\n"
-            "    -nrhs\n"
-            "    -mbA\n"
-            "    -nbA\n"
-            "    -mbB\n"
-            "    -nbB\n"
-            "    -mbQ\n"
-            "    -nbQ\n"
-            "    -ia\n"
-            "    -ja\n"
-            "    -ib\n"
-            "    -jb\n"
-            "    -iq\n"
-            "    -jq\n"
-            "    -p\n"
-            "    -q\n"
-        );
+        if (strcmp(argv[i], "-m") == 0)
+        {
+            opts->m = atoi(argv[++i]);
+        }
+        else if (strcmp(argv[i], "-n") == 0)
+        {
+            opts->n = atoi(argv[++i]);
+        }
+        else if (strcmp(argv[i], "-nrhs") == 0)
+        {
+            opts->nrhs = atoi(argv[++i]);
+        }
+        else if (strcmp(argv[i], "-mbA") == 0)
+        {
+            opts->mbA = atoi(argv[++i]);
+        }
+        else if (strcmp(argv[i], "-nbA") == 0)
+        {
+            opts->nbA = atoi(argv[++i]);
+        }
+        else if (strcmp(argv[i], "-mbB") == 0)
+        {
+            opts->mbB = atoi(argv[++i]);
+        }
+        else if (strcmp(argv[i], "-nbB") == 0)
+        {
+            opts->nbB = atoi(argv[++i]);
+        }
+        else if (strcmp(argv[i], "-mbQ") == 0)
+        {
+            opts->mbQ = atoi(argv[++i]);
+        }
+        else if (strcmp(argv[i], "-nbQ") == 0)
+        {
+            opts->nbQ = atoi(argv[++i]);
+        }
+        else if (strcmp(argv[i], "-mbZ") == 0)
+        {
+            opts->mbZ = atoi(argv[++i]);
+        }
+        else if (strcmp(argv[i], "-nbZ") == 0)
+        {
+            opts->nbZ = atoi(argv[++i]);
+        }
+        else if (strcmp(argv[i], "-ia") == 0)
+        {
+            opts->ia = atoi(argv[++i]);
+        }
+        else if (strcmp(argv[i], "-ja") == 0)
+        {
+            opts->ja = atoi(argv[++i]);
+        }
+        else if (strcmp(argv[i], "-ib") == 0)
+        {
+            opts->ib = atoi(argv[++i]);
+        }
+        else if (strcmp(argv[i], "-jb") == 0)
+        {
+            opts->jb = atoi(argv[++i]);
+        }
+        else if (strcmp(argv[i], "-iq") == 0)
+        {
+            opts->iq = atoi(argv[++i]);
+        }
+        else if (strcmp(argv[i], "-jq") == 0)
+        {
+            opts->jq = atoi(argv[++i]);
+        }
+        else if (strcmp(argv[i], "-iz") == 0)
+        {
+            opts->iz = atoi(argv[++i]);
+        }
+        else if (strcmp(argv[i], "-jz") == 0)
+        {
+            opts->jz = atoi(argv[++i]);
+        }
+        else if (strcmp(argv[i], "-p") == 0)
+        {
+            opts->p = atoi(argv[++i]);
+        }
+        else if (strcmp(argv[i], "-q") == 0)
+        {
+            opts->q = atoi(argv[++i]);
+        }
+        else if (strcmp(argv[i], "-grid_layout") == 0)
+        {
+            const char* grid_layout = argv[++i];
+            opts->grid_layout       = (grid_layout[0] == 'r' || grid_layout[0] == 'R' ? 'R' : 'C');
+        }
+        else if (strcmp(argv[i], "-verbose") == 0)
+        {
+            opts->verbose = atoi(argv[++i]);
+        }
+        else if (strcmp(argv[i], "-help") == 0)
+        {
+            printHelp(opts);
+            exit(0);
+        }
+        else
+        {
+            printf("unknown option: %s\n", argv[i]);
+            printHelp(opts);
+            exit(1);
+        }
+    }
+}
+
+void validate(const Options* opts)
+{
+    if (opts->ia && opts->mbA && (opts->ia - 1) % opts->mbA != 0)
+    {
+        fprintf(stderr, "Error: IA must be a multiple of mbA\n");
+        exit(1);
     }
 
-    void print() const
+    if (opts->ja && opts->nbA && (opts->ja - 1) % opts->nbA != 0)
     {
-        printf("Parameters: m=%d n=%d nrhs=%d mbA=%d nbA=%d mbB=%d nbB=%d mbQ=%d nbQ=%d ia=%d ja=%d ib=%d jb=%d iq=%d jq=%d p=%d q=%d\n",
-            m,
-            n,
-            nrhs,
-            mbA,
-            nbA,
-            mbB,
-            nbB,
-            mbQ,
-            nbQ,
-            ia,
-            ja,
-            ib,
-            jb,
-            iq,
-            jq,
-            p,
-            q);
+        fprintf(stderr, "Error: JA must be a multiple of nbA\n");
+        exit(1);
     }
 
-    void parse(int argc, char** argv)
+    if (opts->ib && opts->mbB && (opts->ib - 1) % opts->mbB != 0)
     {
-        for (int i = 1; i < argc; i++)
-        {
-            if (strcmp(argv[i], "-m") == 0)
-            {
-                m = atoi(argv[++i]);
-            }
-            else if (strcmp(argv[i], "-n") == 0)
-            {
-                n = atoi(argv[++i]);
-            }
-            else if (strcmp(argv[i], "-nrhs") == 0)
-            {
-                nrhs = atoi(argv[++i]);
-            }
-            else if (strcmp(argv[i], "-mbA") == 0)
-            {
-                mbA = atoi(argv[++i]);
-            }
-            else if (strcmp(argv[i], "-nbA") == 0)
-            {
-                nbA = atoi(argv[++i]);
-            }
-            else if (strcmp(argv[i], "-mbB") == 0)
-            {
-                mbB = atoi(argv[++i]);
-            }
-            else if (strcmp(argv[i], "-nbB") == 0)
-            {
-                nbB = atoi(argv[++i]);
-            }
-            else if (strcmp(argv[i], "-mbQ") == 0)
-            {
-                mbQ = atoi(argv[++i]);
-            }
-            else if (strcmp(argv[i], "-nbQ") == 0)
-            {
-                nbQ = atoi(argv[++i]);
-            }
-            else if (strcmp(argv[i], "-ia") == 0)
-            {
-                ia = atoi(argv[++i]);
-            }
-            else if (strcmp(argv[i], "-ja") == 0)
-            {
-                ja = atoi(argv[++i]);
-            }
-            else if (strcmp(argv[i], "-ib") == 0)
-            {
-                ib = atoi(argv[++i]);
-            }
-            else if (strcmp(argv[i], "-jb") == 0)
-            {
-                jb = atoi(argv[++i]);
-            }
-            else if (strcmp(argv[i], "-iq") == 0)
-            {
-                iq = atoi(argv[++i]);
-            }
-            else if (strcmp(argv[i], "-jq") == 0)
-            {
-                jq = atoi(argv[++i]);
-            }
-            else if (strcmp(argv[i], "-p") == 0)
-            {
-                p = atoi(argv[++i]);
-            }
-            else if (strcmp(argv[i], "-q") == 0)
-            {
-                q = atoi(argv[++i]);
-            }
-            else if (strcmp(argv[i], "-help") == 0)
-            {
-                printHelp();
-                exit(0);
-            }
-            else
-            {
-                printf("unknown option: %s\n", argv[i]);
-                printHelp();
-                exit(1);
-            }
-        }
+        fprintf(stderr, "Error: IB must be a multiple of mbB\n");
+        exit(1);
     }
 
-    void validate()
+    if (opts->jb && opts->nbB && (opts->jb - 1) % opts->nbB != 0)
     {
-        if (ia && mbA && (ia - 1) % mbA != 0)
-        {
-            fprintf(stderr, "Error: IA must be a multiple of mbA\n");
-            exit(1);
-        }
-
-        if (ja && nbA && (ja - 1) % nbA != 0)
-        {
-            fprintf(stderr, "Error: JA must be a multiple of nbA\n");
-            exit(1);
-        }
-
-        if (ib && mbB && (ib - 1) % mbB != 0)
-        {
-            fprintf(stderr, "Error: IB must be a multiple of mbB\n");
-            exit(1);
-        }
-
-        if (jb && nbB && (jb - 1) % nbB != 0)
-        {
-            fprintf(stderr, "Error: JB must be a multiple of nbB\n");
-            exit(1);
-        }
-
-        if (iq && mbQ && (iq - 1) % mbQ != 0)
-        {
-            fprintf(stderr, "Error: IQ must be a multiple of mbQ\n");
-            exit(1);
-        }
-
-        if (jq && nbQ && (jq - 1) % nbQ != 0)
-        {
-            fprintf(stderr, "Error: JQ must be a multiple of nbQ\n");
-            exit(1);
-        }
+        fprintf(stderr, "Error: JB must be a multiple of nbB\n");
+        exit(1);
     }
-};
+
+    if (opts->iq && opts->mbQ && (opts->iq - 1) % opts->mbQ != 0)
+    {
+        fprintf(stderr, "Error: IQ must be a multiple of mbQ\n");
+        exit(1);
+    }
+
+    if (opts->jq && opts->nbQ && (opts->jq - 1) % opts->nbQ != 0)
+    {
+        fprintf(stderr, "Error: JQ must be a multiple of nbQ\n");
+        exit(1);
+    }
+
+    if (opts->iz && opts->mbZ && (opts->iz - 1) % opts->mbZ != 0)
+    {
+        fprintf(stderr, "Error: IZ must be a multiple of mbZ\n");
+        exit(1);
+    }
+
+    if (opts->jz && opts->nbZ && (opts->jz - 1) % opts->nbZ != 0)
+    {
+        fprintf(stderr, "Error: JZ must be a multiple of nbZ\n");
+        exit(1);
+    }
+}
 
 static inline int getLocalRank()
 {
-    int localRank;
+    int      localRank;
     MPI_Comm localComm;
 
     MPI_Comm_split_type(MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &localComm);
@@ -261,23 +319,23 @@ static inline int getLocalRank()
     return localRank;
 }
 
-static calError_t allgather(void *src_buf, void *recv_buf, size_t size, void *data,  void **request)
+static calError_t allgather(void* src_buf, void* recv_buf, size_t size, void* data, void** request)
 {
     MPI_Request req;
-    int err = MPI_Iallgather(src_buf, size, MPI_BYTE, recv_buf, size, MPI_BYTE, reinterpret_cast<MPI_Comm>(data), &req);
+    int         err = MPI_Iallgather(src_buf, size, MPI_BYTE, recv_buf, size, MPI_BYTE, (MPI_Comm)(data), &req);
     if (err != MPI_SUCCESS)
     {
         return CAL_ERROR;
     }
-    *request = reinterpret_cast<void*>(req);
+    *request = (void*)(req);
     return CAL_OK;
 }
 
-static calError_t request_test(void *request)
+static calError_t request_test(void* request)
 {
-    MPI_Request req = reinterpret_cast<MPI_Request>(request);
+    MPI_Request req = (MPI_Request)(request);
     int         completed;
-    int err = MPI_Test(&req, &completed, MPI_STATUS_IGNORE);
+    int         err = MPI_Test(&req, &completed, MPI_STATUS_IGNORE);
     if (err != MPI_SUCCESS)
     {
         return CAL_ERROR;
@@ -285,7 +343,7 @@ static calError_t request_test(void *request)
     return completed ? CAL_OK : CAL_ERROR_INPROGRESS;
 }
 
-static calError_t request_free(void *request)
+static calError_t request_free(void* request)
 {
     return CAL_OK;
 }
