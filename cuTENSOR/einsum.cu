@@ -416,7 +416,7 @@ void einsum(cutensorHandle_t *handle,
 int main()
 {
     cutensorHandle_t handle;
-    cutensorInit(&handle);
+    cutensorCreate(&handle);
 
     /**********************
      * Setup planCache (optional)

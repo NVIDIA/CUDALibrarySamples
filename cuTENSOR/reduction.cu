@@ -161,7 +161,7 @@ int main()
      *************************/ 
 
     cutensorHandle_t handle;
-    HANDLE_ERROR(cutensorInit(&handle));
+    HANDLE_ERROR(cutensorCreate(&handle));
 
     /**********************
      * Create Tensor Descriptors
