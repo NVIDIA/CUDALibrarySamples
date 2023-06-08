@@ -47,49 +47,61 @@
 # Users Notice.
 # 
 
-# --------------------------------------------
-#     Defines, includes and libraries
-# --------------------------------------------
+cmake_minimum_required(VERSION 3.16)
 
-# cusolverMp depends on HPC-X inside HPC SDK distribution, so it's required to 
-# initialize HPC-X using one of the initialization scripts 
-# (i.e. $HPCSDKROOT/comm_libs/hpcx/latest/hpcx-init-ompi.sh)
-# and load HPC-X environment with `hpcx_load` function
-# This will make `mpicc` command available which will provide required MPI compile 
-# and link flags for compiler
-COMPILER?=nvc -cuda -gpu cuda11.8
+project(cusolvermp_samples LANGUAGES C CUDA)
 
-# Includes and linker flags
-LIBS = -cudalib=cublas,cusolver,nccl,cusolvermp
+find_package(MPI REQUIRED)
 
-# --------------------------------------------
-#     Define targets
-# --------------------------------------------
+set(CMAKE_CUDA_STANDARD 11)
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+set(CUDA_RUNTIME_LIBRARY shared)
 
-all: mp_getrf_getrs mp_potrf_potrs mp_geqrf mp_syevd mp_sygvd mp_gels
+if (CAL_MPI_INCLUDE_PATH AND CAL_MPI_LIBRARIES)
+    add_definitions(-DUSE_CAL_MPI)
+endif ()
 
-clean:
-	rm -f mp_getrf_getrs mp_potrf_potrs mp_geqrf mp_syevd mp_sygvd mp_gels
+function(build_sample sample_name)
+    add_executable(${sample_name} ${sample_name}.c)
 
-# --------------------------------------------
-#     Build commands
-# --------------------------------------------
-mp_getrf_getrs: mp_getrf_getrs.c
-	$(COMPILER) $(INCS) `mpicc --showme:compile` $+ -o $@ $(LIBS) `mpicc --showme:link`
+    target_include_directories(${sample_name} PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
+        ${MPI_C_INCLUDE_DIRS}
+        ${CAL_INCLUDE_DIRECTORIES}
+        ${CUSOLVERMP_INCLUDE_DIRECTORIES}
+        ${CAL_MPI_INCLUDE_PATH}
+    )
 
-mp_potrf_potrs: mp_potrf_potrs.c
-	$(COMPILER) $(INCS) `mpicc --showme:compile` $+ -o $@ $(LIBS) `mpicc --showme:link`
+    target_link_directories(${sample_name} PUBLIC
+        ${CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES}
+        ${CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES}/stubs
+        ${CAL_LINK_DIRECTORIES}
+        ${CUSOLVERMP_LINK_DIRECTORIES}
+    )
 
-mp_geqrf: mp_geqrf.c
-	$(COMPILER) $(INCS) `mpicc --showme:compile` $+ -o $@ $(LIBS) `mpicc --showme:link`
+    target_link_libraries(${sample_name} PUBLIC
+        ${MPI_C_LIBRARIES}
+        cal
+        cudart
+        cublas
+        cublasLt
+        cusolver
+        cusolverMp
+        cuda
+        nvidia-ml
+        m
+        ${CAL_MPI_LIBRARIES}
+    )
 
-mp_syevd: mp_syevd.c
-	$(COMPILER) $(INCS) `mpicc --showme:compile` $+ -o $@ $(LIBS) `mpicc --showme:link`
+    install(TARGETS ${sample_name}
+        DESTINATION "bin/"
+    )
+endfunction(build_sample)
 
-mp_sygvd: mp_sygvd.c
-	$(COMPILER) $(INCS) `mpicc --showme:compile` $+ -o $@ $(LIBS) `mpicc --showme:link`
-
-mp_gels: mp_gels.c
-	$(COMPILER) $(INCS) `mpicc --showme:compile` $+ -o $@ $(LIBS) `mpicc --showme:link`
-
-.PHONY: all clean
+build_sample("mp_getrf_getrs")
+build_sample("mp_potrf_potrs")
+build_sample("mp_geqrf")
+build_sample("mp_syevd")
+build_sample("mp_sygvd")
+build_sample("mp_gels")

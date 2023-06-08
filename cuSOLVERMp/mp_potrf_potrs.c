@@ -52,9 +52,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <time.h>
-
-#include <cmath>
-#include <vector>
+#include <math.h>
 
 #include <omp.h>
 #include <mpi.h>
@@ -63,71 +61,63 @@
 
 #include "helpers.h"
 
+#ifdef USE_CAL_MPI
+    #include <cal_mpi.h>
+#endif
+
 /* compute |x|_inf */
-static double normI(
-    int64_t m,
-    int64_t n,
-    int64_t lda,
-    const double *A)
+static double normI(int64_t m, int64_t n, int64_t lda, const double* A)
 {
     double max_nrm = 0;
 
-    for(auto col = 0; col < n ; col++)
+    for (int64_t col = 0; col < n; col++)
     {
         double err = 0;
-        for(auto row = 0; row < m ; row++)
+        for (int64_t row = 0; row < m; row++)
         {
-            err += std::fabs(A[row + col * lda]);
+            err += fabs(A[row + col * lda]);
         }
 
-        max_nrm = std::fmax(max_nrm, err);
+        max_nrm = fmax(max_nrm, err);
     }
 
     return max_nrm;
 };
 
 /* A is 1D laplacian, return A[n:-1:1, :] */
-static void generate_diagonal_dominant_symmetric_matrix(
-    int64_t n,
-    double *A,
-    int64_t lda)
+static void generate_diagonal_dominant_symmetric_matrix(int64_t n, double* A, int64_t lda)
 {
     time(NULL);
 
     /* set A[0:n, 0:n] = 0 */
-    for(auto j = 0; j < n; j++)
+    for (int64_t j = 0; j < n; j++)
     {
         double sum = 0;
-        for(auto i = 0; i < n; i++)
+        for (int64_t i = 0; i < n; i++)
         {
             if (i < j)
             {
-                A[ i + j * lda ] = A[ j + i * lda ];
+                A[i + j * lda] = A[j + i * lda];
             }
             else
             {
-                A[ i + j * lda ] = double(rand()) / RAND_MAX;
-                sum += A[ i + j * lda ];
+                A[i + j * lda] = (double)(rand()) / RAND_MAX;
+                sum += A[i + j * lda];
             }
         }
 
-        A[ j + j * lda ] = 2 * sum;
+        A[j + j * lda] = 2 * sum;
     }
 }
 
 /* Print matrix */
-static void print_host_matrix (
-    int64_t m,
-    int64_t n,
-    double *A,
-    int64_t lda,
-    const char *msg)
+static void print_host_matrix(int64_t m, int64_t n, double* A, int64_t lda, const char* msg)
 {
     printf("print_host_matrix : %s\n", msg);
 
-    for(auto i = 0; i < m; i++)
+    for (int64_t i = 0; i < m; i++)
     {
-        for(auto j = 0; j < n; j++)
+        for (int64_t j = 0; j < n; j++)
         {
             printf("%.2lf  ", A[i + j * lda]);
         }
@@ -135,39 +125,36 @@ static void print_host_matrix (
     }
 }
 
-int main (int argc, char *argv[])
+int main(int argc, char* argv[])
 {
-    Options opts
-    {
-        .m = 1,
-        .n = 10,
-        .nrhs = 1,
-        .mbA = 2,
-        .nbA = 2,
-        .mbB = 2,
-        .nbB = 2,
-        .mbQ = 2,
-        .nbQ = 2,
-        .ia = 3,
-        .ja = 3,
-        .ib = 3,
-        .jb = 1,
-        .iq = 1,
-        .jq = 1,
-        .p = 2,
-        .q = 1,
-        .verbose = false
-    };
+    Options opts = { .m       = 1,
+                     .n       = 10,
+                     .nrhs    = 1,
+                     .mbA     = 2,
+                     .nbA     = 2,
+                     .mbB     = 2,
+                     .nbB     = 2,
+                     .mbQ     = 2,
+                     .nbQ     = 2,
+                     .ia      = 3,
+                     .ja      = 3,
+                     .ib      = 3,
+                     .jb      = 1,
+                     .iq      = 1,
+                     .jq      = 1,
+                     .p       = 2,
+                     .q       = 1,
+                     .verbose = false };
 
-    opts.parse(argc, argv);
-    opts.validate();
-    opts.print();
+    parse(&opts, argc, argv);
+    validate(&opts);
+    print(&opts);
 
     /* Initialize MPI  library */
     MPI_Init(NULL, NULL);
 
     /* Define dimensions, block sizes and offsets of A and B matrices */
-    const int64_t n = opts.n;
+    const int64_t n    = opts.n;
     const int64_t nrhs = opts.nrhs;
 
     /* Offsets of A and B matrices (base-1) */
@@ -197,73 +184,74 @@ int main (int argc, char *argv[])
     MPI_Comm_size(MPI_COMM_WORLD, &mpiCommSize);
     MPI_Comm_rank(MPI_COMM_WORLD, &mpiRank);
 
-    /* 
+    /*
      * Initialize device context for this process
      */
-    int localRank = getLocalRank();
-    cudaError_t cudaStat = cudaSetDevice(localRank);
+    int         localRank = getLocalRank();
+    cudaError_t cudaStat  = cudaSetDevice(localRank);
     assert(cudaStat == cudaSuccess);
     cudaStat = cudaFree(0);
     assert(cudaStat == cudaSuccess);
 
     {
-        const int rank = mpiRank;
+        const int rank     = mpiRank;
         const int commSize = mpiCommSize;
 
         /* Error codes */
         cusolverStatus_t cusolverStat = CUSOLVER_STATUS_SUCCESS;
-        calError_t  calStat = CAL_OK;
-        cudaError_t cudaStat = cudaSuccess;
+        calError_t       calStat      = CAL_OK;
+        cudaError_t      cudaStat     = cudaSuccess;
 
         cudaStat = cudaSetDevice(localRank);
         assert(cudaStat == cudaSuccess);
 
         /* Create communicator */
+        cal_comm_t cal_comm = NULL;
+#ifdef USE_CAL_MPI
+        calStat = cal_comm_create_mpi(MPI_COMM_WORLD, rank, commSize, localRank, &cal_comm);
+#else
         cal_comm_create_params_t params;
-        params.allgather = allgather;
-        params.req_test = request_test;
-        params.req_free = request_free;
-        params.data = reinterpret_cast<void*>(MPI_COMM_WORLD);
-        params.rank = rank;
-        params.nranks = commSize;
+        params.allgather    = allgather;
+        params.req_test     = request_test;
+        params.req_free     = request_free;
+        params.data         = (void*)(MPI_COMM_WORLD);
+        params.rank         = rank;
+        params.nranks       = commSize;
         params.local_device = localRank;
 
-        cal_comm_t cal_comm = nullptr;
         calStat = cal_comm_create(params, &cal_comm);
+#endif
         assert(calStat == CAL_OK);
 
         /* Create local stream */
-        cudaStream_t localStream = nullptr;
-        cudaStat = cudaStreamCreate(&localStream);
+        cudaStream_t localStream = NULL;
+        cudaStat                 = cudaStreamCreate(&localStream);
         assert(cudaStat == cudaSuccess);
 
         /* Initialize cusolverMp library handle */
-        cusolverMpHandle_t cusolverMpHandle = nullptr;
-        cusolverStat = cusolverMpCreate(
-            &cusolverMpHandle,
-            localRank,
-            localStream);
+        cusolverMpHandle_t cusolverMpHandle = NULL;
+        cusolverStat                        = cusolverMpCreate(&cusolverMpHandle, localRank, localStream);
         assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
         /* cudaLigMg grids */
-        cudaLibMpGrid_t gridA = nullptr; 
-        cudaLibMpGrid_t gridB = nullptr; 
+        cusolverMpGrid_t gridA = NULL;
+        cusolverMpGrid_t gridB = NULL;
 
         /* cudaLib matrix descriptors */
-        cudaLibMpMatrixDesc_t descA = nullptr;
-        cudaLibMpMatrixDesc_t descB = nullptr;
+        cusolverMpMatrixDescriptor_t descA = NULL;
+        cusolverMpMatrixDescriptor_t descB = NULL;
 
         /* Distributed matrices */
-        void *d_A = nullptr;
-        void *d_B = nullptr;
+        void* d_A = NULL;
+        void* d_B = NULL;
 
         /* Distributed device workspace */
-        void *d_potrfWork = nullptr;
-        void *d_potrsWork = nullptr;
+        void* d_potrfWork = NULL;
+        void* d_potrsWork = NULL;
 
         /* Distributed host workspace */
-        void *h_potrfWork = nullptr;
-        void *h_potrsWork = nullptr;
+        void* h_potrfWork = NULL;
+        void* h_potrsWork = NULL;
 
         /* size of workspace on device */
         size_t potrfWorkspaceInBytesOnDevice = 0;
@@ -274,12 +262,12 @@ int main (int argc, char *argv[])
         size_t potrsWorkspaceInBytesOnHost = 0;
 
         /* error codes from cusolverMp (device) */
-        int* d_potrfInfo = nullptr;
-        int* d_potrsInfo = nullptr;
+        int* d_potrfInfo = NULL;
+        int* d_potrsInfo = NULL;
 
         /* error codes from cusolverMp (host) */
-        int  h_potrfInfo = 0;
-        int  h_potrsInfo = 0;
+        int h_potrfInfo = 0;
+        int h_potrsInfo = 0;
 
         /* =========================================== */
         /*          Create inputs on master rank       */
@@ -295,14 +283,14 @@ int main (int argc, char *argv[])
         /*          Create inputs on master rank       */
         /* =========================================== */
 
-        const int64_t lda = (ia -1) + n;
-        const int64_t colsA = (ja -1) + n;
-        const int64_t ldb = (ib -1) + n;
-        const int64_t colsB = (jb -1) + nrhs;
+        const int64_t lda   = (ia - 1) + n;
+        const int64_t colsA = (ja - 1) + n;
+        const int64_t ldb   = (ib - 1) + n;
+        const int64_t colsB = (jb - 1) + nrhs;
 
-        double *h_A = nullptr;
-        double *h_B = nullptr;
-        double *h_X = nullptr;
+        double* h_A = NULL;
+        double* h_B = NULL;
+        double* h_X = NULL;
 
         if (rank == 0)
         {
@@ -312,19 +300,22 @@ int main (int argc, char *argv[])
             h_B = (double*)malloc(ldb * colsB * sizeof(double));
 
             /* reset host workspace */
-            memset(h_A, 0xFF,  lda * colsA * sizeof(double));
-            memset(h_X, 0xFF,  ldb * colsB * sizeof(double));
-            memset(h_B, 0xFF,  ldb * colsB * sizeof(double));
+            memset(h_A, 0xFF, lda * colsA * sizeof(double));
+            memset(h_X, 0xFF, ldb * colsB * sizeof(double));
+            memset(h_B, 0xFF, ldb * colsB * sizeof(double));
 
             /* pointers to the first valid entry of A and B */
-            double *_A = &h_A[ (ia-1) + (ja-1) * lda ];
-            double *_B = &h_B[ (ib-1) + (jb-1) * ldb ];
+            double* _A = &h_A[(ia - 1) + (ja - 1) * lda];
+            double* _B = &h_B[(ib - 1) + (jb - 1) * ldb];
 
             /* Set A[ia:ia+n, ja:ja+n] = diagonal dominant lower triangular matrix */
             generate_diagonal_dominant_symmetric_matrix(n, _A, lda);
 
             /* Set B[ib:ib+n, jb] = 1 */
-            for(int64_t i = 0; i < n; i++) { _B[i] = 1.0; }
+            for (int64_t i = 0; i < n; i++)
+            {
+                _B[i] = 1.0;
+            }
 
             /* print input matrices */
             if (opts.verbose)
@@ -336,10 +327,10 @@ int main (int argc, char *argv[])
         }
 
         /* compute the load leading dimension of the device buffers */
-        const int64_t llda = cusolverMpNUMROC(lda, mbA, rsrca, rank % numRowDevices, numRowDevices);
+        const int64_t llda       = cusolverMpNUMROC(lda, mbA, rsrca, rank % numRowDevices, numRowDevices);
         const int64_t localColsA = cusolverMpNUMROC(colsA, nbA, csrca, rank / numRowDevices, numColDevices);
 
-        const int64_t lldb = cusolverMpNUMROC(ldb, mbB, rsrcb, rank % numRowDevices, numRowDevices);
+        const int64_t lldb       = cusolverMpNUMROC(ldb, mbB, rsrcb, rank % numRowDevices, numRowDevices);
         const int64_t localColsB = cusolverMpNUMROC(colsB, nbB, csrcb, rank / numRowDevices, numColDevices);
 
         /* Allocate global d_A */
@@ -354,61 +345,31 @@ int main (int argc, char *argv[])
         /*          CREATE GRID DESCRIPTORS            */
         /* =========================================== */
         cusolverStat = cusolverMpCreateDeviceGrid(
-            cusolverMpHandle,
-            &gridA,
-            cal_comm,
-            numRowDevices,
-            numColDevices,
-            CUDALIBMP_GRID_MAPPING_COL_MAJOR);
+                cusolverMpHandle, &gridA, cal_comm, numRowDevices, numColDevices, CUSOLVERMP_GRID_MAPPING_COL_MAJOR);
         assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
         cusolverStat = cusolverMpCreateDeviceGrid(
-            cusolverMpHandle,
-            &gridB,
-            cal_comm,
-            numRowDevices,
-            numColDevices,
-            CUDALIBMP_GRID_MAPPING_COL_MAJOR);
+                cusolverMpHandle, &gridB, cal_comm, numRowDevices, numColDevices, CUSOLVERMP_GRID_MAPPING_COL_MAJOR);
         assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
         /* =========================================== */
         /*        CREATE MATRIX DESCRIPTORS            */
         /* =========================================== */
-        cusolverStat = cusolverMpCreateMatrixDesc(
-            &descA,
-            gridA,
-            CUDA_R_64F,
-            lda,
-            colsA,
-            mbA,
-            nbA,
-            rsrca,
-            csrca,
-            llda);
+        cusolverStat = cusolverMpCreateMatrixDesc(&descA, gridA, CUDA_R_64F, lda, colsA, mbA, nbA, rsrca, csrca, llda);
 
         assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
-        cusolverStat = cusolverMpCreateMatrixDesc(
-            &descB,
-            gridB,
-            CUDA_R_64F,
-            ldb,
-            colsB,
-            mbB,
-            nbB,
-            rsrcb,
-            csrcb,
-            lldb);
+        cusolverStat = cusolverMpCreateMatrixDesc(&descB, gridB, CUDA_R_64F, ldb, colsB, mbB, nbB, rsrcb, csrcb, lldb);
         assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
         /* =========================================== */
         /*             ALLOCATE D_INFO                 */
         /* =========================================== */
 
-        cudaStat = cudaMalloc(&d_potrfInfo, sizeof(int));
+        cudaStat = cudaMalloc((void**)&d_potrfInfo, sizeof(int));
         assert(cudaStat == cudaSuccess);
 
-        cudaStat = cudaMalloc(&d_potrsInfo, sizeof(int));
+        cudaStat = cudaMalloc((void**)&d_potrsInfo, sizeof(int));
         assert(cudaStat == cudaSuccess);
 
 
@@ -426,35 +387,33 @@ int main (int argc, char *argv[])
         /*     QUERY WORKSPACE SIZE FOR MP ROUTINES    */
         /* =========================================== */
 
-        cusolverStat = cusolverMpPotrf_bufferSize(
-            cusolverMpHandle,
-            CUBLAS_FILL_MODE_LOWER,
-            n,
-            d_A,
-            ia,
-            ja,
-            descA,
-            CUDA_R_64F,
-            &potrfWorkspaceInBytesOnDevice,
-            &potrfWorkspaceInBytesOnHost);
+        cusolverStat = cusolverMpPotrf_bufferSize(cusolverMpHandle,
+                                                  CUBLAS_FILL_MODE_LOWER,
+                                                  n,
+                                                  d_A,
+                                                  ia,
+                                                  ja,
+                                                  descA,
+                                                  CUDA_R_64F,
+                                                  &potrfWorkspaceInBytesOnDevice,
+                                                  &potrfWorkspaceInBytesOnHost);
         assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
-        cusolverStat = cusolverMpPotrs_bufferSize(
-            cusolverMpHandle,
-            CUBLAS_FILL_MODE_LOWER,
-            n,
-            nrhs,
-            (const void*) d_A,
-            ia,
-            ja,
-            descA,
-            d_B,
-            ib,
-            jb,
-            descB,
-            CUDA_R_64F,
-            &potrsWorkspaceInBytesOnDevice,
-            &potrsWorkspaceInBytesOnHost);
+        cusolverStat = cusolverMpPotrs_bufferSize(cusolverMpHandle,
+                                                  CUBLAS_FILL_MODE_LOWER,
+                                                  n,
+                                                  nrhs,
+                                                  (const void*)d_A,
+                                                  ia,
+                                                  ja,
+                                                  descA,
+                                                  d_B,
+                                                  ib,
+                                                  jb,
+                                                  descB,
+                                                  CUDA_R_64F,
+                                                  &potrsWorkspaceInBytesOnDevice,
+                                                  &potrsWorkspaceInBytesOnHost);
         assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
         /* =========================================== */
@@ -465,7 +424,7 @@ int main (int argc, char *argv[])
         assert(cudaStat == cudaSuccess);
 
         h_potrfWork = (void*)malloc(potrfWorkspaceInBytesOnHost);
-        assert(h_potrfWork != nullptr);
+        assert(h_potrfWork != NULL);
 
         /* =========================================== */
         /*         ALLOCATE Ppotrs WORKSPACE            */
@@ -475,38 +434,36 @@ int main (int argc, char *argv[])
         assert(cudaStat == cudaSuccess);
 
         h_potrsWork = (void*)malloc(potrsWorkspaceInBytesOnHost);
-        assert(h_potrsWork != nullptr);
+        assert(h_potrsWork != NULL);
 
         /* =========================================== */
         /*      SCATTER MATRICES A AND B FROM MASTER   */
         /* =========================================== */
-        cusolverStat = cusolverMpMatrixScatterH2D(
-            cusolverMpHandle,
-            lda,
-            colsA,
-            (void*) d_A,
-            1,
-            1,
-            descA,
-            0, /* root rank */
-            (void*) h_A,
-            lda);
+        cusolverStat = cusolverMpMatrixScatterH2D(cusolverMpHandle,
+                                                  lda,
+                                                  colsA,
+                                                  (void*)d_A,
+                                                  1,
+                                                  1,
+                                                  descA,
+                                                  0, /* root rank */
+                                                  (void*)h_A,
+                                                  lda);
         assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
-        cusolverStat = cusolverMpMatrixScatterH2D(
-            cusolverMpHandle,
-            ldb,
-            colsB,
-            (void*) d_B,
-            1,
-            1,
-            descB,
-            0, /* root rank */
-            (void*) h_B,
-            ldb);
+        cusolverStat = cusolverMpMatrixScatterH2D(cusolverMpHandle,
+                                                  ldb,
+                                                  colsB,
+                                                  (void*)d_B,
+                                                  1,
+                                                  1,
+                                                  descB,
+                                                  0, /* root rank */
+                                                  (void*)h_B,
+                                                  ldb);
         assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
-        /* sync wait for data to arrive to device */ 
+        /* sync wait for data to arrive to device */
         calStat = cal_stream_sync(cal_comm, localStream);
         assert(calStat == CAL_OK);
 
@@ -515,20 +472,19 @@ int main (int argc, char *argv[])
         /*                   CALL Ppotrf               */
         /* =========================================== */
 
-        cusolverStat = cusolverMpPotrf(
-            cusolverMpHandle,
-            CUBLAS_FILL_MODE_LOWER,
-            n,
-            d_A,
-            ia,
-            ja,
-            descA,
-            CUDA_R_64F,
-            d_potrfWork,
-            potrfWorkspaceInBytesOnDevice,
-            h_potrfWork,
-            potrfWorkspaceInBytesOnHost,
-            d_potrfInfo);
+        cusolverStat = cusolverMpPotrf(cusolverMpHandle,
+                                       CUBLAS_FILL_MODE_LOWER,
+                                       n,
+                                       d_A,
+                                       ia,
+                                       ja,
+                                       descA,
+                                       CUDA_R_64F,
+                                       d_potrfWork,
+                                       potrfWorkspaceInBytesOnDevice,
+                                       h_potrfWork,
+                                       potrfWorkspaceInBytesOnHost,
+                                       d_potrfInfo);
         assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
         /* sync after cusolverMppotrf */
@@ -536,12 +492,7 @@ int main (int argc, char *argv[])
         assert(calStat == CAL_OK);
 
         /* copy d_potrfInfo to host */
-        cudaStat = cudaMemcpyAsync(
-            &h_potrfInfo,
-            d_potrfInfo,
-            sizeof(int),
-            cudaMemcpyDeviceToHost,
-            localStream);
+        cudaStat = cudaMemcpyAsync(&h_potrfInfo, d_potrfInfo, sizeof(int), cudaMemcpyDeviceToHost, localStream);
         assert(cudaStat == cudaSuccess);
 
         /* wait for d_potrfInfo copy */
@@ -555,25 +506,24 @@ int main (int argc, char *argv[])
         /*                   CALL Ppotrs               */
         /* =========================================== */
 
-        cusolverStat = cusolverMpPotrs(
-            cusolverMpHandle,
-            CUBLAS_FILL_MODE_LOWER,
-            n,
-            nrhs,
-            (const void*) d_A,
-            ia,
-            ja,
-            descA,
-            d_B,
-            ib,
-            jb,
-            descB,
-            CUDA_R_64F,
-            d_potrsWork,
-            potrsWorkspaceInBytesOnDevice,
-            h_potrsWork,
-            potrsWorkspaceInBytesOnHost,
-            d_potrsInfo);
+        cusolverStat = cusolverMpPotrs(cusolverMpHandle,
+                                       CUBLAS_FILL_MODE_LOWER,
+                                       n,
+                                       nrhs,
+                                       (const void*)d_A,
+                                       ia,
+                                       ja,
+                                       descA,
+                                       d_B,
+                                       ib,
+                                       jb,
+                                       descB,
+                                       CUDA_R_64F,
+                                       d_potrsWork,
+                                       potrsWorkspaceInBytesOnDevice,
+                                       h_potrsWork,
+                                       potrsWorkspaceInBytesOnHost,
+                                       d_potrsInfo);
         assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
         /* sync after cusolverMppotrs */
@@ -581,12 +531,7 @@ int main (int argc, char *argv[])
         assert(calStat == CAL_OK);
 
         /* copy d_potrsInfo to host */
-        cudaStat = cudaMemcpyAsync(
-            &h_potrsInfo,
-            d_potrsInfo,
-            sizeof(int),
-            cudaMemcpyDeviceToHost,
-            localStream);
+        cudaStat = cudaMemcpyAsync(&h_potrsInfo, d_potrsInfo, sizeof(int), cudaMemcpyDeviceToHost, localStream);
         assert(cudaStat == cudaSuccess);
 
         /* wait for d_potrsInfo copy */
@@ -601,25 +546,24 @@ int main (int argc, char *argv[])
         /* =========================================== */
 
         /* Copy solution to h_X */
-        cusolverStat = cusolverMpMatrixGatherD2H(
-            cusolverMpHandle,
-            ldb,
-            colsB,
-            (void*) d_B,
-            1,
-            1,
-            descB,
-            0, /* master rank, destination */
-            (void*) h_X,
-            ldb);
+        cusolverStat = cusolverMpMatrixGatherD2H(cusolverMpHandle,
+                                                 ldb,
+                                                 colsB,
+                                                 (void*)d_B,
+                                                 1,
+                                                 1,
+                                                 descB,
+                                                 0, /* master rank, destination */
+                                                 (void*)h_X,
+                                                 ldb);
         assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
-        /* sync wait for data to arrive to host */ 
+        /* sync wait for data to arrive to host */
         calStat = cal_stream_sync(cal_comm, localStream);
         assert(calStat == CAL_OK);
 
         /* =========================================== */
-        /*            CHECK RESIDUAL ON MASTER         */ 
+        /*            CHECK RESIDUAL ON MASTER         */
         /* =========================================== */
         if (rank == 0)
         {
@@ -630,31 +574,31 @@ int main (int argc, char *argv[])
             }
 
             /* pointers to the first valid entry of A, B and X */
-            double *_A = &h_A[ (ia-1) + (ja-1) * lda ];
-            double *_X = &h_X[ (ib-1) + (jb-1) * ldb ];
-            double *_B = &h_B[ (ib-1) + (jb-1) * ldb ];
+            double* _A = &h_A[(ia - 1) + (ja - 1) * lda];
+            double* _X = &h_X[(ib - 1) + (jb - 1) * ldb];
+            double* _B = &h_B[(ib - 1) + (jb - 1) * ldb];
 
             /* measure residual error |b - A*x| */
             double max_err = 0;
-            for(int row = 0; row < n ; row++)
+            for (int row = 0; row < n; row++)
             {
                 double sum = 0.0;
-                for(int col = 0; col < n ; col++)
+                for (int col = 0; col < n; col++)
                 {
-                    double Aij = _A[ row + col * lda ];
-                    double  xj = _X[ col ];
-                    sum += Aij*xj;
+                    double Aij = _A[row + col * lda];
+                    double xj  = _X[col];
+                    sum += Aij * xj;
                 }
-                double bi = _B[ row ];
-                double err = std::fabs(bi - sum);
+                double bi  = _B[row];
+                double err = fabs(bi - sum);
 
-                max_err = std::fmax(max_err, err);
+                max_err = fmax(max_err, err);
             }
 
             double x_nrm_inf = normI(n, 1, ldb, _X);
             double b_nrm_inf = normI(n, 1, ldb, _B);
             double A_nrm_inf = normI(n, n, lda, _A);
-            double rel_err = max_err/(A_nrm_inf * x_nrm_inf + b_nrm_inf);
+            double rel_err   = max_err / (A_nrm_inf * x_nrm_inf + b_nrm_inf);
 
             printf("\n|b - A*x|_inf = %E\n", max_err);
             printf("|x|_inf = %E\n", x_nrm_inf);
@@ -667,17 +611,29 @@ int main (int argc, char *argv[])
         }
 
         /* =========================================== */
-        /*        CLEAN UP HOST WORKSPACE ON MASTER    */ 
+        /*        CLEAN UP HOST WORKSPACE ON MASTER    */
         /* =========================================== */
         if (rank == 0)
         {
-            if (h_A) { free(h_A); h_A = nullptr; }
-            if (h_X) { free(h_X); h_X = nullptr; }
-            if (h_B) { free(h_B); h_B = nullptr; }
+            if (h_A)
+            {
+                free(h_A);
+                h_A = NULL;
+            }
+            if (h_X)
+            {
+                free(h_X);
+                h_X = NULL;
+            }
+            if (h_B)
+            {
+                free(h_B);
+                h_B = NULL;
+            }
         }
 
         /* =========================================== */
-        /*           DESTROY MATRIX DESCRIPTORS        */ 
+        /*           DESTROY MATRIX DESCRIPTORS        */
         /* =========================================== */
 
         cusolverStat = cusolverMpDestroyMatrixDesc(descA);
@@ -687,7 +643,7 @@ int main (int argc, char *argv[])
         assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
         /* =========================================== */
-        /*             DESTROY MATRIX GRIDS            */ 
+        /*             DESTROY MATRIX GRIDS            */
         /* =========================================== */
 
         cusolverStat = cusolverMpDestroyGrid(gridA);
@@ -697,59 +653,67 @@ int main (int argc, char *argv[])
         assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
         /* =========================================== */
-        /*          DEALLOCATE DEVICE WORKSPACE        */ 
+        /*          DEALLOCATE DEVICE WORKSPACE        */
         /* =========================================== */
 
         if (d_A)
         {
             cudaStat = cudaFree(d_A);
             assert(cudaStat == cudaSuccess);
-            d_A = nullptr;
+            d_A = NULL;
         }
 
         if (d_B)
         {
             cudaStat = cudaFree(d_B);
             assert(cudaStat == cudaSuccess);
-            d_B = nullptr;
+            d_B = NULL;
         }
 
         if (d_potrfWork)
         {
             cudaStat = cudaFree(d_potrfWork);
             assert(cudaStat == cudaSuccess);
-            d_potrfWork = nullptr;
+            d_potrfWork = NULL;
         }
 
         if (d_potrsWork)
         {
             cudaStat = cudaFree(d_potrsWork);
             assert(cudaStat == cudaSuccess);
-            d_potrsWork = nullptr;
+            d_potrsWork = NULL;
         }
 
         if (d_potrfInfo)
         {
             cudaStat = cudaFree(d_potrfInfo);
             assert(cudaStat == cudaSuccess);
-            d_potrfInfo = nullptr;
+            d_potrfInfo = NULL;
         }
 
         if (d_potrsInfo)
         {
             cudaStat = cudaFree(d_potrsInfo);
             assert(cudaStat == cudaSuccess);
-            d_potrsInfo = nullptr;
+            d_potrsInfo = NULL;
         }
 
         /* =========================================== */
-        /*         DEALLOCATE HOST WORKSPACE           */ 
+        /*         DEALLOCATE HOST WORKSPACE           */
         /* =========================================== */
-        if (h_potrfWork) { free(h_potrfWork); h_potrfWork = nullptr; }
-        if (h_potrsWork) { free(h_potrsWork); h_potrsWork = nullptr; }
+        if (h_potrfWork)
+        {
+            free(h_potrfWork);
+            h_potrfWork = NULL;
+        }
+        if (h_potrsWork)
+        {
+            free(h_potrsWork);
+            h_potrsWork = NULL;
+        }
 
         /* =========================================== */
-        /*                      CLEANUP                */ 
+        /*                      CLEANUP                */
         /* =========================================== */
 
         /* Destroy cusolverMp handle */
