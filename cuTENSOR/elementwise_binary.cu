@@ -175,14 +175,14 @@ int main()
      * cuTENSOR
      *************************/
     cutensorStatus_t err;
-    cutensorHandle_t handle;
+    cutensorHandle_t *handle;
     HANDLE_ERROR(cutensorCreate(&handle));
 
     /**********************
      * Create Tensor Descriptors
      **********************/
     cutensorTensorDescriptor_t descA;
-    HANDLE_ERROR(cutensorInitTensorDescriptor( &handle,
+    HANDLE_ERROR(cutensorInitTensorDescriptor( handle,
                  &descA,
                  nmodeA,
                  extentA.data(),
@@ -190,7 +190,7 @@ int main()
                  typeA, CUTENSOR_OP_IDENTITY));
 
     cutensorTensorDescriptor_t descC;
-    HANDLE_ERROR(cutensorInitTensorDescriptor( &handle,
+    HANDLE_ERROR(cutensorInitTensorDescriptor( handle,
                  &descC,
                  nmodeC,
                  extentC.data(),
@@ -203,7 +203,7 @@ int main()
         HANDLE_CUDA_ERROR(cudaMemcpy2DAsync(C_d, sizeC, C, sizeC, sizeC, 1, cudaMemcpyDefault, 0));
         HANDLE_CUDA_ERROR(cudaDeviceSynchronize());
         timer.start();
-        err = cutensorElementwiseBinary(&handle,
+        err = cutensorElementwiseBinary(handle,
                 (void*)&alpha, A_d, &descA, modeA.data(),
                 (void*)&gamma, C_d, &descC, modeC.data(),
                                C_d, &descC, modeC.data(),

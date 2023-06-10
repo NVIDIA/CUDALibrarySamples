@@ -179,7 +179,7 @@ int main()
      * cuTENSOR
      *************************/ 
 
-    cutensorHandle_t handle;
+    cutensorHandle_t *handle;
     HANDLE_ERROR(cutensorCreate(&handle));
 
     /**********************
@@ -189,11 +189,11 @@ int main()
     size_t sizeCache = numCachelines * sizeof(cutensorPlanCacheline_t);
     printf("Allocating: %.2f kB for the cache\n", sizeCache / 1000.);
     cutensorPlanCacheline_t* cachelines = (cutensorPlanCacheline_t*) malloc(sizeCache);
-    HANDLE_ERROR( cutensorHandleAttachPlanCachelines(&handle, cachelines, numCachelines) );
+    HANDLE_ERROR( cutensorHandleAttachPlanCachelines(handle, cachelines, numCachelines) );
 
     const char cacheFilename[] = "./cache.bin";
     uint32_t numCachelinesRead = 0;
-    cutensorStatus_t status = cutensorHandleReadCacheFromFile(&handle, cacheFilename, &numCachelinesRead);
+    cutensorStatus_t status = cutensorHandleReadCacheFromFile(handle, cacheFilename, &numCachelinesRead);
     if (status == CUTENSOR_STATUS_SUCCESS)
     {
         printf("%d cachelines have been successfully read from file (%s).\n", numCachelinesRead, cacheFilename);
@@ -212,7 +212,7 @@ int main()
      **********************/
 
     cutensorTensorDescriptor_t descA;
-    HANDLE_ERROR(cutensorInitTensorDescriptor(&handle,
+    HANDLE_ERROR(cutensorInitTensorDescriptor(handle,
                  &descA,
                  nmodeA,
                  extentA.data(),
@@ -220,7 +220,7 @@ int main()
                  typeA, CUTENSOR_OP_IDENTITY));
 
     cutensorTensorDescriptor_t descB;
-    HANDLE_ERROR(cutensorInitTensorDescriptor(&handle,
+    HANDLE_ERROR(cutensorInitTensorDescriptor(handle,
                  &descB,
                  nmodeB,
                  extentB.data(),
@@ -228,7 +228,7 @@ int main()
                  typeB, CUTENSOR_OP_IDENTITY));
 
     cutensorTensorDescriptor_t descC;
-    HANDLE_ERROR(cutensorInitTensorDescriptor( &handle,
+    HANDLE_ERROR(cutensorInitTensorDescriptor( handle,
                  &descC,
                  nmodeC,
                  extentC.data(),
@@ -240,19 +240,19 @@ int main()
      **********************************************/ 
 
      uint32_t alignmentRequirementA;
-     HANDLE_ERROR(cutensorGetAlignmentRequirement(&handle,
+     HANDLE_ERROR(cutensorGetAlignmentRequirement(handle,
                   A_d,
                   &descA,
                   &alignmentRequirementA));
 
      uint32_t alignmentRequirementB;
-     HANDLE_ERROR(cutensorGetAlignmentRequirement(&handle,
+     HANDLE_ERROR(cutensorGetAlignmentRequirement(handle,
                   B_d,
                   &descB,
                   &alignmentRequirementB));
 
      uint32_t alignmentRequirementC;
-     HANDLE_ERROR(cutensorGetAlignmentRequirement(&handle,
+     HANDLE_ERROR(cutensorGetAlignmentRequirement(handle,
                   C_d,
                   &descC, 
                   &alignmentRequirementC));
@@ -262,7 +262,7 @@ int main()
      *******************************/
 
     cutensorContractionDescriptor_t desc;
-    HANDLE_ERROR(cutensorInitContractionDescriptor(&handle, 
+    HANDLE_ERROR(cutensorInitContractionDescriptor(handle, 
                  &desc,
                  &descA, modeA.data(), alignmentRequirementA,
                  &descB, modeB.data(), alignmentRequirementB,
@@ -276,12 +276,12 @@ int main()
 
     cutensorContractionFind_t find;
     HANDLE_ERROR(cutensorInitContractionFind( 
-                 &handle, &find, 
+                 handle, &find, 
                  CUTENSOR_ALGO_DEFAULT));
 
     const cutensorCacheMode_t cacheMode = CUTENSOR_CACHE_MODE_PEDANTIC;
     HANDLE_ERROR(cutensorContractionFindSetAttribute(
-        &handle,
+        handle,
         &find,
         CUTENSOR_CONTRACTION_FIND_CACHE_MODE,
         &cacheMode,
@@ -289,7 +289,7 @@ int main()
 
     const cutensorAutotuneMode_t autotuneMode = CUTENSOR_AUTOTUNE_INCREMENTAL;
     HANDLE_ERROR(cutensorContractionFindSetAttribute(
-        &handle,
+        handle,
         &find,
         CUTENSOR_CONTRACTION_FIND_AUTOTUNE_MODE,
         &autotuneMode ,
@@ -297,7 +297,7 @@ int main()
 
     const uint32_t incCount = 4;
     HANDLE_ERROR(cutensorContractionFindSetAttribute(
-        &handle,
+        handle,
         &find,
         CUTENSOR_CONTRACTION_FIND_INCREMENTAL_COUNT,
         &incCount,
@@ -308,7 +308,7 @@ int main()
      **********************/
 
     uint64_t worksize = 0;
-    HANDLE_ERROR(cutensorContractionGetWorkspaceSize(&handle,
+    HANDLE_ERROR(cutensorContractionGetWorkspaceSize(handle,
                  &desc,
                  &find,
                  CUTENSOR_WORKSPACE_MAX, &worksize)); // TODO
@@ -342,20 +342,20 @@ int main()
 
         const cutensorCacheMode_t cacheMode = CUTENSOR_CACHE_MODE_NONE;
         HANDLE_ERROR(cutensorContractionFindSetAttribute(
-                    &handle,
+                    handle,
                     &find_copy,
                     CUTENSOR_CONTRACTION_FIND_CACHE_MODE,
                     &cacheMode,
                     sizeof(cutensorCacheMode_t)));
 
         // To take advantage of the incremental-autotuning (via the cache), it's important to re-initialize the plan
-        HANDLE_ERROR(cutensorInitContractionPlan(&handle,
+        HANDLE_ERROR(cutensorInitContractionPlan(handle,
                     &plan,
                     &desc,
                     &find_copy,
                     worksize));
 
-        HANDLE_ERROR(cutensorContraction(&handle,
+        HANDLE_ERROR(cutensorContraction(handle,
                                   &plan,
                                   (void*) &alpha, A_d, B_d,
                                   (void*) &beta,  C_d, C_d, 
@@ -375,13 +375,13 @@ int main()
         timer.start();
 
         // To take advantage of the incremental-autotuning (via the cache), it's important to re-initialize the plan
-        HANDLE_ERROR(cutensorInitContractionPlan(&handle,
+        HANDLE_ERROR(cutensorInitContractionPlan(handle,
                     &plan,
                     &desc,
                     &find,
                     worksize));
 
-        cutensorStatus_t err = cutensorContraction(&handle,
+        cutensorStatus_t err = cutensorContraction(handle,
                                   &plan,
                                   (void*) &alpha, A_d, B_d,
                                   (void*) &beta,  C_d, C_d, 
@@ -409,11 +409,11 @@ int main()
     /*
      * Optional: Write cache to disk
      */
-    HANDLE_ERROR( cutensorHandleWriteCacheToFile(&handle, cacheFilename) );
+    HANDLE_ERROR( cutensorHandleWriteCacheToFile(handle, cacheFilename) );
     printf("Cache has been successfully written to file (%s).\n", cacheFilename);
 
     // Detach cache and free-up resources
-    HANDLE_ERROR( cutensorHandleDetachPlanCachelines(&handle) );
+    HANDLE_ERROR( cutensorHandleDetachPlanCachelines(handle) );
 
     if (A) free(A);
     if (B) free(B);

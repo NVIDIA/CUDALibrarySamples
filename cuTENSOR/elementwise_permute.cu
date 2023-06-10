@@ -156,7 +156,7 @@ int main()
      *************************/
 
     cutensorStatus_t err;
-    cutensorHandle_t handle;
+    cutensorHandle_t *handle;
     HANDLE_ERROR(cutensorCreate(&handle));
 
     /**********************
@@ -164,7 +164,7 @@ int main()
      **********************/
 
     cutensorTensorDescriptor_t descA;
-    HANDLE_ERROR(cutensorInitTensorDescriptor(&handle,
+    HANDLE_ERROR(cutensorInitTensorDescriptor(handle,
                  &descA,
                  nmodeA,
                  extentA.data(),
@@ -172,7 +172,7 @@ int main()
                  typeA, CUTENSOR_OP_IDENTITY));
 
     cutensorTensorDescriptor_t descC;
-    HANDLE_ERROR(cutensorInitTensorDescriptor(&handle,
+    HANDLE_ERROR(cutensorInitTensorDescriptor(handle,
                  &descC,
                  nmodeC,
                  extentC.data(),
@@ -186,7 +186,7 @@ int main()
         timer.start();
         const floatTypeCompute one = 1.0f;
 
-        err = cutensorPermutation(&handle,
+        err = cutensorPermutation(handle,
                  &one, A_d, &descA, modeA.data(),
                        C_d, &descC, modeC.data(),
                  typeCompute, 0 /* stream */);

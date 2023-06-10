@@ -415,7 +415,7 @@ void einsum(cutensorHandle_t *handle,
 
 int main()
 {
-    cutensorHandle_t handle;
+    cutensorHandle_t *handle;
     cutensorCreate(&handle);
 
     /**********************
@@ -424,16 +424,16 @@ int main()
     constexpr int32_t numCachelines = 1024;
     size_t sizeCache = numCachelines * sizeof(cutensorPlanCacheline_t);
     cutensorPlanCacheline_t* cachelines = (cutensorPlanCacheline_t*) malloc(sizeCache);
-    HANDLE_ERROR( cutensorHandleAttachPlanCachelines(&handle, cachelines, numCachelines) );
+    HANDLE_ERROR( cutensorHandleAttachPlanCachelines(handle, cachelines, numCachelines) );
   
-    einsum(&handle, {2, 4, 5}, {4, 8, 7}, "ijn,jmk->inkm"); // contraction (explict)
-    einsum(&handle, {2, 4, 5}, {4, 8, 7}, "ijn,jmk"); // contraction (implicit)
-    einsum(&handle, {2, 4, 5}, {}, "nij");  // permutation (implicit)
-    einsum(&handle, {2, 4, 5}, {}, "nij->ijn");  // permutation (same as previous example, but explicit)
-    einsum(&handle, {2, 4, 5}, {}, "nij->ji"); // reduction
+    einsum(handle, {2, 4, 5}, {4, 8, 7}, "ijn,jmk->inkm"); // contraction (explict)
+    einsum(handle, {2, 4, 5}, {4, 8, 7}, "ijn,jmk"); // contraction (implicit)
+    einsum(handle, {2, 4, 5}, {}, "nij");  // permutation (implicit)
+    einsum(handle, {2, 4, 5}, {}, "nij->ijn");  // permutation (same as previous example, but explicit)
+    einsum(handle, {2, 4, 5}, {}, "nij->ji"); // reduction
 
     // Detach cache and free-up resources
-    HANDLE_ERROR( cutensorHandleDetachPlanCachelines(&handle) );
+    HANDLE_ERROR( cutensorHandleDetachPlanCachelines(handle) );
     if (cachelines) free (cachelines);
 
     return 0;

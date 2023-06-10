@@ -160,7 +160,7 @@ int main()
      * cuTENSOR
      *************************/ 
 
-    cutensorHandle_t handle;
+    cutensorHandle_t *handle;
     HANDLE_ERROR(cutensorCreate(&handle));
 
     /**********************
@@ -168,7 +168,7 @@ int main()
      **********************/
 
     cutensorTensorDescriptor_t descA;
-    HANDLE_ERROR(cutensorInitTensorDescriptor(&handle,
+    HANDLE_ERROR(cutensorInitTensorDescriptor(handle,
                  &descA,
                  nmodeA,
                  extentA.data(),
@@ -176,7 +176,7 @@ int main()
                  typeA, CUTENSOR_OP_IDENTITY));
 
     cutensorTensorDescriptor_t descC;
-    HANDLE_ERROR(cutensorInitTensorDescriptor(&handle,
+    HANDLE_ERROR(cutensorInitTensorDescriptor(handle,
                  &descC,
                  nmodeC,
                  extentC.data(),
@@ -190,7 +190,7 @@ int main()
      **********************/
 
     uint64_t worksize = 0;
-    HANDLE_ERROR(cutensorReductionGetWorkspaceSize(&handle, 
+    HANDLE_ERROR(cutensorReductionGetWorkspaceSize(handle, 
                  A_d, &descA, modeA.data(),
                  C_d, &descC, modeC.data(),
                  C_d, &descC, modeC.data(),
@@ -220,7 +220,7 @@ int main()
         GPUTimer timer;
         timer.start();
 
-        err = cutensorReduction(&handle, 
+        err = cutensorReduction(handle, 
                 (const void*)&alpha, A_d, &descA, modeA.data(),
                 (const void*)&beta,  C_d, &descC, modeC.data(), 
                                      C_d, &descC, modeC.data(), 

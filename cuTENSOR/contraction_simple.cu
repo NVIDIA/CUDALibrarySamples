@@ -242,7 +242,7 @@ int main()
      * cuTENSOR
      *************************/ 
 
-    cutensorHandle_t handle;
+    cutensorHandle_t *handle;
     HANDLE_ERROR(cutensorCreate(&handle));
 
     /**********************
@@ -250,7 +250,7 @@ int main()
      **********************/
 
     cutensorTensorDescriptor_t descA;
-    HANDLE_ERROR(cutensorInitTensorDescriptor(&handle,
+    HANDLE_ERROR(cutensorInitTensorDescriptor(handle,
                  &descA,
                  nmodeA,
                  extentA.data(),
@@ -258,7 +258,7 @@ int main()
                  typeA, CUTENSOR_OP_IDENTITY));
 
     cutensorTensorDescriptor_t descB;
-    HANDLE_ERROR(cutensorInitTensorDescriptor(&handle,
+    HANDLE_ERROR(cutensorInitTensorDescriptor(handle,
                  &descB,
                  nmodeB,
                  extentB.data(),
@@ -266,14 +266,14 @@ int main()
                  typeB, CUTENSOR_OP_IDENTITY));
 
     cutensorTensorDescriptor_t descC;
-    HANDLE_ERROR(cutensorInitTensorDescriptor(&handle,
+    HANDLE_ERROR(cutensorInitTensorDescriptor(handle,
                  &descC,
                  nmodeC,
                  extentC.data(),
                  NULL /* stride */,
                  typeC, CUTENSOR_OP_IDENTITY));
 
-    HANDLE_ERROR(cutensorContractionSimple(&handle,
+    HANDLE_ERROR(cutensorContractionSimple(handle,
                  (void*)&alpha, A_d, &descA, modeA.data(),
                                 B_d, &descB, modeB.data(),
                  (void*)&beta,  C_d, &descC, modeC.data(),

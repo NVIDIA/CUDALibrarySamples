@@ -183,7 +183,7 @@ int main()
      * cuTENSOR
      *************************/ 
 
-    cutensorHandle_t handle;
+    cutensorHandle_t *handle;
     HANDLE_ERROR(cutensorCreate(&handle));
 
     /**********************
@@ -191,7 +191,7 @@ int main()
      **********************/
 
     cutensorTensorDescriptor_t descA;
-    HANDLE_ERROR(cutensorInitTensorDescriptor(&handle,
+    HANDLE_ERROR(cutensorInitTensorDescriptor(handle,
                  &descA,
                  nmodeA,
                  extentA.data(),
@@ -199,7 +199,7 @@ int main()
                  typeA, CUTENSOR_OP_IDENTITY));
 
     cutensorTensorDescriptor_t descB;
-    HANDLE_ERROR(cutensorInitTensorDescriptor(&handle,
+    HANDLE_ERROR(cutensorInitTensorDescriptor(handle,
                  &descB,
                  nmodeB,
                  extentB.data(),
@@ -207,7 +207,7 @@ int main()
                  typeB, CUTENSOR_OP_IDENTITY) );
 
     cutensorTensorDescriptor_t descC;
-    HANDLE_ERROR(cutensorInitTensorDescriptor(&handle,
+    HANDLE_ERROR(cutensorInitTensorDescriptor(handle,
                  &descC,
                  nmodeC,
                  extentC.data(),
@@ -219,19 +219,19 @@ int main()
      **********************************************/ 
 
      uint32_t alignmentRequirementA;
-     HANDLE_ERROR(cutensorGetAlignmentRequirement(&handle,
+     HANDLE_ERROR(cutensorGetAlignmentRequirement(handle,
                   A_d,
                   &descA,
                   &alignmentRequirementA));
 
      uint32_t alignmentRequirementB;
-     HANDLE_ERROR(cutensorGetAlignmentRequirement(&handle,
+     HANDLE_ERROR(cutensorGetAlignmentRequirement(handle,
                   B_d,
                   &descB,
                   &alignmentRequirementB));
 
      uint32_t alignmentRequirementC;
-     HANDLE_ERROR(cutensorGetAlignmentRequirement(&handle,
+     HANDLE_ERROR(cutensorGetAlignmentRequirement(handle,
                   C_d,
                   &descC, 
                   &alignmentRequirementC));
@@ -241,7 +241,7 @@ int main()
      *******************************/
 
     cutensorContractionDescriptor_t desc;
-    HANDLE_ERROR(cutensorInitContractionDescriptor(&handle, 
+    HANDLE_ERROR(cutensorInitContractionDescriptor(handle, 
                  &desc,
                  &descA, modeA.data(), alignmentRequirementA,
                  &descB, modeB.data(), alignmentRequirementB,
@@ -255,11 +255,11 @@ int main()
 
     cutensorContractionFind_t find;
     HANDLE_ERROR(cutensorInitContractionFind( 
-                 &handle, &find, 
+                 handle, &find, 
                  CUTENSOR_ALGO_DEFAULT));
 
     uint64_t worksize = 0;
-    HANDLE_ERROR(cutensorContractionGetWorkspaceSize(&handle,
+    HANDLE_ERROR(cutensorContractionGetWorkspaceSize(handle,
                  &desc,
                  &find,
                  CUTENSOR_WORKSPACE_MAX, &worksize));
@@ -298,7 +298,7 @@ int main()
              **************************/
 
             cutensorContractionFind_t find;
-            err = cutensorInitContractionFind(&handle, &find, (cutensorAlgo_t) algo);
+            err = cutensorInitContractionFind(handle, &find, (cutensorAlgo_t) algo);
 
             if (err == CUTENSOR_STATUS_SUCCESS)
             {
@@ -307,7 +307,7 @@ int main()
                  **************************/
 
                 cutensorContractionPlan_t plan;
-                err = cutensorInitContractionPlan(&handle,
+                err = cutensorInitContractionPlan(handle,
                                                   &plan,
                                                   &desc,
                                                   &find,
@@ -319,7 +319,7 @@ int main()
                     GPUTimer timer;
                     timer.start();
 
-                    err = cutensorContraction(&handle,
+                    err = cutensorContraction(handle,
                                               &plan,
                                               (void*) &alpha, A_d, B_d,
                                               (void*) &beta, C_d, C_d,
