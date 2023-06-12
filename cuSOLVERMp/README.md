@@ -10,15 +10,17 @@ Distributed decompositions and linear system solutions
 
 ### Examples
 
-[Dense matrix LU factorization and linear system solve](mp_getrf_getrs.cpp)
+[Dense matrix LU factorization and linear system solve](mp_getrf_getrs.c)
 
-[Dense matrix Cholesky factorization and linear system solve](mp_potrf_potrs.cpp)
+[Dense matrix Cholesky factorization and linear system solve](mp_potrf_potrs.c)
 
-[Dense matrix Symmetric Eigensolver](mp_syevd.cpp)
+[Dense matrix Symmetric Eigensolver](mp_syevd.c)
 
-[Dense matrix QR factorization](mp_geqrf.cpp)
+[Dense matrix Symmetric Generalized Eigensolver](mp_sygvd.c)
 
-[Dense matrix QR factorization and linear system solve](mp_gels.cpp)
+[Dense matrix QR factorization](mp_geqrf.c)
+
+[Dense matrix QR factorization and linear system solve](mp_gels.c)
 
 Examples are bootstrapped by MPI and use it to set up distributed data. Those examples are intended just to show how API is used and not for performance benchmarking. For same reasons process grid is hardcoded to `2x1` in the examples, however you can change it to other values in following lines:
 ```
@@ -50,23 +52,13 @@ x86_64
 
 ### Documentation
 
-[cuSOLVERMp documentation](https://docs.nvidia.com/hpc-sdk/index.html)
+[cuSOLVERMp documentation](https://docs.nvidia.com/hpc-sdk/cusolvermp/index.html)
 
 ## Usage
 
 ### Prerequisites
 
-Samples require c++11 compatible compiler. 
-cusolverMp is distributed as a part of [HPC SDK](https://developer.nvidia.com/hpc-sdk) starting with version 21.11 and requires 
-HPC SDK to be installed in the system. Also you need to set up `HPCX` environment which is part of `HPC SDK` using one of the provided scripts before building and running examples, i.e.:
-```
-HPCSDKVER=23.1
-HPCSDKARCH=Linux_x86_64
-HPCSDKPATH=/opt/nvidia/hpc_sdk
-HPCSDKROOT=$HPCSDKPATH/$HPCSDKARCH/$HPCSDKVER
-source $HPCSDKROOT/comm_libs/hpcx/latest/hpcx-init-ompi.sh
-hpcx_load
-```
+cuSOLVERMp is distributed through [NVIDIA Developer Zone](https://developer.nvidia.com/cusolvermp) and also as a part of [HPC SDK](https://developer.nvidia.com/hpc-sdk). cuSOLVERMp requires CUDA Toolkit, HPC-X, NCCL and GDRCOPY to be installed on the system. The samples require c++11 compatible compiler. 
 
 ### Building
 
@@ -83,6 +75,8 @@ Run examples with mpi command and number of processes according to process grid 
 `mpirun -n 2 ./mp_potrf_potrs`
 
 `mpirun -n 2 ./mp_syevd`
+
+`mpirun -n 2 ./mp_sygvd`
 
 `mpirun -n 2 ./mp_geqrf`
 
