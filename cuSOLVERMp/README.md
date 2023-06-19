@@ -52,7 +52,7 @@ x86_64
 
 ### Documentation
 
-[cuSOLVERMp documentation](https://docs.nvidia.com/hpc-sdk/cusolvermp/index.html)
+[cuSOLVERMp documentation](https://docs.nvidia.com/cuda/cusolvermp/index.html)
 
 ## Usage
 
