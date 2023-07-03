@@ -14,11 +14,11 @@ The following environmental variables need to be defined in order to build and r
  - `CUFFT_LIB=/hpc_sdk/Linux_x86_64/.../math_libs/lib64/`, where `libcufftMp.so` is located
  - `CUFFT_INC=/hpc_sdk/Linux_x86_64/.../math_libs/include/cufftmp`, where all the cuFFT and cuFFTMp headers files are located
  - `NVSHMEM_LIB=/hpc_sdk/Linux_x86_64/.../comm_libs/nvshmem/lib`, where all the NVSHMEM libraries, such as `libnvshmem_host.so`, are located
- - `NVSHMEM_LIB=/hpc_sdk/Linux_x86_64/.../comm_libs/nvshmem/include`, where all the NVSHMEM headers, such as `nvshmem.h`, are located
+ - `NVSHMEM_INC=/hpc_sdk/Linux_x86_64/.../comm_libs/nvshmem/include`, where all the NVSHMEM headers, such as `nvshmem.h`, are located
 
 Note that cuFFTMp requires a specific version of NVSHMEM, as indicated [here](https://docs.nvidia.com/hpc-sdk/cufftmp/usage/nvshmem_and_cufftmp.html). If HPC SDK contains multiple versions of NVSHMEM, compatible versions are available in `/hpc_sdk/Linux_x86_64/.../lib/compat/` and `/hpc_sdk/Linux_x86_64/.../include/compat/`. Note that NVSHMEM can also be downloaded individually from [here](https://docs.nvidia.com/nvshmem/install-guide/index.html).
 
-As cuFFTMp is released in HPC SDK 22.3 and up, to build and run the samples or your applications with cuFFTMp it is highly recommended to have $MPI_HOME, $CUFFT_LIB, $CUFFT_INC, and $NVSHMEM_LIB all pointing to the same HPC SDK version.
+As cuFFTMp is released in HPC SDK 22.3 and up, to build and run the samples or your applications with cuFFTMp it is highly recommended to have $MPI_HOME, $CUFFT_LIB, $CUFFT_INC, $NVSHMEM_LIB, and $NVSHMEM_INC all pointing to the same HPC SDK version.
 
 If you have to use an older version of HPC SDK (21.9 or 21.11), you can find the early-access version of cuFFTMp in [cuFFTMP EA](https://developer.nvidia.com/cudamathlibraryea). 
 
