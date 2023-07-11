@@ -65,9 +65,9 @@ program cufftmp_c2c
     
     print*,"Hello from rank ", rank, " gpu id", mod(rank, ndevices), "size", size
 
-    nx = 256
-    ny = nx
-    nz = nx
+    nx = 128
+    ny = nx / 2
+    nz = nx * 4
 
     ! We start with X-Slabs
     ! Ranks 0 ... (nx % size - 1) have 1 more element in the X dimension
@@ -102,7 +102,7 @@ program cufftmp_c2c
     call checkCufft(cufftCreate(plan))
     call checkCufft(cufftMpAttachComm(plan, CUFFT_COMM_MPI, MPI_COMM_WORLD), 'cufftMpAttachComm error')
 
-    call checkCufft(cufftMakePlan3d(plan, nz, ny, nx, CUFFT_C2C, worksize), 'cufftMakePlan3d error')
+    call checkCufft(cufftMakePlan3d(plan, nx, ny, nz, CUFFT_C2C, worksize), 'cufftMakePlan3d error')
 
     call checkCufft(cufftXtMalloc(plan, u_desc, CUFFT_XT_FORMAT_INPLACE), 'cufftXtMalloc error')
     call checkCufft(cufftXtMemcpy(plan, u_desc, u, CUFFT_COPY_HOST_TO_DEVICE), 'cufftXtMemcpy error')
