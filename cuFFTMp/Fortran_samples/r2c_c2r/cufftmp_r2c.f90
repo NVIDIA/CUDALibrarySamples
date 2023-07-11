@@ -71,8 +71,8 @@ program cufftmp_r2c
     print*,"Hello from rank ", rank, " gpu id", mod(rank, ndevices), "size", size
 
     nx = 256
-    ny = nx
-    nz = nx
+    ny = nx / 4
+    nz = nx / 2
 
     ! We start with X-Slabs
     ! Ranks 0 ... (nx % size - 1) have 1 more element in the X dimension
@@ -113,8 +113,8 @@ program cufftmp_r2c
     call checkCufft(cufftMpAttachComm(planr2c, CUFFT_COMM_MPI, MPI_COMM_WORLD), 'cufftMpAttachComm error')
     call checkCufft(cufftMpAttachComm(planc2r, CUFFT_COMM_MPI, MPI_COMM_WORLD), 'cufftMpAttachComm error')
 
-    call checkCufft(cufftMakePlan3d(planr2c, nz, ny, nx, CUFFT_R2C, worksize), 'cufftMakePlan3d r2c error')
-    call checkCufft(cufftMakePlan3d(planc2r, nz, ny, nx, CUFFT_C2R, worksize), 'cufftMakePlan3d c2r error')
+    call checkCufft(cufftMakePlan3d(planr2c, nx, ny, nz, CUFFT_R2C, worksize), 'cufftMakePlan3d r2c error')
+    call checkCufft(cufftMakePlan3d(planc2r, nx, ny, nz, CUFFT_C2R, worksize), 'cufftMakePlan3d c2r error')
     !call checkCufft(cufftSetStream(plan, stream), 'cufftSetStream error')
 
     call checkCufft(cufftXtMalloc(planr2c, u_desc, CUFFT_XT_FORMAT_INPLACE), 'cufftXtMalloc error')
@@ -174,6 +174,7 @@ program cufftmp_r2c
     deallocate(u)
     deallocate(ref)
     deallocate(u_permuted)
+    call nvshmem_free(u_dptr)
     
     call mpi_finalize(ierr)
 

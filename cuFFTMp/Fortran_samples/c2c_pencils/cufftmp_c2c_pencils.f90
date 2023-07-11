@@ -120,7 +120,7 @@ program cufftmp_c2c_pencils
                     output_boxes(rank)%lower, output_boxes(rank)%upper, &
                     input_boxes(rank)%strides, output_boxes(rank)%strides), 'cufftXtSetDistribution error')
     
-    call checkCufft(cufftMakePlan3d(plan, nz, ny, nx, CUFFT_C2C, worksize), 'cufftMakePlan3d error')
+    call checkCufft(cufftMakePlan3d(plan, nx, ny, nz, CUFFT_C2C, worksize), 'cufftMakePlan3d error')
 
     call checkCufft(cufftXtMalloc(plan, u_desc, CUFFT_XT_FORMAT_DISTRIBUTED_INPUT), 'cufftXtMalloc error')
     call checkCufft(cufftXtMemcpy(plan, u_desc, u, CUFFT_COPY_HOST_TO_DEVICE), 'cufftXtMemcpy error')

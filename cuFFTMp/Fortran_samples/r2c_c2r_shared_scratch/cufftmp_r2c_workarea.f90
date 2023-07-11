@@ -19,7 +19,6 @@ end module cufft_required
 
 program cufftmp_r2c_workarea
     use iso_c_binding
-    use cudafor
     use nvshmem
     use cufftXt
     use cufft
@@ -57,7 +56,7 @@ program cufftmp_r2c_workarea
 
     nx = 256 
     ny = nx
-    nz = nx
+    nz = nx / 2
 
     ! We start with X-Slabs
     ! Ranks 0 ... (nx % size - 1) have 1 more element in the X dimension
@@ -103,8 +102,8 @@ program cufftmp_r2c_workarea
     call checkCufft(cufftMpAttachComm(planr2c, CUFFT_COMM_MPI, MPI_COMM_WORLD), 'cufftMpAttachComm error')
     call checkCufft(cufftMpAttachComm(planc2r, CUFFT_COMM_MPI, MPI_COMM_WORLD), 'cufftMpAttachComm error')
 
-    call checkCufft(cufftMakePlan3d(planr2c, nz, ny, nx, CUFFT_R2C, worksize(0)), 'cufftMakePlan3d r2c error')
-    call checkCufft(cufftMakePlan3d(planc2r, nz, ny, nx, CUFFT_C2R, worksize(1)), 'cufftMakePlan3d c2r error')
+    call checkCufft(cufftMakePlan3d(planr2c, nx, ny, nz, CUFFT_R2C, worksize(0)), 'cufftMakePlan3d r2c error')
+    call checkCufft(cufftMakePlan3d(planc2r, nx, ny, nz, CUFFT_C2R, worksize(1)), 'cufftMakePlan3d c2r error')
 
 #ifdef SHARED_WORKAREA
     ! Compute how much scratch to allocate -- find the largest size for all the MPI ranks

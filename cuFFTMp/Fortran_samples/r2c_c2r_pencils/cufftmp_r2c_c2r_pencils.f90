@@ -67,7 +67,7 @@ program cufftmp_r2c_c2r_pencils
     n = 32
     nx = n * nranks1d
     ny = nx
-    nz = nx
+    nz = 64
     nz_complex = nz/2+1
     nz_real_padded = 2 * nz_complex
 
@@ -132,8 +132,8 @@ program cufftmp_r2c_c2r_pencils
                     output_boxes(rank)%lower, output_boxes(rank)%upper, &
                     input_boxes(rank)%strides, output_boxes(rank)%strides), 'cufftXtSetDistribution error')
 
-    call checkCufft(cufftMakePlan3d(planr2c, nz, ny, nx, CUFFT_R2C, worksize), 'cufftMakePlan3d r2c error')
-    call checkCufft(cufftMakePlan3d(planc2r, nz, ny, nx, CUFFT_C2R, worksize), 'cufftMakePlan3d c2r error')
+    call checkCufft(cufftMakePlan3d(planr2c, nx, ny, nz, CUFFT_R2C, worksize), 'cufftMakePlan3d r2c error')
+    call checkCufft(cufftMakePlan3d(planc2r, nx, ny, nz, CUFFT_C2R, worksize), 'cufftMakePlan3d c2r error')
 
     call checkCufft(cufftXtMalloc(planr2c, u_desc, CUFFT_XT_FORMAT_DISTRIBUTED_INPUT), 'cufftXtMalloc error')
     call cufft_memcpyH2D(u_desc, u, CUFFT_XT_FORMAT_INPLACE, .true.)
