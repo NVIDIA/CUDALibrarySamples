@@ -130,7 +130,7 @@ int main(int argc, char** argv) {
     // Compute error
     double error = compute_error(ref, data, buildBox3D(CUFFT_XT_FORMAT_INPLACE, CUFFT_R2C, rank, size, nx, ny, nz));
 
-    nvshmem_init();
+    nvshmem_finalize();
     MPI_Finalize();
 
     return assess_error(error);
