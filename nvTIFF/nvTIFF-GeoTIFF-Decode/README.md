@@ -29,7 +29,7 @@ x86_64
 
 # Prerequisites
 - A Linux system with recent NVIDIA drivers.
-- Install the [CUDA 11.0 toolkit](https://developer.nvidia.com/cuda-downloads).
+- Install the [CUDA toolkit](https://developer.nvidia.com/cuda-downloads).
 - CMake (3.17 or later)
 - nvTIFF package
 - [nvComp] (https://developer.nvidia.com/nvcomp-download)

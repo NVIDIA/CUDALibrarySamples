@@ -10,7 +10,7 @@ Image decoding and encoding from NVTIFF Library
 
 ## Supported SM Architectures
 
-  [SM 6.0 ](https://developer.nvidia.com/cuda-gpus)  [SM 6.1 ](https://developer.nvidia.com/cuda-gpus)  [SM 7.0 ](https://developer.nvidia.com/cuda-gpus)  [SM 7.2 ](https://developer.nvidia.com/cuda-gpus)  [SM 7.5 ](https://developer.nvidia.com/cuda-gpus) [SM 8.0 ](https://developer.nvidia.com/cuda-gpus)
+  [SM 6.0 + ](https://developer.nvidia.com/cuda-gpus) 
 
 ## Supported OSes
 
@@ -20,19 +20,19 @@ Linux, Windows
 
 x86_64
 
-## CUDA APIs involved
+## APIs involved
 
-[NVTIFF](https://docs.nvidia.com/cuda/nvtiff/index.html)
+[nvTIFF](https://docs.nvidia.com/cuda/nvtiff/index.html)
 
 
 # Building (make)
 
 # Prerequisites
 - A Linux system with recent NVIDIA drivers.
-- Install the [CUDA 11.6 toolkit](https://developer.nvidia.com/cuda-downloads).
-- CMake (3.13 or later)
+- Install the [CUDA toolkit](https://developer.nvidia.com/cuda-downloads).
+- CMake (3.17 or later)
 - nvTIFF package
-
+- [nvComp] (https://developer.nvidia.com/nvcomp-download)
 
 ## Build command on Linux
 ```
