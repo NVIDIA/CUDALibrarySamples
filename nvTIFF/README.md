@@ -14,10 +14,12 @@ TIFF Image Decoding and Encoding from nvTIFF Library
 
 [TIFF Image Decoder - Python](nvTIFF-Python-Example/)
 
+[GeoTIFF Image Decoder](nvTIFF-GeoTIFF-Decode/)
+
 
 ## Supported SM Architectures
 
-  [SM 6.0 ](https://developer.nvidia.com/cuda-gpus)  [SM 6.1 ](https://developer.nvidia.com/cuda-gpus)  [SM 7.0 ](https://developer.nvidia.com/cuda-gpus)  [SM 7.2 ](https://developer.nvidia.com/cuda-gpus)  [SM 7.5 ](https://developer.nvidia.com/cuda-gpus) [SM 8.0 ](https://developer.nvidia.com/cuda-gpus)
+  [SM 6.0 +](https://developer.nvidia.com/cuda-gpus)
 
 ## Supported OSes
 
@@ -33,6 +35,6 @@ x86_64
 
 # Prerequisites
 - A Linux system with recent NVIDIA drivers.
-- Install the [CUDA 11.6 toolkit](https://developer.nvidia.com/cuda-downloads).
-- nvcomp for zlib support (https://developer.nvidia.com/nvcomp-download)
+- Install the [CUDA toolkit](https://developer.nvidia.com/cuda-downloads).
+- [nvCOMP](https://developer.nvidia.com/nvcomp-download) for Deflate decompression support 
 
