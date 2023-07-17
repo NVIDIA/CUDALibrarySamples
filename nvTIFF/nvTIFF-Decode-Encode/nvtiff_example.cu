@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2022 -2023, NVIDIA CORPORATION. All rights reserved.
  *
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -38,7 +38,9 @@
 #include <cuda_runtime.h>
 #include "nvTiff_utils.h"
 #include "cudamacro.h"
-#include <nvTiff.h>
+#include <nvtiff.h>
+
+#define DIV_UP(a, b) (((a) + ((b)-1)) / (b))
 
 #define CHECK_NVTIFF(call)                                                \
     {                                                                       \
@@ -354,10 +356,6 @@ int main(int argc, char **argv) {
 	int frameBeg = INT_MIN;
 	int frameEnd = INT_MAX;
 	int decodeRange = 0;
-
-	int memType = NVTIFF_MEM_REG;
-	int doH2DFileCopy = 0;
-
 	int doEncode = 0;
 	int encRowsPerStrip = 1;
 	unsigned long long encStripAllocSize = 0;
@@ -401,16 +399,6 @@ int main(int argc, char **argv) {
 			case 'e':
 				frameEnd = atoi(optarg);
 				decodeRange = 1;
-				break;
-			case 'm':
-				if (optarg[0] != 'r' && optarg[0] != 'p') {
-					fprintf(stderr, "Unknown memory type specified (%c)!\n", optarg[0]);
-					usage(argv[0]);
-				}
-				memType = (optarg[0] == 'r') ? NVTIFF_MEM_REG : NVTIFF_MEM_PIN;
-				break;
-			case 'c':
-				doH2DFileCopy = 1;
 				break;
 			case 'v':
 				verbose++;
@@ -476,9 +464,6 @@ int main(int argc, char **argv) {
 	cudaStream_t stream;
 	CHECK_CUDA(cudaStreamCreate(&stream));
 
-	if (verbose > 1) {
-		nvTiffDumpRaw(fname);
-	}
 
 	nvtiffStream_t tiff_stream;
 	nvtiffDecoder_t decoder;
