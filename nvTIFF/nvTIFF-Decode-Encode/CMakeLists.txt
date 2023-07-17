@@ -1,5 +1,5 @@
 # 
-# Copyright (c) 2020 - 2021, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2020 - 2023, NVIDIA CORPORATION.  All rights reserved.
 # 
 # NVIDIA CORPORATION and its licensors retain all intellectual property
 # and proprietary rights in and to this software, related documentation
@@ -8,19 +8,31 @@
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 # 
 
-cmake_minimum_required(VERSION 3.13 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.17 FATAL_ERROR)
 
 project(nvTiff_example LANGUAGES C CXX CUDA)
 
-if(NOT NVTIFF_PATH)
-message(FATAL_ERROR, "NVTIFF_PATH not set")
-endif()
+find_package(CUDAToolkit REQUIRED)
 
-set(CMAKE_CXX_STANDARD 11)
+
+find_library(NVTIFF_LIB
+     NAMES nvtiff
+     PATHS ${NVTIFF_PATH}/lib64/${CUDAToolkit_VERSION_MAJOR}
+           ${NVTIFF_PATH}/lib/${CUDAToolkit_VERSION_MAJOR})
+
+
+if(NOT NVTIFF_LIB)
+  message(FATAL_ERROR, " nvTIFF library not found. Make sure the library is installed. If using the tar.xz/zip packages set -DNVTIFF_PATH")
+else()
+  message(INFO, " nvTIFF library found here: ${NVTIFF_LIB}")
+  endif()
+
+
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-set(CMAKE_CUDA_STANDARD 11)
+set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_EXTENSIONS OFF)
 
@@ -36,18 +48,10 @@ set(EXAMPLES_DESCRIPTOR_SOURCES
 
 add_executable(nvTiff_example ${EXAMPLES_DESCRIPTOR_SOURCES})
 
-find_library(nvTIFF_LIB
-    NAMES nvtiff
-    PATHS ${NVTIFF_PATH}/lib64)
-
-find_library(CUDART_LIB 
-    NAMES cudart
-    PATHS ${CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES})
 
 if(UNIX)
-  set(FILESYS -lstdc++fs)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 endif()
 
-target_link_libraries(nvTiff_example PUBLIC ${nvTIFF_LIB} ${CUDART_LIB} ${FILESYS})
+target_link_libraries(nvTiff_example PUBLIC ${NVTIFF_LIB} CUDA::cudart)
 
