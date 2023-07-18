@@ -43,7 +43,6 @@ include_directories(
 
 set(EXAMPLES_DESCRIPTOR_SOURCES
   nvtiff_example.cu
-  nvTiff_utils.cpp
   )
 
 add_executable(nvTiff_example ${EXAMPLES_DESCRIPTOR_SOURCES})
