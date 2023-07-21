@@ -10,7 +10,8 @@
 
 cmake_minimum_required(VERSION 3.17 FATAL_ERROR)
 
-project(nvTiff_example LANGUAGES C CXX CUDA)
+
+project(nvtiff_geotiff_decode LANGUAGES C CXX CUDA)
 
 find_package(CUDAToolkit REQUIRED)
 
@@ -41,16 +42,16 @@ include_directories(
   SYSTEM ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
 )
 
-set(EXAMPLES_DESCRIPTOR_SOURCES
-  nvtiff_example.cu
+set(SOURCES
+  nvtiff_geotiff_decode.cpp
   )
 
-add_executable(nvTiff_example ${EXAMPLES_DESCRIPTOR_SOURCES})
+add_executable(nvtiff_geotiff_decode ${SOURCES})
 
 
 if(UNIX)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 endif()
 
-target_link_libraries(nvTiff_example PUBLIC ${NVTIFF_LIB} CUDA::cudart)
+target_link_libraries(nvtiff_geotiff_decode PUBLIC ${NVTIFF_LIB} CUDA::cudart)
 
