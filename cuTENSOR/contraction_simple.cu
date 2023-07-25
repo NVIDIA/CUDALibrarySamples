@@ -136,8 +136,8 @@ cutensorStatus_t cutensorContractionSimple(const cutensorHandle_t* handle,
 
     HANDLE_ERROR(cutensorContraction(handle,
                  &plan,
-                 (void*) &alpha, A, B,
-                 (void*) &beta,  C, D, 
+                 alpha, A, B,
+                 beta,  C, D,
                  work, worksize, stream));
 
     return CUTENSOR_STATUS_SUCCESS;
