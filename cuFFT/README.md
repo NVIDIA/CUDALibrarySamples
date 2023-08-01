@@ -46,10 +46,15 @@ This folder demonstrates cuFFT APIs usage.
 
 ##### MutliGPU 3D FFT R2C:C2R example
 
-* [cuFFT MGPU 3D R2C:C2R](3d_mgpu_r2c_c24/)
+* [cuFFT MGPU 3D R2C:C2R](3d_mgpu_r2c_c2r/)
 
     The sample compute MultiGPU 3D FFT using R2C and C2R. See example for detailed description.
 
+##### cuFFT LTO EA R2C:C2R example
+
+* [cuFFT LTO EA R2C:C2R](lto_ea/)
+
+    The sample computes a low-pass filter using using R2C and C2R with LTO callbacks. See example for detailed description.
 
 
 
