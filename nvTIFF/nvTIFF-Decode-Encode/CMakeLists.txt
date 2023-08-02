@@ -18,7 +18,7 @@ find_package(CUDAToolkit REQUIRED)
 find_library(NVTIFF_LIB
      NAMES nvtiff
      PATHS ${NVTIFF_PATH}/lib64/${CUDAToolkit_VERSION_MAJOR}
-           ${NVTIFF_PATH}/lib/${CUDAToolkit_VERSION_MAJOR})
+           ${NVTIFF_PATH}/lib)
 
 
 if(NOT NVTIFF_LIB)
