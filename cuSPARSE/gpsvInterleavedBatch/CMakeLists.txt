@@ -56,7 +56,7 @@ project("${ROUTINE}_example"
 add_executable(${ROUTINE}_example)
 
 target_sources(${ROUTINE}_example
-    PUBLIC ${PROJECT_SOURCE_DIR}/${ROUTINE}_example.cu
+    PUBLIC ${PROJECT_SOURCE_DIR}/${ROUTINE}_example.c
 )
 
 target_include_directories(${ROUTINE}_example
