@@ -174,7 +174,6 @@ program cufftmp_r2c
     deallocate(u)
     deallocate(ref)
     deallocate(u_permuted)
-    call nvshmem_free(u_dptr)
     
     call mpi_finalize(ierr)
 
