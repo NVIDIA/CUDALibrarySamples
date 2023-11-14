@@ -84,6 +84,7 @@ void run_c2c_fwd_inv(size_t nx, size_t ny, size_t nz, std::vector<std::complex<f
     CUDA_CHECK(cudaStreamSynchronize(stream));
     CUDA_CHECK(cudaMemcpy(cpu_data.data(), gpu_data, cpu_data.size() * sizeof(cuComplex), cudaMemcpyDefault));
 
+    nvshmem_free(gpu_data);
     CUFFT_CHECK(cufftDestroy(plan));
 
     CUDA_CHECK(cudaStreamDestroy(stream));
