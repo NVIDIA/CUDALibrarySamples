@@ -131,7 +131,7 @@ int main(int argc, char** argv) {
     std::cout << "\n";
 
     int errors = 0;
-    for(int i = 0; i < dst_host_expected.size(); i++) {
+    for(int i = 0; i < (int)dst_host_expected.size(); i++) {
         if(dst_host[i] != dst_host_expected[i]) errors++;
     }
 

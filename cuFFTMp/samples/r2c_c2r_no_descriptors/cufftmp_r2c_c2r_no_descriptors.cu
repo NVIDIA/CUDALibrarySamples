@@ -80,11 +80,11 @@ void run_r2c_c2r(size_t nx, size_t ny, size_t nz, std::vector<float>& cpu_data, 
     CUDA_CHECK(cudaStreamSynchronize(stream));
     CUDA_CHECK(cudaMemcpy(cpu_data.data(), gpu_data, cpu_data.size() * sizeof(float), cudaMemcpyDefault));
 
+    nvshmem_free(gpu_data);
     CUFFT_CHECK(cufftDestroy(plan_r2c));
     CUFFT_CHECK(cufftDestroy(plan_c2r));
 
     CUDA_CHECK(cudaStreamDestroy(stream));
-    nvshmem_free(gpu_data);
 };
 
 int main(int argc, char** argv) {

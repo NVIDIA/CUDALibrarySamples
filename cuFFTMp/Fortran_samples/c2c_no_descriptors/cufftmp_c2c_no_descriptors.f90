@@ -107,8 +107,6 @@ program cufftmp_c2c_no_descriptors
 
    call checkCuda(cudaMemcpy(u, u_dptr, product(local_cshape)))
 
-   call checkCufft(cufftDestroy(plan))
-
    call checkNormDiff(local_cshape(1), local_cshape(2), local_cshape(3), u, ref, max_norm, max_diff)
    write(*,'(A18, I1, A14, F25.8, A14, F15.8)') "after C2C inverse ", rank, " max_norm is ", max_norm, " max_diff is ", max_diff
    write(*,'(A25, I1, A14, F25.8)') "Relative Linf on rank ", rank, " is ", max_diff/max_norm
@@ -116,6 +114,8 @@ program cufftmp_c2c_no_descriptors
    deallocate(u)
    deallocate(ref)
    call nvshmem_free(u_dptr)
+   call checkCufft(cufftDestroy(plan))
+   
    call nvshmem_finalize()
    call mpi_finalize(ierr)
 
