@@ -1,4 +1,5 @@
-# Copyright 1993-2023 NVIDIA Corporation.  All rights reserved.
+#
+# Copyright 2023 NVIDIA Corporation.  All rights reserved.
 #
 # NOTICE TO LICENSEE:
 #
@@ -44,6 +45,7 @@
 # software must include, in the user documentation and internal
 # comments to the code, the above Disclaimer and U.S. Government End
 # Users Notice.
+#
 cmake_minimum_required(VERSION 3.13)
 
 set(EXAMPLE_NAME simple)
