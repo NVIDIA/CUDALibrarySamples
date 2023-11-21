@@ -39,15 +39,15 @@
 
 template<>
 struct CuTensorTypeTraits<Eigen::half> {
-  static const cudaDataType_t cudaType = CUDA_R_16F;
-  static const cutensorComputeType_t cutensorType = CUTENSOR_COMPUTE_32F;
+  static cutensorDataType_t getDataType() {return CUTENSOR_R_16F;}
+  static const cutensorComputeDescriptor_t getComputeDesc() {return CUTENSOR_COMPUTE_DESC_16F;}
   typedef float ScalarType;
 };
 
 template<>
 struct CuTensorTypeTraits<tensorflow::bfloat16> {
-  static const cudaDataType_t cudaType = CUDA_R_16BF;
-  static const cutensorComputeType_t cutensorType = CUTENSOR_COMPUTE_32F;
+  static cutensorDataType_t getDataType() {return CUTENSOR_R_16BF;}
+  static const cutensorComputeDescriptor_t getComputeDesc() {return CUTENSOR_COMPUTE_DESC_16BF;}
   typedef float ScalarType;
 };
 
@@ -93,6 +93,12 @@ class EinsumCuTensorOp : public OpKernel {
                                                      &output_tensor));
 
     size_t worksize = myEinsum.getWorksize();
+    // create contraction plan according to the worksize provided
+    // update the worksize if cutensor does not need that much memory
+    auto ret1 = myEinsum.plan(GetCuTensorHandle(), worksize);
+    OP_REQUIRES(context, ret1, errors::Internal("cuTensor: plan creation failed."));
+    // get the updated worksize
+    worksize = myEinsum.getWorksize();
     Tensor work_tensor;
     int64 work_tensor_size = worksize / sizeof(float);
     TensorShape work_shape = { work_tensor_size };

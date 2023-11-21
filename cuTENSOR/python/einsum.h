@@ -1,4 +1,5 @@
 /*  
+        issert tgt != ""
  * Copyright (c) 2021, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
  * 
  * 
@@ -48,38 +49,39 @@ struct CuTensorTypeTraits;
 
 template<>
 struct CuTensorTypeTraits<double> {
-  static const cudaDataType_t cudaType = CUDA_R_64F;
-  static const cutensorComputeType_t cutensorType = CUTENSOR_COMPUTE_64F;
+  static cutensorDataType_t getDataType() {return CUTENSOR_R_64F;}
+  static const cutensorComputeDescriptor_t getComputeDesc() {return CUTENSOR_COMPUTE_DESC_64F;}
   typedef double ScalarType;
 };
 
 template<>
 struct CuTensorTypeTraits<float> {
-  static const cudaDataType_t cudaType = CUDA_R_32F;
-  static const cutensorComputeType_t cutensorType = CUTENSOR_COMPUTE_TF32;
+  static cutensorDataType_t getDataType() {return CUTENSOR_R_32F;}
+  static const cutensorComputeDescriptor_t getComputeDesc() {return CUTENSOR_COMPUTE_DESC_32F;}
   typedef float ScalarType;
-};
-
-template<>
-struct CuTensorTypeTraits<cuComplex> {
-  static const cudaDataType_t cudaType = CUDA_C_32F;
-  static const cutensorComputeType_t cutensorType = CUTENSOR_COMPUTE_32F;
-  typedef cuComplex ScalarType;
 };
 
 template<>
 struct CuTensorTypeTraits<cuDoubleComplex> {
-  static const cudaDataType_t cudaType = CUDA_C_64F;
-  static const cutensorComputeType_t cutensorType = CUTENSOR_COMPUTE_64F;
+  static cutensorDataType_t getDataType() {return CUTENSOR_C_64F;}
+  static const cutensorComputeDescriptor_t getComputeDesc() {return CUTENSOR_COMPUTE_DESC_64F;}
   typedef cuDoubleComplex ScalarType;
 };
 
 template<>
+struct CuTensorTypeTraits<cuComplex> {
+  static cutensorDataType_t getDataType() {return CUTENSOR_C_32F;}
+  static const cutensorComputeDescriptor_t getComputeDesc() {return CUTENSOR_COMPUTE_DESC_32F;}
+  typedef cuComplex ScalarType;
+};
+
+template<>
 struct CuTensorTypeTraits<__half> {
-  static const cudaDataType_t cudaType = CUDA_R_16F;
-  static const cutensorComputeType_t cutensorType = CUTENSOR_COMPUTE_32F;
+  static cutensorDataType_t getDataType() {return CUTENSOR_R_16F;}
+  static const cutensorComputeDescriptor_t getComputeDesc() {return CUTENSOR_COMPUTE_DESC_16F;}
   typedef float ScalarType;
 };
+
 
 template<typename ComputeType,
          typename IntType, int kMaxNumModes_>
@@ -258,7 +260,7 @@ struct Einsum
         isInitialized_ = true;
     }
 
-    size_t getWorksize() const { return kWorksize_; }
+    uint64_t getWorksize() const { return kWorksize_; }
 
     std::vector<IntType> getOutputShape() const
     {
@@ -273,6 +275,126 @@ struct Einsum
     }
 
     /**
+     * create the contraction plan according to the workspace size provided
+     *
+     * \param[in] handle cuTensor handle
+     * \param[in] workspaceSizeProvided size of the workspace provided by the user
+     */
+    bool plan(const cutensorHandle_t handle, const uint64_t workspaceSizeProvided)
+    {
+        if (!isInitialized_) return false;
+
+        cutensorDataType_t cutensorType = CuTensorTypeTraits<ComputeType>::getDataType();
+        const cutensorComputeDescriptor_t descCompute = CuTensorTypeTraits<ComputeType>::getComputeDesc();
+
+        const uint32_t kAlignment = 128;
+        cutensorTensorDescriptor_t descA;
+        HANDLE_ERROR(cutensorCreateTensorDescriptor(handle,
+                    &descA,
+                    numModesA_,
+                    extentA_.data(),
+                    NULL,/*stride*/
+                    cutensorType, kAlignment));
+
+        cutensorTensorDescriptor_t descC;
+        HANDLE_ERROR(cutensorCreateTensorDescriptor(handle,
+                    &descC,
+                    numModesC_,
+                    extentC_.data(),
+                    NULL,/*stride*/
+                    cutensorType, kAlignment));
+
+        cutensorOperationDescriptor_t desc;
+        cutensorTensorDescriptor_t descB = nullptr;
+
+        if (numModesB_ > 0)
+        {
+            // dispatch to contraction
+
+            HANDLE_ERROR(cutensorCreateTensorDescriptor(handle,
+                    &descB,
+                    numModesB_,
+                    extentB_.data(),
+                    NULL,/*stride*/
+                    cutensorType, kAlignment));
+
+            /*******************************
+             * Create Contraction Descriptor
+             *******************************/
+
+            HANDLE_ERROR(cutensorCreateContraction(handle, 
+                        &desc,
+                        descA, modesA_.data(), /* unary operator A*/opA_,
+                        descB, modesB_.data(), /* unary operator B*/opB_,
+                        descC, modesC_.data(), /* unary operator C*/CUTENSOR_OP_IDENTITY,
+                        descC, modesC_.data(),
+                        descCompute));
+        }
+        else
+        {
+            /*******************************
+             * Create Contraction Descriptor
+             *******************************/
+            HANDLE_ERROR(cutensorCreateReduction(
+                 handle, &desc,
+                 descA, modesA_.data(), CUTENSOR_OP_IDENTITY,
+                 descC, modesC_.data(), CUTENSOR_OP_IDENTITY,
+                 descC, modesC_.data(),
+                 CUTENSOR_OP_ADD, descCompute));
+        }
+
+        /**************************
+         * Set the algorithm to use
+         ***************************/
+        cutensorPlanPreference_t planPref;
+        HANDLE_ERROR(cutensorCreatePlanPreference(
+                    handle,
+                    &planPref,
+                    CUTENSOR_ALGO_DEFAULT,
+                    CUTENSOR_JIT_MODE_NONE));
+
+        /**********************
+         * Query workspace estimate
+         **********************/
+        uint64_t workspaceSizeEstimate = 0;
+        const cutensorWorksizePreference_t workspacePref = CUTENSOR_WORKSPACE_DEFAULT;
+        HANDLE_ERROR(cutensorEstimateWorkspaceSize(handle,
+                                                  desc,
+                                                  planPref,
+                                                  workspacePref,
+                                                  &workspaceSizeEstimate));
+
+        /**************************
+         * Create Contraction Plan
+         **************************/
+        HANDLE_ERROR(cutensorCreatePlan(handle,
+                    &plan_,
+                    desc,
+                    planPref,
+                    workspaceSizeProvided));
+
+        uint64_t actualWorkspaceSize = 0;
+        HANDLE_ERROR(cutensorPlanGetAttribute(handle,
+                                             plan_,
+                                             CUTENSOR_PLAN_REQUIRED_WORKSPACE,
+                                             &actualWorkspaceSize,
+                                             sizeof(actualWorkspaceSize)));
+
+        // At this point the user knows exactly how much memory is need by the operation and
+        // only the smaller actual workspace needs to be allocated
+        assert(actualWorkspaceSize <= workspaceSizeEstimate);
+        assert(actualWorkspaceSize <= workspaceSizeProvided);
+        kWorksize_ = std::max(actualWorkspaceSize, static_cast<uint64_t>(4ULL * 1024ULL * 1024ULL));
+
+        HANDLE_ERROR(cutensorDestroyOperationDescriptor(desc));
+        HANDLE_ERROR(cutensorDestroyTensorDescriptor(descA));
+        HANDLE_ERROR(cutensorDestroyTensorDescriptor(descB));
+        HANDLE_ERROR(cutensorDestroyTensorDescriptor(descC));
+        return true;
+    }
+
+
+    /**
      * Computes the einsum call A,B->C
      *
      * \param[in] A_raw device pointer of A
@@ -281,101 +403,52 @@ struct Einsum
      * \param[out] wor_raw device pointer to the scratchpad memory
      * Dispatch to contraction
      */
-    bool execute(const cutensorHandle_t *handle,
+    bool execute(const cutensorHandle_t handle,
                  const void* A_raw,
                  const void* B_raw,
                  void* C_raw,
                  void *work_raw, cudaStream_t stream) const
     {
-        if (!isInitialized_) return false;
+        const uint32_t kAlignment = 128; // Alignment of the global-memory device pointers (bytes)
+        assert(uintptr_t(A_raw) % kAlignment == 0);
+        assert(uintptr_t(B_raw) % kAlignment == 0);
+        assert(uintptr_t(C_raw) % kAlignment == 0);
 
-        cudaDataType_t cudaType = CuTensorTypeTraits<ComputeType>::cudaType;
-        cutensorComputeType_t computeType = CuTensorTypeTraits<ComputeType>::cutensorType;
+        typename CuTensorTypeTraits<ComputeType>::ScalarType alpha = 1;
+        typename CuTensorTypeTraits<ComputeType>::ScalarType beta = 0;
 
-        cutensorTensorDescriptor_t descA;
-        HANDLE_ERROR(cutensorInitTensorDescriptor(handle,
-                    &descA,
-                    numModesA_,
-                    extentA_.data(),
-                    NULL /* = stride */,
-                    cudaType, opA_));
-
-        cutensorTensorDescriptor_t descC;
-        HANDLE_ERROR(cutensorInitTensorDescriptor(handle,
-                    &descC,
-                    numModesC_,
-                    extentC_.data(),
-                    NULL /* = stride*/,
-                    cudaType, CUTENSOR_OP_IDENTITY));
-
-        uint32_t alignmentRequirementA;
-        HANDLE_ERROR(cutensorGetAlignmentRequirement(handle,
-                    A_raw, &descA, &alignmentRequirementA));
-
-        uint32_t alignmentRequirementC;
-        HANDLE_ERROR(cutensorGetAlignmentRequirement(handle,
-                    C_raw, &descC, &alignmentRequirementC));
-
-
-        cutensorTensorDescriptor_t descB;
-        uint32_t alignmentRequirementB;
         if (numModesB_ > 0)
         {
-            // dispatch to contraction
-            HANDLE_ERROR(cutensorInitTensorDescriptor(handle,
-                        &descB,
-                        numModesB_,
-                        extentB_.data(),
-                        NULL /* = stride*/,
-                        cudaType, opB_));
-
-            HANDLE_ERROR(cutensorGetAlignmentRequirement(handle,
-                        B_raw, &descB, &alignmentRequirementB));
-
-            cutensorContractionDescriptor_t desc;
-            HANDLE_ERROR(cutensorInitContractionDescriptor(handle, &desc,
-                        &descA, modesA_.data(), alignmentRequirementA,
-                        &descB, modesB_.data(), alignmentRequirementB,
-                        &descC, modesC_.data(), alignmentRequirementC,
-                        &descC, modesC_.data(), alignmentRequirementC,
-                        computeType));
-
-            cutensorAlgo_t algo = CUTENSOR_ALGO_DEFAULT;
-            cutensorContractionFind_t find;
-            HANDLE_ERROR(cutensorInitContractionFind( 
-                        handle, &find, 
-                        algo));
-
-            cutensorContractionPlan_t plan;
-            HANDLE_ERROR(cutensorInitContractionPlan(handle,
-                        &plan, &desc, &find, kWorksize_));
-
-            typename CuTensorTypeTraits<ComputeType>::ScalarType alpha = 1;
-            typename CuTensorTypeTraits<ComputeType>::ScalarType beta = 0;
-
-            HANDLE_ERROR(cutensorContraction(handle, &plan,
-                        (void*) &alpha, A_raw, B_raw,
-                        (void*) &beta,  C_raw, C_raw,
-                        work_raw, kWorksize_, stream));
+            HANDLE_ERROR(cutensorContract(handle,
+                               plan_,
+                               (void*) &alpha, A_raw, B_raw,
+                               (void*) &beta,  C_raw, C_raw, 
+                               work_raw, kWorksize_, stream));
         }
         else
         {
             // dispatch to reduction
-            typename CuTensorTypeTraits<ComputeType>::ScalarType alpha = 1;
-            typename CuTensorTypeTraits<ComputeType>::ScalarType beta = 0;
-            HANDLE_ERROR(cutensorReduction(handle,
-                        (const void*)&alpha, A_raw, &descA, modesA_.data(),
-                        (const void*)&beta,  A_raw, &descC, modesC_.data(), // beta == 0 => will not be used
-                        C_raw, &descC, modesC_.data(),
-                        CUTENSOR_OP_ADD, computeType, work_raw, kWorksize_, stream));
+            HANDLE_ERROR(cutensorReduce(handle, plan_,
+                    (const void*)&alpha, A_raw,
+                    (const void*)&beta,  C_raw, 
+                    C_raw, work_raw, kWorksize_, stream));
         }
         return true;
     }
 
     bool isInitialized() const { return isInitialized_; }
 
+    ~Einsum()
+    {
+        if (isInitialized_)
+        {
+            cutensorDestroyPlan(plan_);
+        }
+    }
+
     private:
-    static const size_t kWorksize_ = 1024ULL * 1024ULL * 8ULL * 128ULL;
+    uint64_t kWorksize_ = 1024ULL * 1024ULL * 1024ULL;
+    cutensorPlan_t plan_;
     uint32_t numModesA_;
     uint32_t numModesB_;
     uint32_t numModesC_;
@@ -392,16 +465,12 @@ struct Einsum
 
 inline cutensorHandle_t CreateCuTensorHandle() {
   cutensorHandle_t handle;
-  cutensorInit(&handle);
-  if (getenv("CUTENSOR_CACHE") && atoi(getenv("CUTENSOR_CACHE")) == 1) {
-    cutensorPlanCacheline_t* cachelines = new cutensorPlanCacheline_t[32];
-    cutensorHandleAttachPlanCachelines(&handle, cachelines, 32);
-  }
+  cutensorCreate(&handle);
   return handle;
 }
 
-inline cutensorHandle_t* GetCuTensorHandle() {
-  static cutensorHandle_t handle = CreateCuTensorHandle();
-  return &handle;
+inline cutensorHandle_t GetCuTensorHandle() {
+  static thread_local cutensorHandle_t handle = CreateCuTensorHandle();
+  return handle;
 }
 

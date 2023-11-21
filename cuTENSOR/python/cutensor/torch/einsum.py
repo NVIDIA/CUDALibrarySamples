@@ -92,11 +92,11 @@ class Einsum(torch.nn.Module):
         return EinsumFunction.apply(self.equation, input_0, input_1)
 
 
-def _compute_target_tensor(in0, in1, target, eqs):
-    remaining = target + ''.join(eqs)
+def _compute_target_tensor(in0, in1, target, rest):
     result = ""
+    rest = ''.join(rest) + target
     for m in in0[:-1] + in1[:-1] + in1[-1] + in0[-1]:
-        if m in remaining and m not in result:
+        if m in rest and not m in result:
             result += m
     # reorder target modes like target
     result = list(result)
@@ -128,13 +128,11 @@ def EinsumGeneral(equation, *tensors, **kwargs):
         in1 = tensors[step[1]]
         tensors.pop(step[1])
         tensors.pop(step[0])
-        eq0 = eqs[step[0]]
-        eq1 = eqs[step[1]]
+        tgt = _compute_target_tensor(eqs[step[0]], eqs[step[1]], target, [eq for idx, eq in enumerate(eqs) if idx not in step])
+        assert tgt != ""
+        eq = eqs[step[0]] + ',' + eqs[step[1]] + '->' + tgt
         eqs.pop(step[1])
         eqs.pop(step[0])
-        tgt = _compute_target_tensor(eq0, eq1, target, eqs)
-        assert tgt != ""
-        eq = eq0 + ',' + eq1 + '->' + tgt
         eqs.append(tgt)
         result = EinsumFunction.apply(eq, in0, in1)
         tensors.append(result)

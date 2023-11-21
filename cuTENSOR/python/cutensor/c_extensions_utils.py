@@ -77,8 +77,8 @@ class CustomExtension:
                                     ('_GLIBCXX_USE_CXX11_ABI',
                                      str(int(torch._C._GLIBCXX_USE_CXX11_ABI)))
                                 ],
-                                extra_compile_args=['-std=c++14', '-fopenmp'],
-                                extra_link_args=['-std=c++14', '-fopenmp'],
+                                extra_compile_args=['-std=c++17', '-fopenmp'],
+                                extra_link_args=['-std=c++17', '-fopenmp'],
                                 include_dirs=include_dirs,
                                 library_dirs=library_dirs,
                                 runtime_library_dirs=library_dirs)
