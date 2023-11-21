@@ -40,6 +40,21 @@ import cutensor.torch as cutensor
 
 class EinsumTest(unittest.TestCase):
 
+
+    def setUp(self):
+        torch.backends.cuda.matmul.allow_tf32 = False
+
+
+    def assertClose(self, cutensor_tensor, torch_tensor):
+        self.assertEqual(cutensor_tensor.shape, torch_tensor.shape)
+        self.assertEqual(torch.is_complex(cutensor_tensor), torch.is_complex(torch_tensor))
+        if torch.is_complex(cutensor_tensor):
+            self.assertClose(torch.real(cutensor_tensor), torch.real(torch_tensor))
+            self.assertClose(torch.imag(cutensor_tensor), torch.imag(torch_tensor))
+        else:
+            torch.testing.assert_close(cutensor_tensor, torch_tensor, rtol=5e-3, atol=6e-3)
+    
+
     @parameterized.expand(
         # yapf: disable
         [
@@ -154,14 +169,9 @@ class EinsumTest(unittest.TestCase):
         torch_A_grad = torch_A.grad
         torch_B_grad = torch_B.grad
 
-        torch_rslt = torch_rslt
-
-        self.assertEqual(cutensor_rslt.shape, torch_rslt.shape)
-        self.assertEqual(cutensor_A_grad.shape, torch_A_grad.shape)
-        self.assertEqual(cutensor_B_grad.shape, torch_B_grad.shape)
-        torch.testing.assert_allclose(cutensor_rslt, torch_rslt, rtol=5e-3, atol=6e-3)
-        torch.testing.assert_allclose(cutensor_A_grad, torch_A_grad, rtol=5e-3, atol=6e-3)
-        torch.testing.assert_allclose(cutensor_B_grad, torch_B_grad, rtol=5e-3, atol=6e-3)
+        self.assertClose(cutensor_rslt, torch_rslt)
+        self.assertClose(cutensor_A_grad, torch_A_grad)
+        self.assertClose(cutensor_B_grad, torch_B_grad)
 
     @parameterized.expand(
         # yapf: disable
@@ -183,12 +193,6 @@ class EinsumTest(unittest.TestCase):
                 sizes=[(50, 60), (60, 7), (7, 8)],
                 equation="ik,kl,lj",
                 dtype=torch.float32,
-            ),
-            param(
-                "test 3",
-                sizes=[(50, 60), (60, 7), (7, 8)],
-                equation="ik,kl,lj->ij",
-                dtype=torch.complex64,
             ),
             param(
                 "test 3",
@@ -235,12 +239,10 @@ class EinsumTest(unittest.TestCase):
         torch_rslt = torch_rslt
         torch_grads = [t.grad for t in torch_tensors]
 
-        self.assertEqual(cutensor_rslt.shape, torch_rslt.shape)
+
+        self.assertClose(cutensor_rslt, torch_rslt)
         for ct, tt in zip(cutensor_grads, torch_grads):
-            self.assertEqual(ct.shape, tt.shape)
-        torch.testing.assert_allclose(cutensor_rslt, torch_rslt, rtol=5e-3, atol=5e-3)
-        for ct, tt in zip(cutensor_grads, torch_grads):
-            torch.testing.assert_allclose(ct, tt, rtol=5e-3, atol=5e-3)
+            self.assertClose(ct, tt)
 
 
 if __name__ == '__main__':

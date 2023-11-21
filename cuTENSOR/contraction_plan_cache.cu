@@ -32,6 +32,7 @@
 
 #include <unordered_map>
 #include <vector>
+#include <cassert>
 
 #include <cuda_runtime.h>
 #include <cutensor.h>
@@ -39,13 +40,13 @@
 #define HANDLE_ERROR(x)                                               \
 { const auto err = x;                                                 \
   if( err != CUTENSOR_STATUS_SUCCESS )                                \
-  { printf("Error: %s\n", cutensorGetErrorString(err)); return err; } \
+  { printf("Error: %s\n", cutensorGetErrorString(err)); exit(-1); } \
 };
 
 #define HANDLE_CUDA_ERROR(x)                                      \
 { const auto err = x;                                             \
   if( err != cudaSuccess )                                        \
-  { printf("Error: %s\n", cudaGetErrorString(err)); return err; } \
+  { printf("Error: %s\n", cudaGetErrorString(err)); exit(-1); } \
 };
 
 struct GPUTimer
@@ -87,10 +88,10 @@ int main()
     typedef float floatTypeC;
     typedef float floatTypeCompute;
 
-    cudaDataType_t typeA = CUDA_R_32F;
-    cudaDataType_t typeB = CUDA_R_32F;
-    cudaDataType_t typeC = CUDA_R_32F;
-    cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_32F;
+    cutensorDataType_t typeA = CUTENSOR_R_32F;
+    cutensorDataType_t typeB = CUTENSOR_R_32F;
+    cutensorDataType_t typeC = CUTENSOR_R_32F;
+    const cutensorComputeDescriptor_t descCompute = CUTENSOR_COMPUTE_DESC_32F;
 
     floatTypeCompute alpha = (floatTypeCompute)1.1f;
     floatTypeCompute beta  = (floatTypeCompute)0.f;
@@ -150,6 +151,11 @@ int main()
     HANDLE_CUDA_ERROR(cudaMalloc((void**) &B_d, sizeB));
     HANDLE_CUDA_ERROR(cudaMalloc((void**) &C_d, sizeC));
 
+    const uint32_t kAlignment = 128; // Alignment of the global-memory device pointers (bytes)
+    assert(uintptr_t(A_d) % kAlignment == 0);
+    assert(uintptr_t(B_d) % kAlignment == 0);
+    assert(uintptr_t(C_d) % kAlignment == 0);
+
     floatTypeA *A = (floatTypeA*) malloc(sizeof(floatTypeA) * elementsA);
     floatTypeB *B = (floatTypeB*) malloc(sizeof(floatTypeB) * elementsB);
     floatTypeC *C = (floatTypeC*) malloc(sizeof(floatTypeC) * elementsC);
@@ -180,191 +186,165 @@ int main()
      *************************/ 
 
     cutensorHandle_t handle;
-    HANDLE_ERROR(cutensorInit(&handle));
+    HANDLE_ERROR(cutensorCreate(&handle));
 
     /**********************
-     * Setup planCache
+     * Load plan cache
      **********************/
-    constexpr int32_t numCachelines = 1024;
-    size_t sizeCache = numCachelines * sizeof(cutensorPlanCacheline_t);
-    printf("Allocating: %.2f kB for the cache\n", sizeCache / 1000.);
-    cutensorPlanCacheline_t* cachelines = (cutensorPlanCacheline_t*) malloc(sizeCache);
-    HANDLE_ERROR( cutensorHandleAttachPlanCachelines(&handle, cachelines, numCachelines) );
 
-    const char cacheFilename[] = "./cache.bin";
-    uint32_t numCachelinesRead = 0;
-    cutensorStatus_t status = cutensorHandleReadCacheFromFile(&handle, cacheFilename, &numCachelinesRead);
-    if (status == CUTENSOR_STATUS_SUCCESS)
+    // holds information about the per-handle plan cache
+    const char planCacheFilename[] = "./planCache.bin";
+    uint32_t numCachelines = 0;
+    cutensorStatus_t status = cutensorHandleReadPlanCacheFromFile(handle,
+            planCacheFilename, &numCachelines);
+    if (status == CUTENSOR_STATUS_IO_ERROR)
     {
-        printf("%d cachelines have been successfully read from file (%s).\n", numCachelinesRead, cacheFilename);
+        printf("File (%s) doesn't seem to exist.\n", planCacheFilename);
     }
-    else if (status == CUTENSOR_STATUS_IO_ERROR)
+    else if (status != CUTENSOR_STATUS_SUCCESS)
     {
-        printf("File (%s) doesn't seem to exist.\n", cacheFilename);
+        printf("cutensorHandleReadPlanCacheFromFile reports error: %s\n", cutensorGetErrorString(status));
     }
-    else if (status == CUTENSOR_STATUS_INSUFFICIENT_WORKSPACE)
+    else
     {
-        printf("Cannot read cache: Please attach at least %d cachelines to the handle.\n", numCachelinesRead);
+        printf("cutensorHandleReadPlanCacheFromFile read %d cachelines from file.\n",
+                numCachelines);
     }
+
+    /**********************
+     * Optional: Resize the cache in case you expect the default option to be insufficient fore your use case
+     **********************/
+    uint32_t numEntries = 128;
+    HANDLE_ERROR(cutensorHandleResizePlanCache(handle, numEntries));
 
     /**********************
      * Create Tensor Descriptors
      **********************/
-
     cutensorTensorDescriptor_t descA;
-    HANDLE_ERROR(cutensorInitTensorDescriptor(&handle,
+    HANDLE_ERROR(cutensorCreateTensorDescriptor(handle,
                  &descA,
                  nmodeA,
                  extentA.data(),
                  NULL,/*stride*/
-                 typeA, CUTENSOR_OP_IDENTITY));
+                 typeA, kAlignment));
 
     cutensorTensorDescriptor_t descB;
-    HANDLE_ERROR(cutensorInitTensorDescriptor(&handle,
+    HANDLE_ERROR(cutensorCreateTensorDescriptor(handle,
                  &descB,
                  nmodeB,
                  extentB.data(),
                  NULL,/*stride*/
-                 typeB, CUTENSOR_OP_IDENTITY));
+                 typeB, kAlignment));
 
     cutensorTensorDescriptor_t descC;
-    HANDLE_ERROR(cutensorInitTensorDescriptor( &handle,
+    HANDLE_ERROR(cutensorCreateTensorDescriptor(handle,
                  &descC,
                  nmodeC,
                  extentC.data(),
                  NULL,/*stride*/
-                 typeC, CUTENSOR_OP_IDENTITY));
-
-    /**********************************************
-     * Retrieve the memory alignment for each tensor
-     **********************************************/ 
-
-     uint32_t alignmentRequirementA;
-     HANDLE_ERROR(cutensorGetAlignmentRequirement(&handle,
-                  A_d,
-                  &descA,
-                  &alignmentRequirementA));
-
-     uint32_t alignmentRequirementB;
-     HANDLE_ERROR(cutensorGetAlignmentRequirement(&handle,
-                  B_d,
-                  &descB,
-                  &alignmentRequirementB));
-
-     uint32_t alignmentRequirementC;
-     HANDLE_ERROR(cutensorGetAlignmentRequirement(&handle,
-                  C_d,
-                  &descC, 
-                  &alignmentRequirementC));
+                 typeC, kAlignment));
 
     /*******************************
      * Create Contraction Descriptor
      *******************************/
 
-    cutensorContractionDescriptor_t desc;
-    HANDLE_ERROR(cutensorInitContractionDescriptor(&handle, 
+    cutensorOperationDescriptor_t desc;
+    HANDLE_ERROR(cutensorCreateContraction(handle, 
                  &desc,
-                 &descA, modeA.data(), alignmentRequirementA,
-                 &descB, modeB.data(), alignmentRequirementB,
-                 &descC, modeC.data(), alignmentRequirementC,
-                 &descC, modeC.data(), alignmentRequirementC,
-                 typeCompute));
+                 descA, modeA.data(), /* unary operator A*/CUTENSOR_OP_IDENTITY,
+                 descB, modeB.data(), /* unary operator B*/CUTENSOR_OP_IDENTITY,
+                 descC, modeC.data(), /* unary operator C*/CUTENSOR_OP_IDENTITY,
+                 descC, modeC.data(),
+                 descCompute));
 
     /**************************
-    * Set the algorithm to use
-    ***************************/
+     * PlanPreference: Set the algorithm to use and enable incremental autotuning
+     ***************************/
 
-    cutensorContractionFind_t find;
-    HANDLE_ERROR(cutensorInitContractionFind( 
-                 &handle, &find, 
-                 CUTENSOR_ALGO_DEFAULT));
+    const cutensorAlgo_t algo = CUTENSOR_ALGO_DEFAULT;
+
+    cutensorPlanPreference_t planPref;
+    HANDLE_ERROR(cutensorCreatePlanPreference(
+                               handle,
+                               &planPref,
+                               algo,
+                               CUTENSOR_JIT_MODE_NONE)); // disable just-in-time compilation
 
     const cutensorCacheMode_t cacheMode = CUTENSOR_CACHE_MODE_PEDANTIC;
-    HANDLE_ERROR(cutensorContractionFindSetAttribute(
-        &handle,
-        &find,
-        CUTENSOR_CONTRACTION_FIND_CACHE_MODE,
+    HANDLE_ERROR(cutensorPlanPreferenceSetAttribute(
+        handle,
+        planPref,
+        CUTENSOR_PLAN_PREFERENCE_CACHE_MODE,
         &cacheMode,
         sizeof(cutensorCacheMode_t)));
 
-    const cutensorAutotuneMode_t autotuneMode = CUTENSOR_AUTOTUNE_INCREMENTAL;
-    HANDLE_ERROR(cutensorContractionFindSetAttribute(
-        &handle,
-        &find,
-        CUTENSOR_CONTRACTION_FIND_AUTOTUNE_MODE,
+    const cutensorAutotuneMode_t autotuneMode = CUTENSOR_AUTOTUNE_MODE_INCREMENTAL;
+    HANDLE_ERROR(cutensorPlanPreferenceSetAttribute(
+        handle,
+        planPref,
+        CUTENSOR_PLAN_PREFERENCE_AUTOTUNE_MODE,
         &autotuneMode ,
         sizeof(cutensorAutotuneMode_t)));
 
     const uint32_t incCount = 4;
-    HANDLE_ERROR(cutensorContractionFindSetAttribute(
-        &handle,
-        &find,
-        CUTENSOR_CONTRACTION_FIND_INCREMENTAL_COUNT,
+    HANDLE_ERROR(cutensorPlanPreferenceSetAttribute(
+        handle,
+        planPref,
+        CUTENSOR_PLAN_PREFERENCE_INCREMENTAL_COUNT,
         &incCount,
         sizeof(uint32_t)));
 
     /**********************
-     * Query workspace
+     * Query workspace estimate
      **********************/
 
-    uint64_t worksize = 0;
-    HANDLE_ERROR(cutensorContractionGetWorkspaceSize(&handle,
-                 &desc,
-                 &find,
-                 CUTENSOR_WORKSPACE_MAX, &worksize)); // TODO
-
-    void *work = nullptr;
-    if (worksize > 0)
-    {
-        if (cudaSuccess != cudaMalloc(&work, worksize))
-        {
-            work = nullptr;
-            worksize = 0;
-        }
-    } 
+    uint64_t workspaceSizeEstimate = 0;
+    const cutensorWorksizePreference_t workspacePref = CUTENSOR_WORKSPACE_DEFAULT;
+    HANDLE_ERROR(cutensorEstimateWorkspaceSize(handle,
+                                          desc,
+                                          planPref,
+                                          workspacePref,
+                                          &workspaceSizeEstimate));
 
     /**************************
      * Create Contraction Plan
      **************************/
 
-    cutensorContractionPlan_t plan;
+    cutensorPlan_t plan;
+    HANDLE_ERROR(cutensorCreatePlan(handle,
+                 &plan,
+                 desc,
+                 planPref,
+                 workspaceSizeEstimate));
+
+    /**************************
+     * Optional: Query information about the created plan
+     **************************/
+
+    // query actually used workspace
+    uint64_t actualWorkspaceSize = 0;
+    HANDLE_ERROR(cutensorPlanGetAttribute(handle,
+        plan,
+        CUTENSOR_PLAN_REQUIRED_WORKSPACE,
+        &actualWorkspaceSize,
+        sizeof(actualWorkspaceSize)));
+
+    // At this point the user knows exactly how much memory is need by the operation and
+    // only the smaller actual workspace needs to be allocated
+    assert(actualWorkspaceSize <= workspaceSizeEstimate);
+
+    void *work = nullptr;
+    if (actualWorkspaceSize > 0)
+    {
+        HANDLE_CUDA_ERROR(cudaMalloc(&work, actualWorkspaceSize));
+        assert(uintptr_t(work) % 128 == 0); // workspace must be aligned to 128 byte-boundary
+    }
 
     /**********************
      * Run
      **********************/
 
     double minTimeCUTENSOR = 1e100;
-    // warm-up GPU (without caching) (optional, but recommended for more accurate measurements later on)
-    for (int i=0; i < 4; ++i)
-    {
-
-        cutensorContractionFind_t find_copy = find;
-
-        const cutensorCacheMode_t cacheMode = CUTENSOR_CACHE_MODE_NONE;
-        HANDLE_ERROR(cutensorContractionFindSetAttribute(
-                    &handle,
-                    &find_copy,
-                    CUTENSOR_CONTRACTION_FIND_CACHE_MODE,
-                    &cacheMode,
-                    sizeof(cutensorCacheMode_t)));
-
-        // To take advantage of the incremental-autotuning (via the cache), it's important to re-initialize the plan
-        HANDLE_ERROR(cutensorInitContractionPlan(&handle,
-                    &plan,
-                    &desc,
-                    &find_copy,
-                    worksize));
-
-        HANDLE_ERROR(cutensorContraction(&handle,
-                                  &plan,
-                                  (void*) &alpha, A_d, B_d,
-                                  (void*) &beta,  C_d, C_d, 
-                                  work, worksize, 0 /* stream */));
-    }
-    cudaDeviceSynchronize();
-    printf("Warm-up completed.\n");
-
-
     for (int i=0; i < incCount + 1; ++i) // last iteration will hit the cache
     {
         cudaMemcpy(C_d, C, sizeC, cudaMemcpyHostToDevice);
@@ -374,27 +354,16 @@ int main()
         GPUTimer timer;
         timer.start();
 
-        // To take advantage of the incremental-autotuning (via the cache), it's important to re-initialize the plan
-        HANDLE_ERROR(cutensorInitContractionPlan(&handle,
-                    &plan,
-                    &desc,
-                    &find,
-                    worksize));
-
-        cutensorStatus_t err = cutensorContraction(&handle,
-                                  &plan,
+        // Automatically takes advantage of the incremental-autotuning (and updates the cache inside the context)
+        HANDLE_ERROR(cutensorContract(handle,
+                                  plan,
                                   (void*) &alpha, A_d, B_d,
                                   (void*) &beta,  C_d, C_d, 
-                                  work, worksize, 0 /* stream */);
+                                  work, actualWorkspaceSize, 0 /* stream */));
 
         // Synchronize and measure timing
         auto time = timer.seconds();
 
-        if (err != CUTENSOR_STATUS_SUCCESS)
-        {
-            printf("ERROR: %s in %s:%d\n", cutensorGetErrorString(err), __FILE__, __LINE__);
-            break;
-        }
         minTimeCUTENSOR = (minTimeCUTENSOR < time) ? minTimeCUTENSOR : time;
     }
 
@@ -405,20 +374,32 @@ int main()
     transferedBytes /= 1e9;
     printf("cuTensor: %.2f GFLOPs/s %.2f GB/s\n", gflops / minTimeCUTENSOR, transferedBytes/ minTimeCUTENSOR);
 
+    status = cutensorHandleWritePlanCacheToFile(handle, planCacheFilename);
+    if (status == CUTENSOR_STATUS_IO_ERROR)
+    {
+        printf("File (%s) couldn't be written to.\n", planCacheFilename);
+    }
+    else if (status != CUTENSOR_STATUS_SUCCESS)
+    {
+        printf("cutensorHandleWritePlanCacheToFile reports error: %s\n",
+                cutensorGetErrorString(status));
+    }
+    else
+    {
+        printf("Plan cache successfully stored to %s.\n", planCacheFilename);
+    }
 
-    /*
-     * Optional: Write cache to disk
-     */
-    HANDLE_ERROR( cutensorHandleWriteCacheToFile(&handle, cacheFilename) );
-    printf("Cache has been successfully written to file (%s).\n", cacheFilename);
 
-    // Detach cache and free-up resources
-    HANDLE_ERROR( cutensorHandleDetachPlanCachelines(&handle) );
+    HANDLE_ERROR(cutensorDestroy(handle));
+    HANDLE_ERROR(cutensorDestroyPlan(plan));
+    HANDLE_ERROR(cutensorDestroyOperationDescriptor(desc));
+    HANDLE_ERROR(cutensorDestroyTensorDescriptor(descA));
+    HANDLE_ERROR(cutensorDestroyTensorDescriptor(descB));
+    HANDLE_ERROR(cutensorDestroyTensorDescriptor(descC));
 
     if (A) free(A);
     if (B) free(B);
     if (C) free(C);
-    if (cachelines) free(cachelines);
     if (A_d) cudaFree(A_d);
     if (B_d) cudaFree(B_d);
     if (C_d) cudaFree(C_d);

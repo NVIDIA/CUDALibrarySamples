@@ -100,9 +100,9 @@ int main()
     /**********************
      * This example illustrates the use case where an input tensor A (in host memory) is
      * permuted from an NCHW data layout to NHWC while moving the data from host to device
-     * memory C:
+     * memory C. It also adds padding for 'w' and 'h' modes:
      *
-     * C_{c,w,h,n} = alpha * A_{w,h,c,n}
+     * C_{c',w',h,n} = alpha * A_{w,h,c,n}
      **********************/
 
     std::vector<int> modeC{'c','w','h','n'};
@@ -116,12 +116,33 @@ int main()
     extent['c'] = 128;
     extent['n'] = 128;
 
+    std::unordered_map<int, int> paddingLeft;
+    paddingLeft['h'] = 1;
+    paddingLeft['w'] = 1;
+    paddingLeft['c'] = 0;
+    paddingLeft['n'] = 0;
+
+    std::unordered_map<int, int> paddingRight;
+    paddingLeft['h'] = 1;
+    paddingLeft['w'] = 1;
+    paddingLeft['c'] = 0;
+    paddingLeft['n'] = 0;
+
+    floatTypeC paddingValue = 0.0f;
+
     std::vector<int64_t> extentA;
     for (auto mode : modeA)
         extentA.push_back(extent[mode]);
     std::vector<int64_t> extentC;
+    std::vector<int> paddingLeftVec;
+    std::vector<int> paddingRightVec;
     for (auto mode : modeC)
+    {
         extentC.push_back(extent[mode]);
+        paddingLeftVec.push_back(paddingLeft[mode]);
+        paddingRightVec.push_back(paddingRight[mode]);
+    }
+
 
     /**********************
      * Allocating data
@@ -132,7 +153,7 @@ int main()
         elementsA *= extent[mode];
     size_t elementsC = 1;
     for (auto mode : modeC)
-        elementsC *= extent[mode];
+        elementsC *= extent[mode] + paddingLeft[mode] + paddingRight[mode];
 
     size_t sizeA = sizeof(floatTypeA) * elementsA;
     size_t sizeC = sizeof(floatTypeC) * elementsC;
@@ -208,6 +229,27 @@ int main()
                                            descC,
                                            modeC.data(),
                                            descCompute));
+
+    /*******************************
+     * Set Padding Information
+     *******************************/
+    HANDLE_ERROR(cutensorOperationDescriptorSetAttribute(handle,
+                                                         desc,
+                                                         CUTENSOR_OPERATION_DESCRIPTOR_PADDING_LEFT,
+                                                         paddingLeftVec.data(),
+                                                         sizeof(int) * nmodeC));
+
+    HANDLE_ERROR(cutensorOperationDescriptorSetAttribute(handle,
+                                                         desc,
+                                                         CUTENSOR_OPERATION_DESCRIPTOR_PADDING_RIGHT,
+                                                         paddingRightVec.data(),
+                                                         sizeof(int) * nmodeC));
+
+    HANDLE_ERROR(cutensorOperationDescriptorSetAttribute(handle,
+                                                         desc,
+                                                         CUTENSOR_OPERATION_DESCRIPTOR_PADDING_VALUE,
+                                                         &paddingValue,
+                                                         sizeof(paddingValue)));
 
     /*****************************
      * Optional (but recommended): ensure that the scalar type is correct.

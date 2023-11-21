@@ -1,19 +1,19 @@
 # cuTENSOR Python Binding Sample
 
-This sample provides a Python package `cutensor` with bindings for PyTorch and Tensorflow that provides an `[einsum](https://numpy.org/doc/stable/reference/generated/numpy.einsum.html)` style interface that leverages cuTENSOR and can be used similar to PyTorch's and Tensorflow's native einsum implementations.
+This sample provides a Python package `cutensor` with bindings for PyTorch and Tensorflow that provides an [einsum](https://numpy.org/doc/stable/reference/generated/numpy.einsum.html) style interface that leverages cuTENSOR and can be used similar to PyTorch's and Tensorflow's native einsum implementations.
 
 
 ## Installation
 
-1. Download and extract the cuTENSOR library. Visit `https://developer.nvidia.com/cutensor/downloads` for instructions. For the purpose of this sample, we assume that cuTENSOR is extracted in the current working directory.
+1. Download and extract the cuTENSOR library. Visit https://developer.nvidia.com/cutensor/downloads for instructions. For the purpose of this sample, we assume that cuTENSOR is extracted in the current working directory.
 2. Start a docker container that has access to the cuTENSOR library and set the `CUTENSOR_ROOT` environment variable appropriately.
    
    ```
    # PyTorch
-   host$ docker run -it --rm --gpus all -v $PWD/libcutensor:/cutensor --env CUTENSOR_ROOT=/cutensor nvcr.io/nvidia/pytorch:21.05-py3
+   host$ docker run -it --rm --gpus all -v $PWD/libcutensor:/cutensor --env CUTENSOR_ROOT=/cutensor nvcr.io/nvidia/pytorch:23.09-py3
 
    # Tensorflow
-   host$ docker run -it --rm --gpus all -v $PWD/libcutensor:/cutensor --env CUTENSOR_ROOT=/cutensor nvcr.io/nvidia/tensorflow:21.05-tf1-py3
+   host$ docker run -it --rm --gpus all -v $PWD/libcutensor:/cutensor --env CUTENSOR_ROOT=/cutensor nvcr.io/nvidia/tensorflow:23.03-tf1-py3
    ```
 3. Clone this repository in the docker container, and install this package.
 
