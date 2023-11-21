@@ -38,6 +38,7 @@ The CUDA Library Samples are released by NVIDIA Corporation as Open Source softw
 * [nvJPEG - High performance GPU-accelerated library for JPEG encode/decoding](nvJPEG/)
 * [nvJPEG2000 - High performance GPU-accelerated library for JPEG2000 encoding/decoding](nvJPEG2000/)
 * [nvTIFF - GPU-accelerated TIFF encoding/decoding](nvTIFF/)
+* [cuDSS - GPU-accelerated linear solvers](cuDSS/)
 
 
 ## Copyright
