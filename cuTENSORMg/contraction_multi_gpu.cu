@@ -202,7 +202,7 @@ int main(int argc, char** argv)
 
     const cutensorComputeType_t kComputeType = CUTENSOR_COMPUTE_32F;
     const cutensorWorksizePreference_t kWorksizePreference = 
-        CUTENSOR_WORKSPACE_RECOMMENDED;
+        CUTENSOR_WORKSPACE_DEFAULT;
 
     cutensorMgContractionDescriptor_t contractionDesc;
     CHECK(cutensorMgCreateContractionDescriptor(handle, &contractionDesc,
