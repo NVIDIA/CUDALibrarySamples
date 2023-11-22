@@ -1,4 +1,4 @@
-# cuFFT 2D FFT C2R example
+# cuFFT 2D FFT C2R/R2C example
 
 ## Description
 
@@ -39,47 +39,5 @@ Make sure that CMake finds expected CUDA Toolkit. If that is not the case you ca
 
 # Usage 1
 ```
-$  ./bin/2d_c2r_example
-```
-
-Sample example output (batch_size=1):
-
-```
-Input array:
-0.000000 + 0.000000j
-1.000000 + -1.000000j
-2.000000 + -2.000000j
-3.000000 + -3.000000j
-=====
-Output array:
-6.000000
--2.000000
--4.000000
-0.000000
-=====
-```
-
-Sample example output (batch_size=2):
-
-```
-Input array:
-0.000000 + 0.000000j
-1.000000 + -1.000000j
-2.000000 + -2.000000j
-3.000000 + -3.000000j
-4.000000 + -4.000000j
-5.000000 + -5.000000j
-6.000000 + -6.000000j
-7.000000 + -7.000000j
-=====
-Output array:
-6.000000
--2.000000
--4.000000
-0.000000
-22.000000
--2.000000
--4.000000
-0.000000
-=====
+$  ./bin/2d_c2r_r2c_example
 ```

@@ -52,9 +52,8 @@
 #include <iostream>
 #include <random>
 #include <vector>
-
 #include <cuda_runtime.h>
-#include <cufftXt.h>
+#include <cufft.h>
 
 #include "cufft_utils.h"
 
@@ -67,14 +66,14 @@ int main(int argc, char *argv[]) {
     int n = 2;
     dim_t fft = {n, n, n};
     int batch_size = 2;
-    int fft_size = batch_size * fft[0] * fft[1] * fft[2];
+    int fft_size = fft[0] * fft[1] * fft[2];
 
     using scalar_type = float;
     using data_type = std::complex<scalar_type>;
 
-    std::vector<data_type> data(fft_size);
+    std::vector<data_type> data(fft_size * batch_size);
 
-    for (int i = 0; i < fft_size; i++) {
+    for (int i = 0; i < data.size(); i++) {
         data[i] = data_type(i, -i);
     }
 
@@ -87,9 +86,10 @@ int main(int argc, char *argv[]) {
     cufftComplex *d_data = nullptr;
 
     CUFFT_CALL(cufftCreate(&plan));
-    CUFFT_CALL(cufftPlanMany(&plan, fft.size(), fft.data(), nullptr, 1,
-                             fft[0] * fft[1] * fft[2],             // *inembed, istride, idist
-                             nullptr, 1, fft[0] * fft[1] * fft[2], // *onembed, ostride, odist
+    // inembed/onembed being nullptr indicates contiguous data for each batch, then the stride and dist settings are ignored
+    CUFFT_CALL(cufftPlanMany(&plan, fft.size(), fft.data(), 
+                             nullptr, 1, 0, // *inembed, istride, idist
+                             nullptr, 1, 0, // *onembed, ostride, odist
                              CUFFT_C2C, batch_size));
 
     CUDA_RT_CALL(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
@@ -105,18 +105,31 @@ int main(int argc, char *argv[]) {
      *  Identical pointers to data and output arrays implies in-place transformation
      */
     CUFFT_CALL(cufftExecC2C(plan, d_data, d_data, CUFFT_FORWARD));
-    CUFFT_CALL(cufftExecC2C(plan, d_data, d_data, CUFFT_INVERSE));
+    CUDA_RT_CALL(cudaMemcpyAsync(data.data(), d_data, sizeof(data_type) * data.size(),
+                                 cudaMemcpyDeviceToHost, stream));
+    CUDA_RT_CALL(cudaStreamSynchronize(stream));
 
+    std::printf("Output array after Forward transform:\n");
+    for (auto &i : data) {
+        std::printf("%f + %fj\n", i.real(), i.imag());
+    }
+    std::printf("=====\n");
+
+    // Normalize the data and inverse FFT
+    scaling_kernel<<<1, 128, 0, stream>>>(d_data, data.size(), 1.f/fft_size);
+    CUFFT_CALL(cufftExecC2C(plan, d_data, d_data, CUFFT_INVERSE));
     CUDA_RT_CALL(cudaMemcpyAsync(data.data(), d_data, sizeof(data_type) * data.size(),
                                  cudaMemcpyDeviceToHost, stream));
 
     CUDA_RT_CALL(cudaStreamSynchronize(stream));
 
-    std::printf("Output array:\n");
+    std::printf("Output array after Forward, Normalization and Inverse transform:\n");
     for (auto &i : data) {
         std::printf("%f + %fj\n", i.real(), i.imag());
     }
     std::printf("=====\n");
+
+
 
     /* free resources */
     CUDA_RT_CALL(cudaFree(d_data))
