@@ -84,19 +84,12 @@
     }
 #endif  // CUFFT_CALL
 
-// template <> struct traits<CUFFT_C2C> {
-//     // scalar type
-//     typedef float T;
-
-//     using input_host_type = std::complex<T>;
-//     using input_device_type = cufftComplex;
-
-//     using output_host_type = std::complex<T>;
-//     using output_device_type = cufftComplex;
-
-//     static constexpr cufftType_t transformType = CUDA_R_64F;
-
-//     template <typename RNG> inline static T rand(RNG &gen) {
-//         return make_cuFloatComplex((S)gen(), (S)gen());
-//     }
-// };
+__global__
+void scaling_kernel(cufftComplex* data, int element_count, float scale) {
+    const int tid = threadIdx.x + blockIdx.x * blockDim.x;
+    const int stride = blockDim.x * gridDim.x;
+    for (auto i = tid; i<element_count; i+= stride) {
+        data[tid].x *= scale;
+        data[tid].y *= scale;
+    }
+}

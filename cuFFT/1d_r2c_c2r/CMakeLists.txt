@@ -41,7 +41,7 @@
 # above Disclaimer and U.S. Government End Users Notice.
 cmake_minimum_required(VERSION 3.18)
 
-set(ROUTINE 2d_c2r)
+set(ROUTINE 1d_r2c_c2r)
 
 project(
   "${ROUTINE}_example"
@@ -63,7 +63,7 @@ if(CMAKE_CUDA_ARCHITECTURES LESS 60)
 endif()
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-
+set_source_files_properties(${ROUTINE}_example.cpp PROPERTIES LANGUAGE CUDA)
 add_executable(${ROUTINE}_example)
 
 target_include_directories(${ROUTINE}_example

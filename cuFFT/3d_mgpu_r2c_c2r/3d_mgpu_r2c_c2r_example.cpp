@@ -53,8 +53,6 @@
 #include <random>
 #include <stdexcept>
 #include <vector>
-
-#include <cuda_runtime.h>
 #include <cufftXt.h>
 
 #include "cufft_utils.h"
@@ -62,15 +60,6 @@
 using cpudata_t = std::vector<std::complex<float>>;
 using gpus_t = std::vector<int>;
 using dim_t = std::array<size_t, 3>;
-
-__global__ void scaleKernel(cufftComplex *ft, float scale, size_t N) {
-    size_t i = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-
-    if (i < N) {
-        ft[i].x *= scale;
-        ft[i].y *= scale;
-    }
-}
 
 void scaleComplex(cudaLibXtDesc *desc, const float scale, const size_t N, const int nGPUs) {
     int device;
@@ -83,8 +72,8 @@ void scaleComplex(cudaLibXtDesc *desc, const float scale, const size_t N, const 
         device = desc->descriptor->GPUs[i];
         CUDA_RT_CALL(cudaSetDevice(device));
 
-        scaleKernel<<<dimGrid, dimBlock>>>((cufftComplex *)desc->descriptor->data[i], scale,
-                                           desc->descriptor->size[i] / sizeof(cufftComplex));
+        scaling_kernel<<<dimGrid, dimBlock>>>((cufftComplex *)desc->descriptor->data[i],
+                                           desc->descriptor->size[i] / sizeof(cufftComplex), scale);
         if (N / nGPUs != desc->descriptor->size[i] / sizeof(cufftComplex)) {
             throw std::runtime_error("ERROR: Wrong data size");
         }
@@ -139,8 +128,8 @@ void single(dim_t fft, cpudata_t &h_data_in, cpudata_t &h_data_out) {
 
     int dimGrid = (h_data_in.size() + threads - 1) / threads;
     int dimBlock = threads;
-    scaleKernel<<<dimGrid, dimBlock>>>(reinterpret_cast<cufftComplex *>(d_data), scale,
-                                       h_data_in.size());
+    scaling_kernel<<<dimGrid, dimBlock>>>(reinterpret_cast<cufftComplex *>(d_data),
+                                       h_data_in.size(), scale);
 
     // Execute the plan_c2r
     CUFFT_CALL(cufftXtExec(plan_c2r, d_data, d_data, CUFFT_INVERSE));

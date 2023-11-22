@@ -49,12 +49,12 @@ INC          := -I$(CUDA_TOOLKIT)/include -I../utils
 LIBS         := -L$(CUDA_TOOLKIT)/lib64 -lcufft
 FLAGS        := -O3 -std=c++11
 
-all: 1d_r2c_example
+all: 2d_c2r_r2c_example
 
-1d_r2c_example: 1d_r2c_example.cpp
-	nvcc -x cu $(FLAGS) $(INC) 1d_r2c_example.cpp -o 1d_r2c_example $(LIBS)
+2d_c2r_r2c_example: 2d_c2r_r2c_example.cpp
+	nvcc -x cu $(FLAGS) $(INC) 2d_c2r_r2c_example.cpp -o 2d_c2r_r2c_example $(LIBS)
 
 clean:
-	rm -f 1d_r2c_example
+	rm -f 2d_c2r_r2c_example
 
 .PHONY: clean all
