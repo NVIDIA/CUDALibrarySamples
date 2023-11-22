@@ -344,17 +344,18 @@ int writeBMP(const char *filename,
     int n;
     int red, green, blue;
 
-    std::vector<D> vchanR(height * width);
-    std::vector<D> vchanG(height * width);
-    std::vector<D> vchanB(height * width);
+    std::vector<D> vchanR(static_cast<size_t>(height) * static_cast<size_t>(width));
+    std::vector<D> vchanG(static_cast<size_t>(height) * static_cast<size_t>(width));
+    std::vector<D> vchanB(static_cast<size_t>(height) * static_cast<size_t>(width));
+    std::vector<D> pixelRow(3 * static_cast<size_t>(width));
     D *chanR = vchanR.data();
     D *chanG = vchanG.data();
     D *chanB = vchanB.data();
-    CHECK_CUDA(cudaMemcpy2D(chanR, (size_t)width * sizeof(D), d_chanR, pitchR, width * sizeof(D), height, cudaMemcpyDeviceToHost));
+    CHECK_CUDA(cudaMemcpy2D(chanR, static_cast<size_t>(width) * sizeof(D), d_chanR, pitchR, width * sizeof(D), height, cudaMemcpyDeviceToHost));
     
-    CHECK_CUDA(cudaMemcpy2D(chanG, (size_t)width * sizeof(D), d_chanG, pitchG, width * sizeof(D), height, cudaMemcpyDeviceToHost));
+    CHECK_CUDA(cudaMemcpy2D(chanG, static_cast<size_t>(width) * sizeof(D), d_chanG, pitchG, width * sizeof(D), height, cudaMemcpyDeviceToHost));
     
-    CHECK_CUDA(cudaMemcpy2D(chanB, (size_t)width * sizeof(D), d_chanB, pitchB, width * sizeof(D), height, cudaMemcpyDeviceToHost));
+    CHECK_CUDA(cudaMemcpy2D(chanB, static_cast<size_t>(width) * sizeof(D), d_chanB, pitchB, width * sizeof(D), height, cudaMemcpyDeviceToHost));
 
     extrabytes = 4 - ((width * 3) % 4); // How many bytes of padding to add to each
     // horizontal line - the size of which must
@@ -423,9 +424,9 @@ int writeBMP(const char *filename,
     {
         for (x = 0; x <= width - 1; x++)
         {
-            red = chanR[y * width + x];
-            green = chanG[y * width + x];
-            blue = chanB[y * width + x];
+            red = chanR[y * static_cast<size_t>(width) + x];
+            green = chanG[y * static_cast<size_t>(width) + x];
+            blue = chanB[y * static_cast<size_t>(width) + x];
 
             int scale = precision - 8;
             if (scale > 0) 
@@ -449,11 +450,11 @@ int writeBMP(const char *filename,
             if (blue < 0)
                 blue = 0;
             // Also, it's written in (b,g,r) format...
-
-            fprintf(outfile, "%c", blue);
-            fprintf(outfile, "%c", green);
-            fprintf(outfile, "%c", red);
+            pixelRow[x * 3 ] = blue;
+            pixelRow[x * 3 + 1] = green;
+            pixelRow[x * 3 + 2] = red;
         }
+        fwrite(pixelRow.data(), 1, width * 3, outfile);
         if (extrabytes) // See above - BMP lines must be of lengths divisible by 4.
         {
             for (n = 1; n <= extrabytes; n++)

@@ -155,9 +155,9 @@ int prepare_buffers(FileData &file_data, std::vector<size_t> &file_len,
             }
             // for JPEG 2000 bitstreams with 420/422 subsampling, this sample enables RGB output
             // we are allocating assuming that all component dimensions are the same
-            uint32_t aw = bytes_per_element * image_info.image_width;
-            uint32_t ah = image_info.image_height;
-            uint32_t sz = aw * ah;
+            size_t aw = bytes_per_element * image_info.image_width;
+            size_t ah = image_info.image_height;
+            size_t sz = aw * ah;
             ibuf[i].pitch_in_bytes[c] = aw;
             if (sz > ibuf[i].comp_sz[c]) 
             {
