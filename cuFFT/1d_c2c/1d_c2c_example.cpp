@@ -49,28 +49,24 @@
 
 #include <complex>
 #include <iostream>
-#include <random>
 #include <vector>
-
-#include <cuda_runtime.h>
-#include <cufftXt.h>
-
+#include <cufft.h>
 #include "cufft_utils.h"
 
 int main(int argc, char *argv[]) {
     cufftHandle plan;
     cudaStream_t stream = NULL;
 
-    int n = 8;
+    int fft_size = 8;
     int batch_size = 2;
-    int fft_size = batch_size * n;
+    int element_count = batch_size * fft_size;
 
     using scalar_type = float;
     using data_type = std::complex<scalar_type>;
 
-    std::vector<data_type> data(fft_size);
+    std::vector<data_type> data(element_count, 0);
 
-    for (int i = 0; i < fft_size; i++) {
+    for (int i = 0; i < element_count; i++) {
         data[i] = data_type(i, -i);
     }
 
@@ -83,7 +79,7 @@ int main(int argc, char *argv[]) {
     cufftComplex *d_data = nullptr;
 
     CUFFT_CALL(cufftCreate(&plan));
-    CUFFT_CALL(cufftPlan1d(&plan, data.size(), CUFFT_C2C, batch_size));
+    CUFFT_CALL(cufftPlan1d(&plan, fft_size, CUFFT_C2C, batch_size));
 
     CUDA_RT_CALL(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
     CUFFT_CALL(cufftSetStream(plan, stream));
@@ -98,6 +94,11 @@ int main(int argc, char *argv[]) {
      *  Identical pointers to data and output arrays implies in-place transformation
      */
     CUFFT_CALL(cufftExecC2C(plan, d_data, d_data, CUFFT_FORWARD));
+
+    // Normalize the data
+    scaling_kernel<<<1, 128, 0, stream>>>(d_data, element_count, 1.f/fft_size);
+
+    // The original data should be recovered after Forward FFT, normalization and inverse FFT
     CUFFT_CALL(cufftExecC2C(plan, d_data, d_data, CUFFT_INVERSE));
 
     CUDA_RT_CALL(cudaMemcpyAsync(data.data(), d_data, sizeof(data_type) * data.size(),
@@ -105,7 +106,7 @@ int main(int argc, char *argv[]) {
 
     CUDA_RT_CALL(cudaStreamSynchronize(stream));
 
-    std::printf("Output array:\n");
+    std::printf("Output array after Forward FFT, Normalization, and Inverse FFT :\n");
     for (auto &i : data) {
         std::printf("%f + %fj\n", i.real(), i.imag());
     }

@@ -63,7 +63,7 @@ if(CMAKE_CUDA_ARCHITECTURES LESS 60)
 endif()
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-
+set_source_files_properties(${ROUTINE}_example.cpp PROPERTIES LANGUAGE CUDA)
 add_executable(${ROUTINE}_example)
 
 target_include_directories(${ROUTINE}_example

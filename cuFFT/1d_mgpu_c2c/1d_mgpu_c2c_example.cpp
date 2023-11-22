@@ -52,8 +52,6 @@
 #include <iostream>
 #include <random>
 #include <vector>
-
-#include <cuda_runtime.h>
 #include <cufftXt.h>
 
 #include "cufft_utils.h"
