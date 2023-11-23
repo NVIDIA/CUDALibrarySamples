@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 - 2021, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2020 - 2023, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -297,6 +297,81 @@ int getInputDir(std::string &input_dir, const char *executable_path)
     return found;
 }
 
+#define CLAMP_PIXEL(x,a,b) ((x) < (a) ? (a) : ((x) > (b) ? (b) : (x)))
+// write ppm, input - RGB, device
+template <typename D>
+int writePPM(const char *filename,
+             const D *d_chanR, size_t pitchR,
+             const D *d_chanG, size_t pitchG,
+             const D *d_chanB, size_t pitchB,
+             uint32_t width, uint32_t height,
+             uint8_t precision,
+             uint8_t sgn)
+{
+    FILE *outfile;
+    std::vector<D> vchanR(static_cast<size_t>(height) * static_cast<size_t>(width));
+    std::vector<D> vchanG(static_cast<size_t>(height) * static_cast<size_t>(width));
+    std::vector<D> vchanB(static_cast<size_t>(height) * static_cast<size_t>(width));
+    std::vector<uint8_t> pixelRow(3 * ((precision +7)/8) * static_cast<size_t>(width));
+    
+    D *chanR = vchanR.data();
+    D *chanG = vchanG.data();
+    D *chanB = vchanB.data();
+    CHECK_CUDA(cudaMemcpy2D(chanR, static_cast<size_t>(width) * sizeof(D), d_chanR, pitchR, width * sizeof(D), height, cudaMemcpyDeviceToHost));
+    
+    CHECK_CUDA(cudaMemcpy2D(chanG, static_cast<size_t>(width) * sizeof(D), d_chanG, pitchG, width * sizeof(D), height, cudaMemcpyDeviceToHost));
+    
+    CHECK_CUDA(cudaMemcpy2D(chanB, static_cast<size_t>(width) * sizeof(D), d_chanB, pitchB, width * sizeof(D), height, cudaMemcpyDeviceToHost));
+
+    if (!(outfile = fopen(filename, "wb")))
+    {
+        std::cerr << "Cannot open file: " << filename << std::endl;
+        return 1;
+    }
+
+    fprintf(outfile,"P6\n#nvJPEG2000\n");
+    fprintf(outfile,"%d %d\n", width, height);
+    fprintf(outfile,"%d\n", (1 << precision) - 1);
+    
+    for (uint32_t y = 0;  y <  height; y++)
+    {
+        uint32_t idx = 0;
+        for (uint32_t x = 0; x < width; x++)
+        {
+            if (precision <= 8)
+            {
+                pixelRow[idx++] = static_cast<uint8_t>(chanR[y * width + x]);
+                pixelRow[idx++] = static_cast<uint8_t>(chanG[y * width + x]);
+                pixelRow[idx++] = static_cast<uint8_t>(chanB[y * width + x]);
+            }
+            else if (precision <= 16)
+            {
+                int r = chanR[y * width + x];
+                int g = chanG[y * width + x];
+                int b = chanB[y * width + x];
+                if(sgn)
+                {
+                    r += (1 << (precision - 1));
+                    g += (1 << (precision - 1));
+                    b += (1 << (precision - 1));
+                    r = CLAMP_PIXEL(r, 0, 65535);
+                    g = CLAMP_PIXEL(g, 0, 65535);
+                    b = CLAMP_PIXEL(b, 0, 65535);
+                }
+                pixelRow[idx++] = static_cast<uint8_t>((r) >> 8);
+                pixelRow[idx++] = static_cast<uint8_t>((r) & 0xff);
+                pixelRow[idx++] = static_cast<uint8_t>((g) >> 8);
+                pixelRow[idx++] = static_cast<uint8_t>((g) & 0xff);
+                pixelRow[idx++] = static_cast<uint8_t>((b) >> 8);
+                pixelRow[idx++] = static_cast<uint8_t>((b) & 0xff);
+            }
+        }
+        fwrite(pixelRow.data(), 1, width * 3 * ((precision +7)/8), outfile);
+    }
+    fclose(outfile);
+    return 0;
+}
+
 // write PGM, input - single channel, device
 template <typename D>
 int writePGM(const char *filename, const D *pSrc, size_t nSrcStep, int nWidth, int nHeight, uint8_t precision, uint8_t sgn)
@@ -335,14 +410,7 @@ int writePGM(const char *filename, const D *pSrc, size_t nSrcStep, int nWidth, i
                 if(sgn)
                 {
                     pix_val += (1 << (precision - 1));
-                    if (pix_val > 65535) 
-                    {
-                        pix_val = 65535;
-                    } 
-                    else if (pix_val < 0) 
-                    {
-                        pix_val = 0;
-                    }
+                    pix_val = CLAMP_PIXEL(pix_val, 0, 65535);
                 }
                 rOutputStream << static_cast<unsigned char>((pix_val) >> 8) << static_cast<unsigned char>((pix_val) & 0xff);
             }
@@ -374,7 +442,7 @@ int writeBMP(const char *filename,
     std::vector<D> vchanR(static_cast<size_t>(height) * static_cast<size_t>(width));
     std::vector<D> vchanG(static_cast<size_t>(height) * static_cast<size_t>(width));
     std::vector<D> vchanB(static_cast<size_t>(height) * static_cast<size_t>(width));
-    std::vector<D> pixelRow(3 * static_cast<size_t>(width));
+    std::vector<uint8_t> pixelRow(3 * static_cast<size_t>(width));
     D *chanR = vchanR.data();
     D *chanG = vchanG.data();
     D *chanB = vchanB.data();
@@ -449,7 +517,7 @@ int writeBMP(const char *filename,
     //
     for (y = height - 1; y >= 0; y--) // BMP image format is written from bottom to top...
     {
-        for (x = 0; x <= width - 1; x++)
+        for (x = 0; x < width; x++)
         {
             red = chanR[y * static_cast<size_t>(width) + x];
             green = chanG[y * static_cast<size_t>(width) + x];
@@ -463,19 +531,9 @@ int writeBMP(const char *filename,
                 blue = ((blue >> scale) + ((blue >> (scale - 1)) % 2));
             }
 
-
-            if (red > 255)
-                red = 255;
-            if (red < 0)
-                red = 0;
-            if (green > 255)
-                green = 255;
-            if (green < 0)
-                green = 0;
-            if (blue > 255)
-                blue = 255;
-            if (blue < 0)
-                blue = 0;
+            red = CLAMP_PIXEL(red, 0, 255);
+            green = CLAMP_PIXEL(green, 0, 255);
+            blue = CLAMP_PIXEL(blue, 0, 255);
             // Also, it's written in (b,g,r) format...
             pixelRow[x * 3 ] = blue;
             pixelRow[x * 3 + 1] = green;
