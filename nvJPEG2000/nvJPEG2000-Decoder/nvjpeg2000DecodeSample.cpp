@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 - 2021, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2020 - 2023, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -42,9 +42,8 @@ int write_image(std::string output_path, std::string filename, const nvjpeg2kIma
     sFileName = (std::string::npos == position) ? sFileName
                                                 : sFileName.substr(0, position);
 
-    int err = EXIT_SUCCESS;
-    
-    // For single component image output as PGM channel
+    int err = EXIT_FAILURE;
+    // For single component image output as PGM
     if (num_components == 1)
     {
         std::string fname(output_path + separator + sFileName + ".pgm");
@@ -72,28 +71,60 @@ int write_image(std::string output_path, std::string filename, const nvjpeg2kIma
     {
         if(num_components == 4 && verbose)
         {
-            std::cout<<"Discarding the alpha channel and writing the 4 component image as a .bmp file"<<std::endl;
+            std::cout<<"Discarding the alpha channel when writing to file"<<std::endl;
         }
-        std::string fname(output_path + separator + sFileName + ".bmp");
-        if (imgdesc.pixel_type == NVJPEG2K_UINT8)
+        size_t img_size = static_cast<size_t>(width) * static_cast<size_t>(height) * 3;
+        if(img_size < std::numeric_limits<uint32_t>::max())
         {
-            err = writeBMP<unsigned char>(fname.c_str(),
-                     (unsigned char *)imgdesc.pixel_data[0], imgdesc.pitch_in_bytes[0],
-                     (unsigned char *)imgdesc.pixel_data[1], imgdesc.pitch_in_bytes[1],
-                     (unsigned char *)imgdesc.pixel_data[2], imgdesc.pitch_in_bytes[2],
-                     width, height, precision, verbose);
+            std::string fname(output_path + separator + sFileName + ".bmp");
+            if (imgdesc.pixel_type == NVJPEG2K_UINT8)
+            {
+                err = writeBMP<unsigned char>(fname.c_str(),
+                        (unsigned char *)imgdesc.pixel_data[0], imgdesc.pitch_in_bytes[0],
+                        (unsigned char *)imgdesc.pixel_data[1], imgdesc.pitch_in_bytes[1],
+                        (unsigned char *)imgdesc.pixel_data[2], imgdesc.pitch_in_bytes[2],
+                        width, height, precision, verbose);
+            }
+            else if (imgdesc.pixel_type == NVJPEG2K_UINT16)
+            {
+                err = writeBMP<unsigned short>(fname.c_str(),
+                        (unsigned short *)imgdesc.pixel_data[0], imgdesc.pitch_in_bytes[0],
+                        (unsigned short *)imgdesc.pixel_data[1], imgdesc.pitch_in_bytes[1],
+                        (unsigned short *)imgdesc.pixel_data[2], imgdesc.pitch_in_bytes[2],
+                        width, height, precision, verbose);
+            }
+            if (err)
+            {
+                std::cout << "Cannot write output file: " << fname << std::endl;
+            }
         }
-        else if (imgdesc.pixel_type == NVJPEG2K_UINT16)
+        else
         {
-            err = writeBMP<unsigned short>(fname.c_str(),
-                     (unsigned short *)imgdesc.pixel_data[0], imgdesc.pitch_in_bytes[0],
-                     (unsigned short *)imgdesc.pixel_data[1], imgdesc.pitch_in_bytes[1],
-                     (unsigned short *)imgdesc.pixel_data[2], imgdesc.pitch_in_bytes[2],
-                     width, height, precision, verbose);
-        }
-        if (err)
-        {
-            std::cout << "Cannot write output file: " << fname << std::endl;
+            if(verbose)
+            {
+                std::cout<<"uncompressed size > 4GB. Writing it as .ppm"<<std::endl;
+            }
+            std::string fname(output_path + separator + sFileName + ".ppm");
+            if (imgdesc.pixel_type == NVJPEG2K_UINT8)
+            {
+                err = writePPM<unsigned char>(fname.c_str(),
+                        (unsigned char *)imgdesc.pixel_data[0], imgdesc.pitch_in_bytes[0],
+                        (unsigned char *)imgdesc.pixel_data[1], imgdesc.pitch_in_bytes[1],
+                        (unsigned char *)imgdesc.pixel_data[2], imgdesc.pitch_in_bytes[2],
+                        width, height, precision, verbose);
+            }
+            else if (imgdesc.pixel_type == NVJPEG2K_UINT16)
+            {
+                err = writePPM<unsigned short>(fname.c_str(),
+                        (unsigned short *)imgdesc.pixel_data[0], imgdesc.pitch_in_bytes[0],
+                        (unsigned short *)imgdesc.pixel_data[1], imgdesc.pitch_in_bytes[1],
+                        (unsigned short *)imgdesc.pixel_data[2], imgdesc.pitch_in_bytes[2],
+                        width, height, precision, verbose);
+            }
+            if (err)
+            {
+                std::cout << "Cannot write output file: " << fname << std::endl;
+            }
         }
     }
     else
@@ -104,6 +135,7 @@ int write_image(std::string output_path, std::string filename, const nvjpeg2kIma
     
     return err;
 }
+
 int free_output_buffers(nvjpeg2kImage_t& output_image)
 {
     for(uint32_t c = 0; c < output_image.num_components;c++)
