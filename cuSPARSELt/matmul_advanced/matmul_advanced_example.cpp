@@ -127,7 +127,7 @@ int main(void) {
     constexpr auto    opA           = CUSPARSE_OPERATION_NON_TRANSPOSE;
     constexpr auto    opB           = CUSPARSE_OPERATION_NON_TRANSPOSE;
     constexpr auto    type          = CUDA_R_16F;
-    constexpr auto    compute_type  = CUSPARSE_COMPUTE_16F;
+    constexpr auto    compute_type  = CUSPARSE_COMPUTE_32F;
 
     bool     is_rowmajor    = (order == CUSPARSE_ORDER_ROW);
     bool     isA_transposed = (opA != CUSPARSE_OPERATION_NON_TRANSPOSE);
