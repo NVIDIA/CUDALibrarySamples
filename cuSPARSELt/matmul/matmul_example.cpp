@@ -96,7 +96,7 @@ int main(void) {
     auto          opA          = CUSPARSE_OPERATION_NON_TRANSPOSE;
     auto          opB          = CUSPARSE_OPERATION_NON_TRANSPOSE;
     auto          type         = CUDA_R_16F;
-    auto          compute_type = CUSPARSE_COMPUTE_16F;
+    auto          compute_type = CUSPARSE_COMPUTE_32F;
 
     bool     is_rowmajor    = (order == CUSPARSE_ORDER_ROW);
     bool     isA_transposed = (opA != CUSPARSE_OPERATION_NON_TRANSPOSE);
@@ -126,6 +126,7 @@ int main(void) {
         hB[i] = static_cast<__half>(static_cast<float>(std::rand() % 10));
     float alpha = 1.0f;
     float beta  = 0.0f;
+
     //--------------------------------------------------------------------------
     // Device memory management
     __half *dA, *dB, *dC, *dD, *dA_compressed;
