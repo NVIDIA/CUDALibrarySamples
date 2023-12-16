@@ -69,7 +69,7 @@ void LtDgemmPresetAlgo(cublasLtHandle_t ltHandle,
     // set the transforms for A and B
     checkCublasStatus(cublasLtMatmulDescInit(&operationDesc, CUBLAS_COMPUTE_64F, CUDA_R_64F));
     checkCublasStatus(cublasLtMatmulDescSetAttribute(&operationDesc, CUBLASLT_MATMUL_DESC_TRANSA, &transa, sizeof(transa)));
-    checkCublasStatus(cublasLtMatmulDescSetAttribute(&operationDesc, CUBLASLT_MATMUL_DESC_TRANSB, &transb, sizeof(transa)));
+    checkCublasStatus(cublasLtMatmulDescSetAttribute(&operationDesc, CUBLASLT_MATMUL_DESC_TRANSB, &transb, sizeof(transb)));
 
     // create matrix descriptors, we are good with the details here so no need to set any extra attributes
     checkCublasStatus(cublasLtMatrixLayoutInit(&Adesc, CUDA_R_64F, transa == CUBLAS_OP_N ? m : k, transa == CUBLAS_OP_N ? k : m, lda));
