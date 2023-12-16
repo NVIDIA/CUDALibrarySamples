@@ -55,8 +55,11 @@ template <typename InType, typename OutType = InType, typename ComputeType = Out
 struct TestBench {
     using SampleRunner = std::function<void()>;
 
-    TestBench(int m, int n, int k, ComputeType alpha = 0.0f, ComputeType beta = 0.0f, size_t workspaceSize = 1024 * 1024 * 4, int N = 1,
-            ComputeType Ascale = 2.0, ComputeType Bscale = 0.5, ComputeType Cscale = 1.0, ComputeType Dscale = 1.0) :
+    TestBench(int m, int n, int k,
+            ComputeType alpha = ComputeType{0.0f}, ComputeType beta = ComputeType{0.0f},
+            size_t workspaceSize = 1024 * 1024 * 4, int N = 1,
+            ComputeType Ascale = ComputeType{2.0f}, ComputeType Bscale = ComputeType{0.5f},
+            ComputeType Cscale = ComputeType{1.0f}, ComputeType Dscale = ComputeType{1.0f}) :
         m(m), n(n), k(k), N(N), alpha(alpha), beta(beta), workspaceSize(workspaceSize), Ahost(m * k * N), Bhost(n * k * N),
         Chost(m * n * N), biasHost(m * N), AscaleHost(Ascale), BscaleHost(Bscale), CscaleHost(Cscale), DscaleHost(Dscale) {
         checkCublasStatus(cublasLtCreate(&ltHandle));
