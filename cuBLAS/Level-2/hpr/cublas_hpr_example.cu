@@ -62,18 +62,17 @@ int main(int argc, char *argv[]) {
     cublasHandle_t cublasH = NULL;
     cudaStream_t stream = NULL;
 
-    const int m = 2;
     const int n = 2;
-    const int lda = m;
 
     /*
      *   AP = | 1.1 + 1.2j | 2.3 + 2.4j |
-     *        | 3.5 + 3.6j | 4.7 + 4.8j |
+     *        |            | 4.7 + 4.8j |
      *   x  = | 5.1 + 6.2j | 7.3 + 8.4j |
      */
 
-    std::vector<data_type> AP = {{1.1, 1.2}, {3.5, 3.6}, {2.3, 2.4}, {4.7, 4.8}};
+    std::vector<data_type> AP = {{1.1, 1.2}, {3.5, 3.6}, {4.7, 4.8}};
     const std::vector<data_type> x = {{5.1, 6.2}, {7.3, 8.4}};
+
     const double alpha = 1.0;
     const int incx = 1;
 
@@ -83,7 +82,7 @@ int main(int argc, char *argv[]) {
     cublasFillMode_t uplo = CUBLAS_FILL_MODE_UPPER;
 
     printf("AP\n");
-    print_matrix(m, n, AP.data(), lda);
+    print_packed_matrix(uplo, n, AP.data());
     printf("=====\n");
 
     printf("x\n");
@@ -115,12 +114,12 @@ int main(int argc, char *argv[]) {
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
     /*
-     *   AP = | 65.55 + 0.00j | 126.15 + 0.00j |
-     *        | 92.81 + 6.02j |   4.70 + 4.80j |
+     *   AP = | 65.55 +   0.00j  92.81 +   6.02j |
+     *        |                 128.55 +   0.00j |
      */
 
     printf("AP\n");
-    print_matrix(m, n, AP.data(), lda);
+    print_packed_matrix(uplo, n, AP.data());
     printf("=====\n");
 
     /* free resources */
