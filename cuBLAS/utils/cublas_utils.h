@@ -182,6 +182,70 @@ void print_matrix(const int &m, const int &n, const cuDoubleComplex *A, const in
     }
 }
 
+template <typename T> void print_packed_matrix(cublasFillMode_t uplo, const int &n, const T *A);
+
+template <> void print_packed_matrix(cublasFillMode_t uplo, const int &n, const float *A) {
+    size_t off = 0;
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            if ((uplo == CUBLAS_FILL_MODE_UPPER && j >= i) ||
+                (uplo == CUBLAS_FILL_MODE_LOWER && j <= i)) {
+                std::printf("%6.2f ", A[off++]);
+            } else if (uplo == CUBLAS_FILL_MODE_UPPER) {
+                std::printf("       ");
+            }
+        }
+        std::printf("\n");
+    }
+}
+
+template <> void print_packed_matrix(cublasFillMode_t uplo, const int &n, const double *A) {
+    size_t off = 0;
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            if ((uplo == CUBLAS_FILL_MODE_UPPER && j >= i) ||
+                (uplo == CUBLAS_FILL_MODE_LOWER && j <= i)) {
+                std::printf("%6.2f ", A[off++]);
+            } else if (uplo == CUBLAS_FILL_MODE_UPPER) {
+                std::printf("       ");
+            }
+        }
+        std::printf("\n");
+    }
+}
+
+template <> void print_packed_matrix(cublasFillMode_t uplo, const int &n, const cuComplex *A) {
+    size_t off = 0;
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            if ((uplo == CUBLAS_FILL_MODE_UPPER && j >= i) ||
+                (uplo == CUBLAS_FILL_MODE_LOWER && j <= i)) {
+                std::printf("%6.2f + %6.2fj ", A[off].x, A[off].y);
+                off++;
+            } else if (uplo == CUBLAS_FILL_MODE_UPPER) {
+                std::printf("                 ");
+            }
+        }
+        std::printf("\n");
+    }
+}
+
+template <> void print_packed_matrix(cublasFillMode_t uplo, const int &n, const cuDoubleComplex *A) {
+    size_t off = 0;
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            if ((uplo == CUBLAS_FILL_MODE_UPPER && j >= i) ||
+                (uplo == CUBLAS_FILL_MODE_LOWER && j <= i)) {
+                std::printf("%6.2f + %6.2fj ", A[off].x, A[off].y);
+                off++;
+            } else if (uplo == CUBLAS_FILL_MODE_UPPER) {
+                std::printf("                 ");
+            }
+        }
+        std::printf("\n");
+    }
+}
+
 template <typename T> void print_vector(const int &m, const T *A);
 
 template <> void print_vector(const int &m, const float *A) {
