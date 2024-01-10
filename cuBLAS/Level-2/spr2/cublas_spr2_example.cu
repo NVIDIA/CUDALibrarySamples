@@ -62,18 +62,16 @@ int main(int argc, char *argv[]) {
     cublasHandle_t cublasH = NULL;
     cudaStream_t stream = NULL;
 
-    const int m = 2;
     const int n = 2;
-    const int lda = m;
 
     /*
      *   AP = | 1.0 3.0 |
-     *        | 3.0 4.0 |
+     *        |     4.0 |
      *   x  = | 5.0 6.0 |
      *   y  = | 7.0 8.0 |
      */
 
-    std::vector<data_type> AP = {1.0, 3.0, 3.0, 4.0};
+    std::vector<data_type> AP = {1.0, 3.0, 4.0};
     const std::vector<data_type> x = {5.0, 6.0};
     const std::vector<data_type> y = {7.0, 8.0};
     const data_type alpha = 1.0;
@@ -87,7 +85,7 @@ int main(int argc, char *argv[]) {
     cublasFillMode_t uplo = CUBLAS_FILL_MODE_UPPER;
 
     printf("AP\n");
-    print_matrix(m, n, AP.data(), lda);
+    print_packed_matrix(uplo, n, AP.data());
     printf("=====\n");
 
     printf("x\n");
@@ -117,7 +115,7 @@ int main(int argc, char *argv[]) {
                                stream));
 
     /* step 3: compute */
-    CUBLAS_CHECK(cublasDger(cublasH, uplo, n, &alpha, d_x, incx, d_y, incy, d_AP, lda));
+    CUBLAS_CHECK(cublasDspr2(cublasH, uplo, n, &alpha, d_x, incx, d_y, incy, d_AP));
 
     /* step 4: copy data to host */
     CUDA_CHECK(cudaMemcpyAsync(AP.data(), d_AP, sizeof(data_type) * AP.size(),
@@ -126,12 +124,12 @@ int main(int argc, char *argv[]) {
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
     /*
-     *   AP = | 36.0 43.0 |
-     *        |  3.0  4.0 |
+     *   AP = | 71.0  85.0 |
+     *        |      100.0 |
      */
 
     printf("AP\n");
-    print_matrix(m, n, AP.data(), lda);
+    print_packed_matrix(uplo, n, AP.data());
     printf("=====\n");
 
     /* free resources */

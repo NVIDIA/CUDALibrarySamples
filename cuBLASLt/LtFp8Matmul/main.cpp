@@ -36,7 +36,7 @@
 #include "helpers.h"
 
 int main() {
-    TestBench<__nv_fp8_e4m3, __nv_fp8_e4m3, float> props(64, 64, 64, 2.0f, 0.0f /* ignored */, 32ULL * 1024 * 1024);
+    TestBench<__nv_fp8_e4m3, __nv_fp8_e4m3, float> props(64, 128, 256, 2.0f, 0.0f /* ignored */, 32ULL * 1024 * 1024);
 
     props.run([&props] {
         LtFp8Matmul(props.ltHandle,
@@ -46,7 +46,7 @@ int main() {
                     &props.alpha,
                     props.AscaleDev,
                     props.Adev,
-                    props.m,
+                    props.k,
                     props.BscaleDev,
                     props.Bdev,
                     props.k,
