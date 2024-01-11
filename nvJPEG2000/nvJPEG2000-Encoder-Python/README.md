@@ -1,5 +1,5 @@
 # nvJPEG2000-python
-Python interface for JPEG2000 batch Encoding/Decoding using GPU with nvJPEG.
+Python interface for JPEG2000 batch EncodingDecoding using GPU with nvJPEG.
 
 # Requirements
 * [CUDA toolkit](https://developer.nvidia.com/cuda-toolkit)
@@ -10,10 +10,3 @@ Python interface for JPEG2000 batch Encoding/Decoding using GPU with nvJPEG.
 `export CUDAHOME=<your-cuda-path>`
 
 `python3 setup.py build_ext --inplace -f`
-
-# TODOs
-- [ ] Encoder
-- [ ] Decoder
-- [ ] Tests
-
-# References
