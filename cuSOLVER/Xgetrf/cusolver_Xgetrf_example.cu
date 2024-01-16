@@ -149,10 +149,17 @@ int main(int argc, char *argv[]) {
     /* step 3: query working space of getrf */
     CUSOLVER_CHECK(
         cusolverDnXgetrf_bufferSize(cusolverH, params, m, m, traits<data_type>::cuda_data_type, d_A,
-                                    lda, traits<data_type>::cuda_data_type, &workspaceInBytesOnDevice, 
+                                    lda, traits<data_type>::cuda_data_type, &workspaceInBytesOnDevice,
                                     &workspaceInBytesOnHost));
 
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_work), workspaceInBytesOnDevice));
+
+    if (0 < workspaceInBytesOnHost) {
+        h_work = reinterpret_cast<void *>(malloc(workspaceInBytesOnHost));
+        if (h_work == nullptr) {
+            throw std::runtime_error("Error: h_work not allocated.");
+        }
+    }
 
     /* step 4: LU factorization */
     if (pivot_on) {
@@ -221,6 +228,7 @@ int main(int argc, char *argv[]) {
     CUDA_CHECK(cudaFree(d_Ipiv));
     CUDA_CHECK(cudaFree(d_info));
     CUDA_CHECK(cudaFree(d_work));
+    free(h_work);
 
     CUSOLVER_CHECK(cusolverDnDestroyParams(params));
 
