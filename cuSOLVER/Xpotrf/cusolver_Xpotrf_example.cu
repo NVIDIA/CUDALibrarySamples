@@ -87,10 +87,10 @@ int main(int argc, char *argv[]) {
     data_type *d_B = nullptr; /* device copy of B */
     int *d_info = nullptr;    /* error info */
 
-    size_t d_lwork = 0;     /* size of workspace */
-    void *d_work = nullptr; /* device workspace */
-    size_t h_lwork = 0;     /* size of workspace */
-    void *h_work = nullptr; /* host workspace */
+    size_t workspaceInBytesOnDevice = 0; /* size of workspace */
+    void *d_work = nullptr;              /* device workspace */
+    size_t workspaceInBytesOnHost = 0;   /* size of workspace */
+    void *h_work = nullptr;              /* host workspace */
 
     cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
 
@@ -121,14 +121,14 @@ int main(int argc, char *argv[]) {
     /* step 3: query working space */
     CUSOLVER_CHECK(cusolverDnXpotrf_bufferSize(
         cusolverH, NULL, uplo, m, traits<data_type>::cuda_data_type, d_A, lda,
-        traits<data_type>::cuda_data_type, &d_lwork, &h_lwork));
+        traits<data_type>::cuda_data_type, &workspaceInBytesOnDevice, &workspaceInBytesOnHost));
 
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_work), sizeof(data_type) * d_lwork));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_work), workspaceInBytesOnDevice));
 
     /* step 4: Cholesky factorization */
     CUSOLVER_CHECK(cusolverDnXpotrf(cusolverH, NULL, uplo, m, traits<data_type>::cuda_data_type,
-                                    d_A, lda, traits<data_type>::cuda_data_type, d_work, d_lwork,
-                                    h_work, h_lwork, d_info));
+                                    d_A, lda, traits<data_type>::cuda_data_type, d_work, workspaceInBytesOnDevice,
+                                    h_work, workspaceInBytesOnHost, d_info));
 
     CUDA_CHECK(cudaMemcpyAsync(L.data(), d_A, sizeof(data_type) * A.size(), cudaMemcpyDeviceToHost,
                                stream));
