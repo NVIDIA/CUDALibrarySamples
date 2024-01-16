@@ -60,22 +60,22 @@ template <typename T>
 void trtri(cusolverDnHandle_t handle, cusolver_int_t n, T *d_A, cusolver_int_t lda,
            cublasFillMode_t uplo, cublasDiagType_t diag, int *d_info) {
     void *d_work = nullptr;
-    size_t d_lwork = 0;
+    size_t workspaceInBytesOnDevice = 0;
     void *h_work = nullptr;
-    size_t h_lwork = 0;
+    size_t workspaceInBytesOnHost = 0;
 
     try {
-        printf("Quering required device and host workspace size...\n");
+        printf("Querying required device and host workspace size...\n");
         CUSOLVER_CHECK(cusolverDnXtrtri_bufferSize(handle, uplo, diag, n, traits<T>::cuda_data_type,
-                                                   reinterpret_cast<void *>(d_A), lda, &d_lwork,
-                                                   &h_lwork));
+                                                   reinterpret_cast<void *>(d_A), lda, &workspaceInBytesOnDevice,
+                                                   &workspaceInBytesOnHost));
 
         printf("Allocating required device workspace...\n");
-        CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_work), d_lwork));
+        CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_work), workspaceInBytesOnDevice));
 
         printf("Allocating required host workspace...\n");
-        if (h_lwork) {
-            h_work = malloc(h_lwork);
+        if (workspaceInBytesOnHost) {
+            h_work = malloc(workspaceInBytesOnHost);
             if (h_work == nullptr) {
                 throw std::bad_alloc();
             }
@@ -84,7 +84,7 @@ void trtri(cusolverDnHandle_t handle, cusolver_int_t n, T *d_A, cusolver_int_t l
         printf("Computing the inverse of a %s triangular matrix...\n",
                (uplo == CUBLAS_FILL_MODE_UPPER ? "upper" : "lower"));
         CUSOLVER_CHECK(cusolverDnXtrtri(handle, uplo, diag, n, traits<T>::cuda_data_type, d_A, lda,
-                                        d_work, d_lwork, h_work, h_lwork, d_info));
+                                        d_work, workspaceInBytesOnDevice, h_work, workspaceInBytesOnHost, d_info));
     } catch (const std::exception &e) {
         fprintf(stderr, "error: %s\n", e.what());
     }
@@ -172,7 +172,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    printf("Initializing required CUDA and cuSOLVER miscelaneous variables...\n");
+    printf("Initializing required CUDA and cuSOLVER miscellaneous variables...\n");
     CUDA_CHECK(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
     CUSOLVER_CHECK(cusolverDnCreate(&handle));
     CUSOLVER_CHECK(cusolverDnSetStream(handle, stream));
@@ -204,7 +204,7 @@ int main(int argc, char *argv[]) {
     printf("Verifying results...\n");
     residual_check(n, d_A, d_A_inv, lda, eps);
 
-    printf("Destroying CUDA and cuSOLVER miscelaneous variables...\n");
+    printf("Destroying CUDA and cuSOLVER miscellaneous variables...\n");
     CUDA_CHECK(cudaStreamDestroy(stream));
     CUSOLVER_CHECK(cusolverDnDestroy(handle));
 

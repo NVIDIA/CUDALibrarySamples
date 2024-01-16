@@ -99,10 +99,10 @@ int main(int argc, char *argv[]) {
     int *d_info = nullptr;
     int info = 0;
 
-    size_t d_lwork = 0;     /* size of workspace */
-    void *d_work = nullptr; /* device workspace for getrf */
-    size_t h_lwork = 0;     /* size of workspace */
-    void *h_work = nullptr; /* host workspace for getrf */
+    size_t workspaceInBytesOnDevice = 0; /* size of workspace */
+    void *d_work = nullptr;              /* device workspace for getrf */
+    size_t workspaceInBytesOnHost = 0;   /* size of workspace */
+    void *h_work = nullptr;              /* host workspace for getrf */
 
     std::printf("A = (matlab base-1)\n");
     print_matrix(m, n, A.data(), lda);
@@ -136,14 +136,14 @@ int main(int argc, char *argv[]) {
         cusolverH, params_gesvdr, jobu, jobv, m, n, rank, p, iters,
         traits<data_type>::cuda_data_type, d_A, lda, traits<data_type>::cuda_data_type, d_S,
         traits<data_type>::cuda_data_type, d_U, ldu, traits<data_type>::cuda_data_type, d_V, ldv,
-        traits<data_type>::cuda_data_type, &d_lwork, &h_lwork));
+        traits<data_type>::cuda_data_type, &workspaceInBytesOnDevice, &workspaceInBytesOnHost));
 
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_work), sizeof(data_type) * d_lwork));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_work), workspaceInBytesOnDevice));
 
-    if (0 < h_lwork) {
-        h_work = reinterpret_cast<void *>(malloc(h_lwork));
-        if (d_work == nullptr) {
-            throw std::runtime_error("Error: d_work not allocated.");
+    if (0 < workspaceInBytesOnHost) {
+        h_work = reinterpret_cast<void *>(malloc(workspaceInBytesOnHost));
+        if (h_work == nullptr) {
+            throw std::runtime_error("Error: h_work not allocated.");
         }
     }
 
@@ -152,7 +152,7 @@ int main(int argc, char *argv[]) {
         cusolverH, params_gesvdr, jobu, jobv, m, n, rank, p, iters,
         traits<data_type>::cuda_data_type, d_A, lda, traits<data_type>::cuda_data_type, d_S,
         traits<data_type>::cuda_data_type, d_U, ldu, traits<data_type>::cuda_data_type, d_V, ldv,
-        traits<data_type>::cuda_data_type, d_work, d_lwork, h_work, h_lwork, d_info));
+        traits<data_type>::cuda_data_type, d_work, workspaceInBytesOnDevice, h_work, workspaceInBytesOnHost, d_info));
 
     CUDA_CHECK(cudaMemcpyAsync(S_gpu.data(), d_S, sizeof(data_type) * S_gpu.size(),
                                cudaMemcpyDeviceToHost, stream));
