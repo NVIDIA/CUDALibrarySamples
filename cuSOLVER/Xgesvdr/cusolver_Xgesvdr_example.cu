@@ -195,14 +195,13 @@ int main(int argc, char *argv[]) {
     }
 
     /* free resources */
-    free(h_work);
-
     CUDA_CHECK(cudaFree(d_A));
     CUDA_CHECK(cudaFree(d_U));
     CUDA_CHECK(cudaFree(d_V));
     CUDA_CHECK(cudaFree(d_S));
     CUDA_CHECK(cudaFree(d_info));
     CUDA_CHECK(cudaFree(d_work));
+    free(h_work);
 
     CUSOLVER_CHECK(cusolverDnDestroyParams(params_gesvdr));
     CUSOLVER_CHECK(cusolverDnDestroy(cusolverH));

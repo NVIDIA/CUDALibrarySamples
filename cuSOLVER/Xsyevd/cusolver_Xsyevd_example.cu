@@ -116,6 +116,13 @@ int main(int argc, char *argv[]) {
 
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_work), workspaceInBytesOnDevice));
 
+    if (0 < workspaceInBytesOnHost) {
+        h_work = reinterpret_cast<void *>(malloc(workspaceInBytesOnHost));
+        if (h_work == nullptr) {
+            throw std::runtime_error("Error: h_work not allocated.");
+        }
+    }
+
     // step 4: compute spectrum
     CUSOLVER_CHECK(cusolverDnXsyevd(
         cusolverH, NULL, jobz, uplo, m, traits<data_type>::cuda_data_type, d_A, lda,
@@ -160,6 +167,7 @@ int main(int argc, char *argv[]) {
     CUDA_CHECK(cudaFree(d_W));
     CUDA_CHECK(cudaFree(d_info));
     CUDA_CHECK(cudaFree(d_work));
+    free(h_work);
 
     CUSOLVER_CHECK(cusolverDnDestroy(cusolverH));
 

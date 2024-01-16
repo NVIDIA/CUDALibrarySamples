@@ -118,10 +118,12 @@ int main(int argc, char *argv[]) {
         traits<data_type>::cuda_data_type, &workspaceInBytesOnDevice, &workspaceInBytesOnHost));
 
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_work), workspaceInBytesOnDevice));
-    h_work = malloc(workspaceInBytesOnHost);
-    if (!h_work)
-    {
-        throw std::bad_alloc();
+
+    if (0 < workspaceInBytesOnHost) {
+        h_work = reinterpret_cast<void *>(malloc(workspaceInBytesOnHost));
+        if (h_work == nullptr) {
+            throw std::runtime_error("Error: h_work not allocated.");
+        }
     }
 
     // step 4: compute spectrum
