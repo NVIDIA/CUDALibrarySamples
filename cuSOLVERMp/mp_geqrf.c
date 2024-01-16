@@ -115,7 +115,7 @@ static void print_host_matrix(int64_t M, int64_t N, double* A, int64_t lda, cons
 
 int main(int argc, char* argv[])
 {
-    /* Initialize MPI  library */
+    /* Initialize MPI library */
     MPI_Init(NULL, NULL);
 
     /* Define dimensions, block sizes and offsets of A and B matrices */
@@ -139,7 +139,7 @@ int main(int argc, char* argv[])
     const uint32_t CSRCA = 0;
     assert(RSRCA == 0 && CSRCA == 0); // only RSRCA==0 and CSRC==0 are supported
 
-    /* Get rank id and rank size of the com. */
+    /* Get rank id and rank size of the comm. */
     int rankSize, rankId;
     MPI_Comm_size(MPI_COMM_WORLD, &rankSize);
     MPI_Comm_rank(MPI_COMM_WORLD, &rankId);
@@ -193,10 +193,10 @@ int main(int argc, char* argv[])
     cusolverStat = cusolverMpCreate(&cusolverMpHandle, localDeviceId, localStream);
     assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
-    /* cudaLigMg grids */
+    /* cusolverMp grids */
     cusolverMpGrid_t gridA = NULL;
 
-    /* cudaLib matrix descriptors */
+    /* cusolverMp matrix descriptors */
     cusolverMpMatrixDescriptor_t descrA = NULL;
 
     /* Distributed matrices */
@@ -270,8 +270,8 @@ int main(int argc, char* argv[])
      *
      * This limitation will be removed on the official release.
      */
-    const int64_t LLDA       = cusolverMpNUMROC(lda, MA, RSRCA, rankId % numRowDevices, numRowDevices);
-    const int64_t localColsA = cusolverMpNUMROC(colsA, NA, CSRCA, rankId / numRowDevices, numColDevices);
+    const int64_t LLDA       = cusolverMpNUMROC(lda, MA, rankId % numRowDevices, RSRCA, numRowDevices);
+    const int64_t localColsA = cusolverMpNUMROC(colsA, NA, rankId / numRowDevices, CSRCA, numColDevices);
 
     /*
      * Compute number of tiles per rank to store local portion of B

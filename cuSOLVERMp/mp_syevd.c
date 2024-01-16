@@ -131,7 +131,7 @@ int main(int argc, char* argv[])
     validate(&opts);
     print(&opts);
 
-    /* Initialize MPI  library */
+    /* Initialize MPI library */
     MPI_Init(NULL, NULL);
 
     char compz = 'Z';
@@ -161,7 +161,7 @@ int main(int argc, char* argv[])
     const uint32_t rsrcq = 0;
     const uint32_t csrcq = 0;
 
-    /* Get rank id and rank size of the com. */
+    /* Get rank id and rank size of the comm. */
     int mpiCommSize, mpiRank;
     MPI_Comm_size(MPI_COMM_WORLD, &mpiCommSize);
     MPI_Comm_rank(MPI_COMM_WORLD, &mpiRank);
@@ -215,11 +215,11 @@ int main(int argc, char* argv[])
         cusolverStat                        = cusolverMpCreate(&cusolverMpHandle, localRank, localStream);
         assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
-        /* cudaLigMg grids */
+        /* cusolverMp grids */
         cusolverMpGrid_t gridA = NULL;
         cusolverMpGrid_t gridQ = NULL;
 
-        /* cudaLib matrix descriptors */
+        /* cusolverMp matrix descriptors */
         cusolverMpMatrixDescriptor_t descA = NULL;
         cusolverMpMatrixDescriptor_t descQ = NULL;
 
@@ -291,11 +291,11 @@ int main(int argc, char* argv[])
         }
 
         /* compute the load leading dimension of the device buffers */
-        const int64_t llda       = cusolverMpNUMROC(lda, mbA, rsrca, rank % numRowDevices, numRowDevices);
-        const int64_t localColsA = cusolverMpNUMROC(colsA, nbA, csrca, rank / numRowDevices, numColDevices);
+        const int64_t llda       = cusolverMpNUMROC(lda, mbA, rank % numRowDevices, rsrca, numRowDevices);
+        const int64_t localColsA = cusolverMpNUMROC(colsA, nbA, rank / numRowDevices, csrca, numColDevices);
 
-        const int64_t lldq       = cusolverMpNUMROC(ldq, mbQ, rsrcq, rank % numRowDevices, numRowDevices);
-        const int64_t localColsQ = cusolverMpNUMROC(colsQ, nbQ, csrcq, rank / numRowDevices, numColDevices);
+        const int64_t lldq       = cusolverMpNUMROC(ldq, mbQ, rank % numRowDevices, rsrcq, numRowDevices);
+        const int64_t localColsQ = cusolverMpNUMROC(colsQ, nbQ, rank / numRowDevices, csrcq, numColDevices);
 
         /* Allocate global d_A */
         cudaStat = cudaMalloc((void**)&d_A, llda * localColsA * sizeof(double));
