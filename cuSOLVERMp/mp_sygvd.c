@@ -126,7 +126,7 @@ int main(int argc, char* argv[])
     parse(&opts, argc, argv);
     validate(&opts);
 
-    /* Initialize MPI  library */
+    /* Initialize MPI library */
     MPI_Init(NULL, NULL);
 
     /* Define dimensions, block sizes and offsets of A and B matrices */
@@ -163,7 +163,7 @@ int main(int argc, char* argv[])
     const uint32_t rsrcz = 0;
     const uint32_t csrcz = 0;
 
-    /* Get rank id and rank size of the com. */
+    /* Get rank id and rank size of the comm. */
     int mpiCommSize, mpiRank;
     MPI_Comm_size(MPI_COMM_WORLD, &mpiCommSize);
     MPI_Comm_rank(MPI_COMM_WORLD, &mpiRank);
@@ -209,7 +209,7 @@ int main(int argc, char* argv[])
                 ((mbA == nbA) && (mbA == mbB && mbA == nbB) && (mbA == mbZ && mbA == nbZ));
         if (!use_same_square_blocksize)
         {
-            fprintf(stderr, "Error: blocksizes are not the same sqaure\n");
+            fprintf(stderr, "Error: blocksizes are not the same square\n");
             exit(1);
         }
 
@@ -217,7 +217,7 @@ int main(int argc, char* argv[])
         const bool use_unit_global_offsets = ((ia == 1 && ja == 1) && (ib == 1 && jb == 1) && (iz == 1 && jz == 1));
         if (!use_unit_global_offsets)
         {
-            fprintf(stderr, "Error: current implementation does not support non-unit offsets i.e., ia,ja, etc\n");
+            fprintf(stderr, "Error: current implementation does not support non-unit offsets i.e., ia, ja, etc.\n");
             exit(1);
         }
     }
@@ -369,14 +369,14 @@ int main(int argc, char* argv[])
         }
 
         /* compute the local dimensions device buffers */
-        const int64_t m_local_A = cusolverMpNUMROC(m_global, mbA, rsrca, myRowRank, numRowDevices);
-        const int64_t n_local_A = cusolverMpNUMROC(n_global, nbA, csrca, myColRank, numColDevices);
+        const int64_t m_local_A = cusolverMpNUMROC(m_global, mbA, myRowRank, rsrca, numRowDevices);
+        const int64_t n_local_A = cusolverMpNUMROC(n_global, nbA, myColRank, csrca, numColDevices);
 
-        const int64_t m_local_B = cusolverMpNUMROC(m_global, mbB, rsrcb, myRowRank, numRowDevices);
-        const int64_t n_local_B = cusolverMpNUMROC(n_global, nbB, csrcb, myColRank, numColDevices);
+        const int64_t m_local_B = cusolverMpNUMROC(m_global, mbB, myRowRank, rsrcb, numRowDevices);
+        const int64_t n_local_B = cusolverMpNUMROC(n_global, nbB, myColRank, csrcb, numColDevices);
 
-        const int64_t m_local_Z = cusolverMpNUMROC(m_global, mbZ, rsrcz, myRowRank, numRowDevices);
-        const int64_t n_local_Z = cusolverMpNUMROC(n_global, nbZ, csrcz, myColRank, numColDevices);
+        const int64_t m_local_Z = cusolverMpNUMROC(m_global, mbZ, myRowRank, rsrcz, numRowDevices);
+        const int64_t n_local_Z = cusolverMpNUMROC(n_global, nbZ, myColRank, csrcz, numColDevices);
 
         /* Allocate local d_A, d_B, d_D, d_Z */
         cudaStat = cudaMalloc((void**)&d_A, m_local_A * n_local_A * sizeof(double));
