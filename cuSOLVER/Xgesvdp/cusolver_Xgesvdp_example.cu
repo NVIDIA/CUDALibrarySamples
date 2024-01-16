@@ -155,7 +155,7 @@ int main(int argc, char *argv[]) {
                                      traits<data_type>::cuda_data_type,           /* dataTypeV */
                                      d_V, lda,                                    /* ldv */
                                      traits<data_type>::cuda_data_type,           /* computeType */
-                                     d_work, workspaceInBytesOnDevice, h_work, workspaceInBytesOnHost, 
+                                     d_work, workspaceInBytesOnDevice, h_work, workspaceInBytesOnHost,
                                      d_info, &h_err_sigma));
 
     CUDA_CHECK(cudaMemcpyAsync(U.data(), d_U, sizeof(data_type) * U.size(), cudaMemcpyDeviceToHost,
@@ -225,7 +225,7 @@ int main(int argc, char *argv[]) {
     CUDA_CHECK(cudaFree(d_info));
     CUDA_CHECK(cudaFree(d_W));
     CUDA_CHECK(cudaFree(d_work));
-    CUDA_CHECK(cudaFree(h_work));
+    free(h_work);
 
     CUSOLVER_CHECK(cusolverDnDestroy(cusolverH));
     CUBLAS_CHECK(cublasDestroy(cublasH));

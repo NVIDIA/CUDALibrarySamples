@@ -143,10 +143,12 @@ int main(int argc, char *argv[]) {
         &workspaceInBytesOnHost));
 
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_work), workspaceInBytesOnDevice));
-    h_work = (data_type*)malloc(workspaceInBytesOnHost);
-    if (!h_work)
-    {
-        throw std::bad_alloc();
+
+    if (0 < workspaceInBytesOnHost) {
+        h_work = reinterpret_cast<data_type *>(malloc(workspaceInBytesOnHost));
+        if (h_work == nullptr) {
+            throw std::runtime_error("Error: h_work not allocated.");
+        }
     }
 
     /* step 4: compute SVD */

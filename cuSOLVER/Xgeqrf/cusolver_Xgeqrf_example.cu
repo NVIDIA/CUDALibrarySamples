@@ -116,10 +116,17 @@ int main(int argc, char *argv[]) {
     CUSOLVER_CHECK(
         cusolverDnXgeqrf_bufferSize(cusolverH, NULL, m, m, traits<data_type>::cuda_data_type, d_A,
                                     lda, traits<data_type>::cuda_data_type, d_tau,
-                                    traits<data_type>::cuda_data_type, &workspaceInBytesOnDevice, 
+                                    traits<data_type>::cuda_data_type, &workspaceInBytesOnDevice,
                                     &workspaceInBytesOnHost));
 
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_work), workspaceInBytesOnDevice));
+
+    if (0 < workspaceInBytesOnHost) {
+        h_work = reinterpret_cast<void *>(malloc(workspaceInBytesOnHost));
+        if (h_work == nullptr) {
+            throw std::runtime_error("Error: h_work not allocated.");
+        }
+    }
 
     /* step 4: QR factorization */
     CUSOLVER_CHECK(cusolverDnXgeqrf(cusolverH, NULL, m, m, traits<data_type>::cuda_data_type, d_A,
@@ -157,6 +164,7 @@ int main(int argc, char *argv[]) {
     CUDA_CHECK(cudaFree(d_tau));
     CUDA_CHECK(cudaFree(d_info));
     CUDA_CHECK(cudaFree(d_work));
+    free(h_work);
 
     CUSOLVER_CHECK(cusolverDnDestroy(cusolverH));
 
