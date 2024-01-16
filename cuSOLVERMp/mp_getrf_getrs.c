@@ -149,7 +149,7 @@ int main(int argc, char* argv[])
     validate(&opts);
     print(&opts);
 
-    /* Initialize MPI  library */
+    /* Initialize MPI library */
     MPI_Init(NULL, NULL);
 
     /* Define dimensions, block sizes and offsets of A and B matrices */
@@ -181,7 +181,7 @@ int main(int argc, char* argv[])
     const uint32_t RSRCB = 0;
     const uint32_t CSRCB = 0;
 
-    /* Get rank id and rank size of the com. */
+    /* Get rank id and rank size of the comm. */
     int mpiCommSize, mpiRank;
     MPI_Comm_size(MPI_COMM_WORLD, &mpiCommSize);
     MPI_Comm_rank(MPI_COMM_WORLD, &mpiRank);
@@ -235,11 +235,11 @@ int main(int argc, char* argv[])
         cusolverStat = cusolverMpCreate(&cusolverMpHandle, localRank, localStream);
         assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
-        /* cudaLigMg grids */
+        /* cusolverMp grids */
         cusolverMpGrid_t gridA = NULL;
         cusolverMpGrid_t gridB = NULL;
 
-        /* cudaLib matrix descriptors */
+        /* cusolverMp matrix descriptors */
         cusolverMpMatrixDescriptor_t descrA = NULL;
         cusolverMpMatrixDescriptor_t descrB = NULL;
 
@@ -350,8 +350,8 @@ int main(int argc, char* argv[])
          *
          * This limitation will be removed on the official release.
          */
-        const int64_t LLDA       = cusolverMpNUMROC(lda, MA, RSRCA, rank % numRowDevices, numRowDevices);
-        const int64_t localColsA = cusolverMpNUMROC(colsA, NA, CSRCA, rank / numRowDevices, numColDevices);
+        const int64_t LLDA       = cusolverMpNUMROC(lda, MA, rank % numRowDevices, RSRCA, numRowDevices);
+        const int64_t localColsA = cusolverMpNUMROC(colsA, NA, rank / numRowDevices, CSRCA, numColDevices);
 
         /*
          * Compute number of tiles per rank to store local portion of B
@@ -363,8 +363,8 @@ int main(int argc, char* argv[])
          *
          * This limitation will be removed on the official release.
          */
-        const int64_t LLDB       = cusolverMpNUMROC(ldb, MB, RSRCB, rank % numRowDevices, numRowDevices);
-        const int64_t localColsB = cusolverMpNUMROC(colsB, NB, CSRCB, rank / numRowDevices, numColDevices);
+        const int64_t LLDB       = cusolverMpNUMROC(ldb, MB, rank % numRowDevices, RSRCB, numRowDevices);
+        const int64_t localColsB = cusolverMpNUMROC(colsB, NB, rank / numRowDevices, CSRCB, numColDevices);
 
         /* Allocate global d_A */
         cudaStat = cudaMalloc((void**)&d_A, localColsA * LLDA * sizeof(double));
