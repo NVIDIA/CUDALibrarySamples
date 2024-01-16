@@ -161,11 +161,11 @@ int main(int argc, char* argv[])
     const int64_t global_m_c = (ic - 1) + n;
     const int64_t global_n_c = (jc - 1) + n;
 
-    const int64_t llda = cublasMpNumroc(global_m_a, mbA, 0, myprow, nprow);
-    const int64_t loc_n_a = cublasMpNumroc(global_n_a, nbA, 0, mypcol, npcol);
+    const int64_t llda = cublasMpNumroc(global_m_a, mbA, myprow, 0, nprow);
+    const int64_t loc_n_a = cublasMpNumroc(global_n_a, nbA, mypcol, 0, npcol);
 
-    const int64_t lldc = cublasMpNumroc(global_m_c, mbC, 0, myprow, nprow);
-    const int64_t loc_n_c = cublasMpNumroc(global_n_c, nbC, 0, mypcol, npcol);
+    const int64_t lldc = cublasMpNumroc(global_m_c, mbC, myprow, 0, nprow);
+    const int64_t loc_n_c = cublasMpNumroc(global_n_c, nbC, mypcol, 0, npcol);
 
     std::vector<double> h_A(llda * loc_n_a, 0);
     std::vector<double> h_C(lldc * loc_n_c, 0);
@@ -188,9 +188,9 @@ int main(int argc, char* argv[])
         &grid));
 
     CUBLAS_CHECK(
-        cublasMpMatrixDescriptorCreate(handle, global_m_a, global_n_a, mbA, nbA, llda, CUDA_R_64F, grid, &descA));
+        cublasMpMatrixDescriptorCreate(handle, global_m_a, global_n_a, mbA, nbA, 0, 0, llda, CUDA_R_64F, grid, &descA));
     CUBLAS_CHECK(
-        cublasMpMatrixDescriptorCreate(handle, global_m_c, global_n_c, mbC, nbC, lldc, CUDA_R_64F, grid, &descC));
+        cublasMpMatrixDescriptorCreate(handle, global_m_c, global_n_c, mbC, nbC, 0, 0, lldc, CUDA_R_64F, grid, &descC));
 
     CUBLAS_CHECK(cublasMpSyrk_bufferSize(
         handle,
