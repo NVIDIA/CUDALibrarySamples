@@ -117,7 +117,7 @@ int main(int argc, char *argv[]) {
                                stream));
 
     signed char jobu = 'A';  // all m columns of U
-    signed char jobvt = 'A'; // all n columns of VT
+    signed char jobvt = 'A'; // all n rows of VT
 
     /* step 3: query working space of SVD */
     CUSOLVER_CHECK(cusolverDnXgesvd_bufferSize(

@@ -105,6 +105,7 @@ int main(int argc, char *argv[]) {
 
     CUDA_CHECK(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
     CUSOLVER_CHECK(cusolverDnSetStream(cusolverH, stream));
+    CUBLAS_CHECK(cublasSetStream(cublasH, stream));
 
     /* step 2: copy A to device */
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_A), sizeof(double) * A.size()));
@@ -122,9 +123,9 @@ int main(int argc, char *argv[]) {
 
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_work), sizeof(double) * lwork));
 
-    /* step 4: compute SVD*/
+    /* step 4: compute SVD */
     signed char jobu = 'A';  // all m columns of U
-    signed char jobvt = 'A'; // all n columns of VT
+    signed char jobvt = 'A'; // all n rows of VT
     CUSOLVER_CHECK(cusolverDnDgesvd(cusolverH, jobu, jobvt, m, n, d_A, lda, d_S, d_U,
                                     lda, // ldu
                                     d_VT,
