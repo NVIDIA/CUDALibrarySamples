@@ -82,10 +82,10 @@ int main(int argc, char *argv[]) {
     int64_t *d_tau = nullptr; /* pivoting sequence */
     int *d_info = nullptr;    /* error info */
 
-    size_t d_lwork = 0;     /* size of workspace */
-    void *d_work = nullptr; /* device workspace */
-    size_t h_lwork = 0;     /* size of workspace */
-    void *h_work = nullptr; /* host workspace */
+    size_t workspaceInBytesOnDevice = 0; /* size of workspace */
+    void *d_work = nullptr;              /* device workspace */
+    size_t workspaceInBytesOnHost = 0;   /* size of workspace */
+    void *h_work = nullptr;              /* host workspace */
 
     std::printf("A = (matlab base-1)\n");
     print_matrix(m, m, A.data(), lda);
@@ -116,15 +116,16 @@ int main(int argc, char *argv[]) {
     CUSOLVER_CHECK(
         cusolverDnXgeqrf_bufferSize(cusolverH, NULL, m, m, traits<data_type>::cuda_data_type, d_A,
                                     lda, traits<data_type>::cuda_data_type, d_tau,
-                                    traits<data_type>::cuda_data_type, &d_lwork, &h_lwork));
+                                    traits<data_type>::cuda_data_type, &workspaceInBytesOnDevice, 
+                                    &workspaceInBytesOnHost));
 
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_work), sizeof(data_type) * d_lwork));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_work), workspaceInBytesOnDevice));
 
     /* step 4: QR factorization */
     CUSOLVER_CHECK(cusolverDnXgeqrf(cusolverH, NULL, m, m, traits<data_type>::cuda_data_type, d_A,
                                     lda, traits<data_type>::cuda_data_type, d_tau,
-                                    traits<data_type>::cuda_data_type, d_work, d_lwork, h_work,
-                                    h_lwork, d_info));
+                                    traits<data_type>::cuda_data_type, d_work, workspaceInBytesOnDevice, h_work,
+                                    workspaceInBytesOnHost, d_info));
 
     CUDA_CHECK(cudaMemcpyAsync(tau.data(), d_tau, sizeof(data_type) * tau.size(),
                                cudaMemcpyDeviceToHost, stream));

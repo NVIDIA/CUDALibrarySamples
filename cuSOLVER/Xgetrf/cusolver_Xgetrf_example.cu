@@ -96,10 +96,10 @@ int main(int argc, char *argv[]) {
     int64_t *d_Ipiv = nullptr; /* pivoting sequence */
     int *d_info = nullptr;     /* error info */
 
-    size_t d_lwork = 0;     /* size of workspace */
-    void *d_work = nullptr; /* device workspace for getrf */
-    size_t h_lwork = 0;     /* size of workspace */
-    void *h_work = nullptr; /* host workspace for getrf */
+    size_t workspaceInBytesOnDevice = 0; /* size of workspace */
+    void *d_work = nullptr;              /* device workspace for getrf */
+    size_t workspaceInBytesOnHost = 0;   /* size of workspace */
+    void *h_work = nullptr;              /* host workspace for getrf */
 
     const int pivot_on = 1;
     const int algo = 0;
@@ -149,19 +149,20 @@ int main(int argc, char *argv[]) {
     /* step 3: query working space of getrf */
     CUSOLVER_CHECK(
         cusolverDnXgetrf_bufferSize(cusolverH, params, m, m, traits<data_type>::cuda_data_type, d_A,
-                                    lda, traits<data_type>::cuda_data_type, &d_lwork, &h_lwork));
+                                    lda, traits<data_type>::cuda_data_type, &workspaceInBytesOnDevice, 
+                                    &workspaceInBytesOnHost));
 
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_work), sizeof(data_type) * d_lwork));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_work), workspaceInBytesOnDevice));
 
     /* step 4: LU factorization */
     if (pivot_on) {
         CUSOLVER_CHECK(cusolverDnXgetrf(cusolverH, params, m, m, traits<data_type>::cuda_data_type,
                                         d_A, lda, d_Ipiv, traits<data_type>::cuda_data_type, d_work,
-                                        d_lwork, h_work, h_lwork, d_info));
+                                        workspaceInBytesOnDevice, h_work, workspaceInBytesOnHost, d_info));
     } else {
         CUSOLVER_CHECK(cusolverDnXgetrf(cusolverH, params, m, m, traits<data_type>::cuda_data_type,
                                         d_A, lda, nullptr, traits<data_type>::cuda_data_type,
-                                        d_work, d_lwork, h_work, h_lwork, d_info));
+                                        d_work, workspaceInBytesOnDevice, h_work, workspaceInBytesOnHost, d_info));
     }
 
     if (pivot_on) {

@@ -6,7 +6,7 @@ This code demonstrates usage of cuSOLVER gesv functions introduced in CUDA 10.2 
 Examples perform following steps for both APIs:
 - Generating random diagonal dominant matrix of provided type on the host
 - Generating random right hand side vectors for the linear system on the host
-- Initializing required CUDA and cuSOLVER miscelaneous variables
+- Initializing required CUDA and cuSOLVER miscellaneous variables
 - Allocating required device memory for input data and workbuffer for the solver
 - Copying input data to the device 
 - Solving the system of equations
