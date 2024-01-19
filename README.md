@@ -1,17 +1,17 @@
 # CUDA Library Samples
 
 CUDA Library Samples contains examples demonstrating the use of
-features in the 
-* math and image processing libraries, 
-* cuBLAS, 
+features in the
+* math and image processing libraries,
+* cuBLAS,
 * cuTENSOR,
-* cuSPARSE, 
-* cuSOLVER, 
-* cuFFT, 
-* cuRAND, 
-* NPP, 
+* cuSPARSE,
+* cuSOLVER,
+* cuFFT,
+* cuRAND,
+* NPP,
 * nvJPEG
-* ... 
+* ...
 
 ## About
 
@@ -24,8 +24,10 @@ The CUDA Library Samples are released by NVIDIA Corporation as Open Source softw
 
 * [cuBLAS - GPU-accelerated basic linear algebra (BLAS) library](cuBLAS/)
 * [cuBLASLt - Lightweight GPU-accelerated basic linear algebra (BLAS) library](cuBLASLt/)
+* [cuBLASDx - GPU-accelerated device side API extensions for BLAS calculations](MathDx/cuBLASDx)
 * [cuFFT - GPU-accelerated library for Fast Fourier Transforms](cuFFT/)
 * [cuFFTMp - GPU-accelerated library for Fast Fourier Transforms Multi-process](cuFFTMp/)
+* [cuFFTDx - GPU-accelerated device side API extensions for FFT calculations](MathDx/cuFFTDx)
 * [cuRAND - GPU-accelerated random number generation (RNG)](cuRAND/)
 * [cuSOLVER - GPU-accelerated dense and sparse direct solvers](cuSOLVER/)
 * [cuSOLVERMp -GPU-accelerated dense and sparse direct solvers Multi-process](cuSOLVERMp/)
@@ -33,7 +35,6 @@ The CUDA Library Samples are released by NVIDIA Corporation as Open Source softw
 * [cuSPARSELt - Lightweight GPU-accelerated BLAS for sparse matrices](cuSPARSELt/)
 * [cuTENSOR - GPU-accelerated tensor linear algebra library](cuTENSOR/)
 * [cuTENSORMg - Multi-GPU GPU-accelerated tensor linear algebra library](cuTENSORMg/)
-* [MathDx - GPU-accelerated standard mathematical function library](MathDx/)
 * [NPP - Provides GPU-accelerated image, video, and signal processing functions](NPP/)
 * [nvJPEG - High performance GPU-accelerated library for JPEG encode/decoding](nvJPEG/)
 * [nvJPEG2000 - High performance GPU-accelerated library for JPEG2000 encoding/decoding](nvJPEG2000/)
