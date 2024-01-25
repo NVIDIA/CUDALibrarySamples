@@ -137,10 +137,13 @@ int main(int argc, char** argv) {
     CUFFT_CHECK(cufftDestroy(plan));
     CUDA_CHECK(cudaStreamDestroy(stream));
 
-    // Compute error
-    double error = compute_error(input_cpu_data, output_cpu_data, in);
+    // Compute error before exiting. require an MPI_allreduce to collect error on all ranks
+    double error = compute_error(input_cpu_data, output_cpu_data, in, MPI_COMM_WORLD);
+
+    // Assess error, print on rank 0
+    int code = assess_error(error, rank);
 
     MPI_Finalize();
 
-    return assess_error(error);
+    return code;
 }

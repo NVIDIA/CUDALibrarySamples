@@ -170,10 +170,13 @@ int main(int argc, char** argv) {
     // Compute a forward + normalization + inverse FFT
     run_r2c_c2r_pencils(nx, ny, nz, input_cpu_data.data(), boxes_real[rank], boxes_complex[rank], rank, size, MPI_COMM_WORLD);
 
-    // Compute error
-    double error = compute_error(ref, input_cpu_data, box_real);
+    // Compute error before exiting. require an MPI_allreduce to collect error on all ranks
+    double error = compute_error(ref, input_cpu_data, box_real, MPI_COMM_WORLD);
+
+    // Assess error, print on rank 0
+    int code = assess_error(error, rank);
 
     MPI_Finalize();
 
-    return assess_error(error);
+    return code;
 }
