@@ -1,12 +1,22 @@
 # C2C using a custom user distributions (pencils)
+## Sample description
+This sample is similar to [samples/c2c](../c2c/README.md), where it performs
+- C2C forward transform
+- [Scaling/normalization](../common/README.md)
+- C2C backward transform.
+  
+But this sample assumes pencil decomposition layout:
+- the input data is distributed using a pencil decomposition in X and Y, along Z;
+- the output data is distributed using a pencil decomposition in X and Z, along Y.
 
-This sample shows a Complex-to-complex distributed FFT computation using a custom user distribution and `cufftXtSetDistribution`.
-It assumes that
-- the input data is distributed using a pencil decomposition along Z;
-- the output data is distributed using a pencil decomposition along Y.
+This is achieved using a custom user-defined distribution and `cufftXtSetDistribution`.
+
+## Build and run
 This example requires 4 GPUs.
 
-To build and run:
+See [Requirements](../../README.md) and [Quick start for C++ samples](../../README.md) for hardware/software requirements and build instructions.
+
+Example code snippet:
 ```
 $ MPI_HOME=/usr/lib/x86_64-linux-gnu/openmpi/ make run
 Hello from rank 3/4 using GPU 3

@@ -44,6 +44,7 @@ If you see `PASSED`, the test ran successfully.
   - `samples/r2c_c2r`
   - `samples/r2c_c2r_shared_scratch`
   - `samples/r2c_c2r_pencils`
+  - `samples/r2c_c2r_slabs_GROMACS`
   - `samples/r2c_c2r_no_descriptors`
   - `samples/reshape`
 
@@ -51,11 +52,15 @@ If you see `PASSED`, the test ran successfully.
 A Fortran wrapper library for cuFFTMp is provided in [Fortran_wrappers_nvhpc](Fortran_samples/Fortran_wrappers_nvhpc/) subfolder. The wrapper library will be included in HPC SDK 22.5 and later. 
 The Fortran samples can be built and run similarly with `make run` in each of the directories:  
 - `Fortran_samples/c2c`
+- `Fortran_samples/c2c_no_descriptors`
 - `Fortran_samples/c2c_pencils`
 - `Fortran_samples/r2c_c2r`
-- `Fortran_samples/r2c_c2r_shared_scratch`
+- `Fortran_samples/r2c_c2r_no_descriptors`
 - `Fortran_samples/r2c_c2r_pencils`
+- `Fortran_samples/r2c_c2r_shared_scratch`
 - `Fortran_samples/reshape`
+
+Note: Some Fortran samples that use NVSHMEM APIs to manage memory, including `c2c_no_descriptors`, `r2c_c2r_no_descriptros` and `r2c_c2r_shared_scratch` will fail to build using HPC SDK 23.9. It is a known issue. The workaround is to use a different version of HPC SDK, preferably the latest (23.11).
 
 ## General tips
 
