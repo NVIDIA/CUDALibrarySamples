@@ -113,10 +113,13 @@ int main(int argc, char** argv) {
     // R2C + scaling + C2R
     run_r2c_c2r(nx, ny, nz, data.data(), rank, size, MPI_COMM_WORLD);
 
-    // Compute error
-    double error = compute_error(ref, data, buildBox3D(CUFFT_XT_FORMAT_INPLACE, CUFFT_R2C, rank, size, nx, ny, nz));
+    // Compute error before exiting. require an MPI_allreduce to collect error on all ranks
+    double error = compute_error(ref, data, buildBox3D(CUFFT_XT_FORMAT_INPLACE, CUFFT_R2C, rank, size, nx, ny, nz), MPI_COMM_WORLD);
+
+    // Assess error, print on rank 0
+    int code = assess_error(error, rank);
 
     MPI_Finalize();
 
-    return assess_error(error);
+    return code;
 }

@@ -1,4 +1,5 @@
 #include <cufftMp.h>
+#include <complex>
 #include "../iterators/box_iterator.hpp"
 
 #define CUDA_CHECK(ans) { gpu_checkAssert((ans), __FILE__, __LINE__); }
@@ -22,24 +23,34 @@ inline void cufft_check(int code, const char *file, int line, bool abort=true)
 }
 
 template<typename T>
-double compute_error(const T& ref, const T& test, Box3D box) {
+double compute_error(const T& ref, const T& test, Box3D box, MPI_Comm comm) {
     auto[begin, end] = BoxIterators(box, ref.data());
-    double max_diff = 0;
-    double max_norm = 0;
+    double diff_sq = 0;
+    double norm_sq = 0;
     for(auto it = begin; it != end; it++) {
-        max_norm = std::max<double>(max_norm, std::abs(ref[it.i()]));
-        max_diff = std::max<double>(max_diff, std::abs(ref[it.i()] - test[it.i()]));
+        diff_sq += std::norm(ref[it.i()] - test[it.i()]);
+        norm_sq += std::norm(ref[it.i()]);
     }
 
-    return max_diff / max_norm;
+    double diff_global = 0;
+    double norm_global = 0;
+
+    MPI_Allreduce(&diff_sq, &diff_global, 1, MPI_DOUBLE, MPI_SUM, comm);
+    MPI_Allreduce(&norm_sq, &norm_global, 1, MPI_DOUBLE, MPI_SUM, comm);
+
+    return std::sqrt(diff_global / norm_global);
 }
 
-int assess_error(double error) {
-    if(error > 1e-6) {
-        printf("FAILED with error %e\n", error);
+int assess_error(double error, int rank, double tolerance = 1e-6) {
+    if(error > tolerance) {
+        if (rank == 0) {
+            printf("FAILED with L2 error %e > %e\n", error, tolerance);
+        }
         return 1;
     } else {
-        printf("PASSED with error %e\n", error);
+        if (rank == 0) {
+            printf("PASSED with L2 error %e < %e\n", error, tolerance);
+        }
         return 0;
     }
 }

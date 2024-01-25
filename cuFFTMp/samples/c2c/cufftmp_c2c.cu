@@ -30,7 +30,7 @@
  * - The first (Y % ngpus) MPI rank each own (Y / ngpus + 1) planes of size X * Z,
  * - The remaining MPI rank each own (Y / ngpus) planes of size X * Z
  * 
- * A scaling kerel is applied, on the distributed GPU data (distributed according to CUFFT_XT_FORMAT_INPLACE)
+ * A scaling/normalization kernel is applied, on the distributed GPU data (distributed according to CUFFT_XT_FORMAT_INPLACE)
  * This kernel prints some elements to illustrate the CUFFT_XT_FORMAT_INPLACE_SHUFFLED data distribution and
  * normalize entries by (nx * ny * nz)
  * 
@@ -122,10 +122,13 @@ int main(int argc, char** argv) {
     // Run Forward and Inverse FFT
     run_c2c_fwd_inv(nx, ny, nz, data.data(), rank, size, MPI_COMM_WORLD);
 
-    // Compute error
-    double error = compute_error(ref, data, buildBox3D(CUFFT_XT_FORMAT_INPLACE, CUFFT_C2C, rank, size, nx, ny, nz));
+    // Compute error before exiting. require an MPI_allreduce to collect error on all ranks
+    double error = compute_error(ref, data, buildBox3D(CUFFT_XT_FORMAT_INPLACE, CUFFT_C2C, rank, size, nx, ny, nz), MPI_COMM_WORLD);
+
+    // Assess error, print on rank 0
+    int code = assess_error(error, rank);
 
     MPI_Finalize();
 
-    return assess_error(error);
+    return code;
 }
