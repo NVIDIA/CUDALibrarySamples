@@ -60,6 +60,7 @@
 int main(int argc, char *argv[]) {
     cusolverDnHandle_t cusolverH = NULL;
     cudaStream_t stream = NULL;
+    cusolverDnParams_t params = NULL;
 
     using data_type = double;
 
@@ -97,6 +98,7 @@ int main(int argc, char *argv[]) {
 
     CUDA_CHECK(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
     CUSOLVER_CHECK(cusolverDnSetStream(cusolverH, stream));
+    CUSOLVER_CHECK(cusolverDnCreateParams(&params));
 
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_A), sizeof(data_type) * A.size()));
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_W), sizeof(data_type) * W.size()));
@@ -110,7 +112,7 @@ int main(int argc, char *argv[]) {
     cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
 
     CUSOLVER_CHECK(cusolverDnXsyevd_bufferSize(
-        cusolverH, NULL, jobz, uplo, m, traits<data_type>::cuda_data_type, d_A, lda,
+        cusolverH, params, jobz, uplo, m, traits<data_type>::cuda_data_type, d_A, lda,
         traits<data_type>::cuda_data_type, d_W, traits<data_type>::cuda_data_type, &workspaceInBytesOnDevice,
         &workspaceInBytesOnHost));
 
@@ -125,7 +127,7 @@ int main(int argc, char *argv[]) {
 
     // step 4: compute spectrum
     CUSOLVER_CHECK(cusolverDnXsyevd(
-        cusolverH, NULL, jobz, uplo, m, traits<data_type>::cuda_data_type, d_A, lda,
+        cusolverH, params, jobz, uplo, m, traits<data_type>::cuda_data_type, d_A, lda,
         traits<data_type>::cuda_data_type, d_W, traits<data_type>::cuda_data_type, d_work, workspaceInBytesOnDevice,
         h_work, workspaceInBytesOnHost, d_info));
 
