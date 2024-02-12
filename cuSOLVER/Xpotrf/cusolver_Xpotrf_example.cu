@@ -59,6 +59,7 @@
 int main(int argc, char *argv[]) {
     cusolverDnHandle_t cusolverH = NULL;
     cudaStream_t stream = NULL;
+    cusolverDnParams_t params = NULL;
 
     using data_type = double;
 
@@ -107,6 +108,7 @@ int main(int argc, char *argv[]) {
 
     CUDA_CHECK(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
     CUSOLVER_CHECK(cusolverDnSetStream(cusolverH, stream));
+    CUSOLVER_CHECK(cusolverDnCreateParams(&params));
 
     /* step 2: copy A to device */
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_A), sizeof(data_type) * A.size()));
@@ -120,7 +122,7 @@ int main(int argc, char *argv[]) {
 
     /* step 3: query working space */
     CUSOLVER_CHECK(cusolverDnXpotrf_bufferSize(
-        cusolverH, NULL, uplo, m, traits<data_type>::cuda_data_type, d_A, lda,
+        cusolverH, params, uplo, m, traits<data_type>::cuda_data_type, d_A, lda,
         traits<data_type>::cuda_data_type, &workspaceInBytesOnDevice, &workspaceInBytesOnHost));
 
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_work), workspaceInBytesOnDevice));
@@ -133,7 +135,7 @@ int main(int argc, char *argv[]) {
     }
 
     /* step 4: Cholesky factorization */
-    CUSOLVER_CHECK(cusolverDnXpotrf(cusolverH, NULL, uplo, m, traits<data_type>::cuda_data_type,
+    CUSOLVER_CHECK(cusolverDnXpotrf(cusolverH, params, uplo, m, traits<data_type>::cuda_data_type,
                                     d_A, lda, traits<data_type>::cuda_data_type, d_work, workspaceInBytesOnDevice,
                                     h_work, workspaceInBytesOnHost, d_info));
 
@@ -161,7 +163,7 @@ int main(int argc, char *argv[]) {
      *
      */
 
-    CUSOLVER_CHECK(cusolverDnXpotrs(cusolverH, NULL, uplo, m, 1, /* nrhs */
+    CUSOLVER_CHECK(cusolverDnXpotrs(cusolverH, params, uplo, m, 1, /* nrhs */
                                     traits<data_type>::cuda_data_type, d_A, lda,
                                     traits<data_type>::cuda_data_type, d_B, ldb, d_info));
 

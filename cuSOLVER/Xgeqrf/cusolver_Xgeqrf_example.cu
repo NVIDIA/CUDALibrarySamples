@@ -59,6 +59,7 @@
 int main(int argc, char *argv[]) {
     cusolverDnHandle_t cusolverH = NULL;
     cudaStream_t stream = NULL;
+    cusolverDnParams_t params = NULL;
 
     using data_type = double;
 
@@ -100,6 +101,7 @@ int main(int argc, char *argv[]) {
 
     CUDA_CHECK(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
     CUSOLVER_CHECK(cusolverDnSetStream(cusolverH, stream));
+    CUSOLVER_CHECK(cusolverDnCreateParams(&params));
 
     /* step 2: copy A to device */
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_A), sizeof(data_type) * A.size()));
@@ -114,7 +116,7 @@ int main(int argc, char *argv[]) {
 
     /* step 3: query working space of geqrf */
     CUSOLVER_CHECK(
-        cusolverDnXgeqrf_bufferSize(cusolverH, NULL, m, m, traits<data_type>::cuda_data_type, d_A,
+        cusolverDnXgeqrf_bufferSize(cusolverH, params, m, m, traits<data_type>::cuda_data_type, d_A,
                                     lda, traits<data_type>::cuda_data_type, d_tau,
                                     traits<data_type>::cuda_data_type, &workspaceInBytesOnDevice,
                                     &workspaceInBytesOnHost));
@@ -129,7 +131,7 @@ int main(int argc, char *argv[]) {
     }
 
     /* step 4: QR factorization */
-    CUSOLVER_CHECK(cusolverDnXgeqrf(cusolverH, NULL, m, m, traits<data_type>::cuda_data_type, d_A,
+    CUSOLVER_CHECK(cusolverDnXgeqrf(cusolverH, params, m, m, traits<data_type>::cuda_data_type, d_A,
                                     lda, traits<data_type>::cuda_data_type, d_tau,
                                     traits<data_type>::cuda_data_type, d_work, workspaceInBytesOnDevice, h_work,
                                     workspaceInBytesOnHost, d_info));
