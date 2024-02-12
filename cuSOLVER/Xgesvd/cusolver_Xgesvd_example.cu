@@ -60,6 +60,7 @@ int main(int argc, char *argv[]) {
     cusolverDnHandle_t cusolverH = NULL;
     cublasHandle_t cublasH = NULL;
     cudaStream_t stream = NULL;
+    cusolverDnParams_t params = NULL;
 
     using data_type = double;
 
@@ -104,6 +105,7 @@ int main(int argc, char *argv[]) {
     CUDA_CHECK(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
     CUSOLVER_CHECK(cusolverDnSetStream(cusolverH, stream));
     CUBLAS_CHECK(cublasSetStream(cublasH, stream));
+    CUSOLVER_CHECK(cusolverDnCreateParams(&params));
 
     /* step 2: copy A to device */
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_A), sizeof(data_type) * A.size()));
@@ -122,7 +124,7 @@ int main(int argc, char *argv[]) {
     /* step 3: query working space of SVD */
     CUSOLVER_CHECK(cusolverDnXgesvd_bufferSize(
         cusolverH,
-        nullptr,
+        params,
         jobu,
         jobvt,
         m,
@@ -154,7 +156,7 @@ int main(int argc, char *argv[]) {
     /* step 4: compute SVD */
     CUSOLVER_CHECK(cusolverDnXgesvd(
         cusolverH,
-        nullptr,
+        params,
         jobu,
         jobvt,
         m,
