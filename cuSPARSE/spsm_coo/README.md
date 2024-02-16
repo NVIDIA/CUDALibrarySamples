@@ -8,7 +8,7 @@ This sample demonstrates the usage of `cusparseSpSM` for performing *sparse tria
 
 <center>
 
-`op(A) * Y = alpha * X`
+`op(A) * X = alpha * op(Y)`, where X is the output dense matrix and op(Y) is the input dense matrix (RHS).
 
 ![](spsm_coo.png)
 </center>
