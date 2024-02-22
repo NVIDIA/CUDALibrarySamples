@@ -1,15 +1,38 @@
-# MathDx Library - API Examples
+# cuBLASDx Library - API Examples
 
-This folder includes basic examples for libraries available in MathDx [package](https://developer.nvidia.com/mathdx).
+All example, including more advanced onces, are shipped within [cuBLASDx package](https://developer.nvidia.com/cublasdx-downloads).
 
-More advanced examples are shipped within MathDx [package](https://developer.nvidia.com/mathdx).
+## Description
 
-## [cuBLASDx](cuBLASDx)
+This folder demonstrates cuBLASDx APIs usage.
 
 * [cuBLASDx download page](https://developer.nvidia.com/cublasdx-downloads)
 * [cuBLASDx API documentation](https://docs.nvidia.com/cuda/cublasdx/index.html)
 
-#### Examples
+## Requirements
+
+* [cuBLASDx/MathDx package](https://developer.nvidia.com/cublasdx-downloads)
+* [See cuBLASDx requirements](https://docs.nvidia.com/cuda/cublasdx/requirements_func.html)
+* CMake 3.18 or newer
+* Linux system with installed NVIDIA drivers
+* NVIDIA GPU of Volta (SM70) or newer architecture
+
+## Build
+
+* You may specify `CUBLASDX_CUDA_ARCHITECTURES` to limit CUDA architectures used for compilation (see [CMake:CUDA_ARCHITECTURES](https://cmake.org/cmake/help/latest/prop_tgt/CUDA_ARCHITECTURES.html#prop_tgt:CUDA_ARCHITECTURES))
+* `mathdx_ROOT` - path to mathDx package (XX.Y - version of the package)
+
+```
+mkdir build && cd build
+cmake -DCUBLASDX_CUDA_ARCHITECTURES=70-real -Dmathdx_ROOT=/opt/nvidia/mathdx/XX.Y ..
+make
+// Run
+ctest
+```
+
+## Examples
+
+For full details please see [Examples section in the cuBLASDx documentation](https://docs.nvidia.com/cuda/cublasdx/examples.html).
 
 | Group                 | Subgroup       | Example                        | Description                                                           |
 |-----------------------|----------------|--------------------------------|-----------------------------------------------------------------------|
@@ -30,41 +53,3 @@ More advanced examples are shipped within MathDx [package](https://developer.nvi
 |                       | Other          | multiblock_gemm                | Proof-of-concept for single large GEMM using multiple CUDA blocks     |
 |                       |                | batched_gemm_fp64              | Manual batching in a single CUDA block                                |
 |                       |                | blockdim_gemm_fp16             | BLAS execution with different block dimensions                        |
-
-
-## [cuFFTDx](cuFFTDx)
-
-* [cuFFTDx download page](https://developer.nvidia.com/mathdx)
-* [cuFFTDx API documentation](https://docs.nvidia.com/cuda/cufftdx/index.html)
-
-#### Examples
-
-##### Hello World
-
-* [Hello World](cuFFTDx/helloworld)
-
-The "hello world" of cuFFTDx, a very simple example of 1D FFT with cuFFTDx. See example for detailed description.
-
-##### Block FFT example
-
-* [Block FFT](cuFFTDx/block_fft)
-
-The sample computes 1D FFT. See example for detailed description.
-
-##### Convolution example
-
-* [Convolution](cuFFTDx/convolution)
-
-The sample computes convolution using FFTs. See example for detailed description.
-
-##### 2D FFTs
-
-* [2D FFTs](cuFFTDx/fft_2d)
-
-Multiple examples on how to use cuFFTDx to calculate 2D FFTs. See examples for detailed description.
-
-##### 3D FFTs
-
-* [3D FFTs](cuFFTDx/fft_3d)
-
-Examples on how to use cuFFTDx to calculate small 3D FFTs. See examples for detailed description.
