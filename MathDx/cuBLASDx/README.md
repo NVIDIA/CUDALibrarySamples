@@ -32,24 +32,31 @@ ctest
 
 ## Examples
 
-For full details please see [Examples section in the cuBLASDx documentation](https://docs.nvidia.com/cuda/cublasdx/examples.html).
+For the detailed descriptions of the examples please visit [Examples](https://docs.nvidia.com/cuda/cublasdx/examples.html) section of the cuBLASDx documentation.
 
 | Group                 | Subgroup       | Example                        | Description                                                           |
 |-----------------------|----------------|--------------------------------|-----------------------------------------------------------------------|
 | Introduction Examples |                | introduction_example           | cuBLASDx API introduction example                                     |
+|                       |                |                                |                                                                       |
 | Simple GEMM Examples  | Basic Example  | simple_gemm_fp32               | Performs fp32 GEMM                                                    |
 |                       |                | simple_gemm_cfp16              | Performs complex fp16 GEMM                                            |
+|                       |                |                                |                                                                       |
 |                       | Extra Examples | simple_gemm_leading_dimensions | Performs GEMM with non-default leading dimensions                     |
 |                       |                | simple_gemm_std_complex_fp32   | Performs GEMM with cuda::std::complex as data type                    |
+|                       |                |                                |                                                                       |
 | NVRTC Examples        |                | nvrtc_gemm                     | Performs GEMM, kernel is compiled using NVRTC                         |
+|                       |                |                                |                                                                       |
 | GEMM Performance      |                | single_gemm_performance        | Benchmark for single GEMM                                             |
 |                       |                | fused_gemm_performance         | Benchmark for 2 GEMMs fused into a single kernel                      |
+|                       |                |                                |                                                                       |
 | Advanced Examples     | Fusion         | fused_gemm                     | Performs 2 GEMMs in a single kernel                                   |
 |                       |                | gemm_fft                       | Perform GEMM and FFT in a single kernel                               |
 |                       |                | gemm_fft_fp16                  | Perform GEMM and FFT in a single kernel (half-precision complex type) |
 |                       |                | gemm_fft_performance           | Benchmark for GEMM and FFT fused into a single kernel                 |
+|                       |                |                                |                                                                       |
 |                       | Deep Learning  | scaled_dot_prod_attn           | Scaled dot product attention using cuBLASDx                           |
 |                       |                | scaled_dot_prod_attn_batched   | Multi-head attention using cuBLASDx                                   |
+|                       |                |                                |                                                                       |
 |                       | Other          | multiblock_gemm                | Proof-of-concept for single large GEMM using multiple CUDA blocks     |
 |                       |                | batched_gemm_fp64              | Manual batching in a single CUDA block                                |
 |                       |                | blockdim_gemm_fp16             | BLAS execution with different block dimensions                        |
