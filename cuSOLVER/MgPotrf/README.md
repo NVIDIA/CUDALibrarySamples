@@ -1,4 +1,4 @@
-# cuSOLVER MultiGPU LU Decomposition example
+# cuSOLVER MultiGPU Cholesky factorization example
 
 ## Description
 
