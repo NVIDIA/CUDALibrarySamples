@@ -1,5 +1,5 @@
 #
-# Copyright 2023 NVIDIA Corporation.  All rights reserved.
+# Copyright 2023-2024 NVIDIA Corporation.  All rights reserved.
 #
 # NOTICE TO LICENSEE:
 #
@@ -79,21 +79,22 @@ target_link_libraries(${EXAMPLE_NAME}_example
     PUBLIC cudss
 )
 
-add_executable(${EXAMPLE_NAME}_example_static)
+if (BUILD_STATIC)
+    add_executable(${EXAMPLE_NAME}_example_static)
 
-target_sources(${EXAMPLE_NAME}_example_static
-    PUBLIC ${PROJECT_SOURCE_DIR}/${EXAMPLE_NAME}.cpp
-)
+    target_sources(${EXAMPLE_NAME}_example_static
+        PUBLIC ${PROJECT_SOURCE_DIR}/${EXAMPLE_NAME}.cpp
+    )
 
-target_include_directories(${EXAMPLE_NAME}_example_static
-    PUBLIC ${CUDSS_PATH}/include
-)
+    target_include_directories(${EXAMPLE_NAME}_example_static
+        PUBLIC ${CUDSS_PATH}/include
+    )
 
-target_link_directories(${EXAMPLE_NAME}_example_static
-    PUBLIC ${CUDSS_PATH}/lib
-)
+    target_link_directories(${EXAMPLE_NAME}_example_static
+        PUBLIC ${CUDSS_PATH}/lib
+    )
 
-target_link_libraries(${EXAMPLE_NAME}_example_static
-    PUBLIC cudss
-)
-
+    target_link_libraries(${EXAMPLE_NAME}_example_static
+        PUBLIC cudss
+    )
+endif()

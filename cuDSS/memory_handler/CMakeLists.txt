@@ -48,7 +48,7 @@
 #
 cmake_minimum_required(VERSION 3.13)
 
-set(EXAMPLE_NAME get_set)
+set(EXAMPLE_NAME memory_handler)
 
 project("cuDSS_${EXAMPLE_NAME}_example"
         DESCRIPTION  "cuDSS"
@@ -79,7 +79,7 @@ target_link_libraries(${EXAMPLE_NAME}_example
     PUBLIC cudss
 )
 
-if(BUILD_STATIC)
+if (BUILD_STATIC)
     add_executable(${EXAMPLE_NAME}_example_static)
 
     target_sources(${EXAMPLE_NAME}_example_static
