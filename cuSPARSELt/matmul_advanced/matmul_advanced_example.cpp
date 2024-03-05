@@ -1,56 +1,30 @@
-/*
- * Copyright 1993-2023 NVIDIA Corporation.  All rights reserved.
+/******************************************************************************
+ * Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
- * NOTICE TO LICENSEE:
- *
- * This source code and/or documentation ("Licensed Deliverables") are
- * subject to NVIDIA intellectual property rights under U.S. and
- * international Copyright laws.
- *
- * These Licensed Deliverables contained herein is PROPRIETARY and
- * CONFIDENTIAL to NVIDIA and is being provided under the terms and
- * conditions of a form of NVIDIA software license agreement by and
- * between NVIDIA and Licensee ("License Agreement") or electronically
- * accepted by Licensee.  Notwithstanding any terms or conditions to
- * the contrary in the License Agreement, reproduction or disclosure
- * of the Licensed Deliverables to any third party without the express
- * written consent of NVIDIA is prohibited.
- *
- * NOTWITHSTANDING ANY TERMS OR CONDITIONS TO THE CONTRARY IN THE
- * LICENSE AGREEMENT, NVIDIA MAKES NO REPRESENTATION ABOUT THE
- * SUITABILITY OF THESE LICENSED DELIVERABLES FOR ANY PURPOSE.  IT IS
- * PROVIDED "AS IS" WITHOUT EXPRESS OR IMPLIED WARRANTY OF ANY KIND.
- * NVIDIA DISCLAIMS ALL WARRANTIES WITH REGARD TO THESE LICENSED
- * DELIVERABLES, INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY,
- * NONINFRINGEMENT, AND FITNESS FOR A PARTICULAR PURPOSE.
- * NOTWITHSTANDING ANY TERMS OR CONDITIONS TO THE CONTRARY IN THE
- * LICENSE AGREEMENT, IN NO EVENT SHALL NVIDIA BE LIABLE FOR ANY
- * SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL DAMAGES, OR ANY
- * DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,
- * WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS
- * ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE
- * OF THESE LICENSED DELIVERABLES.
- *
- * U.S. Government End Users.  These Licensed Deliverables are a
- * "commercial item" as that term is defined at 48 C.F.R. 2.101 (OCT
- * 1995), consisting of "commercial computer software" and "commercial
- * computer software documentation" as such terms are used in 48
- * C.F.R. 12.212 (SEPT 1995) and is provided to the U.S. Government
- * only as a commercial end item.  Consistent with 48 C.F.R.12.212 and
- * 48 C.F.R. 227.7202-1 through 227.7202-4 (JUNE 1995), all
- * U.S. Government End Users acquire the Licensed Deliverables with
- * only those rights set forth herein.
- *
- * Any use of the Licensed Deliverables in individual and commercial
- * software must include, in the user documentation and internal
- * comments to the code, the above Disclaimer and U.S. Government End
- * Users Notice.
- */
+ * NVIDIA CORPORATION and its licensors retain all intellectual property
+ * and proprietary rights in and to this software, related documentation
+ * and any modifications thereto.  Any use, reproduction, disclosure or
+ * distribution of this software and related documentation without an express
+ * license agreement from NVIDIA CORPORATION is strictly prohibited.
+ ******************************************************************************/
+
 #include <algorithm>          // std::min
 #include <cstdio>             // printf
 #include <cstdlib>            // std::rand
 #include <cuda_runtime_api.h> // cudaMalloc, cudaMemcpy, etc.
 #include <cusparseLt.h>       // cusparseLt header
+
+#define AB_TYPE_IS_FP8
+
+#ifdef AB_TYPE_IS_FP8 
+#include <cuda_fp8.h>
+#endif
+                              
+#ifdef AB_TYPE_IS_FP8
+using AB_CUDA_TYPE = __nv_fp8_e4m3;
+#else 
+using AB_CUDA_TYPE = __half;
+#endif
 
 #define CHECK_CUDA(func)                                                       \
 {                                                                              \
@@ -72,12 +46,13 @@
     }                                                                          \
 }
 
-void print_matrix(const __half* matrix,
-                  int64_t       height,
-                  int64_t       width,
-                  int64_t       ld,
-                  int           num_batches,
-                  int64_t       batch_stride) {
+template <typename T>
+void print_matrix(const T* matrix,
+                  int64_t  height,
+                  int64_t  width,
+                  int64_t  ld,
+                  int      num_batches,
+                  int64_t  batch_stride) {
     for (int b = 0; b < num_batches; b++) {
         for (int i = 0; i < height; i++) {
             for (int j = 0; j < width; j++) {
@@ -94,8 +69,9 @@ void print_matrix(const __half* matrix,
     printf("\n");
 }
 
-__half random_half_gen() {
-    return static_cast<__half>(static_cast<float>(std::rand() % 10));
+template <typename T>
+T random_value_gen() {
+    return static_cast<T>(static_cast<float>(std::rand() % 10));
 }
 
 constexpr int EXIT_UNSUPPORTED = 2;
@@ -108,25 +84,31 @@ int main(void) {
                                        cudaDevAttrComputeCapabilityMinor, 0) )
     if (!(major_cc == 8 && minor_cc == 0) &&
         !(major_cc == 8 && minor_cc == 6) &&
-        !(major_cc == 8 && minor_cc == 9)) {
+        !(major_cc == 8 && minor_cc == 9) &&
+        !(major_cc == 9 && minor_cc == 0)) {
         std::printf("\ncusparseLt is supported only on GPU devices with"
-                    " compute capability == 8.0, 8.6, 8.9 current: %d.%d\n\n",
+                    " compute capability == 8.0, 8.6, 8.9, 9.0 current: %d.%d\n\n",
                      major_cc, minor_cc);
         return EXIT_UNSUPPORTED;
     }
     constexpr bool print_sparse_matrix = true;
     // Host problem definition, row-major order
     constexpr int     num_batches   = 2;
-    constexpr int64_t m             = 16;
+    constexpr int64_t m             = 32;
     constexpr int64_t n             = 16;
-    constexpr int64_t k             = 16;
+    constexpr int64_t k             = 32;
     constexpr int64_t batch_strideA = m * k + 128;
     constexpr int64_t batch_strideB = k * n + 128;
     constexpr int64_t batch_strideC = m * n + 128;
     constexpr auto    order         = CUSPARSE_ORDER_ROW;
     constexpr auto    opA           = CUSPARSE_OPERATION_NON_TRANSPOSE;
-    constexpr auto    opB           = CUSPARSE_OPERATION_NON_TRANSPOSE;
-    constexpr auto    type          = CUDA_R_16F;
+    constexpr auto    opB           = CUSPARSE_OPERATION_TRANSPOSE;
+#ifdef AB_TYPE_IS_FP8
+    constexpr auto    type_AB       = CUDA_R_8F_E4M3;
+#else
+    constexpr auto    type_AB       = CUDA_R_16F;
+#endif
+    constexpr auto    type_C        = CUDA_R_16F;
     constexpr auto    compute_type  = CUSPARSE_COMPUTE_32F;
 
     bool     is_rowmajor    = (order == CUSPARSE_ORDER_ROW);
@@ -144,33 +126,43 @@ int main(void) {
     auto     ldc            = (is_rowmajor) ? num_C_cols : num_C_rows;
     auto     A_height       = (is_rowmajor) ? num_A_rows : num_A_cols;
     auto     B_height       = (is_rowmajor) ? num_B_rows : num_B_cols;
+    auto     C_height       = (is_rowmajor) ? num_B_rows : num_C_cols;
     auto     A_width        = (is_rowmajor) ? num_A_cols : num_A_rows;
     auto     B_width        = (is_rowmajor) ? num_B_cols : num_B_rows;
+    auto     C_width        = (is_rowmajor) ? num_C_cols : num_C_rows;
     auto     A_size         = num_batches * batch_strideA;
     auto     B_size         = num_batches * batch_strideB;
     auto     C_size         = num_batches * batch_strideC;
-    auto     A_size_bytes   = num_batches * batch_strideA * sizeof(__half);
-    auto     B_size_bytes   = num_batches * batch_strideB * sizeof(__half);
+    auto     A_size_bytes   = num_batches * batch_strideA * sizeof(AB_CUDA_TYPE);
+    auto     B_size_bytes   = num_batches * batch_strideB * sizeof(AB_CUDA_TYPE);
     auto     C_size_bytes   = num_batches * batch_strideC * sizeof(__half);
-    auto     hA             = new __half[A_size];
-    auto     hB             = new __half[B_size];
+    auto     hA             = new AB_CUDA_TYPE[A_size];
+    auto     hB             = new AB_CUDA_TYPE[B_size];
     auto     hC             = new __half[C_size]();
+
     for (int b = 0; b < num_batches; b++) {
         for (int i = 0; i < A_height; i++) {
             for (int j = 0; j < A_width; j++)
-                hA[b * batch_strideA + i * lda + j] = random_half_gen();
+                hA[b * batch_strideA + i * lda + j] = random_value_gen<AB_CUDA_TYPE>();
         }
     }
     for (int b = 0; b < num_batches; b++) {
         for (int i = 0; i < B_height; i++) {
             for (int j = 0; j < B_width; j++)
-                hB[b * batch_strideB + i * ldb + j] = random_half_gen();
+                hB[b * batch_strideB + i * ldb + j] = random_value_gen<AB_CUDA_TYPE>();
         }
     }
+    for (int b = 0; b < num_batches; b++) {
+        for (int i = 0; i < C_height; i++) {
+            for (int j = 0; j < C_width; j++)
+                hC[b * batch_strideC + i * ldc + j] = random_value_gen<__half>();
+        }
+    }
+
     if (print_sparse_matrix)
         print_matrix(hA, A_height, A_width, lda, num_batches, batch_strideA);
     float alpha = 1.0f;
-    float beta  = 0.0f;
+    float beta  = 2.0f;
     //--------------------------------------------------------------------------
     // Device memory management
     __half *dA, *dB, *dC, *dD, *dA_compressed;
@@ -196,16 +188,16 @@ int main(void) {
     CHECK_CUSPARSE( cusparseLtStructuredDescriptorInit(
                                             &handle, &matA, num_A_rows,
                                             num_A_cols, lda, alignment,
-                                            type, order,
+                                            type_AB, order,
                                             CUSPARSELT_SPARSITY_50_PERCENT) )
     CHECK_CUSPARSE( cusparseLtDenseDescriptorInit(
                                             &handle, &matB, num_B_rows,
                                             num_B_cols, ldb, alignment,
-                                            type, order) )
+                                            type_AB, order) )
     CHECK_CUSPARSE( cusparseLtDenseDescriptorInit(
                                             &handle, &matC, num_C_rows,
                                             num_C_cols, ldc, alignment,
-                                            type, order) )
+                                            type_C, order) )
     //--------------------------------------------------------------------------
     // SET NUM BATCHES
     CHECK_CUSPARSE( cusparseLtMatDescSetAttribute(&handle, &matA,
@@ -381,7 +373,8 @@ int main(void) {
                 }
                 auto posC       = (is_rowmajor) ? i * ldc + j : i + j * ldc;
                 posC           += b * batch_strideC;
-                hC_result[posC] = ReLU(sum + 1.0f /*bias*/);  // [i][j]
+                const auto hC_ij = static_cast<float>(hC[posC]);
+                hC_result[posC] = ReLU(sum + beta * hC_ij + hBias[i]);  // [i][j]
             }
         }
     }
