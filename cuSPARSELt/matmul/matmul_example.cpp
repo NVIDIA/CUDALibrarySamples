@@ -1,29 +1,55 @@
-/******************************************************************************
- * Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/*
+ * Copyright 1993-2023 NVIDIA Corporation.  All rights reserved.
  *
- * NVIDIA CORPORATION and its licensors retain all intellectual property
- * and proprietary rights in and to this software, related documentation
- * and any modifications thereto.  Any use, reproduction, disclosure or
- * distribution of this software and related documentation without an express
- * license agreement from NVIDIA CORPORATION is strictly prohibited.
- ******************************************************************************/
-
+ * NOTICE TO LICENSEE:
+ *
+ * This source code and/or documentation ("Licensed Deliverables") are
+ * subject to NVIDIA intellectual property rights under U.S. and
+ * international Copyright laws.
+ *
+ * These Licensed Deliverables contained herein is PROPRIETARY and
+ * CONFIDENTIAL to NVIDIA and is being provided under the terms and
+ * conditions of a form of NVIDIA software license agreement by and
+ * between NVIDIA and Licensee ("License Agreement") or electronically
+ * accepted by Licensee.  Notwithstanding any terms or conditions to
+ * the contrary in the License Agreement, reproduction or disclosure
+ * of the Licensed Deliverables to any third party without the express
+ * written consent of NVIDIA is prohibited.
+ *
+ * NOTWITHSTANDING ANY TERMS OR CONDITIONS TO THE CONTRARY IN THE
+ * LICENSE AGREEMENT, NVIDIA MAKES NO REPRESENTATION ABOUT THE
+ * SUITABILITY OF THESE LICENSED DELIVERABLES FOR ANY PURPOSE.  IT IS
+ * PROVIDED "AS IS" WITHOUT EXPRESS OR IMPLIED WARRANTY OF ANY KIND.
+ * NVIDIA DISCLAIMS ALL WARRANTIES WITH REGARD TO THESE LICENSED
+ * DELIVERABLES, INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY,
+ * NONINFRINGEMENT, AND FITNESS FOR A PARTICULAR PURPOSE.
+ * NOTWITHSTANDING ANY TERMS OR CONDITIONS TO THE CONTRARY IN THE
+ * LICENSE AGREEMENT, IN NO EVENT SHALL NVIDIA BE LIABLE FOR ANY
+ * SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL DAMAGES, OR ANY
+ * DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,
+ * WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS
+ * ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE
+ * OF THESE LICENSED DELIVERABLES.
+ *
+ * U.S. Government End Users.  These Licensed Deliverables are a
+ * "commercial item" as that term is defined at 48 C.F.R. 2.101 (OCT
+ * 1995), consisting of "commercial computer software" and "commercial
+ * computer software documentation" as such terms are used in 48
+ * C.F.R. 12.212 (SEPT 1995) and is provided to the U.S. Government
+ * only as a commercial end item.  Consistent with 48 C.F.R.12.212 and
+ * 48 C.F.R. 227.7202-1 through 227.7202-4 (JUNE 1995), all
+ * U.S. Government End Users acquire the Licensed Deliverables with
+ * only those rights set forth herein.
+ *
+ * Any use of the Licensed Deliverables in individual and commercial
+ * software must include, in the user documentation and internal
+ * comments to the code, the above Disclaimer and U.S. Government End
+ * Users Notice.
+ */
 #include <cuda_runtime_api.h> // cudaMalloc, cudaMemcpy, etc.
 #include <cusparseLt.h>       // cusparseLt header
 #include <cstdio>             // printf
 #include <cstdlib>            // std::rand
-                              
-#define AB_TYPE_IS_FP8
-
-#ifdef AB_TYPE_IS_FP8 
-#include <cuda_fp8.h>
-#endif
-                              
-#ifdef AB_TYPE_IS_FP8
-using AB_CUDA_TYPE = __nv_fp8_e4m3;
-#else 
-using AB_CUDA_TYPE = __half;
-#endif
 
 #define CHECK_CUDA(func)                                                       \
 {                                                                              \
@@ -47,7 +73,6 @@ using AB_CUDA_TYPE = __half;
 
 constexpr int EXIT_UNSUPPORTED = 2;
 
-
 int main(void) {
     int major_cc, minor_cc;
     CHECK_CUDA( cudaDeviceGetAttribute(&major_cc,
@@ -56,10 +81,9 @@ int main(void) {
                                        cudaDevAttrComputeCapabilityMinor, 0) )
     if (!(major_cc == 8 && minor_cc == 0) &&
         !(major_cc == 8 && minor_cc == 6) &&
-        !(major_cc == 8 && minor_cc == 9) &&
-        !(major_cc == 9 && minor_cc == 0)) {
+        !(major_cc == 8 && minor_cc == 9)) {
         std::printf("\ncusparseLt is supported only on GPU devices with"
-                    " compute capability == 8.0, 8.6, 8.9, 9.0 current: %d.%d\n\n",
+                    " compute capability == 8.0, 8.6, 8.9 current: %d.%d\n\n",
                      major_cc, minor_cc);
         return EXIT_UNSUPPORTED;
     }
@@ -67,18 +91,11 @@ int main(void) {
     // bigger sizes may require dynamic allocations
     constexpr int m            = 32;
     constexpr int n            = 32;
-    constexpr int k            = 64;
+    constexpr int k            = 32;
     auto          order        = CUSPARSE_ORDER_ROW;
     auto          opA          = CUSPARSE_OPERATION_NON_TRANSPOSE;
-    auto          opB          = CUSPARSE_OPERATION_TRANSPOSE;
-#ifdef AB_TYPE_IS_FP8
-    printf("AB_type = e4m3\n");
-    auto          type_AB      = CUDA_R_8F_E4M3;
-#else
-    auto          type_AB      = CUDA_R_16F;
-    printf("AB_type = fp16\n");
-#endif
-    auto          type_C       = CUDA_R_16F;
+    auto          opB          = CUSPARSE_OPERATION_NON_TRANSPOSE;
+    auto          type         = CUDA_R_16F;
     auto          compute_type = CUSPARSE_COMPUTE_32F;
 
     bool     is_rowmajor    = (order == CUSPARSE_ORDER_ROW);
@@ -97,31 +114,23 @@ int main(void) {
     auto     A_height       = (is_rowmajor) ? num_A_rows : num_A_cols;
     auto     B_height       = (is_rowmajor) ? num_B_rows : num_B_cols;
     auto     C_height       = (is_rowmajor) ? num_C_rows : num_C_cols;
-    
-    auto     A_size         = A_height * lda * sizeof(AB_CUDA_TYPE);
-    auto     B_size         = B_height * ldb * sizeof(AB_CUDA_TYPE);
+    auto     A_size         = A_height * lda * sizeof(__half);
+    auto     B_size         = B_height * ldb * sizeof(__half);
     auto     C_size         = C_height * ldc * sizeof(__half);
-
-    AB_CUDA_TYPE hA[m * k];
-    AB_CUDA_TYPE hB[k * n];
+    __half hA[m * k];
+    __half hB[k * n];
     __half hC[m * n] = {};
-
     for (int i = 0; i < m * k; i++)
-        hA[i] = static_cast<AB_CUDA_TYPE>(static_cast<float>(std::rand() % 10));
-
+        hA[i] = static_cast<__half>(static_cast<float>(std::rand() % 10));
     for (int i = 0; i < k * n; i++)
-        hB[i] = static_cast<AB_CUDA_TYPE>(static_cast<float>(std::rand() % 10));
-
-    for (int i = 0; i < m * n; i++)
-        hC[i] = static_cast<__half>(static_cast<float>(std::rand() % 10));
-
+        hB[i] = static_cast<__half>(static_cast<float>(std::rand() % 10));
     float alpha = 1.0f;
-    float beta  = 2.0f;
+    float beta  = 0.0f;
+
     //--------------------------------------------------------------------------
     // Device memory management
     __half *dA, *dB, *dC, *dD, *dA_compressed;
     int    *d_valid;
-
     CHECK_CUDA( cudaMalloc((void**) &dA, A_size) )
     CHECK_CUDA( cudaMalloc((void**) &dB, B_size) )
     CHECK_CUDA( cudaMalloc((void**) &dC, C_size) )
@@ -138,35 +147,29 @@ int main(void) {
     cusparseLtMatmulAlgSelection_t alg_sel;
     cusparseLtMatmulPlan_t         plan;
     cudaStream_t                   stream = nullptr;
-
     CHECK_CUSPARSE( cusparseLtInit(&handle) )
-
     // matrix descriptor initialization
     CHECK_CUSPARSE( cusparseLtStructuredDescriptorInit(
                                             &handle, &matA, num_A_rows,
                                             num_A_cols, lda, alignment,
-                                            type_AB, order,
+                                            type, order,
                                             CUSPARSELT_SPARSITY_50_PERCENT) )
-
     CHECK_CUSPARSE( cusparseLtDenseDescriptorInit(
                                             &handle, &matB, num_B_rows,
                                             num_B_cols, ldb, alignment,
-                                            type_AB, order) )
+                                            type, order) )
     CHECK_CUSPARSE( cusparseLtDenseDescriptorInit(
                                             &handle, &matC, num_C_rows,
                                             num_C_cols, ldc, alignment,
-                                            type_C, order) )
-
+                                            type, order) )
     // matmul, algorithm selection, and plan initialization
     CHECK_CUSPARSE( cusparseLtMatmulDescriptorInit(
                                             &handle, &matmul, opA, opB,
                                             &matA, &matB, &matC, &matC,
                                             compute_type) )
-
     CHECK_CUSPARSE( cusparseLtMatmulAlgSelectionInit(
                                             &handle, &alg_sel, &matmul,
                                             CUSPARSELT_MATMUL_ALG_DEFAULT) )
-
     CHECK_CUSPARSE( cusparseLtMatmulPlanInit(&handle, &plan, &matmul, &alg_sel))
 
     //--------------------------------------------------------------------------
@@ -230,7 +233,6 @@ int main(void) {
     CHECK_CUSPARSE( cusparseLtMatDescriptorDestroy(&matC) )
     CHECK_CUSPARSE( cusparseLtMatmulPlanDestroy(&plan) )
     CHECK_CUSPARSE( cusparseLtDestroy(&handle) )
-
     //--------------------------------------------------------------------------
     // device result check
     // matrix A has been pruned
@@ -251,7 +253,7 @@ int main(void) {
                             static_cast<float>(hB[posB]);   // [k][j]
             }
             auto posC       = (is_rowmajor) ? i * ldc + j : i + j * ldc;
-            hC_result[posC] = alpha * sum + beta * static_cast<float>(hC[posC]);  // [i][j]
+            hC_result[posC] = sum;  // [i][j]
         }
     }
     // host-device comparison
@@ -270,14 +272,10 @@ int main(void) {
             }
         }
     }
-
-    if (correct) {
+    if (correct)
         std::printf("matmul_example test PASSED\n");
-    }
-    else {
+    else
         std::printf("matmul_example test FAILED: wrong result\n");
-    }
-
     //--------------------------------------------------------------------------
     // device memory deallocation
     CHECK_CUDA( cudaFree(dA_compressed) )
@@ -287,6 +285,5 @@ int main(void) {
     CHECK_CUDA( cudaFree(d_valid) )
     CHECK_CUDA( cudaFree(d_workspace) )
     CHECK_CUDA( cudaFree(dA_compressedBuffer) )
-
     return EXIT_SUCCESS;
 }
