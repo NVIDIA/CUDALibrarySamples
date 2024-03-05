@@ -55,16 +55,14 @@
 #include "cuDSS.h"
 
 /*
-    This example demonstrates usage of cuDSS APIs with a focus on
-    using non-default settings and retrieving extra data from the
-    solver.
-    As in the main example, a system of linear algebraic equations
-    with a sparse matrix is solved:
+    This example demonstrates usage of cuDSS APIs for user-defined memory allocators
+    The APIs are showed for an example of solving a system of linear algebraic
+    equations with a sparse matrix:
                                 Ax = b,
     where:
         A is the sparse input matrix,
-        b is the (dense) right-hand side vector (or matrix),
-        x is the (dense) solution vector (or matrix).
+        b is the (dense) right-hand side vector (or a matrix),
+        x is the (dense) solution vector (or a matrix).
 */
 
 #define CUDSS_EXAMPLE_FREE \
@@ -74,14 +72,13 @@
         free(csr_values_h); \
         free(x_values_h); \
         free(b_values_h); \
-        free(diag_h);       \
         cudaFree(csr_offsets_d); \
         cudaFree(csr_columns_d); \
         cudaFree(csr_values_d); \
         cudaFree(x_values_d); \
         cudaFree(b_values_d); \
-        cudaFree(diag_d); \
     } while(0);
+
 
 #define CUDA_CALL_AND_CHECK(call, msg) \
     do { \
@@ -92,7 +89,6 @@
             return -1; \
         } \
     } while(0);
-
 
 #define CUDSS_CALL_AND_CHECK(call, status, msg) \
     do { \
@@ -105,19 +101,42 @@
     } while(0);
 
 
+/*
+ * This is just a working example of a simple C++ memory pool solely for illustration purposes only.
+ */
+class ExampleDeviceMemPool {
+  public:
+    int alloc(void** ptr, size_t size, cudaStream_t stream) {
+      int status = cudaMalloc(ptr, size);
+      printf("alloc() from the ExampleDeviceMemPool allocates memory at %p (allocation size %zu)\n", (void*)*ptr, size);
+      return status;
+    }
+
+    int dealloc(void* ptr, size_t size, cudaStream_t stream) {
+      printf("dealloc() from the ExampleDeviceMemPool is called with ptr %p\n", (void*)ptr);
+      int status = cudaFree(ptr);
+      return status;
+    }
+};
+
+/*
+ * The device memory handler APIs of cuDSS are in C and these wrappers below
+ * demonstrate how a C++ memory pool could be used to define an object of
+ * type cudssDeviceMemHandler_t
+ */
+int example_device_alloc(void* ctx, void** ptr, size_t size, cudaStream_t stream) {
+  return reinterpret_cast<ExampleDeviceMemPool*>(ctx)->alloc(ptr, size, stream);
+}
+
+int example_device_dealloc(void* ctx, void* ptr, size_t size, cudaStream_t stream) {
+  return reinterpret_cast<ExampleDeviceMemPool*>(ctx)->dealloc(ptr, size, stream);
+}
+
 int main (int argc, char *argv[]) {
     printf("---------------------------------------------------------\n");
     printf("cuDSS example: solving a real linear 5x5 system\n"
-           "with a symmetric positive-definite matrix\n"
-           "with extra settings and extra information retrieved\n");
+           "with a symmetric positive-definite matrix \n");
     printf("---------------------------------------------------------\n");
-
-    int major, minor, patch;
-    cudssGetProperty(MAJOR_VERSION, &major);
-    cudssGetProperty(MINOR_VERSION, &minor);
-    cudssGetProperty(PATCH_LEVEL,   &patch);
-    printf("CUDSS Version (Major,Minor,PatchLevel): %d.%d.%d\n", major, minor, patch);
-
     cudaError_t cuda_error = cudaSuccess;
     cudssStatus_t status = CUDSS_STATUS_SUCCESS;
 
@@ -129,13 +148,27 @@ int main (int argc, char *argv[]) {
     int *csr_columns_h = NULL;
     double *csr_values_h = NULL;
     double *x_values_h = NULL, *b_values_h = NULL;
-    double *diag_h = NULL;
 
     int *csr_offsets_d = NULL;
     int *csr_columns_d = NULL;
     double *csr_values_d = NULL;
     double *x_values_d = NULL, *b_values_d = NULL;
-    double *diag_d = NULL;
+
+    /* Creating a memory pool object for device memory */
+    printf("Creating a simple device memory pool\n");
+    ExampleDeviceMemPool pool = ExampleDeviceMemPool(); // kept alive for the entire process in real apps
+
+    /* Create a CUDA stream */
+    cudaStream_t stream = NULL;
+    CUDA_CALL_AND_CHECK(cudaStreamCreate(&stream), "cudaStreamCreate");
+
+    /* Creating a device memory handler based on the memory pool defined above */
+    printf("Creating a memory pool wrapper object of type cudssDeviceMemHandler_t\n");
+    cudssDeviceMemHandler_t handler;
+    handler.ctx = reinterpret_cast<void*>(&pool);
+    handler.device_alloc = example_device_alloc;
+    handler.device_free = example_device_dealloc;
+    memcpy(handler.name, "simple verbose device memory pool", CUDSS_ALLOCATOR_NAME_LEN);
 
     /* Allocate host memory for the sparse input matrix A,
        right-hand side x and solution b*/
@@ -146,10 +179,8 @@ int main (int argc, char *argv[]) {
     x_values_h = (double*)malloc(nrhs * n * sizeof(double));
     b_values_h = (double*)malloc(nrhs * n * sizeof(double));
 
-    diag_h = (double*)malloc(n * sizeof(double));
-
     if (!csr_offsets_h || ! csr_columns_h || !csr_values_h ||
-        !x_values_h || !b_values_h || !diag_h) {
+        !x_values_h || !b_values_h) {
         printf("Error: host memory allocation failed\n");
         return -1;
     }
@@ -186,7 +217,11 @@ int main (int argc, char *argv[]) {
     b_values_h[i++] = 4.0;
     b_values_h[i++] = 13.0;
 
-    /* Allocate device memory for A, x, b and diag (for future use) */
+    /* Allocate device memory for A, x and b
+       Note: These device memory allocations are "external" to cuDSS and hence can be regular cudaMalloc()
+       calls, or use the memory pool defined above, it does not matter.
+       In real applications one should use the memory pool alloc/dealloc routines but here,
+       to keep example code short, we rely on regular cudaMalloc/cudaFree(). */
     CUDA_CALL_AND_CHECK(cudaMalloc(&csr_offsets_d, (n + 1) * sizeof(int)),
                         "cudaMalloc for csr_offsets");
     CUDA_CALL_AND_CHECK(cudaMalloc(&csr_columns_d, nnz * sizeof(int)),
@@ -198,9 +233,6 @@ int main (int argc, char *argv[]) {
     CUDA_CALL_AND_CHECK(cudaMalloc(&x_values_d, nrhs * n * sizeof(double)),
                         "cudaMalloc for x_values");
 
-    CUDA_CALL_AND_CHECK(cudaMalloc(&diag_d, n * sizeof(double)),
-                        "cudaMalloc for diag");
-
     /* Copy host memory to device for A and b */
     CUDA_CALL_AND_CHECK(cudaMemcpy(csr_offsets_d, csr_offsets_h, (n + 1) * sizeof(int),
                         cudaMemcpyHostToDevice), "cudaMemcpy for csr_offsets");
@@ -211,9 +243,6 @@ int main (int argc, char *argv[]) {
     CUDA_CALL_AND_CHECK(cudaMemcpy(b_values_d, b_values_h, nrhs * n * sizeof(double),
                         cudaMemcpyHostToDevice), "cudaMemcpy for b_values");
 
-    cudaStream_t stream = NULL;
-    CUDA_CALL_AND_CHECK(cudaStreamCreate(&stream), "cudaStreamCreate");
-
     /* Creating the cuDSS library handle */
     cudssHandle_t handle;
 
@@ -222,17 +251,18 @@ int main (int argc, char *argv[]) {
     /* (optional) Setting the custom stream for the library handle */
     CUDSS_CALL_AND_CHECK(cudssSetStream(handle, stream), status, "cudssSetStream");
 
+    /* (optional) Setting a user-defined device memory pool for the library handle */
+    printf("Setting the device memory handler in the cudSS library handle so that now\n"
+           "device memory allocations inside cuDSS will use the user's memory pool \n");
+    CUDSS_CALL_AND_CHECK(cudssSetDeviceMemHandler(handle, &handler), status,
+                         "cudssSetDeviceMemHandler");
+
     /* Creating cuDSS solver configuration and data objects */
     cudssConfig_t solverConfig;
     cudssData_t solverData;
 
     CUDSS_CALL_AND_CHECK(cudssConfigCreate(&solverConfig), status, "cudssConfigCreate");
     CUDSS_CALL_AND_CHECK(cudssDataCreate(handle, &solverData), status, "cudssDataCreate");
-
-    /* (optional) Setting algorithmic knobs */
-    cudssAlgType_t reorder_alg = CUDSS_ALG_DEFAULT;
-    CUDSS_CALL_AND_CHECK(cudssConfigSet(solverConfig, CUDSS_CONFIG_REORDERING_ALG,
-                         &reorder_alg, sizeof(cudssAlgType_t)), status, "cudssSolverSet");
 
     /* Create matrix objects for the right-hand side b and solution x (as dense matrices). */
     cudssMatrix_t x, b;
@@ -246,7 +276,7 @@ int main (int argc, char *argv[]) {
 
     /* Create a matrix object for the sparse input matrix. */
     cudssMatrix_t A;
-    cudssMatrixType_t mtype     = CUDSS_MTYPE_SYMMETRIC;
+    cudssMatrixType_t mtype     = CUDSS_MTYPE_SPD;
     cudssMatrixViewType_t mview = CUDSS_MVIEW_UPPER;
     cudssIndexBase_t base       = CUDSS_BASE_ZERO;
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateCsr(&A, nrows, ncols, nnz, csr_offsets_d, NULL,
@@ -257,99 +287,19 @@ int main (int argc, char *argv[]) {
     CUDSS_CALL_AND_CHECK(cudssExecute(handle, CUDSS_PHASE_ANALYSIS, solverConfig, solverData,
                          A, x, b), status, "cudssExecute for analysis");
 
-    size_t sizeWritten;
-    int row_perm[5];
-    CUDSS_CALL_AND_CHECK(cudssDataGet(handle, solverData, CUDSS_DATA_PERM_REORDER_ROW, &row_perm,
-                         sizeof(row_perm), &sizeWritten),
-                         status, "cudssDataGet for row reorder perm");
-    for (int i = 0; i < n; i++)
-        printf("row reorder perm[%d] = %d\n", i, row_perm[i]);
-
-    int col_perm[5];
-    CUDSS_CALL_AND_CHECK(cudssDataGet(handle, solverData, CUDSS_DATA_PERM_REORDER_COL, &col_perm,
-                         sizeof(col_perm), &sizeWritten),
-                         status, "cudssDataGet for col reorder perm");
-    for (int i = 0; i < n; i++)
-        printf("col reorder perm[%d] = %d\n", i, col_perm[i]);
-
     /* Factorization */
     CUDSS_CALL_AND_CHECK(cudssExecute(handle, CUDSS_PHASE_FACTORIZATION, solverConfig,
                          solverData, A, x, b), status, "cudssExecute for factor");
 
-    /* (optional) Recommended: getting runtime errors from device side
-        Note: cudssDataGet is a synchronous API.
-        Note: per cuDSS documentation, CUDSS_DATA_INFO is always returned
-        as a pointer to int.
-    */
-    int info;
-    CUDSS_CALL_AND_CHECK(cudssDataGet(handle, solverData, CUDSS_DATA_INFO, &info,
-                         sizeof(info), &sizeWritten), status, "cudssDataGet for info");
-    printf("cuDSS info = %d\n", info);
-
-    int npivots;
-    CUDSS_CALL_AND_CHECK(cudssDataGet(handle, solverData, CUDSS_DATA_NPIVOTS, &npivots,
-                         sizeof(npivots), &sizeWritten), status, "cudssDataGet for npivots");
-    printf("cuDSS npivots = %d\n", npivots);
-
-    int inertia[2];
-    CUDSS_CALL_AND_CHECK(cudssDataGet(handle, solverData, CUDSS_DATA_INERTIA, &inertia,
-                         sizeof(inertia), &sizeWritten), status, "cudssDataGet for inertia");
-    printf("cuDSS inertia = %d %d\n", inertia[0], inertia[1]);
-
-    /* (optional) Recommended: getting data back when the user does not know the size
-        Note: cudssDataGet is a synchronous API.
-    */
-    CUDSS_CALL_AND_CHECK(cudssDataGet(handle, solverData, CUDSS_DATA_LU_NNZ, NULL, 0,
-                         &sizeWritten), status, "cudssDataGet size request for lu_nnz");
-    printf("cuDSS requests %zu bytes for returning the #nnz in the factors\n", sizeWritten);
-    /* Note: per cuDSS documentation, CUDSS_DATA_LU_NNZ is always returned as a
-       pointer to int64_t.
-       In the general case, the user can allocate the returned #bytes and pass a
-       pointer to the allocated piece of memory into the cudssDataGet API and
-       reinterpret the results with correct types (defined in the documentation).
-    */
-    int64_t lu_nnz;
-    CUDSS_CALL_AND_CHECK(cudssDataGet(handle, solverData, CUDSS_DATA_LU_NNZ, &lu_nnz,
-                         sizeof(int64_t), NULL), status, "cudssDataGet for lu_nnz");
-    printf("cuDSS #nnz in LU = %ld\n", lu_nnz);
-
-    /*  Note: currently these features are only supported for CUDSS_ALG_1 and CUDSS_ALG_2
-        reordering algorithms. */
-    if (reorder_alg == CUDSS_ALG_1 || reorder_alg == CUDSS_ALG_2) {
-        int row_final_perm[5];
-        CUDSS_CALL_AND_CHECK(cudssDataGet(handle, solverData, CUDSS_DATA_PERM_ROW, &row_final_perm,
-                             sizeof(row_final_perm), &sizeWritten),
-                             status, "cudssDataGet for row final perm");
-        for (int i = 0; i < n; i++)
-            printf("final row perm[%d] = %d\n", i, row_final_perm[i]);
-
-        int col_final_perm[5];
-        CUDSS_CALL_AND_CHECK(cudssDataGet(handle, solverData, CUDSS_DATA_PERM_COL, &col_final_perm,
-                             sizeof(col_final_perm), &sizeWritten),
-                             status, "cudssDataGet for col final perm");
-        for (int i = 0; i < n; i++)
-            printf("final col perm[%d] = %d\n", i, col_final_perm[i]);
-    }
-
-
-    /* (optional) Getting data back when the user knows the size
-        Note: cudssDataGet is a synchronous API.
-    */
-    CUDSS_CALL_AND_CHECK(cudssDataGet(handle, solverData, CUDSS_DATA_DIAG, diag_d,
-                         n*sizeof(double), &sizeWritten), status, "cudssDataGet for diag");
-    CUDA_CALL_AND_CHECK(cudaMemcpy(diag_h, diag_d, nrhs * n * sizeof(double),
-                        cudaMemcpyDeviceToHost), "cudaMemcpy for diag");
-    for (int i = 0; i < 5; i++)
-        printf("diag[%d] = %f\n", i, diag_h[i]);
-
-    int iter_ref_nsteps = 2;
-    CUDSS_CALL_AND_CHECK(cudssConfigSet(solverConfig, CUDSS_CONFIG_IR_N_STEPS,
-                         &iter_ref_nsteps, sizeof(iter_ref_nsteps)), status,
-                         "cudssSolverSet for IR nsteps");
-
     /* Solving */
     CUDSS_CALL_AND_CHECK(cudssExecute(handle, CUDSS_PHASE_SOLVE, solverConfig, solverData,
                          A, x, b), status, "cudssExecute for solve");
+
+    /* (optional) Getting a user-defined memory pool from the library handle */
+    cudssDeviceMemHandler_t returned_handler;
+    CUDSS_CALL_AND_CHECK(cudssGetDeviceMemHandler(handle, &returned_handler), status,
+                         "cudssGetDeviceMemHandler");
+    printf("Device memory handler name: %s\n", returned_handler.name);
 
     /* Destroying opaque objects, matrix wrappers and the cuDSS library handle */
     CUDSS_CALL_AND_CHECK(cudssMatrixDestroy(A), status, "cudssMatrixDestroy for A");
@@ -372,14 +322,15 @@ int main (int argc, char *argv[]) {
           passed = 0;
     }
 
-    /* Release the data allocated on the user side */
+    /* Release host and device data allocated on the user side */
 
     CUDSS_EXAMPLE_FREE;
 
-    if (status == CUDSS_STATUS_SUCCESS && passed)
+    if (status == CUDSS_STATUS_SUCCESS && cuda_error == cudaSuccess && passed) {
         printf("Example PASSED\n");
-    else
+        return 0;
+    } else {
         printf("Example FAILED\n");
-
-    return 0;
+        return -1;
+    }
 }
