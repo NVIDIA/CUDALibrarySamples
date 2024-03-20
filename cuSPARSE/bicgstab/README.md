@@ -65,48 +65,28 @@ the code contains the line references to the above algorithm
 * [CMake 3.9](https://cmake.org/download/) or above on Windows
 
 
-## Usage
-Input files -> https://sparse.tamu.edu/
-
-```bash
-$ wget https://suitesparse-collection-website.herokuapp.com/MM/Wissgott/parabolic_fem.tar.gz
-$ tar xf parabolic_fem.tar.gz
-$ ./bicgstab_example parabolic_fem/parabolic_fem.mtx
-```
-
-Sample example output:
+## Sample Output
 
 ```
-matrix name: parabolic_fem/parabolic_fem.mtx
-num. rows:   525825
-num. cols:   525825
-nnz:         4200450
-structure:   symmetric
-
-Matrix parsing...
+Creating 5-point time-dependent advection-diffusion matrix.
+ grid size: 700 x 700
+ matrix rows:   490000
+ matrix cols:   490000
+ nnz:         2447200
 Testing BiCGStab
 BiCGStab loop:
-  Initial Residual: Norm 2.170672e+02' threshold 2.170672e-08
-  Iteration = 1; Error Norm = 2.170672e+02
-  Iteration = 2; Error Norm = 2.361113e+01
-  Iteration = 3; Error Norm = 1.319608e+02
-  Iteration = 4; Error Norm = 3.670778e+01
-  Iteration = 5; Error Norm = 3.488150e+01
-  Iteration = 6; Error Norm = 1.719376e+01
-  Iteration = 7; Error Norm = 1.463979e+01
-  Iteration = 8; Error Norm = 8.805470e+00
-  Iteration = 9; Error Norm = 7.035572e+00
-  Iteration = 10; Error Norm = 4.633854e+00
-  Iteration = 11; Error Norm = 3.568345e+00
-  Iteration = 12; Error Norm = 2.466218e+00
-  Iteration = 13; Error Norm = 1.862108e+00
-  Iteration = 14; Error Norm = 1.324990e+00
-  Iteration = 15; Error Norm = 9.914012e-01
-  Iteration = 16; Error Norm = 7.191100e-01
-  Iteration = 17; Error Norm = 5.366529e-01
-  Iteration = 18; Error Norm = 3.945207e-01
-  Iteration = 19; Error Norm = 2.947479e-01
-  Iteration = 20; Error Norm = 2.188237e-01
+  Initial Residual: Norm 1.670180e+02' threshold 1.670180e-08
+  Iteration = 1; Error Norm = 1.670180e+02
+  Iteration = 2; Error Norm = 1.817961e+01
+  Iteration = 3; Error Norm = 4.740151e+01
+  Iteration = 4; Error Norm = 8.568823e+00
+  Iteration = 5; Error Norm = 8.650344e+00
+  ...
+  Iteration = 74; Error Norm = 6.492797e-08
+  Iteration = 75; Error Norm = 4.878098e-08
+  Iteration = 76; Error Norm = 3.686385e-08
+  Iteration = 77; Error Norm = 2.794411e-08
+  Iteration = 78; Error Norm = 2.125709e-08
 Check Solution
-Final error norm = 1.639804e-01
+Final error norm = 1.620659e-08
 ```

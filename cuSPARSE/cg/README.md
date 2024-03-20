@@ -65,61 +65,30 @@ the code contains the line references to the above algorithm
 * [CMake 3.9](https://cmake.org/download/) or above on Windows
 
 
-## Usage
-Input files -> https://sparse.tamu.edu/
-
-```bash
-$ wget https://suitesparse-collection-website.herokuapp.com/MM/Wissgott/parabolic_fem.tar.gz
-$ tar xf parabolic_fem.tar.gz
-$ ./cg_example parabolic_fem/parabolic_fem.mtx
-```
-
-Sample example output:
+## Sample Output
 
 ```
-matrix name: parabolic_fem/parabolic_fem.mtx
-num. rows:   525825
-num. cols:   525825
-nnz:         4200450
-structure:   symmetric
-
-Matrix parsing...
+ Creating 5-point time-dependent diffusion matrix.
+ grid size: 700 x 700
+ matrix rows:   490000
+ matrix cols:   490000
+ nnz:         2447200
 Testing CG
 CG loop:
-  Initial Residual: Norm 2.170672e+02' threshold 2.170672e-06
-  Iteration = 0; Error Norm = 2.170672e+02
-  Iteration = 1; Error Norm = 2.141034e+02
-  Iteration = 2; Error Norm = 2.109159e+02
-  Iteration = 3; Error Norm = 1.388755e+02
-  Iteration = 4; Error Norm = 1.207104e+02
-  Iteration = 5; Error Norm = 1.065150e+02
-  Iteration = 6; Error Norm = 1.016139e+02
-  Iteration = 7; Error Norm = 8.765619e+01
-  Iteration = 8; Error Norm = 8.400757e+01
-  Iteration = 9; Error Norm = 7.589498e+01
-  Iteration = 10; Error Norm = 7.468445e+01
-  Iteration = 11; Error Norm = 7.071373e+01
-  Iteration = 12; Error Norm = 6.910669e+01
-  Iteration = 13; Error Norm = 3.642442e+01
-  Iteration = 14; Error Norm = 3.573311e+01
-  Iteration = 15; Error Norm = 3.474023e+01
-  Iteration = 16; Error Norm = 3.221263e+01
-  Iteration = 17; Error Norm = 3.180096e+01
-  Iteration = 18; Error Norm = 3.077772e+01
-  Iteration = 19; Error Norm = 2.891911e+01
-  Iteration = 20; Error Norm = 2.840637e+01
-  Iteration = 21; Error Norm = 2.400785e+01
-  Iteration = 22; Error Norm = 2.377083e+01
-  Iteration = 23; Error Norm = 2.322911e+01
-  Iteration = 24; Error Norm = 1.998301e+01
-  Iteration = 25; Error Norm = 1.979339e+01
-  Iteration = 26; Error Norm = 1.933866e+01
-  Iteration = 27; Error Norm = 1.759170e+01
-  Iteration = 28; Error Norm = 1.740070e+01
-  Iteration = 29; Error Norm = 1.696624e+01
-  Iteration = 30; Error Norm = 1.033311e+01
-...
-  Iteration = 173; Error Norm = 2.195506e-06
+  Initial Residual: Norm 4.633034e+01' threshold 4.633034e-07
+  Iteration = 0; Error Norm = 4.633034e+01
+  Iteration = 1; Error Norm = 5.843251e+01
+  Iteration = 2; Error Norm = 2.294159e+01
+  Iteration = 3; Error Norm = 3.503917e+01
+  Iteration = 4; Error Norm = 1.641601e+01
+  Iteration = 5; Error Norm = 2.489376e+01
+  ...
+  Iteration = 83; Error Norm = 3.124845e-06
+  Iteration = 84; Error Norm = 1.739886e-06
+  Iteration = 85; Error Norm = 1.073478e-06
+  Iteration = 86; Error Norm = 1.482683e-06
+  Iteration = 87; Error Norm = 5.830292e-07
+  Iteration = 88; Error Norm = 9.759474e-07
 Check Solution
-Final error norm = 2.147306e-06
+Final error norm = 3.024808e-07
 ```
