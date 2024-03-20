@@ -52,6 +52,7 @@
 #include <stdio.h>  // fopen
 #include <stdlib.h> // EXIT_FAILURE
 #include <string.h> // strtok
+#include <assert.h>
 
 #define CHECK_CUDA(func)                                                       \
 {                                                                              \
@@ -96,91 +97,65 @@ typedef struct VecStruct {
 
 //==============================================================================
 
-void mtx_header(const char* file_path,
-                int*        num_lines,
-                int*        num_rows,
-                int*        num_cols,
-                int*        nnz,
-                int*        is_symmetric) {
-    char buffer[256];
-    FILE* file = fopen(file_path, "r");
-    if (file == NULL) {
-        printf("Error: unable to open the file %s\n", file_path);
-        exit(EXIT_FAILURE);
-    }
-    fgets(buffer, 256, file); // skip comments
-    char *token = strtok(buffer, " ");
-    if (strcmp(token, "%%MatrixMarket") != 0) {
-        printf("Unsupported file format. Only MTX format is supported");
-        exit(EXIT_FAILURE);
-    }
-    strtok(NULL, " "); // skip word
-    strtok(NULL, " "); // skip word
-    token = strtok(NULL, " "); // check data type
-    if (strcmp(token, "real") != 0) {
-        printf("Only real (double) matrices are supported");
-        exit(EXIT_FAILURE);
-    }
-    token = strtok(NULL, " \n"); // symmetric, unsymmetric
-    *is_symmetric = (strcmp(token, "symmetric") == 0);
-    while (fgetc(file) == '%')
-        fgets(buffer, 256, file); // skip % comments
-    fseek(file, -1, SEEK_CUR);
-    fscanf(file, "%d %d %d", num_rows, num_cols, num_lines);
-    *nnz = (*is_symmetric) ? *num_lines * 2 : *num_lines;
-    fclose(file);
-}
+/// A 5-point Laplacian on a g x g grid with Dirichlet boundary conditions.
+/// This code allocates. The caller must free.
+void make_laplace_matrix(int * n_out,
+                         int **row_offsets_out, 
+                         int **columns_out, 
+                         double **values_out) {
+    int grid = 700; // grid resolution
 
-void mtx_parsing(const char* file_path,
-                 int         num_lines,
-                 int         num_rows,
-                 int         nnz,
-                 int*        rows_offsets,
-                 int*        columns,
-                 double*     values,
-                 int         base) {
-    typedef struct IdxType {
-        int    row, col;
-        double val;
-    } Idx;
-    int sort_by_row(const void *a, const void *b) {
-        return ((Idx*) a)->row - ((Idx*) b)->row;
-    }
-    char buffer[256];
-    FILE* file = fopen(file_path, "r");
-    while (fgetc(file) == '%')
-        fgets(buffer, 256, file); // skip comments
-    fgets(buffer, 256, file);     // skip num row, cols, nnz
+    int n = grid * grid;
+    *n_out = n;
+    // vertices have 5 neighbors, 
+    // but each vertex on the boundary loses 1. corners lose 2.
+    int nnz = 5 * n - 4 * grid;
 
-    Idx* idx_tmp = (Idx*) malloc(nnz * sizeof(Idx));
-    for (int i = 0; i < num_lines; i++) {
-        int    row, column;
-        double value;
-        fscanf(file, "%d %d %lf ", &row, &column, &value);
-        row         -= (1 - base);
-        column      -= (1 - base);
-        idx_tmp[i].row = row;
-        idx_tmp[i].col = column;
-        idx_tmp[i].val = value;
-        if (nnz != num_lines) { // is stored symmetric
-            idx_tmp[i + num_lines].row = column;
-            idx_tmp[i + num_lines].col = row;
-            idx_tmp[i + num_lines].val = value;
+    printf("Creating 5-point time-dependent diffusion matrix.\n"
+           " grid size: %d x %d\n"
+           " matrix rows:   %d\n"
+           " matrix cols:   %d\n"
+           " nnz:         %d\n",
+           grid, grid, n, n, nnz);
+
+    int* row_offsets = *row_offsets_out = (int*)malloc((n + 1) * sizeof(int));
+    int* columns     = *columns_out     = (int*)malloc(nnz * sizeof(int));
+    double* values   = *values_out      = (double*)malloc(nnz * sizeof(double));
+    assert(row_offsets);
+    assert(columns);
+    assert(values);
+
+    // The Laplacian stencil looks like [-1;-1,4,-1;-1].
+    // ICHOL doesn't work great with that stencil.
+    // ICHOL is better suited when there's some more mass on the diagonal.
+    double mass = 0.04;
+
+    int it = 0; // next unused index into `columns`/`values`
+
+#define INSERT(u,v, x)                    \
+    if(0<=(u) && (u)<grid &&              \
+       0<=(v) && (v)<grid)                \
+    {                                     \
+        columns[it] = ((u) * grid + (v)); \
+        values[it] = x;                   \
+        ++it;                             \
+    }
+
+    int row = 0;
+    row_offsets[row] = 0;
+    for (int i = 0; i < grid; ++i) {
+        for (int j = 0; j < grid; ++j)
+        {
+            INSERT(i - 1, j    , -1.0);
+            INSERT(i    , j - 1, -1.0);
+            INSERT(i    , j    ,  4.0 + mass);
+            INSERT(i    , j + 1, -1.0);
+            INSERT(i + 1, j    , -1.0);
+            row_offsets[++row] = it;
         }
     }
-    qsort(idx_tmp, nnz, sizeof(Idx), sort_by_row); // sort by row
-    memset(rows_offsets, 0x0, (num_rows + 1) * sizeof(int));
-    for (int i = 0; i < nnz; i++)
-        rows_offsets[idx_tmp[i].row + 1]++;
-    // prefix-scan
-    for (int i = 1; i <= num_rows; i++)
-        rows_offsets[i] = rows_offsets[i] + rows_offsets[i - 1];
-    for (int i = 0; i < nnz; i++) {
-        columns[i] = idx_tmp[i].col;
-        values[i]  = idx_tmp[i].val;
-    }
-    fclose(file);
-    free(idx_tmp);
+    assert(it == nnz);
+#undef INSERT
 }
 
 //==============================================================================
@@ -369,40 +344,22 @@ int gpu_CG(cublasHandle_t       cublasHandle,
 int main(int argc, char** argv) {
     const int    maxIterations = 10000;
     const double tolerance     = 1e-8f;
-    printf("Usage: cg_example <matrix.mtx>\n");
-    if (argc != 2) {
-        printf("Wrong parameter: cg_example <matrix.mtx>\n");
+    if (argc != 1) {
+        printf("Wrong number of command line arguments. cg_example accepts no arguments.\n");
         return EXIT_FAILURE;
     }
-    int base = 0;
-    int num_rows, num_cols, nnz, num_lines, is_symmetric;
-    mtx_header(argv[1], &num_lines, &num_rows, &num_cols, &nnz, &is_symmetric);
-    printf("\nmatrix name: %s\n"
-           "num. rows:   %d\n"
-           "num. cols:   %d\n"
-           "nnz:         %d\n"
-           "structure:   %s\n\n",
-           argv[1], num_rows, num_cols, nnz,
-           (is_symmetric) ? "symmetric" : "unsymmetric");
-    if (num_rows != num_cols) {
-        printf("the input matrix must be square\n");
-        return EXIT_FAILURE;
-    }
-    if (!is_symmetric) {
-        printf("the input matrix must be symmetric\n");
-        return EXIT_FAILURE;
-    }
-    int     m           = num_rows;
-    int     num_offsets = m + 1;
-    int*    h_A_rows    = (int*)    malloc(num_offsets * sizeof(int));
-    int*    h_A_columns = (int*)    malloc(nnz * sizeof(int));
-    double* h_A_values  = (double*) malloc(nnz * sizeof(double));
-    double* h_X         = (double*) malloc(m * sizeof(double));
-    printf("Matrix parsing...\n");
-    mtx_parsing(argv[1], num_lines, num_rows, nnz, h_A_rows,
-                h_A_columns, h_A_values, base);
+    int     base        = 0;
+    int     m           = -1;
+    int*    h_A_rows    = NULL;
+    int*    h_A_columns = NULL;
+    double* h_A_values  = NULL;
+    make_laplace_matrix(&m, &h_A_rows, &h_A_columns, &h_A_values);
+    int num_offsets = m + 1;
+    int nnz = h_A_rows[m];
+    double* h_X = (double*)malloc(m * sizeof(double));
+
     printf("Testing CG\n");
-    for (int i = 0; i < num_rows; i++)
+    for (int i = 0; i < m; i++)
         h_X[i] = 1.0;
     //--------------------------------------------------------------------------
     // ### Device memory management ###
