@@ -71,7 +71,7 @@ double measure_cublas_cufft(ValueType*         a,
     #if (THRUST_VERSION >= 101600)
     auto execution_policy = thrust::cuda::par_nosync.on(stream);
     #else
-    auto execution_policy = thrust::cuda::par.on(stream)
+    auto execution_policy = thrust::cuda::par.on(stream);
     #endif
 
     double time = example::measure::execution(
