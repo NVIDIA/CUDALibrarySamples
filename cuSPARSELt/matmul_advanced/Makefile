@@ -19,7 +19,7 @@ ifndef CUDA_TOOLKIT_PATH
 endif
 
 INCS := -I$(CUDA_TOOLKIT_PATH)/include -I${CUSPARSELT_PATH}/include
-LIBS := -lcusparse -ldl -lcuda
+LIBS := -lcusparse -ldl
 NVCC := ${CUDA_TOOLKIT_PATH}/bin/nvcc
 
 matmul_advanced_example: matmul_advanced_example.cpp
