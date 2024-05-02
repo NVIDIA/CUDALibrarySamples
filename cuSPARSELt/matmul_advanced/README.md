@@ -41,5 +41,5 @@ where `A` is an structured matrix, and `B`, `C`, `D` are dense matrices
 ## Prerequisites
 
 * [CUDA 12.0 toolkit](https://developer.nvidia.com/cuda-downloads) (or above) and compatible driver (see [CUDA Driver Release Notes](https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/index.html#cuda-major-component-versions)).
-* [cusparseLt 0.6.0 or above](https://developer.nvidia.com/cusparselt/downloads)
+* [cusparseLt 0.6.1 or above](https://developer.nvidia.com/cusparselt/downloads)
 * [CMake 3.18](https://cmake.org/download/) or above

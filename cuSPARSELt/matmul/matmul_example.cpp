@@ -13,17 +13,63 @@
 #include <cstdio>             // printf
 #include <cstdlib>            // std::rand
                               
-// #define AB_TYPE_IS_FP8
-
-#ifdef AB_TYPE_IS_FP8 
 #include <cuda_fp8.h>
+
+#define FP16 1000
+#define INT8 1001
+#define FP8  1002
+
+/*
+ * Choose your data type for matrices A and B
+ */
+#define AB_TYPE FP16
+// #define AB_TYPE FP8
+// #define AB_TYPE INT8
+
+#if AB_TYPE == FP8
+using AB_t         = __nv_fp8_e4m3;
+using C_t          = __half;
+using COMPUTE_t    = float;
+#elif AB_TYPE == FP16
+using AB_t         = __half;
+using C_t          = __half;
+using COMPUTE_t    = float;
+#elif AB_TYPE == INT8
+using AB_t         = int8_t;
+using C_t          = int8_t; // can also be __half, __nv_bfloat16, int
+using COMPUTE_t    = int;
 #endif
                               
-#ifdef AB_TYPE_IS_FP8
-using AB_CUDA_TYPE = __nv_fp8_e4m3;
-#else 
-using AB_CUDA_TYPE = __half;
-#endif
+template <typename value_t>
+struct cuda_type { };
+
+template <>
+struct cuda_type <__half> {
+    static constexpr cudaDataType value = CUDA_R_16F;
+};
+
+template <>
+struct cuda_type <__nv_fp8_e4m3> {
+    static constexpr cudaDataType value = CUDA_R_8F_E4M3;
+};
+
+template <>
+struct cuda_type <int8_t> {
+    static constexpr cudaDataType value = CUDA_R_8I;
+};
+
+template <typename value_t>
+struct cusparse_compute_type {  };
+
+template <>
+struct cusparse_compute_type<float> {
+    static constexpr cusparseComputeType value = CUSPARSE_COMPUTE_32F;
+};
+
+template <>
+struct cusparse_compute_type<int> {
+    static constexpr cusparseComputeType value = CUSPARSE_COMPUTE_32I;
+};
 
 #define CHECK_CUDA(func)                                                       \
 {                                                                              \
@@ -44,6 +90,7 @@ using AB_CUDA_TYPE = __half;
         return EXIT_FAILURE;                                                   \
     }                                                                          \
 }
+
 
 constexpr int EXIT_UNSUPPORTED = 2;
 
@@ -68,19 +115,14 @@ int main(void) {
     constexpr int m            = 32;
     constexpr int n            = 32;
     constexpr int k            = 64;
-    auto          order        = CUSPARSE_ORDER_ROW;
-    auto          opA          = CUSPARSE_OPERATION_NON_TRANSPOSE;
-    auto          opB          = CUSPARSE_OPERATION_TRANSPOSE;
-#ifdef AB_TYPE_IS_FP8
-    printf("AB_type = e4m3\n");
-    auto          type_AB      = CUDA_R_8F_E4M3;
-#else
-    auto          type_AB      = CUDA_R_16F;
-    printf("AB_type = fp16\n");
-#endif
-    auto          type_C       = CUDA_R_16F;
-    auto          compute_type = CUSPARSE_COMPUTE_32F;
 
+    auto     order          = CUSPARSE_ORDER_ROW;
+    auto     opA            = CUSPARSE_OPERATION_NON_TRANSPOSE;
+    auto     opB            = CUSPARSE_OPERATION_TRANSPOSE;
+    auto     type_AB        = cuda_type<AB_t>::value;
+    auto     type_C         = cuda_type<C_t>::value;
+    auto     compute_type   = cusparse_compute_type<COMPUTE_t>::value;
+    bool     matmul_search  = true;
     bool     is_rowmajor    = (order == CUSPARSE_ORDER_ROW);
     bool     isA_transposed = (opA != CUSPARSE_OPERATION_NON_TRANSPOSE);
     bool     isB_transposed = (opB != CUSPARSE_OPERATION_NON_TRANSPOSE);
@@ -98,28 +140,31 @@ int main(void) {
     auto     B_height       = (is_rowmajor) ? num_B_rows : num_B_cols;
     auto     C_height       = (is_rowmajor) ? num_C_rows : num_C_cols;
     
-    auto     A_size         = A_height * lda * sizeof(AB_CUDA_TYPE);
-    auto     B_size         = B_height * ldb * sizeof(AB_CUDA_TYPE);
-    auto     C_size         = C_height * ldc * sizeof(__half);
+    auto     A_size         = A_height * lda * sizeof(AB_t);
+    auto     B_size         = B_height * ldb * sizeof(AB_t);
+    auto     C_size         = C_height * ldc * sizeof(C_t);
 
-    AB_CUDA_TYPE hA[m * k];
-    AB_CUDA_TYPE hB[k * n];
-    __half hC[m * n] = {};
+    auto     hA             = new AB_t[A_size / sizeof(AB_t)];
+    auto     hB             = new AB_t[B_size / sizeof(AB_t)];
+    auto     hC             = new C_t[C_size / sizeof(C_t)];
 
-    for (int i = 0; i < m * k; i++)
-        hA[i] = static_cast<AB_CUDA_TYPE>(static_cast<float>(std::rand() % 10));
+    for (int i = 0; i < m * k; i++) 
+        hA[i] = static_cast<AB_t>(static_cast<float>(std::rand() % 5 - 2)); // -2 ~ 2
 
     for (int i = 0; i < k * n; i++)
-        hB[i] = static_cast<AB_CUDA_TYPE>(static_cast<float>(std::rand() % 10));
+        hB[i] = static_cast<AB_t>(static_cast<float>(std::rand() % 5 - 2));
 
     for (int i = 0; i < m * n; i++)
-        hC[i] = static_cast<__half>(static_cast<float>(std::rand() % 10));
+        hC[i] = static_cast<C_t>(static_cast<float>(std::rand() % 5 - 2));
 
     float alpha = 1.0f;
-    float beta  = 2.0f;
+    float beta  = 1.0f;
+
     //--------------------------------------------------------------------------
     // Device memory management
-    __half *dA, *dB, *dC, *dD, *dA_compressed;
+
+    AB_t* dA, *dB, *dA_compressed;
+    C_t* dC, *dD;
     int    *d_valid;
 
     CHECK_CUDA( cudaMalloc((void**) &dA, A_size) )
@@ -197,20 +242,28 @@ int main(void) {
 
     CHECK_CUSPARSE( cusparseLtSpMMACompress(&handle, &plan, dA, dA_compressed,
                                             dA_compressedBuffer,stream) )
+
     //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Search the best kernel
     int           num_streams = 0;
     cudaStream_t* streams     = nullptr;
-    CHECK_CUSPARSE( cusparseLtMatmulSearch(&handle, &plan, &alpha,
-                                           dA_compressed, dB, &beta,
-                                           dC, dD, nullptr,
-                                           streams, num_streams) )
+
+    if (matmul_search) {
+        CHECK_CUSPARSE( cusparseLtMatmulSearch(&handle, &plan, &alpha,
+                                               dA_compressed, dB, &beta,
+                                               dC, dD, nullptr,
+                                               streams, num_streams) )
+        // dC accumulates so reset dC for correctness check
+        CHECK_CUDA( cudaMemcpy(dC, hC, C_size, cudaMemcpyHostToDevice) )
+    } else {
     // otherwise, it is possible to set it directly:
-    //int alg = 0;
-    //CHECK_CUSPARSE( cusparseLtMatmulAlgSetAttribute(
-    //                                        &handle, &alg_sel,
-    //                                        CUSPARSELT_MATMUL_ALG_CONFIG_ID,
-    //                                        &alg, sizeof(alg)))
+        int alg = 0;
+        CHECK_CUSPARSE( cusparseLtMatmulAlgSetAttribute(
+                                               &handle, &alg_sel,
+                                               CUSPARSELT_MATMUL_ALG_CONFIG_ID,
+                                               &alg, sizeof(alg)))
+    }
+
     //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     size_t workspace_size;
     CHECK_CUSPARSE( cusparseLtMatmulPlanInit(&handle, &plan, &matmul, &alg_sel))
@@ -235,36 +288,41 @@ int main(void) {
     // device result check
     // matrix A has been pruned
     CHECK_CUDA( cudaMemcpy(hA, dA, A_size, cudaMemcpyDeviceToHost) )
-    CHECK_CUDA( cudaMemcpy(hC, dC, C_size, cudaMemcpyDeviceToHost) )
 
     bool A_std_layout = (is_rowmajor != isA_transposed);
     bool B_std_layout = (is_rowmajor != isB_transposed);
+
     // host computation
-    float hC_result[m * n];
+    C_t* hC_result = new C_t[C_height * ldc];
+
     for (int i = 0; i < m; i++) {
         for (int j = 0; j < n; j++) {
-            float sum  = 0.0f;
+            COMPUTE_t sum {};
             for (int k1 = 0; k1 < k; k1++) {
                 auto posA = (A_std_layout) ? i * lda + k1 : i + k1 * lda;
                 auto posB = (B_std_layout) ? k1 * ldb + j : k1 + j * ldb;
-                sum      += static_cast<float>(hA[posA]) *  // [i][k]
-                            static_cast<float>(hB[posB]);   // [k][j]
+                sum      += static_cast<COMPUTE_t>(hA[posA]) *  // [i][k]
+                            static_cast<COMPUTE_t>(hB[posB]);   // [k][j]
             }
             auto posC       = (is_rowmajor) ? i * ldc + j : i + j * ldc;
-            hC_result[posC] = alpha * sum + beta * static_cast<float>(hC[posC]);  // [i][j]
+            hC_result[posC] = static_cast<C_t>(alpha * sum + beta * hC[posC]);  // [i][j]
         }
     }
+
+    // reuse hC for device results
+    CHECK_CUDA( cudaMemcpy(hC, dD, C_size, cudaMemcpyDeviceToHost) )
+
     // host-device comparison
     int correct = 1;
     for (int i = 0; i < m; i++) {
         for (int j = 0; j < n; j++) {
             auto pos          = (is_rowmajor) ? i * ldc + j : i + j * ldc;
-            auto device_value = static_cast<float>(hC[pos]);
+            auto device_value = hC[pos];
             auto host_value   = hC_result[pos];
             if (device_value != host_value) {
                 // direct floating point comparison is not reliable
-                std::printf("(%d, %d):\t%f vs. %f\n",
-                            i, j, host_value, device_value);
+                std::printf("(%d, %d):\t%3.0f vs. %3.0f\n",
+                            i, j, static_cast<float>(host_value), static_cast<float>(device_value));
                 correct = 0;
                 break;
             }
@@ -278,6 +336,12 @@ int main(void) {
         std::printf("matmul_example test FAILED: wrong result\n");
     }
 
+    //--------------------------------------------------------------------------
+    // host memory deallocation
+    delete[] hA;
+    delete[] hB;
+    delete[] hC;
+    delete[] hC_result;
     //--------------------------------------------------------------------------
     // device memory deallocation
     CHECK_CUDA( cudaFree(dA_compressed) )

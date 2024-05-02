@@ -57,6 +57,5 @@ target_link_libraries(${ROUTINE}_example_static
     PUBLIC CUDA::cudart
     PUBLIC CUDA::cusparse
     PUBLIC ${CUSPARSELT_PATH}/lib64/libcusparseLt_static.a
-    PUBLIC CUDA::cuda_driver
     PUBLIC ${CMAKE_DL_LIBS}
 )
