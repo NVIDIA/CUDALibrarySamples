@@ -14,17 +14,68 @@
 #include <cuda_runtime_api.h> // cudaMalloc, cudaMemcpy, etc.
 #include <cusparseLt.h>       // cusparseLt header
 
-// #define AB_TYPE_IS_FP8
-
-#ifdef AB_TYPE_IS_FP8 
 #include <cuda_fp8.h>
+
+#define FP16 1000
+#define INT8 1001
+#define FP8  1002
+
+/*
+ * Choose your data type for AB
+ */
+#define AB_TYPE FP16
+// #define AB_TYPE FP8
+// #define AB_TYPE INT8
+
+#if AB_TYPE == FP8
+using AB_t         = __nv_fp8_e4m3;
+using C_t          = __half;
+using COMPUTE_t    = float;
+#elif AB_TYPE == FP16
+using AB_t         = __half;
+using C_t          = __half;
+using COMPUTE_t    = float;
+#elif AB_TYPE == INT8
+using AB_t         = int8_t;
+using C_t          = int8_t; // can also be __half, __nv_bfloat16, int
+using COMPUTE_t    = int;
 #endif
                               
-#ifdef AB_TYPE_IS_FP8
-using AB_CUDA_TYPE = __nv_fp8_e4m3;
-#else 
-using AB_CUDA_TYPE = __half;
-#endif
+template <typename T>
+T random_value_gen() {
+    return static_cast<T>(static_cast<float>(std::rand() % 10));
+}
+
+template <typename value_t>
+struct cuda_type { };
+
+template <>
+struct cuda_type <__half> {
+    static constexpr cudaDataType value = CUDA_R_16F;
+};
+
+template <>
+struct cuda_type <__nv_fp8_e4m3> {
+    static constexpr cudaDataType value = CUDA_R_8F_E4M3;
+};
+
+template <>
+struct cuda_type <int8_t> {
+    static constexpr cudaDataType value = CUDA_R_8I;
+};
+
+template <typename value_t>
+struct cusparse_compute_type {  };
+
+template <>
+struct cusparse_compute_type<float> {
+    static constexpr cusparseComputeType value = CUSPARSE_COMPUTE_32F;
+};
+
+template <>
+struct cusparse_compute_type<int> {
+    static constexpr cusparseComputeType value = CUSPARSE_COMPUTE_32I;
+};
 
 #define CHECK_CUDA(func)                                                       \
 {                                                                              \
@@ -69,10 +120,6 @@ void print_matrix(const T* matrix,
     printf("\n");
 }
 
-template <typename T>
-T random_value_gen() {
-    return static_cast<T>(static_cast<float>(std::rand() % 10));
-}
 
 constexpr int EXIT_UNSUPPORTED = 2;
 
@@ -103,14 +150,10 @@ int main(void) {
     constexpr auto    order         = CUSPARSE_ORDER_ROW;
     constexpr auto    opA           = CUSPARSE_OPERATION_NON_TRANSPOSE;
     constexpr auto    opB           = CUSPARSE_OPERATION_TRANSPOSE;
-#ifdef AB_TYPE_IS_FP8
-    constexpr auto    type_AB       = CUDA_R_8F_E4M3;
-#else
-    constexpr auto    type_AB       = CUDA_R_16F;
-#endif
-    constexpr auto    type_C        = CUDA_R_16F;
-    constexpr auto    compute_type  = CUSPARSE_COMPUTE_32F;
 
+    auto     type_AB        = cuda_type<AB_t>::value;
+    auto     type_C         = cuda_type<C_t>::value;
+    auto     compute_type   = cusparse_compute_type<COMPUTE_t>::value;
     bool     is_rowmajor    = (order == CUSPARSE_ORDER_ROW);
     bool     isA_transposed = (opA != CUSPARSE_OPERATION_NON_TRANSPOSE);
     bool     isB_transposed = (opB != CUSPARSE_OPERATION_NON_TRANSPOSE);
@@ -133,39 +176,40 @@ int main(void) {
     auto     A_size         = num_batches * batch_strideA;
     auto     B_size         = num_batches * batch_strideB;
     auto     C_size         = num_batches * batch_strideC;
-    auto     A_size_bytes   = num_batches * batch_strideA * sizeof(AB_CUDA_TYPE);
-    auto     B_size_bytes   = num_batches * batch_strideB * sizeof(AB_CUDA_TYPE);
-    auto     C_size_bytes   = num_batches * batch_strideC * sizeof(__half);
-    auto     hA             = new AB_CUDA_TYPE[A_size];
-    auto     hB             = new AB_CUDA_TYPE[B_size];
-    auto     hC             = new __half[C_size]();
+    auto     A_size_bytes   = num_batches * batch_strideA * sizeof(AB_t);
+    auto     B_size_bytes   = num_batches * batch_strideB * sizeof(AB_t);
+    auto     C_size_bytes   = num_batches * batch_strideC * sizeof(C_t);
+    auto     hA             = new AB_t[A_size];
+    auto     hB             = new AB_t[B_size];
+    auto     hC             = new C_t[C_size]();
 
     for (int b = 0; b < num_batches; b++) {
         for (int i = 0; i < A_height; i++) {
             for (int j = 0; j < A_width; j++)
-                hA[b * batch_strideA + i * lda + j] = random_value_gen<AB_CUDA_TYPE>();
+                hA[b * batch_strideA + i * lda + j] = random_value_gen<AB_t>();
         }
     }
     for (int b = 0; b < num_batches; b++) {
         for (int i = 0; i < B_height; i++) {
             for (int j = 0; j < B_width; j++)
-                hB[b * batch_strideB + i * ldb + j] = random_value_gen<AB_CUDA_TYPE>();
+                hB[b * batch_strideB + i * ldb + j] = random_value_gen<AB_t>();
         }
     }
     for (int b = 0; b < num_batches; b++) {
         for (int i = 0; i < C_height; i++) {
             for (int j = 0; j < C_width; j++)
-                hC[b * batch_strideC + i * ldc + j] = random_value_gen<__half>();
+                hC[b * batch_strideC + i * ldc + j] = random_value_gen<C_t>();
         }
     }
 
     if (print_sparse_matrix)
         print_matrix(hA, A_height, A_width, lda, num_batches, batch_strideA);
     float alpha = 1.0f;
-    float beta  = 2.0f;
+    float beta  = 1.0f;
     //--------------------------------------------------------------------------
     // Device memory management
-    __half *dA, *dB, *dC, *dD, *dA_compressed;
+    AB_t* dA, *dB, *dA_compressed;
+    C_t* dC, *dD;
     int    *d_valid;
     CHECK_CUDA( cudaMalloc((void**) &dA, A_size_bytes) )
     CHECK_CUDA( cudaMalloc((void**) &dB, B_size_bytes) )
@@ -346,7 +390,6 @@ int main(void) {
     // device result check
     // matrix A has been pruned
     CHECK_CUDA( cudaMemcpy(hA, dA, A_size_bytes, cudaMemcpyDeviceToHost) )
-    CHECK_CUDA( cudaMemcpy(hC, dC, C_size_bytes, cudaMemcpyDeviceToHost) )
 
     if (print_sparse_matrix)
         print_matrix(hA, A_height, A_width, lda, num_batches, batch_strideA);
@@ -357,27 +400,30 @@ int main(void) {
             return 0.0f;
         return std::min(value, relu_upper_bound);
     };
+
     // host computation
-    auto hC_result = new float[C_size];
+    C_t* hC_result = new C_t[C_size];
     for (int b = 0; b < num_batches; b++) {
         for (int i = 0; i < m; i++) {
             for (int j = 0; j < n; j++) {
-                float sum = 0.0f;
+                COMPUTE_t sum {};
                 for (int k1 = 0; k1 < k; k1++) {
                     auto posA = (A_std_layout) ? i * lda + k1 : i + k1 * lda;
                     auto posB = (B_std_layout) ? k1 * ldb + j : k1 + j * ldb;
                     posA     += b * batch_strideA;
                     posB     += b * batch_strideB;
-                    sum      += static_cast<float>(hA[posA]) *  // [i][k]
-                                static_cast<float>(hB[posB]);   // [k][j]
+                    sum      += static_cast<COMPUTE_t>(hA[posA]) *  // [i][k]
+                                static_cast<COMPUTE_t>(hB[posB]);   // [k][j]
                 }
                 auto posC       = (is_rowmajor) ? i * ldc + j : i + j * ldc;
                 posC           += b * batch_strideC;
-                const auto hC_ij = static_cast<float>(hC[posC]);
+                auto hC_ij = static_cast<float>(hC[posC]);
                 hC_result[posC] = ReLU(sum + beta * hC_ij + hBias[i]);  // [i][j]
             }
         }
     }
+
+    CHECK_CUDA( cudaMemcpy(hC, dC, C_size_bytes, cudaMemcpyDeviceToHost) )
     // host-device comparison
     int correct = 1;
     for (int b = 0; b < num_batches; b++) {
