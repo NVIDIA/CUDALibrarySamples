@@ -2,7 +2,7 @@
 
 ## Description
 
-This sample demonstrates the usage of `cusparseSpSM` for performing *sparse triangular solver with multiple right-hand sides*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format.
+This sample demonstrates the usage of `cusparseSpSM` for performing *sparse triangular solver with multiple right-hand sides*, where the sparse matrix is represented in CSR (Compressed Sparse Row) storage format. The solver is configured with `CUSPARSE_FILL_MODE_LOWER` for the fill mode, indicating that only the lower triangular part of the matrix is used, and `CUSPARSE_DIAG_TYPE_NON_UNIT` for the diagonal type.
 
 [cusparseSpSM Documentation](https://docs.nvidia.com/cuda/cusparse/index.html#cusparse-generic-function-spsm)
 
