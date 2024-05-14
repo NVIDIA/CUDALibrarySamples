@@ -2,13 +2,13 @@
 
 ## Description
 
-This sample demonstrates the usage of `cusparseSpSV` for performing *sparse triangular solver with single right-hand side*, where the sparse matrix is represented in COO (Coordinate) storage format.
+This sample demonstrates the usage of `cusparseSpSV` for performing *sparse triangular solver with single right-hand side*, where the sparse matrix is represented in COO (Coordinate) storage format. The solver is configured with `CUSPARSE_FILL_MODE_LOWER` for the fill mode, indicating that only the lower triangular part of the matrix is used, and `CUSPARSE_DIAG_TYPE_NON_UNIT` for the diagonal type.
 
 [cusparseSpSV Documentation](https://docs.nvidia.com/cuda/cusparse/index.html#cusparse-generic-function-spsv)
 
 <center>
 
-`op(A) * Y = alpha * X`
+`op(A) * X = alpha * Y`, where `X` is the output dense vector and `op(Y)` is the input dense vector (RHS). 
 
 ![](spsv_coo.png)
 </center>
