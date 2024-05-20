@@ -305,7 +305,7 @@ int main(void) {
                             static_cast<COMPUTE_t>(hB[posB]);   // [k][j]
             }
             auto posC       = (is_rowmajor) ? i * ldc + j : i + j * ldc;
-            hC_result[posC] = static_cast<C_t>(alpha * sum + beta * hC[posC]);  // [i][j]
+            hC_result[posC] = static_cast<C_t>(alpha * sum + beta * static_cast<float>(hC[posC]));  // [i][j]
         }
     }
 
