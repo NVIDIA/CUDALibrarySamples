@@ -431,7 +431,7 @@ int main(void) {
             for (int j = 0; j < n; j++) {
                 auto pos          = (is_rowmajor) ? i * ldc + j : i + j * ldc;
                 pos              += b * batch_strideC;
-                auto device_value = static_cast<float>(hC[pos]);
+                auto device_value = hC[pos];
                 auto host_value   = hC_result[pos];
                 if (device_value != host_value) {
                     // direct floating point comparison is not reliable
