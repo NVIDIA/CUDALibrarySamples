@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 NVIDIA Corporation.  All rights reserved.
+ * Copyright 2024 NVIDIA Corporation.  All rights reserved.
  *
  * NOTICE TO LICENSEE:
  *
@@ -153,9 +153,9 @@ int main(int argc, char *argv[]) {
                                cudaMemcpyHostToDevice, stream));
 
     /* step 3: compute */
-    CUBLAS_CHECK(cublasGemmBatchedEx(cublasH, transa, transb, m, n, k, &alpha, d_A_array,
-                                     traits<data_type>::cuda_data_type, lda, d_B_array,
-                                     traits<data_type>::cuda_data_type, ldb, &beta, d_C_array,
+    CUBLAS_CHECK(cublasGemmBatchedEx(cublasH, transa, transb, m, n, k, &alpha, (void **)d_A_array,
+                                     traits<data_type>::cuda_data_type, lda, (void **)d_B_array,
+                                     traits<data_type>::cuda_data_type, ldb, &beta, (void **)d_C_array,
                                      traits<data_type>::cuda_data_type, ldc, batch_count,
                                      compute_type, CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 
