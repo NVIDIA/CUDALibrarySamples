@@ -128,7 +128,7 @@ int main(int argc, char *argv[]) {
 
     CUSOLVER_CHECK(cusolverMgDeviceSelect(cusolverH, nbGpus, deviceList.data()));
 
-    std::printf("step 2: Enable peer access.\n");
+    std::printf("Step 2: Enable peer access \n");
     enablePeerAccess(nbGpus, deviceList.data());
 
     std::printf("Step 3: Allocate host memory A \n");
@@ -140,7 +140,7 @@ int main(int argc, char *argv[]) {
     CUSOLVER_CHECK(cusolverMgCreateDeviceGrid(&gridA, 1, nbGpus, deviceList.data(), mapping));
 
     /* (global) A is N-by-N */
-    CUSOLVER_CHECK(cusolverMgCreateMatrixDesc(&descrA, N, /* nubmer of rows of (global) A */
+    CUSOLVER_CHECK(cusolverMgCreateMatrixDesc(&descrA, N, /* number of rows of (global) A */
                                               N,          /* number of columns of (global) A */
                                               N,          /* number or rows in a tile */
                                               T_A,        /* number of columns in a tile */
@@ -199,7 +199,7 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    std::printf("Step 9: Copy eigenvectors to A and eigenvalues to D\n");
+    std::printf("Step 9: Copy eigenvectors to A and eigenvalues to D \n");
     memcpyD2H<data_type>(nbGpus, deviceList.data(), N, N,
                          /* input */
                          N,   /* number of columns of global A */
@@ -216,7 +216,7 @@ int main(int argc, char *argv[]) {
     print_matrix(1, N, D.data(), 1);
 #endif
 
-    std::printf("Step 11: Verify eigenvales \n");
+    std::printf("Step 11: Verify eigenvalues \n");
     std::printf("     lambda(k) = 4 * sin(pi/2 *k/(N+1))^2 for k = 1:N \n");
     data_type max_err_D = 0;
     for (int k = 1; k <= N; k++) {
@@ -229,12 +229,16 @@ int main(int argc, char *argv[]) {
     }
     std::printf("\n|D - lambda|_inf = %E\n\n", max_err_D);
 
-    std::printf("step 12: Free resources \n");
+    std::printf("Step 12: Free resources \n");
+    workspaceFree(nbGpus, deviceList.data(), reinterpret_cast<void **>(array_d_work.data()));
+
     destroyMat(nbGpus, deviceList.data(), N, /* number of columns of global A */
                T_A,                          /* number of columns per column tile */
                reinterpret_cast<void **>(array_d_A.data()));
 
-    workspaceFree(nbGpus, deviceList.data(), reinterpret_cast<void **>(array_d_work.data()));
+    CUSOLVER_CHECK(cusolverMgDestroyMatrixDesc(descrA));
+    CUSOLVER_CHECK(cusolverMgDestroyGrid(gridA));
+    CUSOLVER_CHECK(cusolverMgDestroy(cusolverH));
 
     return EXIT_SUCCESS;
 }

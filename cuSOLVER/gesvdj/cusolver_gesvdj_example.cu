@@ -141,7 +141,7 @@ int main(int argc, char *argv[]) {
         cusolverH, jobz, /* CUSOLVER_EIG_MODE_NOVECTOR: compute singular values only */
                          /* CUSOLVER_EIG_MODE_VECTOR: compute singular value and singular vectors */
         econ,            /* econ = 1 for economy size */
-        m,               /* nubmer of rows of A, 0 <= m */
+        m,               /* number of rows of A, 0 <= m */
         n,               /* number of columns of A, 0 <= n  */
         d_A,             /* m-by-n */
         lda,             /* leading dimension of A */
@@ -162,7 +162,7 @@ int main(int argc, char *argv[]) {
         cusolverH, jobz, /* CUSOLVER_EIG_MODE_NOVECTOR: compute singular values only */
                          /* CUSOLVER_EIG_MODE_VECTOR: compute singular value and singular vectors */
         econ,            /* econ = 1 for economy size */
-        m,               /* nubmer of rows of A, 0 <= m */
+        m,               /* number of rows of A, 0 <= m */
         n,               /* number of columns of A, 0 <= n  */
         d_A,             /* m-by-n */
         lda,             /* leading dimension of A */
