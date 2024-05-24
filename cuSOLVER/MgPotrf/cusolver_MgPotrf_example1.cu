@@ -148,7 +148,7 @@ int main(int argc, char *argv[]) {
 
     CUSOLVER_CHECK(cusolverMgDeviceSelect(cusolverH, nbGpus, deviceList.data()));
 
-    std::printf("step 2: Enable peer access.\n");
+    std::printf("Step 2: Enable peer access \n");
     enablePeerAccess(nbGpus, deviceList.data());
 
     std::printf("Step 3: Allocate host memory A \n");
@@ -195,14 +195,14 @@ int main(int argc, char *argv[]) {
     CUSOLVER_CHECK(cusolverMgCreateDeviceGrid(&gridB, 1, nbGpus, deviceList.data(), mapping));
 
     /* (global) A is N-by-N */
-    CUSOLVER_CHECK(cusolverMgCreateMatrixDesc(&descrA, N, /* nubmer of rows of (global) A */
+    CUSOLVER_CHECK(cusolverMgCreateMatrixDesc(&descrA, N, /* number of rows of (global) A */
                                               N,          /* number of columns of (global) A */
                                               N,          /* number or rows in a tile */
                                               T_A,        /* number of columns in a tile */
                                               traits<data_type>::cuda_data_type, gridA));
 
     /* (global) B is N-by-NRHS */
-    CUSOLVER_CHECK(cusolverMgCreateMatrixDesc(&descrB, N, /* nubmer of rows of (global) B */
+    CUSOLVER_CHECK(cusolverMgCreateMatrixDesc(&descrB, N, /* number of rows of (global) B */
                                               NRHS,       /* number of columns of (global) B */
                                               N,          /* number or rows in a tile */
                                               T_B,        /* number of columns in a tile */
@@ -305,7 +305,7 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    std::printf("Step 11: Solution vector B\n");
+    std::printf("Step 11: Solution vector B \n");
 
     memcpyD2H<data_type>(nbGpus, deviceList.data(), N, NRHS,
                          /* input */
@@ -349,7 +349,9 @@ int main(int argc, char *argv[]) {
         std::printf("\t|b - A*x|/(|A|*|x|+|b|) = %E\n\n", rel_err);
     }
 
-    std::printf("step 12: Free resources \n");
+    std::printf("Step 12: Free resources \n");
+    workspaceFree(nbGpus, deviceList.data(), reinterpret_cast<void **>(array_d_work.data()));
+
     destroyMat(nbGpus, deviceList.data(), N, /* number of columns of global A */
                T_A,                          /* number of columns per column tile */
                reinterpret_cast<void **>(array_d_A.data()));
@@ -357,7 +359,13 @@ int main(int argc, char *argv[]) {
                T_B,                          /* number of columns per column tile */
                reinterpret_cast<void **>(array_d_B.data()));
 
-    workspaceFree(nbGpus, deviceList.data(), reinterpret_cast<void **>(array_d_work.data()));
+    CUSOLVER_CHECK(cusolverMgDestroyMatrixDesc(descrA));
+    CUSOLVER_CHECK(cusolverMgDestroyMatrixDesc(descrB));
+
+    CUSOLVER_CHECK(cusolverMgDestroyGrid(gridA));
+    CUSOLVER_CHECK(cusolverMgDestroyGrid(gridB));
+
+    CUSOLVER_CHECK(cusolverMgDestroy(cusolverH));
 
     return EXIT_SUCCESS;
 }
