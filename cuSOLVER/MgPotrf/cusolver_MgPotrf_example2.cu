@@ -172,7 +172,7 @@ int main(int argc, char *argv[]) {
 
     CUSOLVER_CHECK(cusolverMgDeviceSelect(cusolverH, nbGpus, deviceList.data()));
 
-    std::printf("step 2: Enable peer access.\n");
+    std::printf("Step 2: Enable peer access \n");
     enablePeerAccess(nbGpus, deviceList.data());
 
     std::printf("Step 3: Allocate host memory A \n");
@@ -219,7 +219,7 @@ int main(int argc, char *argv[]) {
     CUSOLVER_CHECK(cusolverMgCreateDeviceGrid(&gridA, 1, nbGpus, deviceList.data(), mapping));
 
     /* (global) A is N-by-N */
-    CUSOLVER_CHECK(cusolverMgCreateMatrixDesc(&descrA, N, /* nubmer of rows of (global) A */
+    CUSOLVER_CHECK(cusolverMgCreateMatrixDesc(&descrA, N, /* number of rows of (global) A */
                                               N,          /* number of columns of (global) A */
                                               N,          /* number or rows in a tile */
                                               T_A,        /* number of columns in a tile */
@@ -302,7 +302,7 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    std::printf("Step 11: Gather INV(A) from devices to host\n");
+    std::printf("Step 11: Gather INV(A) from devices to host \n");
     memcpyD2H<data_type>(nbGpus, deviceList.data(), N, N,
                          /* input */
                          N,   /* number of columns of global A */
@@ -319,7 +319,7 @@ int main(int argc, char *argv[]) {
     print_matrix(N, N, A.data(), lda);
 #endif
 
-    printf("step 12: solve linear system B := inv(A) * B \n");
+    printf("Step 12: Solve linear system B := inv(A) * B \n");
     solve_system_with_invA(N, NRHS, A.data(), lda, B.data(), ldb, Xans.data(), ldb);
 
 #ifdef SHOW_FORMAT
@@ -328,7 +328,7 @@ int main(int argc, char *argv[]) {
     print_matrix(N, NRHS, Xans.data(), ldb);
 #endif
 
-    std::printf("step 13: measure residual error |Xref - Xans| \n");
+    std::printf("Step 13: Measure residual error |Xref - Xans| \n");
     data_type max_err = 0.0;
     for (int col = 1; col <= NRHS; col++) {
         std::printf("errors for X[:,%d] \n", col);
@@ -351,12 +351,16 @@ int main(int argc, char *argv[]) {
         std::printf("\t|b - A*x|/(|A|*|x|+|b|) = %E\n\n", rel_err);
     }
 
-    std::printf("step 14: Free resources \n");
+    std::printf("Step 14: Free resources \n");
+    workspaceFree(nbGpus, deviceList.data(), reinterpret_cast<void **>(array_d_work.data()));
+
     destroyMat(nbGpus, deviceList.data(), N, /* number of columns of global A */
                T_A,                          /* number of columns per column tile */
                reinterpret_cast<void **>(array_d_A.data()));
 
-    workspaceFree(nbGpus, deviceList.data(), reinterpret_cast<void **>(array_d_work.data()));
+    CUSOLVER_CHECK(cusolverMgDestroyMatrixDesc(descrA));
+    CUSOLVER_CHECK(cusolverMgDestroyGrid(gridA));
+    CUSOLVER_CHECK(cusolverMgDestroy(cusolverH));
 
     return EXIT_SUCCESS;
 }

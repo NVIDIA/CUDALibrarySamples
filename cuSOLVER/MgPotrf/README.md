@@ -2,27 +2,27 @@
 
 ## Description
 
-This chapter provides examples to perform multiGPU linear solver.
+This chapter provides examples of how to implement a multiGPU linear solver.
 
-The example code enables peer-to-peer access to take advantage of NVLINK. The user can check the performance by on/off peer-to-peer access.
+The example code enables peer-to-peer access to take advantage of NVLINK. The user can check the performance by turning on/off peer-to-peer access.
 
 The example 1 solves linear system by Cholesky factorization (`potrf` and `potrs`). It allocates distributed matrix by calling `createMat`. Then generates the matrix on host memory and copies it to distributed device memory via `memcpyH2D`.
 
-The example 2 solves linear system using the inverse of an Hermitian positive definite matrix using (`potrf` and `potri`). It allocates distributed matrix by calling `createMat`. Then generates the matrix on host memory and copies it to distributed device memory via `memcpyH2D`.
+The example 2 solves linear system using the inverse of a Hermitian positive definite matrix using (`potrf` and `potri`). It allocates distributed matrix by calling `createMat`. Then generates the matrix on host memory and copies it to distributed device memory via `memcpyH2D`.
 
 ## Supported SM Architectures
 
-All GPUs supported by CUDA Toolkit (https://developer.nvidia.com/cuda-gpus)  
+All GPUs supported by CUDA Toolkit (https://developer.nvidia.com/cuda-gpus)
 
 ## Supported OSes
 
-Linux  
+Linux
 Windows
 
 ## Supported CPU Architecture
 
-x86_64  
-ppc64le  
+x86_64
+ppc64le
 arm64-sbsa
 
 ## CUDA APIs involved
@@ -68,75 +68,75 @@ Sample example output w/ 1 GPU:
 
 ```
 Test 1D Laplacian of order 8
-Step 1: Create Mg handle and select devices 
-        There are 1 GPUs 
-        Device 0, NVIDIA TITAN RTX, cc 7.5 
-step 2: Enable peer access.
-Step 3: Allocate host memory A 
-Step 4: Prepare 1D Laplacian for A and X = ones(N,NRHS) 
-Step 5: Create RHS for reference solution on host B = A*X 
-Step 6: Create matrix descriptors for A and D 
-Step 7: Allocate distributed matrices A and B 
-Step 8: Prepare data on devices 
-Step 9: Allocate workspace space 
-        Allocate device workspace, lwork = 1064960 
-Step 10: Solve A*X = B by POTRF and POTRS 
+Step 1: Create Mg handle and select devices
+        There are 1 GPUs
+        Device 0, NVIDIA TITAN RTX, cc 7.5
+Step 2: Enable peer access
+Step 3: Allocate host memory A
+Step 4: Prepare 1D Laplacian for A and X = ones(N,NRHS)
+Step 5: Create RHS for reference solution on host B = A*X
+Step 6: Create matrix descriptors for A and D
+Step 7: Allocate distributed matrices A and B
+Step 8: Prepare data on devices
+Step 9: Allocate workspace space
+        Allocate device workspace, lwork = 1064960
+Step 10: Solve A*X = B by POTRF and POTRS
 Step 11: Solution vector B
-Step 12: Measure residual error |b - A*x| 
-errors for X[:,1] 
+Step 12: Measure residual error |b - A*x|
+errors for X[:,1]
         |b - A*x|_inf = 2.220446E-16
         |x|_inf = 1.000000E+00
         |b|_inf = 1.000000E+00
         |A|_inf = 4.000000E+00
         |b - A*x|/(|A|*|x|+|b|) = 4.440892E-17
 
-errors for X[:,2] 
+errors for X[:,2]
         |b - A*x|_inf = 2.220446E-16
         |x|_inf = 1.000000E+00
         |b|_inf = 1.000000E+00
         |A|_inf = 4.000000E+00
         |b - A*x|/(|A|*|x|+|b|) = 4.440892E-17
 
-step 12: Free resources
+Step 12: Free resources
 ```
 
 Sample example output w/ 2 GPU:
 
 ```
 Test 1D Laplacian of order 8
-Step 1: Create Mg handle and select devices 
-        There are 2 GPUs 
-        Device 0, NVIDIA TITAN RTX, cc 7.5 
-        Device 1, NVIDIA TITAN RTX, cc 7.5 
-step 2: Enable peer access.
+Step 1: Create Mg handle and select devices
+        There are 2 GPUs
+        Device 0, NVIDIA TITAN RTX, cc 7.5
+        Device 1, NVIDIA TITAN RTX, cc 7.5
+Step 2: Enable peer access
          Enable peer access from gpu 0 to gpu 1
          Enable peer access from gpu 1 to gpu 0
-Step 3: Allocate host memory A 
-Step 4: Prepare 1D Laplacian for A and X = ones(N,NRHS) 
-Step 5: Create RHS for reference solution on host B = A*X 
-Step 6: Create matrix descriptors for A and D 
-Step 7: Allocate distributed matrices A and B 
-Step 8: Prepare data on devices 
-Step 9: Allocate workspace space 
-        Allocate device workspace, lwork = 1064960 
-Step 10: Solve A*X = B by POTRF and POTRS 
+Step 3: Allocate host memory A
+Step 4: Prepare 1D Laplacian for A and X = ones(N,NRHS)
+Step 5: Create RHS for reference solution on host B = A*X
+Step 6: Create matrix descriptors for A and D
+Step 7: Allocate distributed matrices A and B
+Step 8: Prepare data on devices
+Step 9: Allocate workspace space
+        Allocate device workspace, lwork = 1064960
+Step 10: Solve A*X = B by POTRF and POTRS
 Step 11: Solution vector B
-Step 12: Measure residual error |b - A*x| 
-errors for X[:,1] 
+Step 12: Measure residual error |b - A*x|
+errors for X[:,1]
         |b - A*x|_inf = 2.220446E-16
         |x|_inf = 1.000000E+00
         |b|_inf = 1.000000E+00
         |A|_inf = 4.000000E+00
         |b - A*x|/(|A|*|x|+|b|) = 4.440892E-17
 
-errors for X[:,2] 
+errors for X[:,2]
         |b - A*x|_inf = 2.220446E-16
         |x|_inf = 1.000000E+00
         |b|_inf = 1.000000E+00
         |A|_inf = 4.000000E+00
         |b - A*x|/(|A|*|x|+|b|) = 4.440892E-17
 
-step 12: Free resources
+Step 12: Free resources
 ```
 
 # Usage 2
@@ -148,75 +148,75 @@ Sample example output w/ 1 GPU:
 
 ```
 Test 1D Laplacian of order 8
-Step 1: Create Mg handle and select devices 
-        There are 1 GPUs 
-        Device 0, NVIDIA TITAN RTX, cc 7.5 
-step 2: Enable peer access.
-Step 3: Allocate host memory A 
-Step 4: Prepare 1D Laplacian for A and Xref = ones(N,NRHS) 
-Step 5: Create RHS for reference solution on host B = A*X 
-Step 6: Create matrix descriptors for A and D 
-Step 7: Allocate distributed matrices A and B 
-Step 8: Prepare data on devices 
-Step 9: Allocate workspace space 
-        Allocate device workspace, lwork = 1067008 
-Step 10: Solve A*X = B by POTRF and POTRI 
+Step 1: Create Mg handle and select devices
+        There are 1 GPUs
+        Device 0, NVIDIA TITAN RTX, cc 7.5
+Step 2: Enable peer access
+Step 3: Allocate host memory A
+Step 4: Prepare 1D Laplacian for A and Xref = ones(N,NRHS)
+Step 5: Create RHS for reference solution on host B = A*X
+Step 6: Create matrix descriptors for A and D
+Step 7: Allocate distributed matrices A and B
+Step 8: Prepare data on devices
+Step 9: Allocate workspace space
+        Allocate device workspace, lwork = 1067008
+Step 10: Solve A*X = B by POTRF and POTRI
 Step 11: Gather INV(A) from devices to host
-step 12: solve linear system B := inv(A) * B 
-step 13: measure residual error |Xref - Xans| 
-errors for X[:,1] 
+Step 12: Solve linear system B := inv(A) * B
+Step 13: Measure residual error |Xref - Xans|
+errors for X[:,1]
         |b - A*x|_inf = 4.440892E-16
         |Xref|_inf = 1.000000E+00
         |Xans|_inf = 1.000000E+00
         |A|_inf = 4.000000E+00
         |b - A*x|/(|A|*|x|+|b|) = 8.881784E-17
 
-errors for X[:,2] 
+errors for X[:,2]
         |b - A*x|_inf = 4.440892E-16
         |Xref|_inf = 1.000000E+00
         |Xans|_inf = 1.000000E+00
         |A|_inf = 4.000000E+00
         |b - A*x|/(|A|*|x|+|b|) = 8.881784E-17
 
-step 14: Free resources
+Step 14: Free resources
 ```
 
 Sample example output w/ 2 GPU:
 
 ```
 Test 1D Laplacian of order 8
-Step 1: Create Mg handle and select devices 
-        There are 2 GPUs 
-        Device 0, NVIDIA TITAN RTX, cc 7.5 
-        Device 1, NVIDIA TITAN RTX, cc 7.5 
-step 2: Enable peer access.
+Step 1: Create Mg handle and select devices
+        There are 2 GPUs
+        Device 0, NVIDIA TITAN RTX, cc 7.5
+        Device 1, NVIDIA TITAN RTX, cc 7.5
+Step 2: Enable peer access
          Enable peer access from gpu 0 to gpu 1
          Enable peer access from gpu 1 to gpu 0
-Step 3: Allocate host memory A 
-Step 4: Prepare 1D Laplacian for A and Xref = ones(N,NRHS) 
-Step 5: Create RHS for reference solution on host B = A*X 
-Step 6: Create matrix descriptors for A and D 
-Step 7: Allocate distributed matrices A and B 
-Step 8: Prepare data on devices 
-Step 9: Allocate workspace space 
-        Allocate device workspace, lwork = 1067008 
-Step 10: Solve A*X = B by POTRF and POTRI 
+Step 3: Allocate host memory A
+Step 4: Prepare 1D Laplacian for A and Xref = ones(N,NRHS)
+Step 5: Create RHS for reference solution on host B = A*X
+Step 6: Create matrix descriptors for A and D
+Step 7: Allocate distributed matrices A and B
+Step 8: Prepare data on devices
+Step 9: Allocate workspace space
+        Allocate device workspace, lwork = 1067008
+Step 10: Solve A*X = B by POTRF and POTRI
 Step 11: Gather INV(A) from devices to host
-step 12: solve linear system B := inv(A) * B 
-step 13: measure residual error |Xref - Xans| 
-errors for X[:,1] 
+Step 12: Solve linear system B := inv(A) * B
+Step 13: Measure residual error |Xref - Xans|
+errors for X[:,1]
         |b - A*x|_inf = 4.440892E-16
         |Xref|_inf = 1.000000E+00
         |Xans|_inf = 1.000000E+00
         |A|_inf = 4.000000E+00
         |b - A*x|/(|A|*|x|+|b|) = 8.881784E-17
 
-errors for X[:,2] 
+errors for X[:,2]
         |b - A*x|_inf = 4.440892E-16
         |Xref|_inf = 1.000000E+00
         |Xans|_inf = 1.000000E+00
         |A|_inf = 4.000000E+00
         |b - A*x|/(|A|*|x|+|b|) = 8.881784E-17
 
-step 14: Free resources
+Step 14: Free resources
 ```
