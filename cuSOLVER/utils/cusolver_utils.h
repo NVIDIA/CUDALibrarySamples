@@ -107,7 +107,7 @@ template <> struct traits<float> {
 
     inline static T add(T a, T b) { return a + b; }
 
-    inline static T mul(T v, double f) { return v * f; }
+    inline static T mul(T v, S f) { return v * f; }
 };
 
 template <> struct traits<double> {
@@ -127,7 +127,7 @@ template <> struct traits<double> {
 
     inline static T add(T a, T b) { return a + b; }
 
-    inline static T mul(T v, double f) { return v * f; }
+    inline static T mul(T v, S f) { return v * f; }
 };
 
 template <> struct traits<cuFloatComplex> {
@@ -150,7 +150,7 @@ template <> struct traits<cuFloatComplex> {
     inline static T add(T a, T b) { return cuCaddf(a, b); }
     inline static T add(T a, S b) { return cuCaddf(a, make_cuFloatComplex(b, 0.f)); }
 
-    inline static T mul(T v, double f) { return make_cuFloatComplex(v.x * f, v.y * f); }
+    inline static T mul(T v, S f) { return make_cuFloatComplex(v.x * f, v.y * f); }
 };
 
 template <> struct traits<cuDoubleComplex> {
@@ -173,7 +173,7 @@ template <> struct traits<cuDoubleComplex> {
     inline static T add(T a, T b) { return cuCadd(a, b); }
     inline static T add(T a, S b) { return cuCadd(a, make_cuDoubleComplex(b, 0.)); }
 
-    inline static T mul(T v, double f) { return make_cuDoubleComplex(v.x * f, v.y * f); }
+    inline static T mul(T v, S f) { return make_cuDoubleComplex(v.x * f, v.y * f); }
 };
 
 template <typename T> void print_matrix(const int &m, const int &n, const T *A, const int &lda);
