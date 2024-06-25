@@ -219,7 +219,7 @@ int main(int argc, char *argv[]) {
 
     CUSOLVER_CHECK(cusolverDnXgesvdjGetResidual(cusolverH, gesvdj_params, &residual));
 
-    std::printf("residual |A - U*S*V**H|_F = %E \n", residual);
+    std::printf("internal residual |E|_F = %E \n",   residual);
     std::printf("number of executed sweeps = %d \n", executed_sweeps);
 
     /* free resources */
