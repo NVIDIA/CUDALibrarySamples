@@ -4,7 +4,7 @@
 
 This folder demonstrates main cuDSS APIs usage.
 
-Note: samples are updated to work with the latest version of cuDSS available (currently: 0.2.0) and might be imcompatible with older versions. For further details, please check the release notes in the official documentation.
+Note: samples are updated to work with the latest version of cuDSS available (currently: 0.3.0) and might be imcompatible with older versions. For further details, please check the release notes in the official documentation.
 
 [cuDSS Documentation](https://docs.nvidia.com/cuda/cudss/index.html)
 
@@ -17,6 +17,16 @@ Note: samples are updated to work with the latest version of cuDSS available (cu
 * [Simple workflow for solving a complex-valued sparse linear system](simple_complex/)
 
     The sample demonstrates how to use cuDSS for solving a complex sparse linear system without any advanced features
+
+* [Simple workflow for solving a real-valued sparse linear system using the hybrid host/device memory mode](simple_hybrid_memory_mode/)
+
+    The sample demonstrates how to use cuDSS for solving a real sparse linear system using the hybrid host/device memory mode
+
+* [Simple workflow for solving a real-valued sparse linear system using the MGMN mode](simple_mgmn_mode/)
+
+    The sample demonstrates how to use cuDSS for solving a real sparse linear system using the multi-GPU multi-node mode
+
+    Note: building MGMN mode samples require extra options for the communication backend at build and runtime, and must be run with mpirun
 
 * [Getter/setter APIs for cudssConfig, cudssData and cudssHandle objects](get_set/)
 

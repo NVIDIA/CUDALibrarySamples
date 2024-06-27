@@ -53,7 +53,7 @@
 #include <cuda_runtime.h>
 #include <cuComplex.h>
 
-#include "cuDSS.h"
+#include "cudss.h"
 
 /*
     This example demonstrates basic usage of cuDSS APIs for solving
