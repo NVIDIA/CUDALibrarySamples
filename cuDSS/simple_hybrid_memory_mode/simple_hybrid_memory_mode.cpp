@@ -1,5 +1,5 @@
 /*
- * Copyright 2023-2024 NVIDIA Corporation.  All rights reserved.
+ * Copyright 2024 NVIDIA Corporation.  All rights reserved.
  *
  * NOTICE TO LICENSEE:
  *
@@ -46,6 +46,7 @@
  * comments to the code, the above Disclaimer and U.S. Government End
  * Users Notice.
  */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -55,13 +56,19 @@
 #include "cudss.h"
 
 /*
-    This example demonstrates basic usage of cuDSS APIs for solving
+    This example demonstrates usage of hybrid memory mode in cuDSS for solving
     a system of linear algebraic equations with a sparse matrix:
                                 Ax = b,
     where:
         A is the sparse input matrix,
         b is the (dense) right-hand side vector (or a matrix),
         x is the (dense) solution vector (or a matrix).
+
+    Note: hybrid memory mode is intended to be used for solving systems with
+    matrices whose factors do not fit into the device memory (the mode
+    uses host memory to store the full factors + a temporary device buffer).
+    As it has a nontrivial overhead relative to the default (device) memory mode,
+    it is recommended to enable this feature only for solving large systems.
 */
 
 #define CUDSS_EXAMPLE_FREE \
@@ -103,7 +110,8 @@
 int main (int argc, char *argv[]) {
     printf("---------------------------------------------------------\n");
     printf("cuDSS example: solving a real linear 5x5 system\n"
-           "with a symmetric positive-definite matrix \n");
+           "with a symmetric positive-definite matrix using \n"
+           "the hybrid memory mode.\n");
     printf("---------------------------------------------------------\n");
     cudaError_t cuda_error = cudaSuccess;
     cudssStatus_t status = CUDSS_STATUS_SUCCESS;
@@ -229,9 +237,37 @@ int main (int argc, char *argv[]) {
                          csr_columns_d, csr_values_d, CUDA_R_32I, CUDA_R_64F, mtype, mview,
                          base), status, "cudssMatrixCreateCsr");
 
+    /* Enable hybrid mode where factors are stored in host memory
+       Note: It must be set before the first call to ANALYSIS step.*/
+    int hybrid_mode = 1;
+    CUDSS_CALL_AND_CHECK(cudssConfigSet(solverConfig, CUDSS_CONFIG_HYBRID_MODE, &hybrid_mode,
+                         sizeof(hybrid_mode)), status, "cudssConfigSet CUDSS_CONFIG_HYBRID_MODE");
+
     /* Symbolic factorization */
     CUDSS_CALL_AND_CHECK(cudssExecute(handle, CUDSS_PHASE_ANALYSIS, solverConfig, solverData,
                          A, x, b), status, "cudssExecute for analysis");
+
+    /* (optional) User can query the minimal amount of device memory sufficient for
+       the hybrid memory mode.
+       Note: By default, cuDSS would attempt to use all available device memory if needed */
+    size_t sizeWritten;
+    int64_t device_memory_min;
+    CUDSS_CALL_AND_CHECK(cudssDataGet(handle, solverData, CUDSS_DATA_HYBRID_DEVICE_MEMORY_MIN,
+                         &device_memory_min, sizeof(device_memory_min), &sizeWritten),
+                         status, "cudssDataGet for CUDSS_DATA_HYBRID_DEVICE_MEMORY_MIN");
+    printf("cuDSS example: minimum amount of device memory\n"
+           "for the hybrid memory mode is %lld bytes\n",
+           device_memory_min);
+
+    /* (optional) User can specify how much device memory is available for cuDSS
+       Note: By default, cuDSS would attempt to use all available device memory if needed */
+    int64_t hybrid_device_memory_limit = 40 * 1024 ; // in bytes = 40 KB
+    CUDSS_CALL_AND_CHECK(cudssConfigSet(solverConfig, CUDSS_CONFIG_HYBRID_DEVICE_MEMORY_LIMIT,
+                         &hybrid_device_memory_limit, sizeof(hybrid_device_memory_limit)),
+                         status, "cudssConfigSet for CUDSS_CONFIG_HYBRID_DEVICE_MEMORY_LIMIT");
+    printf("cuDSS example: set the upper limit on device memory\n"
+           "for the hybrid memory mode to %lld bytes\n",
+           hybrid_device_memory_limit);
 
     /* Factorization */
     CUDSS_CALL_AND_CHECK(cudssExecute(handle, CUDSS_PHASE_FACTORIZATION, solverConfig,
@@ -266,10 +302,11 @@ int main (int argc, char *argv[]) {
 
     CUDSS_EXAMPLE_FREE;
 
-    if (status == CUDSS_STATUS_SUCCESS && passed)
+    if (status == CUDSS_STATUS_SUCCESS && passed) {
         printf("Example PASSED\n");
-    else
+        return 0;
+    } else {
         printf("Example FAILED\n");
-
-    return 0;
+        return -1;
+    }
 }
