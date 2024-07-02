@@ -37,8 +37,8 @@ nv-nsight-cu-cli --metrics lts__gcomp_input_sectors_compression_achieved_algo_sd
 
 * **Supported SM Architectures:** SM 8.0, SM 8.6, SM 8.9, SM 9.0
 * **Supported OSes:** Linux, Windows, QNX, Android
-* **Supported CPU Architectures**: x86_64, ppc64le, arm64
-* **Supported Compilers**: gcc, clang, Intel icc, IBM xlc, Microsoft msvc, Nvidia HPC SDK nvc
+* **Supported CPU Architectures**: x86_64, arm64
+* **Supported Compilers**: gcc, clang, Intel icc, Microsoft msvc, Nvidia HPC SDK nvc
 * **Language**: `C++14`
 
 ## Prerequisites
