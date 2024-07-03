@@ -208,7 +208,7 @@ int main(int argc, char* argv[])
         ib,
         jb,
         descB,
-        CUDA_R_64F,
+        CUBLAS_COMPUTE_64F,
         &workspaceInBytesOnDevice,
         &workspaceInBytesOnHost));
 
@@ -238,7 +238,7 @@ int main(int argc, char* argv[])
         ib,
         jb,
         descB,
-        CUDA_R_64F,
+        CUBLAS_COMPUTE_64F,
         d_work,
         workspaceInBytesOnDevice,
         h_work.data(),
