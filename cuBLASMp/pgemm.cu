@@ -68,6 +68,13 @@
 
 int main(int argc, char* argv[])
 {
+    using input_t = __half;
+    using output_t = __half;
+    using compute_t = float;
+    const cudaDataType_t cuda_input_type = CUDA_R_16F;
+    const cudaDataType_t cuda_output_type = CUDA_R_16F;
+    const cublasComputeType_t cublas_compute_type = CUBLAS_COMPUTE_32F;
+
     Options opts = { .m = 10,
                      .n = 10,
                      .k = 10,
@@ -157,8 +164,8 @@ int main(int argc, char* argv[])
 
     double* d_work = nullptr;
 
-    double alpha = 1.0;
-    double beta = 1.0;
+    compute_t alpha = 1.0;
+    compute_t beta = 1.0;
 
     size_t workspaceInBytesOnDevice = 0;
     size_t workspaceInBytesOnHost = 0;
@@ -179,21 +186,21 @@ int main(int argc, char* argv[])
     const int64_t lldc = cublasMpNumroc(global_m_c, mbC, myprow, 0, nprow);
     const int64_t loc_n_c = cublasMpNumroc(global_n_c, nbC, mypcol, 0, npcol);
 
-    std::vector<double> h_A(llda * loc_n_a, 0);
-    std::vector<double> h_B(lldb * loc_n_b, 0);
-    std::vector<double> h_C(lldc * loc_n_c, 0);
+    std::vector<input_t> h_A(llda * loc_n_a, 0);
+    std::vector<input_t> h_B(lldb * loc_n_b, 0);
+    std::vector<output_t> h_C(lldc * loc_n_c, 0);
 
     generate_random_matrix(m, k, h_A.data(), mbA, nbA, ia, ja, llda, nprow, npcol, myprow, mypcol);
     generate_random_matrix(k, n, h_B.data(), mbB, nbB, ib, jb, lldb, nprow, npcol, myprow, mypcol);
     generate_random_matrix(m, n, h_C.data(), mbC, nbC, ic, jc, lldc, nprow, npcol, myprow, mypcol);
 
-    CUDA_CHECK(cudaMallocAsync(&d_A, llda * loc_n_a * sizeof(double), stream));
-    CUDA_CHECK(cudaMallocAsync(&d_B, lldb * loc_n_b * sizeof(double), stream));
-    CUDA_CHECK(cudaMallocAsync(&d_C, lldc * loc_n_c * sizeof(double), stream));
+    CUDA_CHECK(cudaMallocAsync(&d_A, llda * loc_n_a * sizeof(input_t), stream));
+    CUDA_CHECK(cudaMallocAsync(&d_B, lldb * loc_n_b * sizeof(input_t), stream));
+    CUDA_CHECK(cudaMallocAsync(&d_C, lldc * loc_n_c * sizeof(output_t), stream));
 
-    CUDA_CHECK(cudaMemcpyAsync(d_A, h_A.data(), llda * loc_n_a * sizeof(double), cudaMemcpyHostToDevice, stream));
-    CUDA_CHECK(cudaMemcpyAsync(d_B, h_B.data(), lldb * loc_n_b * sizeof(double), cudaMemcpyHostToDevice, stream));
-    CUDA_CHECK(cudaMemcpyAsync(d_C, h_C.data(), lldc * loc_n_c * sizeof(double), cudaMemcpyHostToDevice, stream));
+    CUDA_CHECK(cudaMemcpyAsync(d_A, h_A.data(), llda * loc_n_a * sizeof(input_t), cudaMemcpyHostToDevice, stream));
+    CUDA_CHECK(cudaMemcpyAsync(d_B, h_B.data(), lldb * loc_n_b * sizeof(input_t), cudaMemcpyHostToDevice, stream));
+    CUDA_CHECK(cudaMemcpyAsync(d_C, h_C.data(), lldc * loc_n_c * sizeof(output_t), cudaMemcpyHostToDevice, stream));
 
     CUBLAS_CHECK(cublasMpGridCreate(
         handle,
@@ -203,12 +210,12 @@ int main(int argc, char* argv[])
         cal_comm,
         &grid));
 
-    CUBLAS_CHECK(
-        cublasMpMatrixDescriptorCreate(handle, global_m_a, global_n_a, mbA, nbA, 0, 0, llda, CUDA_R_64F, grid, &descA));
-    CUBLAS_CHECK(
-        cublasMpMatrixDescriptorCreate(handle, global_m_b, global_n_b, mbB, nbB, 0, 0, lldb, CUDA_R_64F, grid, &descB));
-    CUBLAS_CHECK(
-        cublasMpMatrixDescriptorCreate(handle, global_m_c, global_n_c, mbC, nbC, 0, 0, lldc, CUDA_R_64F, grid, &descC));
+    CUBLAS_CHECK(cublasMpMatrixDescriptorCreate(
+        handle, global_m_a, global_n_a, mbA, nbA, 0, 0, llda, cuda_input_type, grid, &descA));
+    CUBLAS_CHECK(cublasMpMatrixDescriptorCreate(
+        handle, global_m_b, global_n_b, mbB, nbB, 0, 0, lldb, cuda_input_type, grid, &descB));
+    CUBLAS_CHECK(cublasMpMatrixDescriptorCreate(
+        handle, global_m_c, global_n_c, mbC, nbC, 0, 0, lldc, cuda_output_type, grid, &descC));
 
     CUBLAS_CHECK(cublasMpGemm_bufferSize(
         handle,
@@ -231,7 +238,7 @@ int main(int argc, char* argv[])
         ic,
         jc,
         descC,
-        CUBLAS_COMPUTE_64F,
+        cublas_compute_type,
         &workspaceInBytesOnDevice,
         &workspaceInBytesOnHost));
 
@@ -265,7 +272,7 @@ int main(int argc, char* argv[])
         ic,
         jc,
         descC,
-        CUBLAS_COMPUTE_64F,
+        cublas_compute_type,
         d_work,
         workspaceInBytesOnDevice,
         h_work.data(),
