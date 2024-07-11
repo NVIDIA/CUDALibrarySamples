@@ -4,7 +4,7 @@
 
 This folder demonstrates cuFFT APIs usage.
 
-[cuSOLVER API Documentation](https://docs.nvidia.com/cuda/cufft/index.html)
+[cuFFT API Documentation](https://docs.nvidia.com/cuda/cufft/index.html)
 
 ## cuFFT Samples
 
