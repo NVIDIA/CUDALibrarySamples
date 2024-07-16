@@ -244,9 +244,11 @@ int gpu_BiCGStab(cublasHandle_t       cublasHandle,
         printf("  Iteration = %d; Error Norm = %e\n", i, nrm_R);
         //----------------------------------------------------------------------
         // ### 4, 7 ### P_i = R_i
-        CHECK_CUDA( cudaMemcpy(d_P.ptr, d_R.ptr, m * sizeof(double),
-                               cudaMemcpyDeviceToDevice) )
-        if (i > 1) {
+        if (i == 1) {
+            CHECK_CUDA(cudaMemcpy(d_P.ptr, d_R.ptr, m * sizeof(double),
+                                  cudaMemcpyDeviceToDevice))
+        }
+        else {
             //------------------------------------------------------------------
             // ### 6 ### beta = (delta_i / delta_i-1) * (alpha / omega_i-1)
             //    (a) delta_i = (R'_0, R_i-1)

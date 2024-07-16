@@ -78,15 +78,17 @@ BiCGStab loop:
   Initial Residual: Norm 1.670180e+02' threshold 1.670180e-08
   Iteration = 1; Error Norm = 1.670180e+02
   Iteration = 2; Error Norm = 1.817961e+01
-  Iteration = 3; Error Norm = 4.740151e+01
-  Iteration = 4; Error Norm = 8.568823e+00
-  Iteration = 5; Error Norm = 8.650344e+00
-  ...
-  Iteration = 74; Error Norm = 6.492797e-08
-  Iteration = 75; Error Norm = 4.878098e-08
-  Iteration = 76; Error Norm = 3.686385e-08
-  Iteration = 77; Error Norm = 2.794411e-08
-  Iteration = 78; Error Norm = 2.125709e-08
+  Iteration = 3; Error Norm = 1.039428e+00
+  Iteration = 4; Error Norm = 1.606126e-01
+  Iteration = 5; Error Norm = 2.878677e-02
+  Iteration = 6; Error Norm = 5.218989e-03
+  Iteration = 7; Error Norm = 9.456954e-04
+  Iteration = 8; Error Norm = 1.724395e-04
+  Iteration = 9; Error Norm = 3.169380e-05
+  Iteration = 10; Error Norm = 5.875212e-06
+  Iteration = 11; Error Norm = 1.100554e-06
+  Iteration = 12; Error Norm = 2.083203e-07
+  Iteration = 13; Error Norm = 4.015379e-08
 Check Solution
-Final error norm = 1.620659e-08
+Final error norm = 1.522335e-08
 ```
