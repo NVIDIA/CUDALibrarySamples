@@ -194,39 +194,39 @@ int gpu_CG(cublasHandle_t       cublasHandle,
     size_t              bufferSizeL, bufferSizeLT;
     void*               d_bufferL, *d_bufferLT;
     cusparseSpSVDescr_t spsvDescrL, spsvDescrLT;
-    //    (a) L^-T tmp => R_i_aux    (triangular solver)
-    CHECK_CUSPARSE( cusparseSpSV_createDescr(&spsvDescrLT) )
-    CHECK_CUSPARSE( cusparseSpSV_bufferSize(
-                        cusparseHandle, CUSPARSE_OPERATION_TRANSPOSE,
-                        &one, matL, d_R.vec, d_tmp.vec, CUDA_R_64F,
-                        CUSPARSE_SPSV_ALG_DEFAULT, spsvDescrLT, &bufferSizeLT) )
-    CHECK_CUDA( cudaMalloc(&d_bufferLT, bufferSizeLT) )
-    CHECK_CUSPARSE( cusparseSpSV_analysis(
-                        cusparseHandle, CUSPARSE_OPERATION_TRANSPOSE,
-                        &one, matL, d_R.vec, d_tmp.vec, CUDA_R_64F,
-                        CUSPARSE_SPSV_ALG_DEFAULT, spsvDescrLT, d_bufferLT) )
-    CHECK_CUDA( cudaMemset(d_tmp.ptr, 0x0, m * sizeof(double)) )
-    CHECK_CUSPARSE( cusparseSpSV_solve(
-                        cusparseHandle, CUSPARSE_OPERATION_TRANSPOSE,
-                        &one, matL, d_R.vec, d_tmp.vec, CUDA_R_64F,
-                        CUSPARSE_SPSV_ALG_DEFAULT, spsvDescrLT) )
-
-    //    (b) L^-T R_i => tmp    (triangular solver)
+    //    (a) L^-1 tmp => R_i_aux    (triangular solver)
     CHECK_CUSPARSE( cusparseSpSV_createDescr(&spsvDescrL) )
     CHECK_CUSPARSE( cusparseSpSV_bufferSize(
                         cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE,
-                        &one, matL, d_tmp.vec, d_R_aux.vec, CUDA_R_64F,
+                        &one, matL, d_R.vec, d_tmp.vec, CUDA_R_64F,
                         CUSPARSE_SPSV_ALG_DEFAULT, spsvDescrL, &bufferSizeL) )
     CHECK_CUDA( cudaMalloc(&d_bufferL, bufferSizeL) )
     CHECK_CUSPARSE( cusparseSpSV_analysis(
                         cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE,
-                        &one, matL, d_tmp.vec, d_R_aux.vec, CUDA_R_64F,
+                        &one, matL, d_R.vec, d_tmp.vec, CUDA_R_64F,
                         CUSPARSE_SPSV_ALG_DEFAULT, spsvDescrL, d_bufferL) )
-    CHECK_CUDA( cudaMemset(d_R_aux.ptr, 0x0, m * sizeof(double)) )
+    CHECK_CUDA( cudaMemset(d_tmp.ptr, 0x0, m * sizeof(double)) )
     CHECK_CUSPARSE( cusparseSpSV_solve(
                         cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE,
-                        &one, matL, d_tmp.vec, d_R_aux.vec, CUDA_R_64F,
+                        &one, matL, d_R.vec, d_tmp.vec, CUDA_R_64F,
                         CUSPARSE_SPSV_ALG_DEFAULT, spsvDescrL) )
+
+    //    (b) L^-T R_i => tmp    (triangular solver)
+    CHECK_CUSPARSE( cusparseSpSV_createDescr(&spsvDescrLT) )
+    CHECK_CUSPARSE( cusparseSpSV_bufferSize(
+                        cusparseHandle, CUSPARSE_OPERATION_TRANSPOSE,
+                        &one, matL, d_tmp.vec, d_R_aux.vec, CUDA_R_64F,
+                        CUSPARSE_SPSV_ALG_DEFAULT, spsvDescrLT, &bufferSizeLT) )
+    CHECK_CUDA( cudaMalloc(&d_bufferLT, bufferSizeLT) )
+    CHECK_CUSPARSE( cusparseSpSV_analysis(
+                        cusparseHandle, CUSPARSE_OPERATION_TRANSPOSE,
+                        &one, matL, d_tmp.vec, d_R_aux.vec, CUDA_R_64F,
+                        CUSPARSE_SPSV_ALG_DEFAULT, spsvDescrLT, d_bufferLT) )
+    CHECK_CUDA( cudaMemset(d_R_aux.ptr, 0x0, m * sizeof(double)) )
+    CHECK_CUSPARSE( cusparseSpSV_solve(
+                        cusparseHandle, CUSPARSE_OPERATION_TRANSPOSE,
+                        &one, matL, d_tmp.vec, d_R_aux.vec, CUDA_R_64F,
+                        CUSPARSE_SPSV_ALG_DEFAULT, spsvDescrLT) )
     //--------------------------------------------------------------------------
     // ### 3 ### P0 = R0_aux
     CHECK_CUDA( cudaMemcpy(d_P.ptr, d_R_aux.ptr, m * sizeof(double),
@@ -239,7 +239,7 @@ int gpu_CG(cublasHandle_t       cublasHandle,
     printf("  Initial Residual: Norm %e' threshold %e\n", nrm_R, threshold);
     //--------------------------------------------------------------------------
     double delta;
-    CHECK_CUBLAS( cublasDdot(cublasHandle, m, d_R.ptr, 1, d_R.ptr, 1, &delta) )
+    CHECK_CUBLAS( cublasDdot(cublasHandle, m, d_R.ptr, 1, d_R_aux.ptr, 1, &delta) )
     //--------------------------------------------------------------------------
     // ### 4 ### repeat until convergence based on max iterations and
     //           and relative residual
@@ -281,7 +281,7 @@ int gpu_CG(cublasHandle_t       cublasHandle,
             break;
         //----------------------------------------------------------------------
         // ### 9 ### R_aux_i+1 = L^-1 L^-T R_i+1
-        //    (a) L^-T R_i+1 => tmp    (triangular solver)
+        //    (a) L^-1 R_i+1 => tmp    (triangular solver)
         CHECK_CUDA( cudaMemset(d_tmp.ptr,   0x0, m * sizeof(double)) )
         CHECK_CUDA( cudaMemset(d_R_aux.ptr, 0x0, m * sizeof(double)) )
         CHECK_CUSPARSE( cusparseSpSV_solve(cusparseHandle,
@@ -310,12 +310,11 @@ int gpu_CG(cublasHandle_t       cublasHandle,
         delta       = delta_new;
         //----------------------------------------------------------------------
         // ### 11 ###  P_i+1 = R_aux_i+1 + beta * P_i
-        //    (a) copy R_aux_i+1 in P_i
-        CHECK_CUDA( cudaMemcpy(d_P.ptr, d_R_aux.ptr, m * sizeof(double),
-                               cudaMemcpyDeviceToDevice) )
-        //    (b) P_i+1 = beta * P_i + R_aux_i+1
-        CHECK_CUBLAS( cublasDaxpy(cublasHandle, m, &beta, d_P.ptr, 1,
-                                  d_P.ptr, 1) )
+        //    (a) P = beta * P
+        CHECK_CUBLAS(cublasDscal(cublasHandle, m, &beta, d_P.ptr, 1))
+        //    (b) P = R_aux + P
+        CHECK_CUBLAS(
+            cublasDaxpy(cublasHandle, m, &one, d_R_aux.ptr, 1, d_P.ptr, 1))
     }
     //--------------------------------------------------------------------------
     printf("Check Solution\n"); // ||R = b - A * X||

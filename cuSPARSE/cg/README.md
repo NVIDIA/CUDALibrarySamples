@@ -68,7 +68,7 @@ the code contains the line references to the above algorithm
 ## Sample Output
 
 ```
- Creating 5-point time-dependent diffusion matrix.
+Creating 5-point time-dependent diffusion matrix.
  grid size: 700 x 700
  matrix rows:   490000
  matrix cols:   490000
@@ -77,18 +77,24 @@ Testing CG
 CG loop:
   Initial Residual: Norm 4.633034e+01' threshold 4.633034e-07
   Iteration = 0; Error Norm = 4.633034e+01
-  Iteration = 1; Error Norm = 5.843251e+01
-  Iteration = 2; Error Norm = 2.294159e+01
-  Iteration = 3; Error Norm = 3.503917e+01
-  Iteration = 4; Error Norm = 1.641601e+01
-  Iteration = 5; Error Norm = 2.489376e+01
-  ...
-  Iteration = 83; Error Norm = 3.124845e-06
-  Iteration = 84; Error Norm = 1.739886e-06
-  Iteration = 85; Error Norm = 1.073478e-06
-  Iteration = 86; Error Norm = 1.482683e-06
-  Iteration = 87; Error Norm = 5.830292e-07
-  Iteration = 88; Error Norm = 9.759474e-07
+  Iteration = 1; Error Norm = 4.332781e+01
+  Iteration = 2; Error Norm = 4.433195e+01
+  Iteration = 3; Error Norm = 2.256258e+01
+  Iteration = 4; Error Norm = 1.093873e+01
+  Iteration = 5; Error Norm = 5.738396e+00
+  Iteration = 6; Error Norm = 3.215873e+00
+  Iteration = 7; Error Norm = 1.882929e+00
+  Iteration = 8; Error Norm = 1.131494e+00
+...
+  Iteration = 30; Error Norm = 3.109000e-05
+  Iteration = 31; Error Norm = 1.937446e-05
+  Iteration = 32; Error Norm = 1.208413e-05
+  Iteration = 33; Error Norm = 7.554541e-06
+  Iteration = 34; Error Norm = 4.715230e-06
+  Iteration = 35; Error Norm = 2.932275e-06
+  Iteration = 36; Error Norm = 1.822365e-06
+  Iteration = 37; Error Norm = 1.133932e-06
+  Iteration = 38; Error Norm = 7.054601e-07
 Check Solution
-Final error norm = 3.024808e-07
+Final error norm = 4.387645e-07
 ```
