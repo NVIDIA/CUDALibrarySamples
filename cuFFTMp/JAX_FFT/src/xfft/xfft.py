@@ -1,7 +1,7 @@
 from functools import partial
 
 import jax
-from jax._src.sharding import NamedSharding
+from jax.sharding import NamedSharding
 from jax.experimental.custom_partitioning import custom_partitioning
 from fft_common import Dir
 
