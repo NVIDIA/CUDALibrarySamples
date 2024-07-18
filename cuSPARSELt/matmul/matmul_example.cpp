@@ -103,10 +103,11 @@ int main(void) {
                                        cudaDevAttrComputeCapabilityMinor, 0) )
     if (!(major_cc == 8 && minor_cc == 0) &&
         !(major_cc == 8 && minor_cc == 6) &&
+        !(major_cc == 8 && minor_cc == 7) &&
         !(major_cc == 8 && minor_cc == 9) &&
         !(major_cc == 9 && minor_cc == 0)) {
         std::printf("\ncusparseLt is supported only on GPU devices with"
-                    " compute capability == 8.0, 8.6, 8.9, 9.0 current: %d.%d\n\n",
+                    " compute capability == 8.0, 8.6, 8.7, 8.9, 9.0 current: %d.%d\n\n",
                      major_cc, minor_cc);
         return EXIT_UNSUPPORTED;
     }
@@ -214,6 +215,12 @@ int main(void) {
 
     CHECK_CUSPARSE( cusparseLtMatmulPlanInit(&handle, &plan, &matmul, &alg_sel))
 
+    CHECK_CUSPARSE(cusparseLtMatmulDescSetAttribute(&handle,
+                                                    &matmul,
+                                                    CUSPARSELT_MATMUL_SPARSE_MAT_POINTER,
+                                                    &dA,
+                                                    sizeof(dA)));
+
     //--------------------------------------------------------------------------
     // Prune the A matrix (in-place) and check the correctness
     CHECK_CUSPARSE( cusparseLtSpMMAPrune(&handle, &matmul, dA, dA,
@@ -297,7 +304,7 @@ int main(void) {
 
     for (int i = 0; i < m; i++) {
         for (int j = 0; j < n; j++) {
-            COMPUTE_t sum {};
+            COMPUTE_t sum  = static_cast<COMPUTE_t>(0);
             for (int k1 = 0; k1 < k; k1++) {
                 auto posA = (A_std_layout) ? i * lda + k1 : i + k1 * lda;
                 auto posB = (B_std_layout) ? k1 * ldb + j : k1 + j * ldb;
