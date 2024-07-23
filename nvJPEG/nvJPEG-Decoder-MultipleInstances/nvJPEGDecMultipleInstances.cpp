@@ -276,7 +276,7 @@ int main(int argc, const char *argv[]) {
       (pidx = findParamIndex(argv, argc, "--help")) != -1) {
     std::cout << "Usage: " << argv[0]
               << " -i images_dir [-b batch_size] [-t total_images] "
-                 "[-w warmup_iterations] [-o output_dir] "
+                 "[-w warmup_iterations] [-j num_threads] [-o output_dir] "
                  "[-pipelined] [-batched] [-fmt output_format]\n";
     std::cout << "Parameters: " << std::endl;
     std::cout << "\timages_dir\t:\tPath to single image or directory of images"
