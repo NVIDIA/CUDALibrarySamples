@@ -112,6 +112,7 @@ int main(int argc, char** argv) {
     const size_t num_threads  = 128;
     const size_t num_blocks   = (num_elements + num_threads - 1) / num_threads;
     scaling_kernel<<<num_blocks, num_threads, 0, stream>>>(out_begin_d, out_end_d, rank, size, nx, ny, nz);
+    CUDA_CHECK(cudaGetLastError());
 
     // Copy GPU data back to CPU
     std::vector<std::complex<float>> output_cpu_data((out.upper[0] - out.lower[0]) * out.strides[0], {-1000,-1000});

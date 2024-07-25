@@ -68,6 +68,7 @@ void run_r2c_c2r(size_t nx, size_t ny, size_t nz, std::vector<float>& cpu_data, 
     const size_t num_threads  = 128;
     const size_t num_blocks   = (num_elements + num_threads - 1) / num_threads;
     scaling_kernel<<<num_blocks, num_threads, 0, stream>>>(begin_d, end_d, rank, size, nx, ny, nz);
+    CUDA_CHECK(cudaGetLastError());
     
     // Run C2R
     // cufftXtSetSubformatDefault(plan_c2r, CUFFT_XT_FORMAT_INPLACE, CUFFT_XT_FORMAT_INPLACE_SHUFFLED) + CUFFT_INVERSE
