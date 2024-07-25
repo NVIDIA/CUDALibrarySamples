@@ -69,6 +69,7 @@ void run_r2c_c2r_pencils(size_t nx, size_t ny, size_t nz, float* cpu_data, Box3D
     const size_t num_threads  = 128;
     const size_t num_blocks   = (num_elements + num_threads - 1) / num_threads;
     scaling_kernel<<<num_blocks, num_threads, 0, stream>>>(begin_d, end_d, rank, size, nx, ny, nz);
+    CUDA_CHECK(cudaGetLastError());
     
     // Run C2R
     CUFFT_CHECK(cufftXtExecDescriptor(plan_c2r, desc, desc, CUFFT_INVERSE));

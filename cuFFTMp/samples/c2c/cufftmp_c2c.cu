@@ -73,6 +73,7 @@ void run_c2c_fwd_inv(size_t nx, size_t ny, size_t nz, std::complex<float>* cpu_d
     const size_t num_threads  = 128;
     const size_t num_blocks   = (num_elements + num_threads - 1) / num_threads;
     scaling_kernel<<<num_blocks, num_threads, 0, stream>>>(begin_d, end_d, rank, size, nx, ny, nz);
+    CUDA_CHECK(cudaGetLastError());
     
     // Run C2C Bwd
     CUFFT_CHECK(cufftXtExecDescriptor(plan, desc, desc, CUFFT_INVERSE));
