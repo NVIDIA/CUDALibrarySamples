@@ -6,8 +6,15 @@ find_package(pybind11 CONFIG REQUIRED)
 
 include_directories(${CMAKE_CURRENT_LIST_DIR}/lib)
 
+set(NVSHMEM_HOME $ENV{NVHPC_ROOT}/comm_libs/12.2/nvshmem_cufftmp_compat)
+set(CUFFTMP_HOME $ENV{NVHPC_ROOT}/math_libs)
 message(STATUS "Using ${NVSHMEM_HOME} for NVSHMEM_HOME and ${CUFFTMP_HOME} for CUFFTMP_HOME")
-include_directories(${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES} ${CUFFTMP_HOME}/include ${NVSHMEM_HOME}/include)
+
+
+include_directories(${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES} 
+                    ${CUFFTMP_HOME}/include ${NVSHMEM_HOME}/include 
+                    $ENV{CUFFT_INC}
+)
 link_directories(${CUFFTMP_HOME}/lib ${NVSHMEM_HOME}/lib)
 
 pybind11_add_module(gpu_ops 

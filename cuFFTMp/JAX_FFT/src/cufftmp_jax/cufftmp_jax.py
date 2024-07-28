@@ -9,8 +9,8 @@ import jax
 from jax.lib import xla_client
 from jax import core, dtypes
 from jax.interpreters import xla, mlir
-from jax.abstract_arrays import ShapedArray
-from jax._src.sharding import NamedSharding
+from jax.core import ShapedArray
+from jax.sharding import NamedSharding
 from jax.experimental.custom_partitioning import custom_partitioning
 from jaxlib.hlo_helpers import custom_call
 
@@ -30,7 +30,7 @@ xops = xla_client.ops
 def _cufftmp_bind(input, num_parts, dist, dir):
 
     # param=val means it's a static parameter
-    (output,) = _cufftmp_prim.bind(input,
+    output = _cufftmp_prim.bind(input,
                                    num_parts=num_parts,
                                    dist=dist,
                                    dir=dir)
@@ -110,7 +110,7 @@ def cufftmp(x, dist, dir):
 
     @custom_partitioning
     def _cufftmp_(x):
-        return _cufftmp_bind(x, num_parts=1, dist=dist, dir=dir)
+        return _cufftmp_bind(x, num_parts=jax.device_count(), dist=dist, dir=dir)
 
     _cufftmp_.def_partition(
         infer_sharding_from_operands=partial(
@@ -180,18 +180,20 @@ def _cufftmp_translation(ctx, input, num_parts, dist, dir):
     else:
         raise ValueError("Unsupported tensor rank; must be 2 or 3")
 
-    return [custom_call(
-        "gpu_cufftmp",
-        # Output types
-        out_types=[output_type],
-        # The inputs:
-        operands=[input,],
-        # Layout specification:
-        operand_layouts=[layout,],
-        result_layouts=[layout,],
-        # GPU specific additional data
-        backend_config=opaque
-    )]
+    out = custom_call(
+                "gpu_cufftmp",
+                # Output types
+                result_types=[output_type],
+                # The inputs:
+                operands=[input,],
+                # Layout specification:
+                operand_layouts=[layout,],
+                result_layouts=[layout,],
+                # GPU specific additional data
+                backend_config=opaque
+    )
+
+    return out.results
 
 
 # *********************************************
