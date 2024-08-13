@@ -2,11 +2,11 @@
 
 ## Description
 
-This code demonstrates a usage of cuSOLVER gesvd function to perform singular value decomposition
+This code demonstrates a usage of cuSOLVER gesvd function to compute a singular value decomposition
 
 _**A** = **U** * **&Sigma;** * **V**<sup>H</sup>_
 
-A is a 3x2 dense matrices,
+A is a 3x2 dense matrix,
 ```
 A = | 1.0 | 2.0 |
     | 4.0 | 5.0 |
@@ -15,11 +15,11 @@ A = | 1.0 | 2.0 |
 
 The following code uses three steps:
 
-Step 1: compute A = U*S*VT
+Step 1: compute A = U * S * VT
 
 Step 2: check accuracy of singular value
 
-Step 3: measure residual A-U*S*VT
+Step 3: measure residual A - U * S * VT
 
 ## Supported SM Architectures
 

@@ -2,11 +2,11 @@
 
 ## Description
 
-This code demonstrates a usage of cuSOLVER Xgesvdp 64-bit functions for using cusolverDnXgesvdp
+This code demonstrates a usage of cuSOLVER Xgesvdp 64-bit functions for using cusolverDnXgesvdp to compute a singular value decomposition
 
 _**A** = **U** * **&Sigma;** * **V**<sup>H</sup>_
 
-All matrices A<sub>i</sub> are small perturbations of
+A is a 3x2 dense matrix,
 ```
 A = | 1.0 | 2.0 |
     | 4.0 | 5.0 |
@@ -72,7 +72,7 @@ $  ./cusolver_Xgesvdp_example
 Sample example output:
 
 ```
-AA = (matlab base-1)
+A = (matlab base-1)
 1.00 2.00
 4.00 5.00
 2.00 1.00
@@ -84,16 +84,16 @@ S = (matlab base-1)
 1.04
 =====
 U = (matlab base-1)
-0.31 0.49
-0.91 0.11
-0.29 -0.87
+0.31 -0.49
+0.91 -0.11
+0.29 0.87
 =====
 V = (matlab base-1)
-0.64 -0.77
-0.77 0.64
+0.64 0.77
+0.77 -0.64
 =====
 |S - S_exact| = 8.881784E-16
-|A - U*S*V**T| = 3.802413E-15
+|A - U*S*V**T| = 1.691041E-15
 h_err_sigma = 0.000000E+00
 h_err_sigma is 0 if the singular value of A is not close to zero
 ```

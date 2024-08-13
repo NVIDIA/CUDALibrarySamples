@@ -62,9 +62,11 @@ int main(int argc, char *argv[]) {
     cublasHandle_t cublasH = NULL;
     cudaStream_t stream = NULL;
 
-    const int m = 3;   /* 1 <= m <= 32 */
-    const int n = 2;   /* 1 <= n <= 32 */
-    const int lda = m; /* lda >= m */
+    const int m = 3;
+    const int n = 2;
+    const int lda = m;  // lda >= m
+    const int ldu = m;  // ldu >= m
+    const int ldvt = n; // ldvt >= n if jobu = 'A'
 
     /*
      *       | 1 2 |
@@ -73,8 +75,8 @@ int main(int argc, char *argv[]) {
      */
 
     const std::vector<double> A = {1.0, 4.0, 2.0, 2.0, 5.0, 1.0};
-    std::vector<double> U(lda * m, 0);  /* m-by-m unitary matrix, left singular vectors  */
-    std::vector<double> VT(lda * n, 0); /* n-by-n unitary matrix, right singular vectors */
+    std::vector<double> U(ldu * m, 0);  /* m-by-m unitary matrix, left singular vectors  */
+    std::vector<double> VT(ldvt * n, 0); /* n-by-n unitary matrix, right singular vectors */
     std::vector<double> S(n, 0);        /* numerical singular value */
     std::vector<double> S_exact = {7.065283497082729,
                                    1.040081297712078}; /* exact singular values */
@@ -126,10 +128,8 @@ int main(int argc, char *argv[]) {
     /* step 4: compute SVD */
     signed char jobu = 'A';  // all m columns of U
     signed char jobvt = 'A'; // all n rows of VT
-    CUSOLVER_CHECK(cusolverDnDgesvd(cusolverH, jobu, jobvt, m, n, d_A, lda, d_S, d_U,
-                                    lda, // ldu
-                                    d_VT,
-                                    lda, // ldvt,
+    CUSOLVER_CHECK(cusolverDnDgesvd(cusolverH, jobu, jobvt, m, n, d_A, lda,
+                                    d_S, d_U, ldu, d_VT, ldvt,
                                     d_work, lwork, d_rwork, devInfo));
 
     CUDA_CHECK(
@@ -157,11 +157,11 @@ int main(int argc, char *argv[]) {
     std::printf("=====\n");
 
     std::printf("U = left singular vectors (matlab base-1)\n");
-    print_matrix(m, m, U.data(), lda);
+    print_matrix(m, m, U.data(), ldu);
     std::printf("=====\n");
 
     std::printf("VT = right singular vectors (matlab base-1)\n");
-    print_matrix(n, n, VT.data(), lda);
+    print_matrix(n, n, VT.data(), ldvt);
     std::printf("=====\n");
 
     // step 5: measure error of singular value
@@ -172,10 +172,10 @@ int main(int argc, char *argv[]) {
     }
     std::printf("|S - S_exact| = %E \n", ds_sup);
 
-    CUBLAS_CHECK(cublasDdgmm(cublasH, CUBLAS_SIDE_LEFT, n, n, d_VT, lda, d_S, 1, d_W, lda));
+    CUBLAS_CHECK(cublasDdgmm(cublasH, CUBLAS_SIDE_LEFT, n, n, d_VT, ldvt, d_S, 1, d_W, lda));
 
     CUDA_CHECK(
-        cudaMemcpyAsync(d_A, A.data(), sizeof(double) * lda * n, cudaMemcpyHostToDevice, stream));
+        cudaMemcpyAsync(d_A, A.data(), sizeof(double) * A.size(), cudaMemcpyHostToDevice, stream));
 
     CUBLAS_CHECK(cublasDgemm(cublasH,
                              CUBLAS_OP_N,  // U
@@ -185,7 +185,7 @@ int main(int argc, char *argv[]) {
                              n,            // number of columns of U
                              &h_minus_one, /* host pointer */
                              d_U,          // U
-                             lda,
+                             ldu,
                              d_W,         // W
                              lda, &h_one, /* hostpointer */
                              d_A, lda));
