@@ -69,6 +69,10 @@ int main(int argc, char *argv[]) {
     const int64_t m = 3;
     const int64_t n = 2;
     const int64_t lda = m;
+    const int64_t ldu = m;
+    const int64_t ldv = n;
+    const int64_t minmn = (m < n) ? m : n;
+
     /*
      *       | 1 2  |
      *   A = | 4 5  |
@@ -76,8 +80,8 @@ int main(int argc, char *argv[]) {
      */
 
     const std::vector<data_type> A = {1.0, 4.0, 2.0, 2.0, 5.0, 1.0};
-    std::vector<data_type> U(lda * m, 0);
-    std::vector<data_type> V(lda * n, 0);
+    std::vector<data_type> U(ldu * m, 0);
+    std::vector<data_type> V(ldv * n, 0);
     std::vector<data_type> S(n, 0);
     std::vector<data_type> S_exact = {7.065283497082729, 1.040081297712078};
 
@@ -132,9 +136,9 @@ int main(int argc, char *argv[]) {
         jobz, econ, m, n, traits<data_type>::cuda_data_type, /* dataTypeA */
         d_A, lda, traits<data_type>::cuda_data_type,         /* dataTypeS */
         d_S, traits<data_type>::cuda_data_type,              /* dataTypeU */
-        d_U, lda,                                            /* ldu */
+        d_U, ldu,
         traits<data_type>::cuda_data_type,                   /* dataTypeV */
-        d_V, lda,                                            /* ldv */
+        d_V, ldv,
         traits<data_type>::cuda_data_type,                   /* computeType */
         &workspaceInBytesOnDevice, &workspaceInBytesOnHost));
 
@@ -153,9 +157,9 @@ int main(int argc, char *argv[]) {
                                      traits<data_type>::cuda_data_type,           /* dataTypeA */
                                      d_A, lda, traits<data_type>::cuda_data_type, /* dataTypeS */
                                      d_S, traits<data_type>::cuda_data_type,      /* dataTypeU */
-                                     d_U, lda,                                    /* ldu */
+                                     d_U, ldu,
                                      traits<data_type>::cuda_data_type,           /* dataTypeV */
-                                     d_V, lda,                                    /* ldv */
+                                     d_V, ldv,
                                      traits<data_type>::cuda_data_type,           /* computeType */
                                      d_work, workspaceInBytesOnDevice, h_work, workspaceInBytesOnHost,
                                      d_info, &h_err_sigma));
@@ -178,20 +182,20 @@ int main(int argc, char *argv[]) {
     std::printf("=====\n");
 
     std::printf("S = (matlab base-1)\n");
-    print_matrix(n, 1, S.data(), lda);
+    print_matrix(minmn, 1, S.data(), n);
     std::printf("=====\n");
 
     std::printf("U = (matlab base-1)\n");
-    print_matrix(m, (econ) ? n : m, U.data(), lda);
+    print_matrix(m, (econ) ? minmn : m, U.data(), ldu);
     std::printf("=====\n");
 
     std::printf("V = (matlab base-1)\n");
-    print_matrix(n, n, V.data(), lda);
+    print_matrix((econ) ? minmn : n, n, V.data(), ldv);
     std::printf("=====\n");
 
     // step 5: measure error of singular value
     double ds_sup = 0;
-    for (int j = 0; j < n; j++) {
+    for (int j = 0; j < minmn; j++) {
         double err = fabs(S[j] - S_exact[j]);
         ds_sup = (ds_sup > err) ? ds_sup : err;
     }
@@ -199,7 +203,7 @@ int main(int argc, char *argv[]) {
 
     /* step 6: |A - U*S*V**T| */
     /* W = V*S */
-    CUBLAS_CHECK(cublasDdgmm(cublasH, CUBLAS_SIDE_RIGHT, n, n, d_V, lda, d_S, 1, d_W, lda));
+    CUBLAS_CHECK(cublasDdgmm(cublasH, CUBLAS_SIDE_RIGHT, n, n, d_V, ldv, d_S, 1, d_W, lda));
 
     /* A := -U*W**T + A */
     CUDA_CHECK(cudaMemcpyAsync(d_A, A.data(), sizeof(data_type) * A.size(), cudaMemcpyHostToDevice,
@@ -208,7 +212,7 @@ int main(int argc, char *argv[]) {
     CUBLAS_CHECK(cublasDgemm(cublasH, CUBLAS_OP_N, CUBLAS_OP_T, m, /* number of rows of A */
                              n,                                    /* number of columns of A */
                              n,                                    /* number of columns of U  */
-                             &h_minus_one, d_U, lda, d_W, lda, &h_one, d_A, lda));
+                             &h_minus_one, d_U, ldu, d_W, lda, &h_one, d_A, lda));
 
     double dR_fro = 0.0;
     CUBLAS_CHECK(cublasDnrm2(cublasH, A.size(), d_A, 1, &dR_fro));
