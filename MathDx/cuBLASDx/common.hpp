@@ -4,6 +4,7 @@
 #include <type_traits>
 #include <vector>
 #include <random>
+#include <complex>
 
 #include <cuda_runtime_api.h>
 #include <cufft.h>
@@ -23,6 +24,10 @@
 #        define CUBLASDX_EXAMPLE_DETAIL_NVCC_12_2_BUG_WORKAROUND 1
 #    endif
 #endif
+
+#ifndef CUBLASDX_EXAMPLE_SUPPORTS_FP8
+#   define CUBLASDX_EXAMPLE_SUPPORTS_FP8 ((__CUDACC_VER_MAJOR__ >= 11 && __CUDACC_VER_MINOR__ >= 8) || __CUDACC_VER_MAJOR__ >= 12)
+#endif // CUBLASDX_EXAMPLE_SUPPORTS_FP8
 
 #ifndef CUDA_CHECK_AND_EXIT
 #    define CUDA_CHECK_AND_EXIT(error)                                                                      \
@@ -58,15 +63,64 @@
 #endif // CUBLAS_CHECK_AND_EXIT
 
 namespace example {
-    template <typename T>
+
+    template<typename T>
+    struct is_uniform_value_type {
+        static constexpr bool value = std::is_same<typename T::a_value_type, typename T::b_value_type>::value &&
+                                      std::is_same<typename T::a_value_type, typename T::c_value_type>::value;
+    };
+
+    template<typename T>
+    struct uniform_value_type {
+        static_assert(is_uniform_value_type<T>::value);
+        using type = typename T::c_value_type;
+    };
+
+    template<typename T>
+    using uniform_value_type_t = typename uniform_value_type<T>::type;
+
+    template<typename T>
     using value_type_t = typename T::value_type;
 
+    template <typename T>
+    using a_value_type_t = typename T::a_value_type;
+
+    template <typename T>
+    using b_value_type_t = typename T::b_value_type;
+
+    template <typename T>
+    using c_value_type_t = typename T::c_value_type;
+
     #ifndef CUBLASDX_EXAMPLE_NVRTC
+
+    namespace detail {
+
+        template<class T>
+        struct is_complex_helper {
+            static constexpr bool value = false;
+        };
+
+        template<class T>
+        struct is_complex_helper<cublasdx::complex<T>> {
+            static constexpr bool value = true;
+        };
+
+        template<class T>
+        struct is_complex_helper<std::complex<T>> {
+            static constexpr bool value = true;
+        };
+
+        template<class T>
+        struct is_complex_helper<cuda::std::complex<T>> {
+            static constexpr bool value = true;
+        };
+
+    } // namespace detail
+
+
     template<typename T>
     constexpr bool is_complex() {
-        return std::is_same_v<T, cublasdx::complex<__half>> || std::is_same_v<T, cublasdx::complex<float>> ||
-               std::is_same_v<T, cublasdx::complex<double>> || std::is_same_v<T, cuda::std::complex<__half>> ||
-               std::is_same_v<T, cuda::std::complex<float>> || std::is_same_v<T, cuda::std::complex<double>>;
+        return detail::is_complex_helper<T>::value;
     }
 
     template<typename T, typename Enable = void>
@@ -85,7 +139,7 @@ namespace example {
     template<typename T1, typename T2>
     constexpr T1 convert(T2 v) {
         if constexpr (is_complex<T1>() && is_complex<T2>()) {
-            return T1(v.real(), v.imag());
+            return T1(v);
         } else if constexpr (is_complex<T1>()) {
             return T1(v, v);
         } else if constexpr (is_complex<T2>()) {
@@ -94,6 +148,30 @@ namespace example {
             return T1(v);
         }
     }
+
+    template<typename T1, typename T2>
+    void copy_hth(const std::vector<T1>& h1, std::vector<T2>& h2, const size_t size) {
+        for (size_t i = 0; i < size; ++i) {
+            if constexpr (is_complex<T2>()) {
+                h2[i] = T2(static_cast<typename T2::value_type>(h1[i].real()),
+                           static_cast<typename T2::value_type>(h1[i].imag()));
+            } else {
+                h2[i] = T2(h1[i]);
+            }
+        }
+    }
+
+    // This assumed no customized leading dimension
+    template<typename BLAS>
+    struct global_memory_size_of {
+        static constexpr unsigned int m = cublasdx::size_of<BLAS>::m;
+        static constexpr unsigned int n = cublasdx::size_of<BLAS>::n;
+        static constexpr unsigned int k = cublasdx::size_of<BLAS>::k;
+
+        static constexpr unsigned int a_size = m * k;
+        static constexpr unsigned int b_size = k * n;
+        static constexpr unsigned int c_size = m * n;
+    };
 
     // Create a complex or real number with the specified precision from a pair of floats.
     template <typename T>
@@ -106,9 +184,11 @@ namespace example {
         }
     }
 
-    template <typename T>
+    template <typename TA, typename TB = TA, typename TC = TA>
     double gemm_flops(unsigned int m, unsigned int n, unsigned int k) {
-        if constexpr (example::is_complex<T>()) {
+        static_assert( (  example::is_complex<TA>() &&  example::is_complex<TB>() &&  example::is_complex<TC>() ) ||
+                       ( !example::is_complex<TA>() && !example::is_complex<TB>() && !example::is_complex<TC>() ) );
+        if constexpr (example::is_complex<TA>()) {
             return 8. * m * n * k;
         }
         else {
@@ -218,6 +298,15 @@ namespace example {
             v                 = T(r, i);
         }
         return ret;
+    }
+
+    template<typename Tin, typename Tout>
+    std::vector<Tout> convert(const std::vector<Tin>& input) {
+        std::vector<Tout> output;
+        for(auto v: input) {
+            output.push_back(Tout(v));
+        }
+        return output;
     }
 
     template <class ValueType, class Functor> __device__ __forceinline__

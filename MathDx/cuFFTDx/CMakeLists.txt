@@ -24,18 +24,18 @@ if(NOT TARGET cufftdx)
     if(USE_MATHDX_PACKAGE)
         message(STATUS "Using mathDx package to find cuFFTDx")
         # Find mathDx and cuFFTDx (mathDx's component)
-        # Default path: "/opt/nvidia/mathdx/24.01", path to mathDx can be passed cmake in mathdx_ROOT variable
+        # Default path: "/opt/nvidia/mathdx/24.08", path to mathDx can be passed cmake in mathdx_ROOT variable
         find_package(mathdx REQUIRED COMPONENTS cufftdx CONFIG
             PATHS
                 "${PROJECT_SOURCE_DIR}/../.." # example/cufftdx
                 "${PROJECT_SOURCE_DIR}/../../.." # include/cufftdx/example
-                "/opt/nvidia/mathdx/24.01"
+                "/opt/nvidia/mathdx/24.08"
         )
     elseif(USE_CUFFTDX_PACKAGE)
         message(STATUS "Using cuFFTDx package to find cuFFTDx")
         # Find cuFFTDx
-        # Default path: "/opt/nvidia/mathdx/24.01/include/cufftdx", path to cuFFTDx can be passed cmake in cufftdx_ROOT variable
-        find_package(cufftdx REQUIRED CONFIG PATHS "/opt/nvidia/mathdx/24.01/include/cufftdx" "${PROJECT_SOURCE_DIR}/../../cufftdx")
+        # Default path: "/opt/nvidia/mathdx/24.08/include/cufftdx", path to cuFFTDx can be passed cmake in cufftdx_ROOT variable
+        find_package(cufftdx REQUIRED CONFIG PATHS "/opt/nvidia/mathdx/24.08/include/cufftdx" "${PROJECT_SOURCE_DIR}/../../cufftdx")
     else()
         message(FATAL_ERROR "No cuFFTDx package found")
     endif()
@@ -216,6 +216,8 @@ function(add_cufftdx_nvrtc_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
     target_link_libraries(${EXAMPLE_TARGET}
         PRIVATE
             $<IF:$<TARGET_EXISTS:mathdx::cufftdx>,mathdx::cufftdx,cufftdx::cufftdx>
+            CUDA::cudart
+            CUDA::cuda_driver
             CUDA::nvrtc
     )
     if(NOT TARGET cufftdx)

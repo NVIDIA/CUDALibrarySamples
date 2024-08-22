@@ -114,100 +114,102 @@ namespace example {
         }
     } // namespace detail
 
-    template<class BLAS, class ValueType = typename BLAS::value_type>
+    template<class BLAS>
     struct io {
-        using value_type = ValueType;
+        using a_value_type = typename BLAS::a_value_type;
+        using b_value_type = typename BLAS::b_value_type;
+        using c_value_type = typename BLAS::c_value_type;
 
         template<class T>
-        static inline __device__ void load(T* shared_output, const value_type* global_input, const unsigned int size) {
-            detail::naive_copy(reinterpret_cast<value_type*>(shared_output), global_input, size);
+        static inline __device__ void load(T* shared_output, const T* global_input, const unsigned int size) {
+            detail::naive_copy(shared_output, global_input, size);
         }
 
         template<class T>
-        static inline __device__ void store(value_type* global_output, const T* shared_input, const unsigned int size) {
-            detail::naive_copy(global_output, reinterpret_cast<const value_type*>(shared_input), size);
+        static inline __device__ void store(T* global_output, const T* shared_input, const unsigned int size) {
+            detail::naive_copy(global_output, shared_input, size);
         }
 
         template<class T>
         static inline __device__ void load(T*                 shared_output,
-                                           const value_type*  global_input,
+                                           const T*  global_input,
                                            const unsigned int m,
                                            const unsigned int n,
                                            const unsigned int ld) {
-            detail::naive_copy(reinterpret_cast<value_type*>(shared_output), global_input, (ld * n));
+            detail::naive_copy(shared_output, global_input, (ld * n));
         }
 
-        static inline __device__ void a_load(value_type* shared_output, const value_type* global_input) {
+        static inline __device__ void a_load(a_value_type* shared_output, const a_value_type* global_input) {
             constexpr auto m = std::get<0>(BLAS::a_dim);
             constexpr auto n = std::get<1>(BLAS::a_dim);
-            example::load<value_type, m, n>(global_input, BLAS::lda, shared_output, BLAS::lda);
+            example::load<a_value_type, m, n>(global_input, BLAS::lda, shared_output, BLAS::lda);
         }
 
-        static inline __device__ void b_load(value_type* shared_output, const value_type* global_input) {
+        static inline __device__ void b_load(b_value_type* shared_output, const b_value_type* global_input) {
             constexpr auto m = std::get<0>(BLAS::b_dim);
             constexpr auto n = std::get<1>(BLAS::b_dim);
-            example::load<value_type, m, n>(global_input, BLAS::ldb, shared_output, BLAS::ldb);
+            example::load<b_value_type, m, n>(global_input, BLAS::ldb, shared_output, BLAS::ldb);
         }
 
-        static inline __device__ void c_load(value_type* shared_output, const value_type* global_input) {
+        static inline __device__ void c_load(c_value_type* shared_output, const c_value_type* global_input) {
             constexpr auto m = std::get<0>(BLAS::c_dim);
             constexpr auto n = std::get<1>(BLAS::c_dim);
-            example::load<value_type, m, n>(global_input, BLAS::ldc, shared_output, BLAS::ldc);
+            example::load<c_value_type, m, n>(global_input, BLAS::ldc, shared_output, BLAS::ldc);
         }
 
         template<unsigned int BlockSize>
-        static inline __device__ void a_fast_load(value_type* shared_output, const value_type* global_input) {
+        static inline __device__ void a_fast_load(a_value_type* shared_output, const a_value_type* global_input) {
             constexpr auto m = std::get<0>(BLAS::a_dim);
             constexpr auto n = std::get<1>(BLAS::a_dim);
-            example::fast_load<value_type, m, n, BlockSize>(global_input, BLAS::lda, shared_output, BLAS::lda);
+            example::fast_load<a_value_type, m, n, BlockSize>(global_input, BLAS::lda, shared_output, BLAS::lda);
         }
 
         template<unsigned int BlockSize>
-        static inline __device__ void b_fast_load(value_type* shared_output, const value_type* global_input) {
+        static inline __device__ void b_fast_load(b_value_type* shared_output, const b_value_type* global_input) {
             constexpr auto m = std::get<0>(BLAS::b_dim);
             constexpr auto n = std::get<1>(BLAS::b_dim);
-            example::fast_load<value_type, m, n, BlockSize>(global_input, BLAS::ldb, shared_output, BLAS::ldb);
+            example::fast_load<b_value_type, m, n, BlockSize>(global_input, BLAS::ldb, shared_output, BLAS::ldb);
         }
 
         template<unsigned int BlockSize>
-        static inline __device__ void c_fast_load(value_type* shared_output, const value_type* global_input) {
+        static inline __device__ void c_fast_load(c_value_type* shared_output, const c_value_type* global_input) {
             constexpr auto m = std::get<0>(BLAS::c_dim);
             constexpr auto n = std::get<1>(BLAS::c_dim);
-            example::fast_load<value_type, m, n, BlockSize>(global_input, BLAS::ldc, shared_output, BLAS::ldc);
+            example::fast_load<c_value_type, m, n, BlockSize>(global_input, BLAS::ldc, shared_output, BLAS::ldc);
         }
 
         template<class T>
-        static inline __device__ void store(value_type*        global_output,
+        static inline __device__ void store(c_value_type*      global_output,
                                             const T*           shared_input,
                                             const unsigned int m,
                                             const unsigned int n,
                                             const unsigned int ld) {
-            detail::naive_copy(global_output, reinterpret_cast<const value_type*>(shared_input), (ld * n));
+            detail::naive_copy(global_output, reinterpret_cast<const c_value_type*>(shared_input), (ld * n));
         }
 
-        static inline __device__ void a_store(value_type* global_output, const value_type* shared_input) {
+        static inline __device__ void a_store(a_value_type* global_output, const a_value_type* shared_input) {
             constexpr auto m = std::get<0>(BLAS::a_dim);
             constexpr auto n = std::get<1>(BLAS::a_dim);
-            example::store<value_type, m, n>(shared_input, BLAS::lda, global_output, BLAS::lda);
+            example::store<a_value_type, m, n>(shared_input, BLAS::lda, global_output, BLAS::lda);
         }
 
-        static inline __device__ void b_store(value_type* global_output, const value_type* shared_input) {
+        static inline __device__ void b_store(b_value_type* global_output, const b_value_type* shared_input) {
             constexpr auto m = std::get<0>(BLAS::b_dim);
             constexpr auto n = std::get<1>(BLAS::b_dim);
-            example::store<value_type, m, n>(shared_input, BLAS::ldb, global_output, BLAS::ldb);
+            example::store<b_value_type, m, n>(shared_input, BLAS::ldb, global_output, BLAS::ldb);
         }
 
-        static inline __device__ void c_store(value_type* global_output, const value_type* shared_input) {
+        static inline __device__ void c_store(c_value_type* global_output, const c_value_type* shared_input) {
             constexpr auto m = std::get<0>(BLAS::c_dim);
             constexpr auto n = std::get<1>(BLAS::c_dim);
-            example::store<value_type, m, n>(shared_input, BLAS::ldc, global_output, BLAS::ldc);
+            example::store<c_value_type, m, n>(shared_input, BLAS::ldc, global_output, BLAS::ldc);
         }
 
         template<unsigned int BlockSize>
-        static inline __device__ void c_fast_store(value_type* global_output, const value_type* shared_input) {
+        static inline __device__ void c_fast_store(c_value_type* global_output, const c_value_type* shared_input) {
             constexpr auto m = std::get<0>(BLAS::c_dim);
             constexpr auto n = std::get<1>(BLAS::c_dim);
-            example::fast_store<value_type, m, n, BlockSize>(shared_input, BLAS::ldc, global_output, BLAS::ldc);
+            example::fast_store<c_value_type, m, n, BlockSize>(shared_input, BLAS::ldc, global_output, BLAS::ldc);
         }
 
     };

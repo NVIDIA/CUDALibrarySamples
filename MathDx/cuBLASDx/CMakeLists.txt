@@ -1,12 +1,13 @@
 cmake_minimum_required(VERSION 3.18.0)
 
 # cuBLASDx project
-project(cuBLASDxExamples VERSION 0.1.0 LANGUAGES CXX CUDA)
+project(cuBLASDxExamples VERSION 0.2.0 LANGUAGES CXX CUDA)
 
 if(PROJECT_IS_TOP_LEVEL)
     if(NOT MSVC)
         set(CUBLASDX_CUDA_CXX_FLAGS "${CUBLASDX_CUDA_CXX_FLAGS} -Wall -Wextra")
         set(CUBLASDX_CUDA_CXX_FLAGS "${CUBLASDX_CUDA_CXX_FLAGS} -fno-strict-aliasing")
+        set(CUBLASDX_CUDA_CXX_FLAGS "${CUBLASDX_CUDA_CXX_FLAGS} -Wno-deprecated-declarations")
         if(NOT ${CMAKE_SYSTEM_PROCESSOR} MATCHES "^aarch64")
             set(CUBLASDX_CUDA_CXX_FLAGS "${CUBLASDX_CUDA_CXX_FLAGS} -m64")
         endif ()
@@ -34,7 +35,6 @@ if(PROJECT_IS_TOP_LEVEL)
         set(CUBLASDX_CUDA_CXX_FLAGS "${CUBLASDX_CUDA_CXX_FLAGS} -Wno-switch")
         set(CUBLASDX_CUDA_CXX_FLAGS "${CUBLASDX_CUDA_CXX_FLAGS} -Wno-unused-but-set-parameter")
         set(CUBLASDX_CUDA_CXX_FLAGS "${CUBLASDX_CUDA_CXX_FLAGS} -Wno-sign-compare")
-
 
         if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12.0.0)
             # Ignore NVCC warning #940-D: missing return statement at end of non-void function
@@ -106,13 +106,13 @@ if(PROJECT_IS_TOP_LEVEL OR CUBLASDX_TEST_PACKAGE)
             PATHS
                 "${PROJECT_SOURCE_DIR}/../.." # example/cublasdx
                 "${PROJECT_SOURCE_DIR}/../../.." # include/cublasdx/example
-                "/opt/nvidia/mathdx/23.07"
+                "/opt/nvidia/mathdx/24.08"
         )
     elseif(USE_CUBLASDX_PACKAGE)
         message(STATUS "Example: Using cuBLASDx package to find cuBLASDx")
         find_package(cublasdx REQUIRED CONFIG HINTS ${cublasdx_DIR}
             PATHS
-                "/opt/nvidia/mathdx/23.07/include/cublasdx"
+                "/opt/nvidia/mathdx/24.08/include/cublasdx"
                 "${PROJECT_SOURCE_DIR}/../../cublasdx"
         )
     else()
@@ -126,7 +126,7 @@ if(USE_MATHDX_PACKAGE)
         PATHS
             "${PROJECT_SOURCE_DIR}/../.." # example/cublasdx
             "${PROJECT_SOURCE_DIR}/../../.." # include/cublasdx/example
-            "/opt/nvidia/mathdx/23.07"
+            "/opt/nvidia/mathdx/24.08"
     )
 else()
     find_package(cufftdx CONFIG HINTS ${cufftdx_DIR} PATHS "/opt/cufftdx")
@@ -283,10 +283,14 @@ add_cublasdx_nvrtc_example(cublasdx_examples "cuBLASDx.example.nvrtc_gemm" nvrtc
 add_cublasdx_example(cublasdx_examples "cuBLASDx.example.introduction_example" introduction_example.cu)
 
 # cuBLASDx simple examples
+add_cublasdx_example(cublasdx_examples "cuBLASDx.example.simple_gemm_mixed_precision" simple_gemm_mixed_precision.cu)
 add_cublasdx_example(cublasdx_examples "cuBLASDx.example.simple_gemm_fp32" simple_gemm_fp32.cu)
 add_cublasdx_example(cublasdx_examples "cuBLASDx.example.simple_gemm_cfp16" simple_gemm_cfp16.cu)
+add_cublasdx_example(cublasdx_examples "cuBLASDx.example.simple_gemm_fp8" simple_gemm_fp8.cu)
 add_cublasdx_example(cublasdx_examples "cuBLASDx.example.simple_gemm_std_complex_fp32" simple_gemm_std_complex_fp32.cu)
 add_cublasdx_example(cublasdx_examples "cuBLASDx.example.simple_gemm_leading_dimensions" simple_gemm_leading_dimensions.cu)
+add_cublasdx_example(cublasdx_examples "cuBLASDx.example.simple_gemm_custom_layout" simple_gemm_custom_layout.cu)
+add_cublasdx_example(cublasdx_examples "cuBLASDx.example.simple_gemm_transform" simple_gemm_transform.cu)
 
 # cuBLASDx advanced examples
 add_cublasdx_example(cublasdx_examples "cuBLASDx.example.gemm_fusion" gemm_fusion.cu)

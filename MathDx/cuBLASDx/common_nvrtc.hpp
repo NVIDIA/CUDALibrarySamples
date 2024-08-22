@@ -104,7 +104,9 @@ namespace example {
         }
 
         inline std::string get_device_architecture_option(int device) {
-            std::string gpu_architecture_option = "--gpu-architecture=compute_" + std::to_string(get_device_architecture(device));
+            // --gpus-architecture=compute_... will generate PTX, which means NVRTC must be at least as recent as the CUDA driver;
+            // --gpus-architecture=sm_... will generate SASS, which will always run on any CUDA driver from the current major
+            std::string gpu_architecture_option = "--gpu-architecture=sm_" + std::to_string(get_device_architecture(device));
             return gpu_architecture_option;
         }
 

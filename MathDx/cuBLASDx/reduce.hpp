@@ -1,4 +1,6 @@
-#pragma once
+#ifndef CUBLASDX_EXAMPLE_REDUCE_HPP
+#define CUBLASDX_EXAMPLE_REDUCE_HPP
+
 #include <limits>
 
 namespace example {
@@ -99,3 +101,5 @@ void reduce_row(ValueType *data, Reducer reducer, ValueType *workspace, ValueTyp
 }
 
 } // namespace "example"
+
+#endif // CUBLASDX_EXAMPLE_REDUCE_HPP
