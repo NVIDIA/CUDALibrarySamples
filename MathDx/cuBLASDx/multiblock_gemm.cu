@@ -6,7 +6,6 @@
 #include <cublasdx.hpp>
 #include <cute/tensor.hpp>
 
-#include "block_io.hpp"
 #include "common.hpp"
 #include "reference.hpp"
 
@@ -27,81 +26,69 @@ void copy(TensorFrom &from, TensorTo &to) {
     }
 }
 
-// Helper functions to create pairs representing shape, coordinates, etc considering the transpose mode.
-template <cublasdx::transpose_mode TransposeMode, class Maker,
-          typename std::enable_if<TransposeMode == cublasdx::transpose_mode::non_transposed, bool>::type = true>
-__host__ __device__ __forceinline__
-cute::tuple<unsigned int, unsigned int> make(unsigned int m, unsigned int n, Maker maker) {
-    return maker(m, n);
+template<cublasdx::arrangement Arr>
+constexpr auto get_stride_from_arrangement() {
+    // This assumes tensor A has shape (m, k) and tensor B has shape (k, n)
+    if constexpr(Arr == cublasdx::col_major) {
+        return cute::GenColMajor{};
+    } else {
+        return cute::GenRowMajor{};
+    }
 }
 
-template <cublasdx::transpose_mode TransposeMode, class Maker,
-          typename std::enable_if<TransposeMode == cublasdx::transpose_mode::transposed || TransposeMode == cublasdx::transpose_mode::conj_transposed , bool>::type = true>
-__host__ __device__ __forceinline__
-cute::tuple<unsigned int, unsigned int> make(unsigned int m, unsigned int n, Maker maker) {
-    return maker(n, m);
-}
-
-template <class BlockMM, class MatrixA, class MatrixB, class MatrixC, class ValueType = typename BlockMM::value_type>
+template <int GridX, int GridY, class BlockMM, class MatrixA, class MatrixB, class MatrixC, class ValueType = typename example::uniform_value_type_t<BlockMM>>
 __launch_bounds__(BlockMM::max_threads_per_block) __global__
-void block_mm_kernel(MatrixA gA, MatrixB gB, MatrixC gC,
-                     ValueType alpha,
-                     ValueType beta) {
+void block_mm_kernel(MatrixA gA, MatrixB gB, MatrixC gC, ValueType alpha, ValueType beta) {
     using value_type = ValueType;
 
     // We will partition A along the m-mode into M blocks of size m, B along the n-mode into N blocks of size n,
     // and C along both m- and n-modes into M * N blocks of size m x n. Each of the M * N CUDA blocks computes
-    // its block of matrix C: C_mxn = Op(A)_mxk @ Op(B)_kxn, where Op performs transpose or conjugate transpose.
+    // its block of matrix C: C_mxn = A_mxk @ B_kxn.
 
-    auto make_shape  = cute::make_shape<unsigned int, unsigned int>;
-    auto make_coord  = cute::make_coord<unsigned int, unsigned int>;
-    auto make_step   = cute::make_step<unsigned int, unsigned int>;
-
-    constexpr auto a_transpose_mode = cublasdx::transpose_mode_of<BlockMM>::a_transpose_mode;
-    constexpr auto b_transpose_mode = cublasdx::transpose_mode_of<BlockMM>::b_transpose_mode;
+    constexpr auto a_arrangement = cublasdx::arrangement_of<BlockMM>::a;
+    constexpr auto b_arrangement = cublasdx::arrangement_of<BlockMM>::b;
 
     // Create the blocks for partitioning A, B, and C.
-    auto blockA = make_layout(make<a_transpose_mode>(gridDim.x, 1, make_shape));
-    auto blockB = make_layout(make<b_transpose_mode>(1, gridDim.y, make_shape));
-    auto blockC = make_layout(cute::make_shape(gridDim.x, gridDim.y));
+    cute::Layout blockA = make_layout(cute::make_shape(cute::Int<GridX>{}, cute::_1{}), get_stride_from_arrangement<a_arrangement>());
+    cute::Layout blockB = make_layout(cute::make_shape(cute::_1{}, cute::Int<GridY>{}), get_stride_from_arrangement<b_arrangement>());
+    cute::Layout blockC = make_layout(cute::make_shape(cute::Int<GridX>{}, cute::Int<GridY>{}));
 
     constexpr unsigned int m = cublasdx::size_of<BlockMM>::m;
     constexpr unsigned int n = cublasdx::size_of<BlockMM>::n;
     constexpr unsigned int k = cublasdx::size_of<BlockMM>::k;
 
-    auto idxA =  crd2idx(make<a_transpose_mode>(blockIdx.x, 0, make_coord), blockA);
-    auto idxB =  crd2idx(make<b_transpose_mode>(0, blockIdx.y, make_coord), blockB);
-    auto idxC =  crd2idx(cute::make_coord(blockIdx.x, blockIdx.y), blockC);
+    auto idxA = crd2idx(cute::make_coord(blockIdx.x,          0), blockA);
+    auto idxB = crd2idx(cute::make_coord(0         , blockIdx.y), blockB);
+    auto idxC = crd2idx(cute::make_coord(blockIdx.x, blockIdx.y), blockC);
 
     // Get the local partitions of A, B, and C for the current block.
-    auto pA = cute::local_partition(gA, blockA, idxA, make<a_transpose_mode>(m, k, make_step));
-    auto pB = cute::local_partition(gB, blockB, idxB, make<b_transpose_mode>(k, n, make_step));
-    auto pC = cute::local_partition(gC, blockC, idxC, cute::make_step(m, n));
+    cute::Tensor pA = cute::local_partition(gA, blockA, idxA, cute::make_step(cute::Int<m>{}, cute::Int<k>{}));
+    cute::Tensor pB = cute::local_partition(gB, blockB, idxB, cute::make_step(cute::Int<k>{}, cute::Int<n>{}));
+    cute::Tensor pC = cute::local_partition(gC, blockC, idxC, cute::make_step(cute::Int<m>{}, cute::Int<n>{}));
 
     extern __shared__ value_type shared_mem[];
-    value_type *smem_a = shared_mem;
-    value_type *smem_b = smem_a + BlockMM::a_size;
-    value_type *smem_c = smem_b + BlockMM::b_size;
+    auto [smem_a, smem_b, smem_c] = BlockMM::slice_shared_memory(reinterpret_cast<char*>(shared_mem));
 
     // Create shared memory tensors.
-    auto sA = cute::make_tensor(cute::make_smem_ptr(smem_a), make<a_transpose_mode>(m, k, make_shape));
-    auto sB = cute::make_tensor(cute::make_smem_ptr(smem_b), make<b_transpose_mode>(k, n, make_shape));
-    auto sC = cute::make_tensor(cute::make_smem_ptr(smem_c), cute::make_shape(m, n));
+    cute::Tensor sA = cublasdx::make_tensor(smem_a, BlockMM::get_layout_smem_a());
+    cute::Tensor sB = cublasdx::make_tensor(smem_b, BlockMM::get_layout_smem_b());
+    cute::Tensor sC = cublasdx::make_tensor(smem_c, BlockMM::get_layout_smem_c());
 
     // Copy A, B, and C from global to shared memory.
-    copy<BlockMM::a_size, BlockMM::block_dim.x>(pA, sA);
-    copy<BlockMM::b_size, BlockMM::block_dim.x>(pB, sB);
-    copy<BlockMM::c_size, BlockMM::block_dim.x>(pC, sC);
+    using alignment = cublasdx::alignment_of<BlockMM>;
+    cublasdx::copy<BlockMM, alignment::a>(pA, sA);
+    cublasdx::copy<BlockMM, alignment::b>(pB, sB);
+    cublasdx::copy<BlockMM, alignment::c>(pC, sC);
 
     __syncthreads();
 
     // Execute GEMM
-    BlockMM().execute(alpha, smem_a, smem_b, beta, smem_c);
+    BlockMM().execute(alpha, sA, sB, beta, sC);
 
     __syncthreads();
 
     // Copy C from shared to global memory.
-    copy<BlockMM::c_size, BlockMM::block_dim.x>(sC, pC);
+    cublasdx::copy<BlockMM, alignment::c>(sC, pC);
 
     __syncthreads();
 }
@@ -115,7 +102,7 @@ int benchmark_multiblock_gemm(const cudaStream_t& stream, bool verbose = false) 
 
     constexpr bool set_block_size{BlockSize > 0};
     using block_mm_type = std::conditional_t<set_block_size, decltype(BlockMM() + BlockDim<BlockSize>()), BlockMM>;
-    using value_type = typename block_mm_type::value_type;
+    using value_type = typename example::uniform_value_type_t<block_mm_type>;
 
     constexpr auto M = cublasdx::size_of<GlobalMM>::m;
     constexpr auto N = cublasdx::size_of<GlobalMM>::n;
@@ -147,30 +134,31 @@ int benchmark_multiblock_gemm(const cudaStream_t& stream, bool verbose = false) 
     CUDA_CHECK_AND_EXIT(cudaMemcpy(c, host_c.data(), c_size * sizeof(value_type), cudaMemcpyHostToDevice));
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
-    auto make_shape  = cute::make_shape<unsigned int, unsigned int>;
-
-    constexpr auto a_transpose_mode = cublasdx::transpose_mode_of<BlockMM>::a_transpose_mode;
-    constexpr auto b_transpose_mode = cublasdx::transpose_mode_of<BlockMM>::b_transpose_mode;
+    constexpr auto a_arrangement = cublasdx::arrangement_of<BlockMM>::a;
+    constexpr auto b_arrangement = cublasdx::arrangement_of<BlockMM>::b;
 
     // Wrap the device memory as CuTe tensors.
-    auto tensor_a = cute::make_tensor(cute::make_gmem_ptr(a), make<a_transpose_mode>(M, K, make_shape));
-    auto tensor_b = cute::make_tensor(cute::make_gmem_ptr(b), make<b_transpose_mode>(K, N, make_shape));
-    auto tensor_c = cute::make_tensor(cute::make_gmem_ptr(c), cute::make_shape(M, N));
+    auto tensor_a = cute::make_tensor(cute::make_gmem_ptr(a), cute::make_shape(cute::Int<M>{}, cute::Int<K>{}), get_stride_from_arrangement<a_arrangement>());
+    auto tensor_b = cute::make_tensor(cute::make_gmem_ptr(b), cute::make_shape(cute::Int<K>{}, cute::Int<N>{}), get_stride_from_arrangement<b_arrangement>());
+    auto tensor_c = cute::make_tensor(cute::make_gmem_ptr(c), cute::make_shape(cute::Int<M>{}, cute::Int<N>{}));
 
     using a_type = decltype(tensor_a);
     using b_type = decltype(tensor_b);
     using c_type = decltype(tensor_c);
+
+    constexpr dim3 grid{M / cublasdx::size_of<block_mm_type>::m, N / cublasdx::size_of<block_mm_type>::n};
+
     // Increase max dynamic shared memory for the kernel if needed.
+    auto kernel = block_mm_kernel<grid.x, grid.y, block_mm_type, a_type, b_type, c_type>;
+
     CUDA_CHECK_AND_EXIT(
-        cudaFuncSetAttribute(block_mm_kernel<block_mm_type, a_type, b_type, c_type>, cudaFuncAttributeMaxDynamicSharedMemorySize, block_mm_type::shared_memory_size));
+        cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, block_mm_type::shared_memory_size));
 
     // Create a grid of size (M / m,  N / n).
-    dim3 grid{M / cublasdx::size_of<block_mm_type>::m, N / cublasdx::size_of<block_mm_type>::n};
     // Measure performance of N trials.
     double time = example::measure::execution(
         [&](cudaStream_t stream) {
-            block_mm_kernel<block_mm_type>
-                <<<grid, block_mm_type::block_dim, block_mm_type::shared_memory_size, stream>>>(
+           kernel<<<grid, block_mm_type::block_dim, block_mm_type::shared_memory_size, stream>>>(
                     tensor_a, tensor_b, tensor_c, alpha, beta);
         },
         warm_up_runs,
@@ -212,6 +200,9 @@ int benchmark_multiblock_gemm(const cudaStream_t& stream, bool verbose = false) 
                   << ": " << std::fixed << std::setprecision(4) << gflops << " GFLOPS, " << avg_time << " ms." << std::endl;
     }
     // Calculate reference solution.
+    // Since GlobalMM describes global memory we can use leading_dimension here
+    // but in a regular problem definition leading_dimension_of would provide
+    // shared memory layout information.
     const auto [lda, ldb, ldc] = cublasdx::leading_dimension_of_v<GlobalMM>;
     auto reference_host_output = example::reference_gemm<GlobalMM>(alpha, host_a, lda, host_b, ldb, beta, host_c, ldc);
 
@@ -260,26 +251,31 @@ int multiblock_gemm() {
     using precision = __half;
     constexpr auto type = cublasdx::type::complex;
 
-    // Choose transpose mode for A and B: non_transposed, transposed, or conj_transposed.
-    constexpr auto a_transpose_mode = cublasdx::transpose_mode::non_transposed;
-    constexpr auto b_transpose_mode = cublasdx::transpose_mode::conj_transposed;
+    // Choose arrangement for A and B: row-major or column-major.
+    // Conjugation or other element-wise transformations can be passed to the execute function.
+    constexpr auto a_arrangement = cublasdx::col_major;
+    constexpr auto b_arrangement = cublasdx::row_major;
 
     // Define the local matrix multiplication operation.
-    using BlockMM  = decltype(cublasdx::Size<m, n, k>() +
-                       cublasdx::Precision<precision>() +
-                       cublasdx::Type<type>() +
-                       cublasdx::Function<cublasdx::function::MM>() +
-                       cublasdx::TransposeMode<a_transpose_mode, b_transpose_mode>() +
-                       cublasdx::Block() +
-                       cublasdx::SM<Arch>());
+    using BlockMM  = decltype(
+        cublasdx::Size<m, n, k>() +
+        cublasdx::Precision<precision>() +
+        cublasdx::Type<type>() +
+        cublasdx::Function<cublasdx::function::MM>() +
+        cublasdx::Arrangement<a_arrangement, b_arrangement>() +
+        cublasdx::Block() +
+        cublasdx::SM<Arch>()
+    );
     // The global matrix multiplication operation provides a convenient way to encapsulate data of interest: (M, N, K),
     // matrix sizes, leading dimensions, etc. It cannot be executed since the problem is too large to fit into shared memory.
-    using GlobalMM = decltype(cublasdx::Size<M, N, K>() +
-                       cublasdx::Precision<precision>() +
-                       cublasdx::Type<type>() +
-                       cublasdx::Function<cublasdx::function::MM>() +
-                       cublasdx::TransposeMode<a_transpose_mode, b_transpose_mode>() +
-                       cublasdx::Block());
+    using GlobalMM = decltype(
+        cublasdx::Size<M, N, K>() +
+        cublasdx::Precision<precision>() +
+        cublasdx::Type<type>() +
+        cublasdx::Function<cublasdx::function::MM>() +
+        cublasdx::Arrangement<a_arrangement, b_arrangement>() +
+        cublasdx::Block()
+    );
 
     bool verbose = true;
     cudaStream_t stream;

@@ -19,7 +19,7 @@ void scale_rows(ValueType *data, int size, ValueType *scale) {
     }
 }
 
-template<class BLAS1, class BLAS2, class ValueType = typename BLAS1::value_type>
+template<class BLAS1, class BLAS2, class ValueType = example::uniform_value_type_t<BLAS1>>
 __launch_bounds__(BLAS1::max_threads_per_block) __global__
 void scaled_dot_product_attention(const ValueType* query,
                                   const ValueType* key,
@@ -30,7 +30,7 @@ void scaled_dot_product_attention(const ValueType* query,
     constexpr unsigned int block_size = BLAS1::block_dim.x * BLAS1::block_dim.y * BLAS1::block_dim.z;
     extern __shared__ __align__(16) char smem[];
 
-    static_assert(std::is_same_v<value_type,example::value_type_t<BLAS2>>, "BLAS1 and BLAS2 must have the same type and precision");
+    static_assert(std::is_same_v<value_type,example::uniform_value_type_t<BLAS2>>, "BLAS1 and BLAS2 must have the same type and precision");
     static_assert((BLAS1::c_dim == BLAS2::a_dim), "The dimensions of the C matrix in BLAS1 must be the same as the dimensions of the A matrix in BLAS2");
 
     // Matrix C is the first in shared memory, because it's reused in the reduction as well as the 2nd matrix multiplication.
@@ -92,7 +92,7 @@ void scaled_dot_product_attention(const ValueType* query,
     example::io<BLAS2>::c_fast_store<block_size>(output, smem_g);
 }
 
-template<class BLAS1, class BLAS2, class ValueType = typename BLAS1::value_type>
+template<class BLAS1, class BLAS2, class ValueType = example::uniform_value_type_t<BLAS1>>
 double measure_cublasdx(unsigned int kernel_warm_up_repeats,
                         unsigned int kernel_repeats,
                         const ValueType* query,
@@ -178,45 +178,48 @@ int scaled_dot_product_attention_performance() {
                           cublasdx::SM<Arch>());
     using BLAS1_      = decltype(BASE() +
                           cublasdx::Size<m1, n1, k1>() +
-                          cublasdx::TransposeMode<cublasdx::transpose_mode::non_transposed, cublasdx::transpose_mode::transposed>());
+                          cublasdx::Arrangement<cublasdx::col_major, cublasdx::col_major>());
     // Use cuBLASDx suggested leading dimensions. Since we perform two matrix multiplications, the C matrix from the first has to be
     // consistent (dimensions and padding) with the A matrix of the second. Therefore create the second matrix multiplication
     // descriptor first and use its lda to set the first matrix multiplication's ldc.
     using LD1         = cublasdx::suggested_leading_dimension_of<BLAS1_, Arch>;
     using BLAS2_      = decltype(BASE() +
                           cublasdx::Size<m2, n2, k2>() +
-                          cublasdx::TransposeMode<cublasdx::transpose_mode::non_transposed, cublasdx::transpose_mode::non_transposed>());
+                          cublasdx::Arrangement<cublasdx::col_major, cublasdx::col_major>());
     using LD2         = cublasdx::suggested_leading_dimension_of<BLAS2_, Arch>;
     using BLAS2       = decltype(BLAS2_() + typename LD2::type());
     using BLAS1       = decltype(BLAS1_() + cublasdx::LeadingDimension<LD1::lda, LD1::ldb, LD2::lda>());
-    #if CUBLASDX_EXAMPLE_DETAIL_NVCC_12_2_BUG_WORKAROUND
-    using value_type = example::value_type_t<BLAS1>;
-    #else
-    using value_type = typename BLAS1::value_type;
-    #endif
+    using value_type = example::uniform_value_type_t<BLAS1>;
 
     // Allocate device memory for query, key, value, mask, and output.
     value_type* inputs;
     value_type* output;
-    auto inputs_size       = BLAS1::a_size + BLAS1::b_size + BLAS1::c_size + BLAS2::b_size;
+
+    constexpr auto global_a1_size = example::global_memory_size_of<BLAS1>::a_size;
+    constexpr auto global_b1_size = example::global_memory_size_of<BLAS1>::b_size;
+    constexpr auto global_c1_size = example::global_memory_size_of<BLAS1>::c_size;
+    constexpr auto global_b2_size = example::global_memory_size_of<BLAS2>::b_size;
+    constexpr auto global_c2_size = example::global_memory_size_of<BLAS2>::c_size;
+
+    auto inputs_size       = global_a1_size + global_b1_size + global_c1_size + global_b2_size;
     auto inputs_size_bytes = inputs_size * sizeof(value_type);
     CUDA_CHECK_AND_EXIT(cudaMalloc(&inputs, inputs_size_bytes));
-    CUDA_CHECK_AND_EXIT(cudaMalloc(&output, BLAS2::c_size * sizeof(value_type)));
+    CUDA_CHECK_AND_EXIT(cudaMalloc(&output, global_c2_size * sizeof(value_type)));
 
     value_type* query     = inputs;                  // A matrix for BLAS1
-    value_type* key       = query + (BLAS1::a_size); // B matrix for BLAS1
-    value_type* mask      = key   + (BLAS1::b_size); // C matrix for BLAS1
-    value_type* value     = mask  + (BLAS1::c_size); // B matrix for BLAS2
+    value_type* key       = query + (global_a1_size); // B matrix for BLAS1
+    value_type* mask      = key   + (global_b1_size); // C matrix for BLAS1
+    value_type* value     = mask  + (global_c1_size); // B matrix for BLAS2
 
     // Fill the query, key, and value matrices with random values.
-    auto host_query = example::get_random_data<value_type>(0.1, 0.5, BLAS1::a_size);
-    auto host_key   = example::get_random_data<value_type>(0.1, 0.5, BLAS1::b_size);
-    auto host_value = example::get_random_data<value_type>(0.1, 0.5, BLAS2::b_size);
-    CUDA_CHECK_AND_EXIT(cudaMemcpy(query, host_query.data(), BLAS1::a_size * sizeof(value_type), cudaMemcpyHostToDevice));
-    CUDA_CHECK_AND_EXIT(cudaMemcpy(key, host_key.data(), BLAS1::b_size * sizeof(value_type), cudaMemcpyHostToDevice));
-    CUDA_CHECK_AND_EXIT(cudaMemcpy(value, host_value.data(), BLAS2::b_size * sizeof(value_type), cudaMemcpyHostToDevice));
+    auto host_query = example::get_random_data<value_type>(0.1, 0.5, global_a1_size);
+    auto host_key   = example::get_random_data<value_type>(0.1, 0.5, global_b1_size);
+    auto host_value = example::get_random_data<value_type>(0.1, 0.5, global_b2_size);
+    CUDA_CHECK_AND_EXIT(cudaMemcpy(query, host_query.data(), global_a1_size * sizeof(value_type), cudaMemcpyHostToDevice));
+    CUDA_CHECK_AND_EXIT(cudaMemcpy(key, host_key.data(), global_b1_size * sizeof(value_type), cudaMemcpyHostToDevice));
+    CUDA_CHECK_AND_EXIT(cudaMemcpy(value, host_value.data(), global_b2_size * sizeof(value_type), cudaMemcpyHostToDevice));
     // Set the mask to 0. (no mask).
-    CUDA_CHECK_AND_EXIT(cudaMemset(mask, 0, BLAS1::c_size * sizeof(value_type)));
+    CUDA_CHECK_AND_EXIT(cudaMemset(mask, 0, global_c1_size * sizeof(value_type)));
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     const unsigned int kernel_repeats = 100;

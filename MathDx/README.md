@@ -14,8 +14,12 @@ This folder includes examples for cuFFTDx and cuBLASDx libraries available in Ma
 | Introduction Examples |                | introduction_example           | cuBLASDx API introduction example                                     |
 | Simple GEMM Examples  | Basic Example  | simple_gemm_fp32               | Performs fp32 GEMM                                                    |
 |                       |                | simple_gemm_cfp16              | Performs complex fp16 GEMM                                            |
+|                       |                | simple_gemm_fp8                | Performs fp8 GEMM                                                     |
 |                       | Extra Examples | simple_gemm_leading_dimensions | Performs GEMM with non-default leading dimensions                     |
 |                       |                | simple_gemm_std_complex_fp32   | Performs GEMM with cuda::std::complex as data type                    |
+|                       |                | simple_gemm_mixed_precision    | Performs a mixed precision GEMM                                       |
+|                       |                | simple_gemm_transform          | Performs GEMM with custom load and store operators                    |
+|                       |                | simple_gemm_custom_layout      | Performs GEMM with a custom user provided CuTe layout                 |
 | NVRTC Examples        |                | nvrtc_gemm                     | Performs GEMM, kernel is compiled using NVRTC                         |
 | GEMM Performance      |                | single_gemm_performance        | Benchmark for single GEMM                                             |
 |                       |                | fused_gemm_performance         | Benchmark for 2 GEMMs fused into a single kernel                      |

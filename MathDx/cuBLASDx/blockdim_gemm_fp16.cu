@@ -5,10 +5,9 @@
 #include <cublasdx.hpp>
 
 #include "common.hpp"
-#include "block_io.hpp"
 #include "reference.hpp"
 
-template<unsigned int Scenario, class BLAS, class ValueType = typename BLAS::value_type>
+template<unsigned int Scenario, class BLAS, class ValueType = example::uniform_value_type_t<BLAS>>
 __global__ void gemm_kernel(const ValueType* a,
                             const ValueType* b,
                             const ValueType* c,
@@ -18,41 +17,72 @@ __global__ void gemm_kernel(const ValueType* a,
     using value_type = ValueType;
     extern __shared__ __align__(16) char smem[];
 
-    value_type* smem_a = reinterpret_cast<value_type*>(smem);
-    value_type* smem_b = reinterpret_cast<value_type*>(smem) + BLAS::a_size;
-    value_type* smem_c = reinterpret_cast<value_type*>(smem) + BLAS::a_size + BLAS::b_size;
+    auto a_global_tensor = cublasdx::make_tensor(a, BLAS::get_layout_gmem_a());
+    auto b_global_tensor = cublasdx::make_tensor(b, BLAS::get_layout_gmem_b());
+    auto c_global_tensor = cublasdx::make_tensor(c, BLAS::get_layout_gmem_c());
+    auto out_global_tensor = cublasdx::make_tensor(output, BLAS::get_layout_gmem_c());
 
-    example::io<BLAS>::load(smem_a, a, BLAS::a_size);
-    example::io<BLAS>::load(smem_b, b, BLAS::b_size);
-    example::io<BLAS>::load(smem_c, c, BLAS::c_size);
-    __syncthreads();
+    auto [smem_a, smem_b, smem_c] = BLAS::slice_shared_memory(smem);
+    auto a_shared_tensor = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_a());
+    auto b_shared_tensor = cublasdx::make_tensor(smem_b, BLAS::get_layout_smem_b());
+    auto c_shared_tensor = cublasdx::make_tensor(smem_c, BLAS::get_layout_smem_c());
 
+    using alignment = cublasdx::alignment_of<BLAS>;
     // Kernel launched with block dimensions equal to BLAS::block_dim
     if constexpr (Scenario == 0) {
-        BLAS().execute(alpha, smem_a, smem_b, beta, smem_c);
+        cublasdx::copy<BLAS, alignment::a>(a_global_tensor, a_shared_tensor);
+        cublasdx::copy<BLAS, alignment::b>(b_global_tensor, b_shared_tensor);
+        cublasdx::copy<BLAS, alignment::c>(c_global_tensor, c_shared_tensor);
+        cublasdx::copy_wait();
+        BLAS().execute(alpha, a_shared_tensor, b_shared_tensor, beta, c_shared_tensor);
+        __syncthreads();
+        cublasdx::copy<BLAS, alignment::c>(c_shared_tensor, out_global_tensor);
     }
     // Kernel launched with block dimensions of the same rank as BLAS::block_dim and
     // at least the same number of threads
-    else if (Scenario == 1) {
-        BLAS().execute(alpha, smem_a, smem_b, beta, smem_c);
+    else if constexpr (Scenario == 1) {
+        cublasdx::copy<BLAS, alignment::a>(a_global_tensor, a_shared_tensor);
+        cublasdx::copy<BLAS, alignment::b>(b_global_tensor, b_shared_tensor);
+        cublasdx::copy<BLAS, alignment::c>(c_global_tensor, c_shared_tensor);
+        cublasdx::copy_wait();
+        BLAS().execute(alpha, a_shared_tensor, b_shared_tensor, beta, c_shared_tensor);
+        __syncthreads();
+        cublasdx::copy<BLAS, alignment::c>(c_shared_tensor, out_global_tensor);
     }
     // Kernel launched with 2D block dimensions blockDim=dim3(X, Y), BLAS::block_dim is 1D,
     // blockDim must have at least as many threads in X dimension (1st dim) as BLAS::block_dim.
-    else if (Scenario == 2) {
+    else if constexpr (Scenario == 2) {
         if (threadIdx.y == 0) {
-            BLAS().execute(alpha, smem_a, smem_b, beta, smem_c);
+            cublasdx::copy<BLAS, alignment::a>(a_global_tensor, a_shared_tensor);
+            cublasdx::copy<BLAS, alignment::b>(b_global_tensor, b_shared_tensor);
+            cublasdx::copy<BLAS, alignment::c>(c_global_tensor, c_shared_tensor);
+        }
+        cublasdx::copy_wait();
+        if (threadIdx.y == 0) {
+            BLAS().execute(alpha, a_shared_tensor, b_shared_tensor, beta, c_shared_tensor);
+        }
+        __syncthreads();
+        if (threadIdx.y == 0) {
+            cublasdx::copy<BLAS, alignment::c>(c_shared_tensor, out_global_tensor);
         }
     }
     // Kernel launched with 3D block dimensions blockDim=dim3(X, Y, Z), BLAS::block_dim is 2D,
     // blockDim must have at least as many threads in the first 2 dimensions (X, Y) as BLAS::block_dim.
-    else if (Scenario == 3) {
+    else if constexpr (Scenario == 3) {
         if (threadIdx.z == 0) {
-            BLAS().execute(alpha, smem_a, smem_b, beta, smem_c);
+            cublasdx::copy<BLAS, alignment::a>(a_global_tensor, a_shared_tensor);
+            cublasdx::copy<BLAS, alignment::b>(b_global_tensor, b_shared_tensor);
+            cublasdx::copy<BLAS, alignment::c>(c_global_tensor, c_shared_tensor);
+        }
+        cublasdx::copy_wait();
+        if (threadIdx.z == 0) {
+            BLAS().execute(alpha, a_shared_tensor, b_shared_tensor, beta, c_shared_tensor);
+        }
+        __syncthreads();
+        if (threadIdx.z == 0) {
+            cublasdx::copy<BLAS, alignment::c>(c_shared_tensor, out_global_tensor);
         }
     }
-
-    __syncthreads();
-    example::io<BLAS>::store(output, smem_c, BLAS::c_size);
 }
 
 constexpr dim3 get_blas_block_dim(unsigned int scenario) {
@@ -120,61 +150,60 @@ int simple_gemm() {
     constexpr unsigned int n = 64;
     constexpr unsigned int k = 64;
 
-    // If matrix A is not transposed its logical dimensions are: [m, k] (m rows, k columns)
-    // If matrix B is not transposed its logical dimensions are: [k, n]
-    // If matrix A is transposed its logical dimensions are: [k, m]
-    // If matrix B is transposed its logical dimensions are: [n, k]
-    // The dimensions of matrix C are: [m, n]
-    constexpr auto a_transpose_mode = cublasdx::transpose_mode::non_transposed;
-    constexpr auto b_transpose_mode = cublasdx::transpose_mode::transposed;
-
     // Selected CUDA block size (1D)
     constexpr auto blas_block_dim = get_blas_block_dim(Scenario);
     constexpr auto kernel_block_dim = get_kernel_block_dim(Scenario);
 
+    // If matrix A is column-major (or not transposed in BLAS nomenclature) its logical dimensions are: [m, k] (m rows, k columns)
+    // If matrix B is column-major its logical dimensions are: [k, n]
+    // If matrix A is row-major (or transposed in BLAS nomenclature) its logical dimensions are: [k, m]
+    // If matrix B is row-major its logical dimensions are: [n, k]
+    // The dimensions of matrix C are: [m, n]
+    constexpr auto arrangement_a = cublasdx::col_major;
+    constexpr auto arrangement_b = cublasdx::row_major;
+
     // GEMM definition using cuBLASDx operators:
     // 1. The size, the precision, and the type (real or complex) are set.
     // 2. The BLAS function is selected: MM (matrix multiplication).
-    // 3. The transpose modes of A and B matrices are set.
-    // 4. Block operator informs that GEMM should be performed on CUDA block level.
-    // 5. BlockDim operator sets layout and number of threads.
-    // 6. Targeted CUDA compute capability is selected with SM operator.
-    using BLAS       = decltype(cublasdx::Size<m, n, k>() +
+    // 3. Block operator informs that GEMM should be performed on CUDA block level.
+    // 4. BlockDim operator sets layout and number of threads.
+    // 5. Targeted CUDA compute capability is selected with SM operator.
+    using BLAS = decltype(cublasdx::Size<m, n, k>() +
                           cublasdx::Precision<__half>() +
                           cublasdx::Type<cublasdx::type::real>() +
                           cublasdx::Function<cublasdx::function::MM>() +
-                          cublasdx::TransposeMode<a_transpose_mode, b_transpose_mode>() +
+                          cublasdx::Arrangement<arrangement_a, arrangement_b>() +
                           cublasdx::Block() +
                           cublasdx::BlockDim<blas_block_dim.x, blas_block_dim.y, blas_block_dim.z>() +
                           cublasdx::SM<Arch>());
-    #ifdef CUBLASDX_EXAMPLE_DETAIL_NVCC_12_2_BUG_WORKAROUND
-    using value_type = example::value_type_t<BLAS>;
-    #else
-    using value_type = typename BLAS::value_type;
-    #endif
+
+    using value_type = example::uniform_value_type_t<BLAS>;
 
     // Allocate managed memory for a, b, c, and output
     value_type* inputs;
     value_type* output;
-    // BLAS::a_size/b_size/c_size include padding (take into account the leading dimension if set)
-    auto inputs_size       = BLAS::a_size + BLAS::b_size + BLAS::c_size;
+    constexpr auto global_a_size = example::global_memory_size_of<BLAS>::a_size;
+    constexpr auto global_b_size = example::global_memory_size_of<BLAS>::b_size;
+    constexpr auto global_c_size = example::global_memory_size_of<BLAS>::c_size;
+    auto inputs_size       = global_a_size + global_b_size + global_c_size;
+
     auto inputs_size_bytes = inputs_size * sizeof(value_type);
     CUDA_CHECK_AND_EXIT(cudaMallocManaged(&inputs, inputs_size_bytes));
-    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&output, BLAS::c_size * sizeof(value_type)));
+    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&output, global_c_size * sizeof(value_type)));
 
     value_type* a     = inputs;
-    value_type* b     = a + (BLAS::a_size);
-    value_type* c     = b + (BLAS::b_size);
+    value_type* b     = a + global_a_size;
+    value_type* c     = b + global_b_size;
     value_type  alpha = value_type(1.0);
     value_type  beta  = value_type(2.0);
 
     // Fill the A, B, C matrices with random values
-    auto host_a = example::get_random_data<value_type>(0.1, 1.0, BLAS::a_size);
-    auto host_b = example::get_random_data<value_type>(0.1, 1.0, BLAS::b_size);
-    auto host_c = example::get_random_data<value_type>(0.1, 1.0, BLAS::c_size);
-    CUDA_CHECK_AND_EXIT(cudaMemcpy(a, host_a.data(), BLAS::a_size * sizeof(value_type), cudaMemcpyHostToDevice));
-    CUDA_CHECK_AND_EXIT(cudaMemcpy(b, host_b.data(), BLAS::b_size * sizeof(value_type), cudaMemcpyHostToDevice));
-    CUDA_CHECK_AND_EXIT(cudaMemcpy(c, host_c.data(), BLAS::c_size * sizeof(value_type), cudaMemcpyHostToDevice));
+    auto host_a = example::get_random_data<value_type>(0.1, 1.0, global_a_size);
+    auto host_b = example::get_random_data<value_type>(0.1, 1.0, global_b_size);
+    auto host_c = example::get_random_data<value_type>(0.1, 1.0, global_c_size);
+    CUDA_CHECK_AND_EXIT(cudaMemcpy(a, host_a.data(), global_a_size * sizeof(value_type), cudaMemcpyHostToDevice));
+    CUDA_CHECK_AND_EXIT(cudaMemcpy(b, host_b.data(), global_b_size * sizeof(value_type), cudaMemcpyHostToDevice));
+    CUDA_CHECK_AND_EXIT(cudaMemcpy(c, host_c.data(), global_c_size * sizeof(value_type), cudaMemcpyHostToDevice));
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     // Increase max dynamic shared memory for the kernel if needed
@@ -187,9 +216,9 @@ int simple_gemm() {
     CUDA_CHECK_AND_EXIT(cudaGetLastError());
 
     // Copy results back to host
-    std::vector<value_type> host_output(BLAS::c_size);
+    std::vector<value_type> host_output(global_c_size);
     CUDA_CHECK_AND_EXIT(
-        cudaMemcpy(host_output.data(), output, BLAS::c_size * sizeof(value_type), cudaMemcpyDeviceToHost));
+        cudaMemcpy(host_output.data(), output, global_c_size * sizeof(value_type), cudaMemcpyDeviceToHost));
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     // Free device memory

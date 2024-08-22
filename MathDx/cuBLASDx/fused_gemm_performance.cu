@@ -6,10 +6,9 @@
 #include <cublasdx.hpp>
 
 #include "common.hpp"
-#include "block_io.hpp"
 #include "reference.hpp"
 
-template<class BLAS1, class BLAS2, class ValueType = typename BLAS1::value_type>
+template<class BLAS1, class BLAS2, class ValueType = typename example::uniform_value_type_t<BLAS1>>
 __launch_bounds__(BLAS1::max_threads_per_block) __global__
 void fused_gemm_kernel(const ValueType alpha1,
                        const ValueType* a,
@@ -25,7 +24,7 @@ void fused_gemm_kernel(const ValueType alpha1,
     extern __shared__ __align__(16) char smem[];
     constexpr unsigned int block_size = BLAS1::block_dim.x * BLAS1::block_dim.y * BLAS1::block_dim.z;
 
-    static_assert(std::is_same_v<value_type, example::value_type_t<BLAS2>>, "BLAS1 and BLAS2 must have the same type and precision");
+    static_assert(std::is_same_v<value_type, example::uniform_value_type_t<BLAS2>>, "BLAS1 and BLAS2 must have the same type and precision");
     static_assert((BLAS1::c_dim == BLAS2::a_dim), "The dimensions of C matrix are different in BLAS1 and BLAS2");
 
     // Matrix C is the first in shared memory, because it's reused in the 2nd GEMM. Moreover,
@@ -34,29 +33,46 @@ void fused_gemm_kernel(const ValueType alpha1,
     value_type* smem_a = reinterpret_cast<value_type*>(smem) + BLAS1::c_size;
     value_type* smem_b = reinterpret_cast<value_type*>(smem) + BLAS1::c_size + BLAS1::a_size;
 
-    example::io<BLAS1>::a_fast_load<block_size>(smem_a, a);
-    example::io<BLAS1>::b_fast_load<block_size>(smem_b, b);
-    example::io<BLAS1>::c_fast_load<block_size>(smem_c, c);
-    __syncthreads();
+    auto a_global_tensor = cublasdx::make_tensor(a, BLAS1::get_layout_gmem_a());
+    auto b_global_tensor = cublasdx::make_tensor(b, BLAS1::get_layout_gmem_b());
+    auto c_global_tensor = cublasdx::make_tensor(c, BLAS1::get_layout_gmem_c());
 
-    BLAS1().execute(alpha1, smem_a, smem_b, beta1, smem_c);
+    auto a_shared_tensor = cublasdx::make_tensor(smem_a, BLAS1::get_layout_smem_a());
+    auto b_shared_tensor = cublasdx::make_tensor(smem_b, BLAS1::get_layout_smem_b());
+    auto c_shared_tensor = cublasdx::make_tensor(smem_c, BLAS1::get_layout_smem_c());
+
+    using alignment1 = cublasdx::alignment_of<BLAS1>;
+    cublasdx::copy<BLAS1, alignment1::a>(a_global_tensor, a_shared_tensor);
+    cublasdx::copy<BLAS1, alignment1::b>(b_global_tensor, b_shared_tensor);
+    cublasdx::copy<BLAS1, alignment1::c>(c_global_tensor, c_shared_tensor);
+    cublasdx::copy_wait();
+
+    BLAS1().execute(alpha1, a_shared_tensor, b_shared_tensor, beta1, c_shared_tensor);
     __syncthreads();
 
     static_assert((BLAS1::c_size == BLAS2::a_size), "The sizes of C matrix are different in BLAS1 and BLAS2");
     value_type* smem_d = smem_c + BLAS2::a_size;
     value_type* smem_f = smem_c + BLAS2::a_size + BLAS2::b_size;
 
-    example::io<BLAS2>::b_fast_load<block_size>(smem_d, d);
-    example::io<BLAS2>::c_fast_load<block_size>(smem_f, f);
+    auto d_global_tensor = cublasdx::make_tensor(d, BLAS2::get_layout_gmem_b());
+    auto f_global_tensor = cublasdx::make_tensor(f, BLAS2::get_layout_gmem_c());
+
+    auto d_shared_tensor = cublasdx::make_tensor(smem_d, BLAS2::get_layout_smem_b());
+    auto f_shared_tensor = cublasdx::make_tensor(smem_f, BLAS2::get_layout_smem_c());
+
+    using alignment2 = cublasdx::alignment_of<BLAS2>;
+    cublasdx::copy<BLAS2, alignment2::b>(d_global_tensor, d_shared_tensor);
+    cublasdx::copy<BLAS2, alignment2::c>(f_global_tensor, f_shared_tensor);
+    cublasdx::copy_wait();
+
+    BLAS2().execute(alpha2, c_shared_tensor, d_shared_tensor, beta2, f_shared_tensor);
     __syncthreads();
 
-    BLAS2().execute(alpha2, smem_c, smem_d, beta2, smem_f);
-
-    __syncthreads();
-    example::io<BLAS2>::c_fast_store<block_size>(output, smem_f);
+    auto out_global_tensor = cublasdx::make_tensor(output, BLAS2::get_layout_gmem_c());
+    cublasdx::copy<BLAS2, alignment2::c>(f_shared_tensor, out_global_tensor);
 }
 
-template<class BLAS1, class BLAS2, class ValueType = typename BLAS1::value_type>
+template<class BLAS1, class BLAS2, class ValueType = typename example::uniform_value_type_t<BLAS1>>
 double measure_cublasdx(unsigned int kernel_warm_up_repeats,
                         unsigned int kernel_repeats,
                         const ValueType alpha1,
@@ -91,7 +107,7 @@ double measure_cublasdx(unsigned int kernel_warm_up_repeats,
     return time;
 }
 
-template<class BLAS1, class BLAS2, class ValueType=typename BLAS1::value_type>
+template<class BLAS1, class BLAS2, class ValueType = typename example::uniform_value_type_t<BLAS1>>
 double measure_cublas(unsigned int kernel_warm_up_repeats,
                       unsigned int kernel_repeats,
                       ValueType        alpha1,
@@ -105,7 +121,7 @@ double measure_cublas(unsigned int kernel_warm_up_repeats,
                       ValueType* f,
                       cudaStream_t stream) {
 
-    static_assert(std::is_same_v<ValueType, example::value_type_t<BLAS2>>, "BLAS1 and BLAS2 must have the same type and precision");
+    static_assert(std::is_same_v<ValueType, example::uniform_value_type_t<BLAS2>>, "BLAS1 and BLAS2 must have the same type and precision");
     static_assert((BLAS1::c_dim == BLAS2::a_dim), "The dimensions of C matrix are different in BLAS1 and BLAS2");
 
     const unsigned int m1 = cublasdx::size_of<BLAS1>::m;
@@ -133,11 +149,13 @@ double measure_cublas(unsigned int kernel_warm_up_repeats,
     cublasHandle_t handle;
     CUBLAS_CHECK_AND_EXIT(cublasCreate(&handle));
 
-    const auto a_transpose = example::detail::get_cublas_transpose_mode(cublasdx::transpose_mode_of<BLAS1>::a_transpose_mode);
-    const auto b_transpose = example::detail::get_cublas_transpose_mode(cublasdx::transpose_mode_of<BLAS1>::b_transpose_mode);
+    const auto a_transpose = example::detail::get_cublas_transpose_mode(cublasdx::arrangement_of<BLAS1>::a);
+    const auto b_transpose = example::detail::get_cublas_transpose_mode(cublasdx::arrangement_of<BLAS1>::b);
+    static_assert(cublasdx::arrangement_of<BLAS1>::c == cublasdx::arrangement::col_major, "Only column-major C matrix supported");
 
-    const auto c_transpose = example::detail::get_cublas_transpose_mode(cublasdx::transpose_mode_of<BLAS2>::a_transpose_mode);
-    const auto d_transpose = example::detail::get_cublas_transpose_mode(cublasdx::transpose_mode_of<BLAS2>::b_transpose_mode);
+    const auto c_transpose = example::detail::get_cublas_transpose_mode(cublasdx::arrangement_of<BLAS2>::a);
+    const auto d_transpose = example::detail::get_cublas_transpose_mode(cublasdx::arrangement_of<BLAS2>::b);
+    static_assert(cublasdx::arrangement_of<BLAS2>::c == cublasdx::arrangement::col_major, "Only column-major C matrix supported");
 
     cublasSetStream(handle, stream);
 
@@ -225,14 +243,14 @@ int fused_gemm_performance() {
     // The logical dimensions of matrix A are: [m1, k1] (m rows, k columns).
     // The logical dimensions of matrix B are: [k1, n1].
     // The logical dimensions of matrix C are: [m1, n1].
-    constexpr auto a_transpose_mode = cublasdx::transpose_mode::non_transposed;
-    constexpr auto b_transpose_mode = cublasdx::transpose_mode::non_transposed;
+    constexpr auto a_arrangement = cublasdx::col_major;
+    constexpr auto b_arrangement = cublasdx::col_major;
 
     // The logical dimensions of matrix C are: [m2, k2] == [m1, n1].
     // The logical dimensions of matrix D are: [k2, n2].
     // The logical dimensions of matrix F are: [m2, n2].
-    constexpr auto c_transpose_mode = cublasdx::transpose_mode::non_transposed;
-    constexpr auto d_transpose_mode = cublasdx::transpose_mode::non_transposed;
+    constexpr auto c_arrangement = cublasdx::col_major;
+    constexpr auto d_arrangement = cublasdx::col_major;
 
     // Use the same block size for both GEMM operations, so BLAS1::block_dim == BLAS2::block_dim which
     // simplifies the example.
@@ -243,27 +261,24 @@ int fused_gemm_performance() {
     using precision = float;
     constexpr auto type = cublasdx::type::complex;
 
-    using BLAS1       = decltype(cublasdx::Size<m1, n1, k1>() +
-                          cublasdx::Precision<precision>() +
-                          cublasdx::Type<type>() +
-                          cublasdx::Function<cublasdx::function::MM>() +
-                          cublasdx::TransposeMode<a_transpose_mode, b_transpose_mode>() +
-                          cublasdx::Block() +
-                          cublasdx::BlockDim<block_size>() +
-                          cublasdx::SM<Arch>());
-    using BLAS2       = decltype(cublasdx::Size<m2, n2, k2>() +
-                          cublasdx::Precision<precision>() +
-                          cublasdx::Type<type>() +
-                          cublasdx::Function<cublasdx::function::MM>() +
-                          cublasdx::TransposeMode<c_transpose_mode, d_transpose_mode>() +
-                          cublasdx::Block() +
-                          cublasdx::BlockDim<block_size>() +
-                          cublasdx::SM<Arch>());
-    #if CUBLASDX_EXAMPLE_DETAIL_NVCC_12_2_BUG_WORKAROUND
-    using value_type = example::value_type_t<BLAS1>;
-    #else
-    using value_type = typename BLAS1::value_type;
-    #endif
+    using BLAS1 = decltype(cublasdx::Size<m1, n1, k1>() +
+                           cublasdx::Precision<precision>() +
+                           cublasdx::Type<type>() +
+                           cublasdx::Function<cublasdx::function::MM>() +
+                           cublasdx::Arrangement<a_arrangement, b_arrangement>() +
+                           cublasdx::Block() +
+                           cublasdx::BlockDim<block_size>() +
+                           cublasdx::SM<Arch>());
+    using BLAS2 = decltype(cublasdx::Size<m2, n2, k2>() +
+                           cublasdx::Precision<precision>() +
+                           cublasdx::Type<type>() +
+                           cublasdx::Function<cublasdx::function::MM>() +
+                           cublasdx::Arrangement<c_arrangement, d_arrangement>() +
+                           cublasdx::Block() +
+                           cublasdx::BlockDim<block_size>() +
+                           cublasdx::SM<Arch>());
+
+    using value_type = typename example::uniform_value_type_t<BLAS1>;
 
     // Set the beta values (beta1 and beta2) for the two GEMMs to 0. since cuBLAS accumulates into the result and
     // we perform multiple repeats.
@@ -278,28 +293,35 @@ int fused_gemm_performance() {
     // Allocate device memory for a, b, c, d, f and output.
     value_type* inputs;
     value_type* output;
-    auto inputs_size       = BLAS1::a_size + BLAS1::b_size + BLAS1::c_size + BLAS2::b_size + BLAS2::c_size;
+
+    constexpr auto global_a1_size = example::global_memory_size_of<BLAS1>::a_size;
+    constexpr auto global_b1_size = example::global_memory_size_of<BLAS1>::b_size;
+    constexpr auto global_c1_size = example::global_memory_size_of<BLAS1>::c_size;
+    constexpr auto global_b2_size = example::global_memory_size_of<BLAS2>::b_size;
+    constexpr auto global_c2_size = example::global_memory_size_of<BLAS2>::c_size;
+
+    auto inputs_size       = global_a1_size + global_b1_size + global_c1_size + global_b2_size + global_c2_size;
     auto inputs_size_bytes = inputs_size * sizeof(value_type);
     CUDA_CHECK_AND_EXIT(cudaMalloc(&inputs, inputs_size_bytes));
-    CUDA_CHECK_AND_EXIT(cudaMalloc(&output, BLAS2::c_size * sizeof(value_type)));
+    CUDA_CHECK_AND_EXIT(cudaMalloc(&output, global_c2_size * sizeof(value_type)));
 
-    value_type* a     = inputs;
-    value_type* b     = a + (BLAS1::a_size);
-    value_type* c     = b + (BLAS1::b_size); // C matrix for BLAS1, A matrix for BLAS2
-    value_type* d     = c + (BLAS1::c_size); // D is B matrix for BLAS2
-    value_type* f     = d + (BLAS2::b_size); // F is C matrix for BLAS2
+    value_type* a = inputs;
+    value_type* b = a + (global_a1_size);
+    value_type* c = b + (global_b1_size); // C matrix for BLAS1, A matrix for BLAS2
+    value_type* d = c + (global_c1_size); // D is B matrix for BLAS2
+    value_type* f = d + (global_b2_size); // F is C matrix for BLAS2
 
     // Fill the A, B, C matrices with random values.
-    auto host_a = example::get_random_data<value_type>(0.1, 1.0, BLAS1::a_size);
-    auto host_b = example::get_random_data<value_type>(0.1, 1.0, BLAS1::b_size);
-    auto host_c = example::get_random_data<value_type>(0.1, 1.0, BLAS1::c_size);
-    auto host_d = example::get_random_data<value_type>(1.0, 2.0, BLAS2::b_size);
-    auto host_f = example::get_random_data<value_type>(1.0, 10.0, BLAS2::c_size);
-    CUDA_CHECK_AND_EXIT(cudaMemcpy(a, host_a.data(), BLAS1::a_size * sizeof(value_type), cudaMemcpyHostToDevice));
-    CUDA_CHECK_AND_EXIT(cudaMemcpy(b, host_b.data(), BLAS1::b_size * sizeof(value_type), cudaMemcpyHostToDevice));
-    CUDA_CHECK_AND_EXIT(cudaMemcpy(c, host_c.data(), BLAS1::c_size * sizeof(value_type), cudaMemcpyHostToDevice));
-    CUDA_CHECK_AND_EXIT(cudaMemcpy(d, host_d.data(), BLAS2::b_size * sizeof(value_type), cudaMemcpyHostToDevice));
-    CUDA_CHECK_AND_EXIT(cudaMemcpy(f, host_f.data(), BLAS2::c_size * sizeof(value_type), cudaMemcpyHostToDevice));
+    auto host_a = example::get_random_data<value_type>(0.1, 1.0, global_a1_size);
+    auto host_b = example::get_random_data<value_type>(0.1, 1.0, global_b1_size);
+    auto host_c = example::get_random_data<value_type>(0.1, 1.0, global_c1_size);
+    auto host_d = example::get_random_data<value_type>(1.0, 2.0, global_b2_size);
+    auto host_f = example::get_random_data<value_type>(1.0, 10.0, global_c2_size);
+    CUDA_CHECK_AND_EXIT(cudaMemcpy(a, host_a.data(), global_a1_size * sizeof(value_type), cudaMemcpyHostToDevice));
+    CUDA_CHECK_AND_EXIT(cudaMemcpy(b, host_b.data(), global_b1_size * sizeof(value_type), cudaMemcpyHostToDevice));
+    CUDA_CHECK_AND_EXIT(cudaMemcpy(c, host_c.data(), global_c1_size * sizeof(value_type), cudaMemcpyHostToDevice));
+    CUDA_CHECK_AND_EXIT(cudaMemcpy(d, host_d.data(), global_b2_size * sizeof(value_type), cudaMemcpyHostToDevice));
+    CUDA_CHECK_AND_EXIT(cudaMemcpy(f, host_f.data(), global_c2_size * sizeof(value_type), cudaMemcpyHostToDevice));
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     const unsigned int kernel_repeats = 100;

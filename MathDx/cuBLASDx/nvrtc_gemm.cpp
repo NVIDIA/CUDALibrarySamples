@@ -20,53 +20,52 @@ using namespace cublasdx;
 // BLAS Operators
 using size_desc = Size<BLAS_M, BLAS_N, BLAS_K>;
 using type_desc = Type<type::real>;
-using tm_desc = TransposeMode<cublasdx::N, cublasdx::N>;
-using BLAS = decltype(Block() + Function<function::MM>() + size_desc() + type_desc() + tm_desc() + Precision<double>() + SM<BLAS_SM>());
+using arr_desc  = Arrangement<cublasdx::row_major, cublasdx::col_major>;
+using BLAS = decltype(Block() + Function<function::MM>() + size_desc() + type_desc() + arr_desc() + Precision<__half, __half, float>() + SM<BLAS_SM>());
 
 __constant__ dim3         blas_block_dim     = BLAS::block_dim;
 __constant__ unsigned int blas_shared_memory = BLAS::shared_memory_size;
 
-template<class T>
-__device__ void copy(T* dst, const T* src, const unsigned int size /* number of elements */) {
-    if ((threadIdx.x == 0) && (threadIdx.y == 0) && (threadIdx.z == 0)) {
-        // Note: This copies values in padding too
-        for (unsigned int idx = 0; idx < size; ++idx) {
-            dst[idx] = src[idx];
-        }
-    }
-}
-
-extern "C" __global__ void test_kernel(typename BLAS::value_type* a, typename BLAS::value_type* b, typename BLAS::value_type* c)
+extern "C" __global__ void test_kernel(typename BLAS::a_value_type* a, typename BLAS::b_value_type* b, typename BLAS::c_value_type* c)
 {
-    using value_type = BLAS::value_type;
     extern __shared__ __align__(16) char smem[];
 
-    auto a_size = BLAS::a_size;
-    auto b_size = BLAS::b_size;
-    auto c_size = BLAS::c_size;
-
-    value_type* smem_a = reinterpret_cast<value_type*>(&smem[0]);
-    value_type* smem_b = reinterpret_cast<value_type*>(smem + a_size * sizeof(value_type));
-    value_type* smem_c = reinterpret_cast<value_type*>(smem + a_size * sizeof(value_type) + b_size * sizeof(value_type));
-
     // Load
-    copy(smem_a, a, a_size);
-    copy(smem_b, b, b_size);
-    copy(smem_c, c, c_size);
-    __syncthreads();
+    auto a_global_tensor = cublasdx::make_tensor(a, BLAS::get_layout_gmem_a());
+    auto b_global_tensor = cublasdx::make_tensor(b, BLAS::get_layout_gmem_b());
+    auto c_global_tensor = cublasdx::make_tensor(c, BLAS::get_layout_gmem_c());
 
-    BLAS blas;
-    blas.execute(1.0, smem_a, smem_b, 1.0, smem_c);
+// libcu++ doesn't support structured bindings for cuda::std::tuple before 2.1.0 version
+#if _LIBCUDACXX_CUDA_API_VERSION >= 2001000
+    auto [smem_a, smem_b, smem_c] = BLAS::slice_shared_memory(smem);
+#else
+    auto sliced_smem = BLAS::slice_shared_memory(smem);
+    auto smem_a = cuda::std::get<0>(sliced_smem);
+    auto smem_b = cuda::std::get<1>(sliced_smem);
+    auto smem_c = cuda::std::get<2>(sliced_smem);
+#endif
+    auto a_shared_tensor = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_a());
+    auto b_shared_tensor = cublasdx::make_tensor(smem_b, BLAS::get_layout_smem_b());
+    auto c_shared_tensor = cublasdx::make_tensor(smem_c, BLAS::get_layout_smem_c());
+
+    using alignment = cublasdx::alignment_of<BLAS>;
+    cublasdx::copy<BLAS, alignment::a>(a_global_tensor, a_shared_tensor);
+    cublasdx::copy<BLAS, alignment::b>(b_global_tensor, b_shared_tensor);
+    cublasdx::copy<BLAS, alignment::c>(c_global_tensor, c_shared_tensor);
+    cublasdx::copy_wait();
+
+    typename BLAS::c_value_type alpha = 1.0, beta = 1.0;
+    BLAS().execute(alpha, a_shared_tensor, b_shared_tensor, beta, c_shared_tensor);
 
     // Store
     __syncthreads();
-    copy(c, smem_c, c_size);
+    cublasdx::copy<BLAS, alignment::c>(c_shared_tensor, c_global_tensor);
 }
 )kernel";
 
 int main(int, char**) {
     // Note that BLAS description is only defined in kernel
-    // Precision: double
+    // Precision: __half, __half, float
     // TransposeMode: NN
     // Type: Real
     // alpha: 1
@@ -77,7 +76,9 @@ int main(int, char**) {
 
     // Complex type according to precision
     // using value_type = cuDoubleComplex; // or double2, or cuda::std::complex<double>
-    using value_type = double;
+    using a_value_type = __half;
+    using b_value_type = __half;
+    using c_value_type = float;
 
     nvrtcProgram program;
     NVRTC_SAFE_CALL(nvrtcCreateProgram(&program,         // program
@@ -136,16 +137,16 @@ int main(int, char**) {
         std::exit(1);
     }
 
-    // Obtain PTX from the program.
-    size_t ptx_size;
-    NVRTC_SAFE_CALL(nvrtcGetPTXSize(program, &ptx_size));
-    auto ptx = std::make_unique<char[]>(ptx_size);
-    NVRTC_SAFE_CALL(nvrtcGetPTX(program, ptx.get()));
+    // Obtain cubin from the program.
+    size_t cubin_size;
+    NVRTC_SAFE_CALL(nvrtcGetCUBINSize(program, &cubin_size));
+    auto cubin = std::make_unique<char[]>(cubin_size);
+    NVRTC_SAFE_CALL(nvrtcGetCUBIN(program, cubin.get()));
 
     // Destroy the program.
     NVRTC_SAFE_CALL(nvrtcDestroyProgram(&program));
 
-    // Load the generated PTX and get a handle to the test_kernel
+    // Load the generated Cubin and get a handle to the test_kernel
     CUdevice   cuDevice;
     CUcontext  context;
     CUmodule   module;
@@ -153,7 +154,7 @@ int main(int, char**) {
     CU_CHECK_AND_EXIT(cuInit(0));
     CU_CHECK_AND_EXIT(cuDeviceGet(&cuDevice, current_device));
     CU_CHECK_AND_EXIT(cuCtxCreate(&context, 0, cuDevice));
-    CU_CHECK_AND_EXIT(cuModuleLoadDataEx(&module, ptx.get(), 0, 0, 0));
+    CU_CHECK_AND_EXIT(cuModuleLoadDataEx(&module, cubin.get(), 0, 0, 0));
     CU_CHECK_AND_EXIT(cuModuleGetFunction(&kernel, module, "test_kernel"));
 
     const size_t blas_a_size = blas_m * blas_k;
@@ -161,22 +162,21 @@ int main(int, char**) {
     const size_t blas_c_size = blas_m * blas_n;
 
     // Generate input for execution
-    std::vector<value_type> host_a(blas_a_size);
-    std::vector<value_type> host_b(blas_b_size);
-    std::vector<value_type> host_c(blas_c_size);
+    std::vector<a_value_type> host_a(blas_a_size);
+    std::vector<b_value_type> host_b(blas_b_size);
+    std::vector<c_value_type> host_c(blas_c_size);
     {
         std::random_device                     rd;
         std::mt19937                           gen(rd());
-        std::uniform_real_distribution<double> dist(-1.0, 1.0);
+        std::uniform_real_distribution<double> dist(1.0, 1.0);
         auto                                   random_value_func = [&dist, &gen]() { return dist(gen); };
         std::generate(host_a.begin(), host_a.end(), random_value_func);
         std::generate(host_b.begin(), host_b.end(), random_value_func);
     }
 
-
-    const size_t blas_a_size_bytes = blas_a_size * sizeof(value_type);
-    const size_t blas_b_size_bytes = blas_b_size * sizeof(value_type);
-    const size_t blas_c_size_bytes = blas_c_size * sizeof(value_type);
+    const size_t blas_a_size_bytes = blas_a_size * sizeof(a_value_type);
+    const size_t blas_b_size_bytes = blas_b_size * sizeof(b_value_type);
+    const size_t blas_c_size_bytes = blas_c_size * sizeof(c_value_type);
     CUdeviceptr  device_a;
     CUdeviceptr  device_b;
     CUdeviceptr  device_c;
@@ -186,7 +186,7 @@ int main(int, char**) {
     CU_CHECK_AND_EXIT(cuMemcpyHtoD(device_a, host_a.data(), blas_a_size_bytes));
     CU_CHECK_AND_EXIT(cuMemcpyHtoD(device_b, host_b.data(), blas_b_size_bytes));
 
-    // Get FFT::block_dim and FFT::shared_memory required for kernel launch
+    // Get BLAS::block_dim and BLAS::shared_memory required for kernel launch
     dim3         blas_block_dim = example::nvrtc::get_global_from_module<dim3>(module, "blas_block_dim");
     unsigned int blas_shared_memory =
         example::nvrtc::get_global_from_module<unsigned int>(module, "blas_shared_memory");
