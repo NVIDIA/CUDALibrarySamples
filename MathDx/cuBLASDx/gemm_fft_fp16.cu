@@ -9,6 +9,7 @@
 
 #include "common.hpp"
 #include "block_io.hpp"
+#include "reference.hpp"
 
 // Batch size (number of signals to process)
 constexpr unsigned int batch_size = 2;
@@ -49,13 +50,14 @@ void reference(const ValueType* a,
     cublasHandle_t handle;
     CUBLAS_CHECK_AND_EXIT(cublasCreate(&handle));
     CUBLAS_CHECK_AND_EXIT(cublasSetStream(handle, stream));
-    constexpr bool is_a_transposed = (cublasdx::transpose_mode_of<BLAS>::a_transpose_mode == cublasdx::transpose_mode::transposed);
-    constexpr bool is_b_transposed = (cublasdx::transpose_mode_of<BLAS>::b_transpose_mode == cublasdx::transpose_mode::transposed);
-    const auto a_transpose = is_a_transposed ? CUBLAS_OP_T : CUBLAS_OP_N;
-    const auto b_transpose = is_b_transposed ? CUBLAS_OP_T : CUBLAS_OP_N;
+    constexpr bool is_a_transposed = (cublasdx::arrangement_of<BLAS>::a == cublasdx::row_major);
+    constexpr bool is_b_transposed = (cublasdx::arrangement_of<BLAS>::b == cublasdx::row_major);
+    const auto a_transpose = example::detail::get_cublas_transpose_mode(cublasdx::arrangement_of<BLAS>::a);
+    const auto b_transpose = example::detail::get_cublas_transpose_mode(cublasdx::arrangement_of<BLAS>::b);
+    static_assert(cublasdx::arrangement_of<BLAS>::c == cublasdx::arrangement::col_major, "Only column-major C matrix supported");
 
     // Run cuBLAS
-    copy(c, output, BLAS::c_size);
+    copy(c, output, m * n);
     CUBLAS_CHECK_AND_EXIT(cublasCgemm(handle,
                                       a_transpose,
                                       b_transpose,
@@ -75,7 +77,7 @@ void reference(const ValueType* a,
     CUFFT_CHECK_AND_EXIT(cufftDestroy(plan));
 }
 
-template<class FFT, class BLAS, class ValueType = typename BLAS::value_type>
+template<class FFT, class BLAS, class ValueType = typename example::uniform_value_type_t<BLAS>>
 __launch_bounds__(FFT::max_threads_per_block) __global__ void gemm_fft_fp16_kernel(const ValueType* a,
                                                                                    const ValueType* b,
                                                                                    const ValueType* c,
@@ -83,10 +85,10 @@ __launch_bounds__(FFT::max_threads_per_block) __global__ void gemm_fft_fp16_kern
                                                                                    const ValueType  beta,
                                                                                    ValueType*       output) {
     #if CUBLASDX_EXAMPLE_DETAIL_NVCC_12_2_BUG_WORKAROUND
-    using blas_complex_type = example::value_type_t<BLAS>;
+    using blas_complex_type = example::uniform_value_type_t<BLAS>;
     using fft_complex_type = example::value_type_t<FFT>;
     #else
-    using blas_complex_type = typename BLAS::value_type;
+    using blas_complex_type = example::uniform_value_type_t<BLAS>;
     using fft_complex_type  = typename FFT::value_type;
     #endif
 
@@ -96,9 +98,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__ void gemm_fft_fp16_kern
 
     extern __shared__ complex_type smem[];
 
-    complex_type* smem_a = smem;
-    complex_type* smem_b = smem_a + BLAS::a_size;
-    complex_type* smem_c = smem_b + BLAS::b_size;
+    auto [smem_a, smem_b, smem_c] = BLAS::slice_shared_memory(reinterpret_cast<char*>(smem));
 
     // Compute FFT(B, axis=0).
     fft_complex_type thread_data[FFT::storage_size];
@@ -117,16 +117,25 @@ __launch_bounds__(FFT::max_threads_per_block) __global__ void gemm_fft_fp16_kern
     // Compute C := alpha * A @ FFT(B, axis=0) + beta * C.
 
     // Load A and C from global to shared memory, B is already in shared memory after the FFT
-    example::io<BLAS>::load(smem_a, a, BLAS::a_size);
-    example::io<BLAS>::load(smem_c, c, BLAS::c_size);
-    __syncthreads();
+    auto a_global_tensor = cublasdx::make_tensor(a, BLAS::get_layout_gmem_a());
+    auto c_global_tensor = cublasdx::make_tensor(c, BLAS::get_layout_gmem_c());
+
+    auto a_shared_tensor = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_a());
+    auto b_shared_tensor = cublasdx::make_tensor(smem_b, BLAS::get_layout_smem_b());
+    auto c_shared_tensor = cublasdx::make_tensor(smem_c, BLAS::get_layout_smem_c());
+
+    using alignment = cublasdx::alignment_of<BLAS>;
+    cublasdx::copy<BLAS, alignment::a>(a_global_tensor, a_shared_tensor);
+    cublasdx::copy<BLAS, alignment::c>(c_global_tensor, c_shared_tensor);
+    cublasdx::copy_wait();
 
     // Execute GEMM: C = alpha * A @ FFT(B, axis=0) + beta * C.
-    BLAS().execute(alpha, smem_a, smem_b, beta, smem_c);
+    BLAS().execute(alpha, a_shared_tensor, b_shared_tensor, beta, c_shared_tensor);
     __syncthreads();
 
     // Store the results.
-    example::io<BLAS>::store(output, smem_c, BLAS::c_size);
+    auto out_global_tensor = cublasdx::make_tensor(output, BLAS::get_layout_gmem_c());
+    cublasdx::copy<BLAS, alignment::c>(c_shared_tensor, out_global_tensor);
 }
 
 // In this example cuBLASDx and cuFFTDx libraries are combined to perform GEMM and FFT in one pipeline for complex half-precision
@@ -158,26 +167,25 @@ int gemm_fft_fp16() {
     static_assert(batch_size == 2, "This example only supports a batch size of 2.");
     static_assert(std::is_same_v<precision_type, __half>, "This example only supports half-precision.");
 
-    using FFT          = decltype(cufftdx::Block() + cufftdx::Size<k>() + cufftdx::Type<cufftdx::fft_type::c2c>() +
-                             cufftdx::Direction<cufftdx::fft_direction::forward>() + cufftdx::Precision<precision_type>() +
-                             cufftdx::ElementsPerThread<2>() + cufftdx::FFTsPerBlock<batch_size>() + cufftdx::SM<Arch>());
+    using FFT  = decltype(cufftdx::Block() + cufftdx::Size<k>() + cufftdx::Type<cufftdx::fft_type::c2c>() +
+                          cufftdx::Direction<cufftdx::fft_direction::forward>() + cufftdx::Precision<precision_type>() +
+                          cufftdx::ElementsPerThread<2>() + cufftdx::FFTsPerBlock<batch_size>() + cufftdx::SM<Arch>());
 
     using BLAS = decltype(cublasdx::Size<m, n, k>() +
-                     cublasdx::Precision<precision_type>() +
-                     cublasdx::Type<cublasdx::type::complex>() +
-                     cublasdx::Function<cublasdx::function::MM>() +
-                     cublasdx::TransposeMode<cublasdx::transpose_mode::non_transposed,
-                                             cublasdx::transpose_mode::non_transposed>() +
-                     cublasdx::Block() +
-                     cublasdx::BlockDim<FFT::block_dim.x>() +
-                     cublasdx::SM<Arch>());
+                          cublasdx::Precision<precision_type>() +
+                          cublasdx::Type<cublasdx::type::complex>() +
+                          cublasdx::Function<cublasdx::function::MM>() +
+                          cublasdx::Arrangement<cublasdx::col_major, cublasdx::col_major>() +
+                          cublasdx::Block() +
+                          cublasdx::BlockDim<FFT::block_dim.x>() +
+                          cublasdx::SM<Arch>());
 
     #if CUBLASDX_EXAMPLE_DETAIL_NVCC_12_2_BUG_WORKAROUND
     using fft_complex_type = example::value_type_t<FFT>;
-    using blas_complex_type = example::value_type_t<BLAS>;
+    using blas_complex_type = example::uniform_value_type_t<BLAS>;
     #else
     using fft_complex_type = typename FFT::value_type;
-    using blas_complex_type = typename BLAS::value_type;
+    using blas_complex_type = example::uniform_value_type_t<BLAS>;
     #endif
     using complex_type = blas_complex_type;
 
@@ -195,17 +203,22 @@ int gemm_fft_fp16() {
     complex_type* b;
     complex_type* c;
     complex_type* output;
-    auto          size = (BLAS::a_size + // a
-                          BLAS::b_size + // b
-                          BLAS::c_size + // c
-                          BLAS::c_size   // output
+
+    constexpr auto global_a_size = example::global_memory_size_of<BLAS>::a_size;
+    constexpr auto global_b_size = example::global_memory_size_of<BLAS>::b_size;
+    constexpr auto global_c_size = example::global_memory_size_of<BLAS>::c_size;
+
+    auto          size = (global_a_size + // a
+                          global_b_size + // b
+                          global_c_size + // c
+                          global_c_size   // output
                          );
     auto          size_bytes = size * sizeof(complex_type);
     CUDA_CHECK_AND_EXIT(cudaMallocManaged(&buffer, size_bytes));
     a                = buffer;
-    b                = a + BLAS::a_size;
-    c                = b + BLAS::b_size;
-    output           = c + BLAS::c_size;
+    b                = a + global_a_size;
+    c                = b + global_b_size;
+    output           = c + global_c_size;
 
     complex_type alpha = {float(1), float(0)};
     complex_type beta  = {float(0), float(0)};
@@ -213,13 +226,13 @@ int gemm_fft_fp16() {
     // Fill the a, b, c matrices.
     {
         float base = cublasdx::size_of<BLAS>::m * cublasdx::size_of<BLAS>::k;
-        for (size_t i = 0; i < BLAS::a_size; i++) {
+        for (size_t i = 0; i < global_a_size; i++) {
             a[i] = complex_type {float(i) / base, float(i) / base};
         }
-        for (size_t i = 0; i < BLAS::b_size; i++) {
+        for (size_t i = 0; i < global_b_size; i++) {
             b[i] = complex_type {float(i) / base, float(i) / base};
         }
-        for (size_t i = 0; i < BLAS::c_size; i++) {
+        for (size_t i = 0; i < global_c_size; i++) {
             c[i] = complex_type {float(1) / base, float(1) / base};
         }
     }
@@ -262,17 +275,17 @@ int gemm_fft_fp16() {
 
     CUDA_CHECK_AND_EXIT(cudaMallocManaged(&reference_buffer, reference_size_bytes));
     reference_a                = reference_buffer;
-    reference_b                = reference_a + BLAS::a_size;
-    reference_c                = reference_b + BLAS::b_size;
-    reference_output           = reference_c + BLAS::c_size;
+    reference_b                = reference_a + global_a_size;
+    reference_c                = reference_b + global_b_size;
+    reference_output           = reference_c + global_c_size;
 
     reference_complex_type reference_alpha{alpha.real(), alpha.imag()};
     reference_complex_type reference_beta{beta.real(), beta.imag()};
 
     // Copy a, b, and c to the corresponding reference data buffers.
-    copy(a, reference_a, BLAS::a_size);
-    copy(b, reference_b, BLAS::b_size);
-    copy(c, reference_c, BLAS::c_size);
+    copy(a, reference_a, global_a_size);
+    copy(b, reference_b, global_b_size);
+    copy(c, reference_c, global_c_size);
 
     // cuBLAS+cuFFT
     reference<FFT, BLAS>(reference_a, reference_b, reference_c, reference_alpha, reference_beta, reference_output, stream);

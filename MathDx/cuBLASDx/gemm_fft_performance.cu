@@ -8,6 +8,7 @@
 
 #include "common.hpp"
 #include "block_io.hpp"
+#include "reference.hpp"
 
 #include <thrust/execution_policy.h>
 #include <thrust/device_ptr.h>
@@ -34,7 +35,7 @@ struct custom_unary_op
     }
 };
 
-template<class FFT, class GEMM, class ValueType = typename GEMM::value_type>
+template<class FFT, class GEMM, class ValueType = example::uniform_value_type_t<GEMM>>
 double measure_cublas_cufft(ValueType*         a,
                             ValueType*         b,
                             ValueType*         c,
@@ -51,15 +52,18 @@ double measure_cublas_cufft(ValueType*         a,
     cublasHandle_t handle;
     CUBLAS_CHECK_AND_EXIT(cublasCreate(&handle));
     CUBLAS_CHECK_AND_EXIT(cublasSetStream(handle, stream));
-    constexpr bool is_a_transposed =
-        (cublasdx::transpose_mode_of<GEMM>::a_transpose_mode == cublasdx::transpose_mode::transposed);
-    constexpr bool is_b_transposed =
-        (cublasdx::transpose_mode_of<GEMM>::b_transpose_mode == cublasdx::transpose_mode::transposed);
-    const auto a_transpose = is_a_transposed ? CUBLAS_OP_T : CUBLAS_OP_N;
-    const auto b_transpose = is_b_transposed ? CUBLAS_OP_T : CUBLAS_OP_N;
+    constexpr bool is_a_transposed = (cublasdx::arrangement_of<GEMM>::a == cublasdx::row_major);
+    constexpr bool is_b_transposed = (cublasdx::arrangement_of<GEMM>::b == cublasdx::row_major);
+    const auto a_transpose = example::detail::get_cublas_transpose_mode(cublasdx::arrangement_of<GEMM>::a);
+    const auto b_transpose = example::detail::get_cublas_transpose_mode(cublasdx::arrangement_of<GEMM>::b);
+    static_assert(cublasdx::arrangement_of<GEMM>::c == cublasdx::arrangement::col_major, "Only column-major C matrix supported");
+
+    constexpr auto global_a_size = example::global_memory_size_of<GEMM>::a_size;
+    constexpr auto global_b_size = example::global_memory_size_of<GEMM>::b_size;
+    constexpr auto global_c_size = example::global_memory_size_of<GEMM>::c_size;
 
     // Prepare cuFFT
-    const unsigned int fft_size = GEMM::c_size;
+    const unsigned int fft_size = global_c_size;
 
     cufftHandle plan;
     CUFFT_CHECK_AND_EXIT(cufftPlan1d(&plan, fft_size, CUFFT_C2C, batch_size));
@@ -79,7 +83,7 @@ double measure_cublas_cufft(ValueType*         a,
             // Transform output
             thrust::transform(execution_policy,
                               thrust::device_pointer_cast(a),
-                              thrust::device_pointer_cast(a) + GEMM::a_size * batch_size,
+                              thrust::device_pointer_cast(a) + global_a_size * batch_size,
                               thrust::device_pointer_cast(a),
                               unary_op);
             // Run cuBLAS
@@ -92,14 +96,14 @@ double measure_cublas_cufft(ValueType*         a,
                                                             reinterpret_cast<const cuFloatComplex*>(&alpha),
                                                             reinterpret_cast<const cuFloatComplex*>(a),
                                                             is_a_transposed ? k : m,
-                                                            GEMM::a_size,
+                                                            global_a_size,
                                                             reinterpret_cast<const cuFloatComplex*>(b),
                                                             is_b_transposed ? n : k,
-                                                            GEMM::b_size,
+                                                            global_b_size,
                                                             reinterpret_cast<const cuFloatComplex*>(&beta),
                                                             reinterpret_cast<cuFloatComplex*>(c),
                                                             m,
-                                                            GEMM::c_size,
+                                                            global_c_size,
                                                             batch_size));
             // Run cuFFT
             CUFFT_CHECK_AND_EXIT(cufftExecC2C(
@@ -107,7 +111,7 @@ double measure_cublas_cufft(ValueType*         a,
             // Transform output
             thrust::transform(execution_policy,
                               thrust::device_pointer_cast(output),
-                              thrust::device_pointer_cast(output) + GEMM::c_size * batch_size,
+                              thrust::device_pointer_cast(output) + global_c_size * batch_size,
                               thrust::device_pointer_cast(output),
                               unary_op);
         },
@@ -128,7 +132,7 @@ inline __device__ unsigned int batch_offset(const unsigned int local_fft_id,
     return ffts_per_block == 1 ? 0 : (cufftdx::size_of<FFT>::value * local_fft_id);
 }
 
-template<class FFT, class GEMM, class ValueType = typename GEMM::value_type>
+template<class FFT, class GEMM, class ValueType = example::uniform_value_type_t<GEMM>>
 __launch_bounds__(FFT::max_threads_per_block) __global__ void gemm_fft_kernel(const ValueType* a,
                                                                               const ValueType* b,
                                                                               const ValueType* c,
@@ -136,10 +140,10 @@ __launch_bounds__(FFT::max_threads_per_block) __global__ void gemm_fft_kernel(co
                                                                               const ValueType  beta,
                                                                               ValueType*       output) {
     #if CUBLASDX_EXAMPLE_DETAIL_NVCC_12_2_BUG_WORKAROUND
-    using blas_complex_type = example::value_type_t<GEMM>;
-    using fft_complex_type = example::value_type_t<FFT>;
+    using blas_complex_type = example::uniform_value_type_t<GEMM>;
+    using fft_complex_type  = example::value_type_t<FFT>;
     #else
-    using blas_complex_type = typename GEMM::value_type;
+    using blas_complex_type = example::uniform_value_type_t<GEMM>;
     using fft_complex_type  = typename FFT::value_type;
     #endif
     static_assert(std::is_same_v<fft_complex_type, blas_complex_type>, "BLAS and FFT complex type should match");
@@ -150,26 +154,36 @@ __launch_bounds__(FFT::max_threads_per_block) __global__ void gemm_fft_kernel(co
 
     extern __shared__ complex_type smem[];
 
+    constexpr auto global_a_size = example::global_memory_size_of<GEMM>::a_size;
+    constexpr auto global_b_size = example::global_memory_size_of<GEMM>::b_size;
+    constexpr auto global_c_size = example::global_memory_size_of<GEMM>::c_size;
+
     // cuBLASDx
     constexpr auto m = cublasdx::size_of<GEMM>::m;
     constexpr auto n = cublasdx::size_of<GEMM>::n;
     constexpr auto k = cublasdx::size_of<GEMM>::k;
 
     // Select batch for this CUDA block
-    const value_type* batch_a      = a + (blockIdx.x * GEMM::a_size);
-    const value_type* batch_b      = b + (blockIdx.x * GEMM::b_size);
-    const value_type* batch_c      = c + (blockIdx.x * GEMM::c_size);
-    value_type*       batch_output = output + (blockIdx.x * GEMM::c_size);
+    const value_type* batch_a      = a      + (blockIdx.x * global_a_size);
+    const value_type* batch_b      = b      + (blockIdx.x * global_b_size);
+    const value_type* batch_c      = c      + (blockIdx.x * global_c_size);
+    value_type*       batch_output = output + (blockIdx.x * global_c_size);
 
-    complex_type* smem_a = smem;
-    complex_type* smem_b = smem + GEMM::a_size;
-    complex_type* smem_c = smem + GEMM::a_size + GEMM::b_size;
+    auto a_global_tensor = cublasdx::make_tensor(batch_a, GEMM::get_layout_gmem_a());
+    auto b_global_tensor = cublasdx::make_tensor(batch_b, GEMM::get_layout_gmem_b());
+    auto c_global_tensor = cublasdx::make_tensor(batch_c, GEMM::get_layout_gmem_c());
+
+    auto [smem_a, smem_b, smem_c] = GEMM::slice_shared_memory(reinterpret_cast<char*>(smem));
+    auto a_shared_tensor = cublasdx::make_tensor(smem_a, GEMM::get_layout_smem_a());
+    auto b_shared_tensor = cublasdx::make_tensor(smem_b, GEMM::get_layout_smem_b());
+    auto c_shared_tensor = cublasdx::make_tensor(smem_c, GEMM::get_layout_smem_c());
 
     // Load a, b, c from global to shared memory
-    example::io<GEMM>::a_fast_load<block_size>(smem_a, batch_a);
-    example::io<GEMM>::b_fast_load<block_size>(smem_b, batch_b);
-    example::io<GEMM>::c_fast_load<block_size>(smem_c, batch_c);
-    __syncthreads();
+    using alignment = cublasdx::alignment_of<GEMM>;
+    cublasdx::copy<GEMM, alignment::a>(a_global_tensor, a_shared_tensor);
+    cublasdx::copy<GEMM, alignment::b>(b_global_tensor, b_shared_tensor);
+    cublasdx::copy<GEMM, alignment::c>(c_global_tensor, c_shared_tensor);
+    cublasdx::copy_wait();
 
     // Transform A
     custom_unary_op<complex_type> unary_op;
@@ -180,7 +194,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__ void gemm_fft_kernel(co
     example::transform(smem_a, GEMM::a_size, transformer);
 
     // Execute GEMM
-    GEMM().execute(alpha, smem_a, smem_b, beta, smem_c);
+    GEMM().execute(alpha, a_shared_tensor, b_shared_tensor, beta, c_shared_tensor);
     __syncthreads();
 
     // cuFFTDx
@@ -268,7 +282,7 @@ int gemm_fft() {
     static_assert((fft_size / block_size) >= 2, "Block size is too big");
     constexpr unsigned int fft_ept  = fft_size / block_size;
 
-    using FFT          = decltype(cufftdx::Block() + cufftdx::Size<fft_size>() + cufftdx::Type<cufftdx::fft_type::c2c>() +
+    using FFT = decltype(cufftdx::Block() + cufftdx::Size<fft_size>() + cufftdx::Type<cufftdx::fft_type::c2c>() +
                          cufftdx::Direction<cufftdx::fft_direction::forward>() + cufftdx::Precision<float>() +
                          cufftdx::ElementsPerThread<fft_ept>() + cufftdx::FFTsPerBlock<1>() + cufftdx::SM<Arch>());
 
@@ -284,10 +298,10 @@ int gemm_fft() {
                  cublasdx::SM<Arch>());
 
     #if CUBLASDX_EXAMPLE_DETAIL_NVCC_12_2_BUG_WORKAROUND
-    using blas_complex_type = example::value_type_t<GEMM>;
+    using blas_complex_type = example::uniform_value_type_t<GEMM>;
     using fft_complex_type = example::value_type_t<FFT>;
     #else
-    using blas_complex_type = typename GEMM::value_type;
+    using blas_complex_type = example::uniform_value_type_t<GEMM>;
     using fft_complex_type = typename FFT::value_type;
     #endif
 
@@ -304,12 +318,16 @@ int gemm_fft() {
     static_assert(sizeof(fft_complex_type) == sizeof(blas_complex_type),
                   "FFT::value_type matches as GEMM::value_type");
 
+    constexpr auto global_a_size = example::global_memory_size_of<GEMM>::a_size;
+    constexpr auto global_b_size = example::global_memory_size_of<GEMM>::b_size;
+    constexpr auto global_c_size = example::global_memory_size_of<GEMM>::c_size;
+
     // Get single batch size
-    auto single_batch_size = (GEMM::a_size + // a
-                              GEMM::b_size + // b
-                              GEMM::c_size + // c
-                              GEMM::c_size + // output
-                              GEMM::c_size   // reference_output
+    auto single_batch_size = (global_a_size + // a
+                              global_b_size + // b
+                              global_c_size + // c
+                              global_c_size + // output
+                              global_c_size   // reference_output
     );
     auto single_batch_size_bytes = single_batch_size * sizeof(complex_type);
 
@@ -350,10 +368,10 @@ int gemm_fft() {
     CUDA_CHECK_AND_EXIT(cudaMalloc(&buffer, size_bytes));
     #endif
     a                = buffer;
-    b                = a + (batches * GEMM::a_size);
-    c                = b + (batches * GEMM::b_size);
-    output           = c + (batches * GEMM::c_size);
-    reference_output = output + (batches * GEMM::c_size);
+    b                = a + (batches * global_a_size);
+    c                = b + (batches * global_b_size);
+    output           = c + (batches * global_c_size);
+    reference_output = output + (batches * global_a_size);
 
     // Se alpha and beta for GEMM
     complex_type alpha = example::make_value<complex_type>(1., 1.);
@@ -362,20 +380,20 @@ int gemm_fft() {
     #ifdef CORRECTNESS
     // Fill the a, b, c matrices
     {
-        float base = GEMM::c_size * cublasdx::size_of<GEMM>::k;
-        for (size_t i = 0; i < batches * GEMM::a_size; i++) {
+        float base = global_c_size * cublasdx::size_of<GEMM>::k;
+        for (size_t i = 0; i < batches * global_a_size; i++) {
             a[i] = example::make_value<complex_type>(float(i) / base, float(i) / base);
         }
-        for (size_t i = 0; i < batches * GEMM::b_size; i++) {
+        for (size_t i = 0; i < batches * global_b_size; i++) {
             b[i] = example::make_value<complex_type>(float(i) / base, float(i) / base);
         }
-        for (size_t i = 0; i < batches * GEMM::c_size; i++) {
+        for (size_t i = 0; i < batches * global_c_size; i++) {
             c[i] = example::make_value<complex_type>(float(1) / base, float(1) / base);
         }
-        for (size_t i = 0; i < batches * GEMM::c_size; i++) {
+        for (size_t i = 0; i < batches * global_c_size; i++) {
             output[i] = example::make_value<complex_type>(float(-1), float(-1));
         }
-        for (size_t i = 0; i < batches * GEMM::c_size; i++) {
+        for (size_t i = 0; i < batches * global_c_size; i++) {
             reference_output[i] = example::make_value<complex_type>(float(-1), float(-1));
         }
     }
