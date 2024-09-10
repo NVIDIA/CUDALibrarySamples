@@ -1,48 +1,64 @@
 # CUDA Library Samples
 
-CUDA Library Samples contains examples demonstrating the use of
-features in the
-* math and image processing libraries,
-* cuBLAS,
-* cuTENSOR,
-* cuSPARSE,
-* cuSOLVER,
-* cuFFT,
-* cuRAND,
-* NPP,
-* nvJPEG
-* nvCOMP
-* etc.
+The **CUDA Library Samples** repository contains various examples that demonstrate the use of GPU-accelerated libraries in CUDA. These libraries enable high-performance computing in a wide range of applications, including math operations, image processing, signal processing, linear algebra, and compression. The samples included cover:
+
+- **Math and Image Processing Libraries**
+- **cuBLAS** (Basic Linear Algebra Subprograms)
+- **cuTENSOR** (Tensor Linear Algebra)
+- **cuSPARSE** (Sparse Matrix Operations)
+- **cuSOLVER** (Dense and Sparse Solvers)
+- **cuFFT** (Fast Fourier Transform)
+- **cuRAND** (Random Number Generation)
+- **NPP** (Image and Video Processing)
+- **nvJPEG** (JPEG Encode/Decode)
+- **nvCOMP** (Data Compression)
+- **and more...**
 
 ## About
 
-The CUDA Library Samples are released by NVIDIA Corporation as Open Source software under the
-3-clause "New" BSD license.
+The CUDA Library Samples are provided by NVIDIA Corporation as Open Source software, released under the 3-clause "New" BSD license. These examples showcase how to leverage GPU-accelerated libraries for efficient computation across various fields.
 
-More information can be found about our libraries under [GPU Accelerated Libraries](https://developer.nvidia.com/gpu-accelerated-libraries).
+For more information on the available libraries and their uses, visit [GPU Accelerated Libraries](https://developer.nvidia.com/gpu-accelerated-libraries).
 
 ## Library Examples
 
-* [cuBLAS - GPU-accelerated basic linear algebra (BLAS) library](cuBLAS/)
-* [cuBLASLt - Lightweight GPU-accelerated basic linear algebra (BLAS) library](cuBLASLt/)
-* [cuBLASMp - Multi-process GPU-accelerated basic linear algebra (BLAS) library](cuBLASMp/)
-* [cuBLASDx - GPU-accelerated device-side API extensions for BLAS calculations](MathDx/cuBLASDx)
-* [cuDSS - GPU-accelerated linear solvers](cuDSS/)
-* [cuFFT - GPU-accelerated library for Fast Fourier Transforms](cuFFT/)
-* [cuFFTMp - Multi-process GPU-accelerated library for Fast Fourier Transforms](cuFFTMp/)
-* [cuFFTDx - GPU-accelerated device-side API extensions for FFT calculations](MathDx/cuFFTDx)
-* [cuRAND - GPU-accelerated random number generation (RNG)](cuRAND/)
-* [cuSOLVER - GPU-accelerated dense and sparse direct solvers](cuSOLVER/)
-* [cuSOLVERMp - Multi-process GPU-accelerated dense and sparse direct solvers](cuSOLVERMp/)
-* [cuSPARSE - GPU-accelerated BLAS for sparse matrices](cuSPARSE/)
-* [cuSPARSELt - Lightweight GPU-accelerated BLAS for sparse matrices](cuSPARSELt/)
-* [cuTENSOR - GPU-accelerated tensor linear algebra library](cuTENSOR/)
-* [cuTENSORMg - Multi-GPU GPU-accelerated tensor linear algebra library](cuTENSORMg/)
-* [NPP - Provides GPU-accelerated image, video, and signal processing functions](NPP/)
-* [nvJPEG - High performance GPU-accelerated library for JPEG encode/decoding](nvJPEG/)
-* [nvJPEG2000 - High performance GPU-accelerated library for JPEG2000 encoding/decoding](nvJPEG2000/)
-* [nvTIFF - GPU-accelerated TIFF encoding/decoding](nvTIFF/)
-* [nvCOMP - GPU-accelerated data compression and decompression library](nvCOMP/)
+Explore the examples of each CUDA library included in this repository:
+
+- [cuBLAS - GPU-accelerated basic linear algebra (BLAS) library](cuBLAS/)
+- [cuBLASLt - Lightweight BLAS library](cuBLASLt/)
+- [cuBLASMp - Multi-process BLAS library](cuBLASMp/)
+- [cuBLASDx - Device-side BLAS extensions](MathDx/cuBLASDx/)
+- [cuDSS - GPU-accelerated linear solvers](cuDSS/)
+- [cuFFT - Fast Fourier Transforms](cuFFT/)
+- [cuFFTMp - Multi-process FFT](cuFFTMp/)
+- [cuFFTDx - Device-side FFT extensions](MathDx/cuFFTDx/)
+- [cuRAND - Random number generation](cuRAND/)
+- [cuSOLVER - Dense and sparse direct solvers](cuSOLVER/)
+- [cuSOLVERMp - Multi-process solvers](cuSOLVERMp/)
+- [cuSPARSE - BLAS for sparse matrices](cuSPARSE/)
+- [cuSPARSELt - Lightweight BLAS for sparse matrices](cuSPARSELt/)
+- [cuTENSOR - Tensor linear algebra library](cuTENSOR/)
+- [cuTENSORMg - Multi-GPU tensor linear algebra](cuTENSORMg/)
+- [NPP - GPU-accelerated image, video, and signal processing functions](NPP/)
+- [NPP+ - C++ extensions for NPP](NPP+/)
+- [nvJPEG - High-performance JPEG encode/decode](nvJPEG/)
+- [nvJPEG2000 - JPEG2000 encoding/decoding](nvJPEG2000/)
+- [nvTIFF - TIFF encoding/decoding](nvTIFF/)
+- [nvCOMP - Data compression and decompression](nvCOMP/)
+
+Each sample provides a practical use case for how to apply these libraries in real-world scenarios, showcasing the power and flexibility of CUDA for a wide variety of computational needs.
+
+## Additional Resources
+
+For more information and documentation on CUDA libraries, please visit:
+
+- [CUDA Toolkit Documentation](https://docs.nvidia.com/cuda/)
+- [NVIDIA Developer Zone](https://developer.nvidia.com/)
+- [CUDA Samples](https://github.com/NVIDIA/cuda-samples)
+
+## License
+
+The CUDA Library Samples are distributed under the 3-clause "New" BSD license. For more details, refer to the license terms below:
 
 ## Copyright
 
