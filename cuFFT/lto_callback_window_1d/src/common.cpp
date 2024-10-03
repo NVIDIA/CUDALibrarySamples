@@ -32,10 +32,10 @@
 #include "common.h"
 
 // Wave parameters
-constexpr unsigned waves                =  12;
-constexpr float    signal_max_A         =  20.;
-constexpr float    signal_max_f         = 500.;
-constexpr float    sampling_dt          = 1e-3;
+constexpr unsigned waves        =  12;
+constexpr float    signal_max_A =  20.;
+constexpr float    signal_max_f = 500.;
+constexpr float    sampling_dt  = 1e-3;
 
 // Initialize the input signal as a composite of sine waves
 // with random amplitudes and frequencies

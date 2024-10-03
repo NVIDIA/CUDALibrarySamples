@@ -67,7 +67,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 add_executable(r2c_c2r_lto_callback_example)
 add_executable(r2c_c2r_lto_nvrtc_callback_example)
-add_executable(r2c_c2r_callback_example)
+add_executable(r2c_c2r_legacy_callback_example)
 
 target_include_directories(r2c_c2r_lto_callback_example
                            PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES} 
@@ -77,7 +77,7 @@ target_include_directories(r2c_c2r_lto_nvrtc_callback_example
                            PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES} 
                            ${CMAKE_SOURCE_DIR}/../utils
                            ${CMAKE_SOURCE_DIR}/src)
-target_include_directories(r2c_c2r_callback_example
+target_include_directories(r2c_c2r_legacy_callback_example
                            PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES} 
                            ${CMAKE_SOURCE_DIR}/../utils
                            ${CMAKE_SOURCE_DIR}/src)
@@ -93,15 +93,15 @@ target_sources(r2c_c2r_lto_nvrtc_callback_example
                        ${PROJECT_SOURCE_DIR}/src/common.cpp
                        ${PROJECT_SOURCE_DIR}/src/r2c_c2r_reference.cu)
 
-target_sources(r2c_c2r_callback_example
-               PRIVATE ${PROJECT_SOURCE_DIR}/src/r2c_c2r_callback_example.cu
+target_sources(r2c_c2r_legacy_callback_example
+               PRIVATE ${PROJECT_SOURCE_DIR}/src/r2c_c2r_legacy_callback_example.cu
                        ${PROJECT_SOURCE_DIR}/src/common.cpp
                        ${PROJECT_SOURCE_DIR}/src/r2c_c2r_reference.cu)
 
 target_compile_definitions(r2c_c2r_lto_nvrtc_callback_example PRIVATE CUDA_ARCH=${CUDA_LTO_ARCHITECTURE} CUDA_PATH=${CUDAToolkit_BIN_DIR}/.. -DSOURCE_PATH=${CMAKE_SOURCE_DIR}/src)
 
-set_target_properties(r2c_c2r_callback_example PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON
-                                                          CUDA_SEPARABLE_COMPILATION ON)
+set_target_properties(r2c_c2r_legacy_callback_example PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON
+                                                                 CUDA_SEPARABLE_COMPILATION ON)
 
 add_custom_command(
     OUTPUT  ${CMAKE_BINARY_DIR}/r2c_c2r_lto_callback_device.fatbin ${CMAKE_SOURCE_DIR}/src/r2c_c2r_lto_callback_device_fatbin.h
@@ -113,4 +113,4 @@ add_custom_command(
 
 target_link_libraries(r2c_c2r_lto_callback_example PRIVATE CUDA::cufft CUDA::cudart CUDA::nvJitLink)
 target_link_libraries(r2c_c2r_lto_nvrtc_callback_example PRIVATE CUDA::cufft CUDA::cudart CUDA::nvJitLink CUDA::nvrtc)
-target_link_libraries(r2c_c2r_callback_example PRIVATE CUDA::cufft_static CUDA::cudart CUDA::culibos)
+target_link_libraries(r2c_c2r_legacy_callback_example PRIVATE CUDA::cufft_static CUDA::cudart CUDA::culibos)
