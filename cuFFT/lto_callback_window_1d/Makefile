@@ -29,7 +29,7 @@ DEFINES = -DCUDA_ARCH=$(CUDA_LTO_ARCH) -DCUDA_PATH=$(CUDA_PATH) -DSOURCE_PATH=${
 ###########################################################################################################
 # Rules
 
-all: bin/r2c_c2r_lto_callback_example bin/r2c_c2r_lto_nvrtc_callback_example bin/r2c_c2r_callback_example
+all: bin/r2c_c2r_lto_callback_example bin/r2c_c2r_lto_nvrtc_callback_example bin/r2c_c2r_legacy_callback_example
 
 # LTO example
 bin/r2c_c2r_lto_callback_example: build/r2c_c2r_lto_callback_example.o build/r2c_c2r_reference.o build/common.o
@@ -55,10 +55,10 @@ build/r2c_c2r_lto_nvrtc_callback_example.o: src/r2c_c2r_lto_nvrtc_callback_examp
 # NOTE: we compile the sample with nvcc and do device-linking against the static library. With the
 # LTO sample, on the other hand, we only need to do separate compilation of the callback function; 
 # we can use the dynamic library and compile the host code with the host compiler
-build/r2c_c2r_callback_example.o: src/r2c_c2r_callback_example.cu
+build/r2c_c2r_legacy_callback_example.o: src/r2c_c2r_legacy_callback_example.cu
 	$(NVCC) -I $(INCLUDES) --std=c++11 $(GENCODE_FLAGS) -dc -c $< -o $@ 
 
-bin/r2c_c2r_callback_example: build/r2c_c2r_callback_example.o build/r2c_c2r_reference.o build/common.o
+bin/r2c_c2r_legacy_callback_example: build/r2c_c2r_legacy_callback_example.o build/r2c_c2r_reference.o build/common.o
 	$(NVCC) -L $(LIBS) $(GENCODE_FLAGS) -o $@ $^ -lcufft_static -lcudart -lculibos
 
 # Reference
