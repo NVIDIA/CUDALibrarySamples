@@ -89,7 +89,7 @@ void scaling_kernel(cufftComplex* data, int element_count, float scale) {
     const int tid = threadIdx.x + blockIdx.x * blockDim.x;
     const int stride = blockDim.x * gridDim.x;
     for (auto i = tid; i<element_count; i+= stride) {
-        data[tid].x *= scale;
-        data[tid].y *= scale;
+        data[i].x *= scale;
+        data[i].y *= scale;
     }
 }
