@@ -1,7 +1,7 @@
 from enum import Enum
 
 import jax
-from jax.experimental import PartitionSpec
+from jax.sharding import PartitionSpec
 
 
 class Dist(Enum):
