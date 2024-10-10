@@ -31,14 +31,18 @@
 using AB_t         = __nv_fp8_e4m3;
 using C_t          = __half;
 using COMPUTE_t    = float;
+using Bias_t       = C_t;
 #elif AB_TYPE == FP16
 using AB_t         = __half;
 using C_t          = __half;
 using COMPUTE_t    = float;
+using Bias_t       = C_t;
 #elif AB_TYPE == INT8
 using AB_t         = int8_t;
 using C_t          = int8_t; // can also be __half, __nv_bfloat16, int
 using COMPUTE_t    = int;
+// for bias type, refer to https://docs.nvidia.com/cuda/cusparselt/types.html#cusparseltmatmuldescattribute-t
+using Bias_t       = float; 
 #endif
                               
 template <typename T>
@@ -55,6 +59,11 @@ struct cuda_type <__half> {
 };
 
 template <>
+struct cuda_type <__nv_bfloat16> {
+    static constexpr cudaDataType value = CUDA_R_16BF;
+};
+
+template <>
 struct cuda_type <__nv_fp8_e4m3> {
     static constexpr cudaDataType value = CUDA_R_8F_E4M3;
 };
@@ -62,6 +71,11 @@ struct cuda_type <__nv_fp8_e4m3> {
 template <>
 struct cuda_type <int8_t> {
     static constexpr cudaDataType value = CUDA_R_8I;
+};
+
+template <>
+struct cuda_type <int> {
+    static constexpr cudaDataType value = CUDA_R_32I;
 };
 
 template <typename value_t>
@@ -303,11 +317,11 @@ int main(void) {
     //--------------------------------------------------------------------------
     // SET BIAS POINTER
     void* dBias;
-    auto  hBias = new float[m];
+    auto  hBias = new Bias_t[m];
     for (int i = 0; i < m; i++)
-        hBias[i] = 1.0f;
-    CHECK_CUDA( cudaMalloc((void**) &dBias, m * sizeof(float)) )
-    CHECK_CUDA( cudaMemcpy(dBias, hBias, m * sizeof(float),
+        hBias[i] = static_cast<Bias_t>(1.0f);
+    CHECK_CUDA( cudaMalloc((void**) &dBias, m * sizeof(Bias_t)) )
+    CHECK_CUDA( cudaMemcpy(dBias, hBias, m * sizeof(Bias_t),
                            cudaMemcpyHostToDevice) )
     CHECK_CUSPARSE( cusparseLtMatmulDescSetAttribute(&handle, &matmul,
                                                 CUSPARSELT_MATMUL_BIAS_POINTER,
@@ -370,9 +384,6 @@ int main(void) {
 
     CHECK_CUSPARSE( cusparseLtSpMMACompress(&handle, &plan, dA, dA_compressed,
                                             dA_compressedBuffer,stream) )
-    //--------------------------------------------------------------------------
-    // Plan initialization
-    CHECK_CUSPARSE( cusparseLtMatmulPlanInit(&handle, &plan, &matmul, &alg_sel))
 
     void*  d_workspace    = nullptr;
     size_t workspace_size = 0;
