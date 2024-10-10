@@ -49,6 +49,11 @@ struct cuda_type <__half> {
 };
 
 template <>
+struct cuda_type <__nv_bfloat16> {
+    static constexpr cudaDataType value = CUDA_R_16BF;
+};
+
+template <>
 struct cuda_type <__nv_fp8_e4m3> {
     static constexpr cudaDataType value = CUDA_R_8F_E4M3;
 };
@@ -56,6 +61,11 @@ struct cuda_type <__nv_fp8_e4m3> {
 template <>
 struct cuda_type <int8_t> {
     static constexpr cudaDataType value = CUDA_R_8I;
+};
+
+template <>
+struct cuda_type <int> {
+    static constexpr cudaDataType value = CUDA_R_32I;
 };
 
 template <typename value_t>
@@ -262,18 +272,10 @@ int main(void) {
                                                streams, num_streams) )
         // dC accumulates so reset dC for correctness check
         CHECK_CUDA( cudaMemcpy(dC, hC, C_size, cudaMemcpyHostToDevice) )
-    } else {
-    // otherwise, it is possible to set it directly:
-        int alg = 0;
-        CHECK_CUSPARSE( cusparseLtMatmulAlgSetAttribute(
-                                               &handle, &alg_sel,
-                                               CUSPARSELT_MATMUL_ALG_CONFIG_ID,
-                                               &alg, sizeof(alg)))
     }
 
     //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     size_t workspace_size;
-    CHECK_CUSPARSE( cusparseLtMatmulPlanInit(&handle, &plan, &matmul, &alg_sel))
 
     CHECK_CUSPARSE( cusparseLtMatmulGetWorkspace(&handle, &plan,
                                                  &workspace_size))
