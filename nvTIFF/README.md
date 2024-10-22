@@ -12,9 +12,9 @@ TIFF Image Decoding and Encoding from nvTIFF Library
 
 [TIFF Image Decoder Encoder](nvTIFF-Decode-Encode/)
 
-[TIFF Image Decoder - Python](nvTIFF-Python-Example/)
-
 [GeoTIFF Image Decoder](nvTIFF-GeoTIFF-Decode/)
+
+[TIFF Image Decoding with ROI](nvTIFF-Decode-Image-ROI/)
 
 
 ## Supported SM Architectures
@@ -27,7 +27,7 @@ Linux, Windows
 
 ## Supported CPU Architecture
 
-x86_64
+x86_64, arm64-sbsa, aarch64-jetson
 
 ## CUDA APIs involved
 [nvTIFF](https://docs.nvidia.com/cuda/nvtiff/index.html)
