@@ -155,20 +155,19 @@ void tearDown() // Clean up and tear down
         free(pContoursOrderedGeometryImageHost); 
 }
 
-const std::string & Path = std::string("images/");
+const auto Path = std::string("images/");
 
-const std::string & InputFile0 = Path + std::string("CircuitBoard_2048x1024_8u.raw");
+const auto InputFile0 = Path + "CircuitBoard_2048x1024_8u.raw";
 
-const std::string & LabelMarkersOutputFile0 = Path + std::string("CircuitBoard_LabelMarkersUF_8Way_2048x1024_32u.raw");
+const auto LabelMarkersOutputFile0 = Path + "CircuitBoard_LabelMarkersUF_8Way_2048x1024_32u.raw";
 
-const std::string & CompressedMarkerLabelsOutputFile0 = Path + std::string("CircuitBoard_CompressedMarkerLabelsUF_8Way_2048x1024_32u.raw");
+const auto CompressedMarkerLabelsOutputFile0 = Path + "CircuitBoard_CompressedMarkerLabelsUF_8Way_2048x1024_32u.raw";
 
-const std::string & ContoursOutputFile0 = Path + std::string("CircuitBoard_Contours_8Way_2048x1024_8u.raw");
+const auto ContoursOutputFile0 = Path + "CircuitBoard_Contours_8Way_2048x1024_8u.raw";
 
-const std::string & ContoursDirectionOutputFile0 = Path + std::string("CircuitBoard_ContoursDirection_8Way_2048x1024_8u.raw");
+const auto ContoursDirectionOutputFile0 = Path + "CircuitBoard_ContoursDirection_8Way_2048x1024_8u.raw";
 
-const std::string & ContoursReconstructedFile0 = Path + std::string("CircuitBoard_ContoursReconstructed_8Way_2048x1024_8u.raw");
-
+const auto ContoursReconstructedFile0 = Path + "CircuitBoard_ContoursReconstructed_8Way_2048x1024_8u.raw";
 int 
 loadRaw8BitImage(Npp8u * pImage, int nWidth, int nHeight, int nImage)
 {
