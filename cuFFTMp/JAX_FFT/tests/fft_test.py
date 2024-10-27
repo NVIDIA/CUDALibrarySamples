@@ -13,8 +13,10 @@ from jax.experimental.pjit import pjit
 from fft_common import Dist, Dir
 from cufftmp_jax import cufftmp
 from xfft import xfft
-
+from jax.sharding import Mesh, NamedSharding
+from jax.sharding import PartitionSpec as P
 import helpers
+from jax.experimental import mesh_utils, multihost_utils
 
 
 def main():
@@ -45,10 +47,17 @@ def main():
         raise ValueError(f"Wrong implementation: got {impl}, expected cufftmp or xfft")
 
     dist = Dist.create(opt['dist'])
+    if dist == Dist.SLABS_X:
+        pdims = [jax.device_count(), 1]
+        axis_names = ('gpus', None)
+    elif dist == Dist.SLABS_Y:
+        pdims = [1, jax.device_count()]
+        axis_names = (None, 'gpus')
     input_shape = dist.slab_shape(fft_dims)
     dtype = jnp.complex64
 
-    mesh = maps.Mesh(np.asarray(jax.devices()), ('gpus',))
+    devices = mesh_utils.create_device_mesh(pdims)
+    mesh = Mesh(devices, axis_names=axis_names)
 
     with jax.spmd_mode('allow_all'):
 
@@ -60,10 +69,7 @@ def main():
 
             with mesh:
 
-                fft = pjit(dist_fft,
-                           in_axis_resources=None,
-                           out_axis_resources=None,
-                           static_argnums=[1, 2])
+                fft = jax.jit(dist_fft,static_argnums=[1, 2])
 
                 output = fft(input, dist, Dir.FWD)
 
