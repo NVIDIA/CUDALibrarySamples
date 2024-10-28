@@ -65,6 +65,17 @@
         }                                                                                                              \
     } while (0)
 
+#define NVSHMEM_CHECK(call)                                                                                            \
+    do                                                                                                                 \
+    {                                                                                                                  \
+        int status = call;                                                                                             \
+        if (status != 0)                                                                                               \
+        {                                                                                                              \
+            fprintf(stderr, "NVSHMEM error at %s:%d : %d\n", __FILE__, __LINE__, status);                              \
+            exit(EXIT_FAILURE);                                                                                        \
+        }                                                                                                              \
+    } while (0)
+
 #define CAL_CHECK(call)                                                                                                \
     do                                                                                                                 \
     {                                                                                                                  \
@@ -87,13 +98,13 @@
         }                                                                                                              \
     } while (0)
 
-#define CUBLAS_CHECK(call)                                                                                             \
+#define CUBLASMP_CHECK(call)                                                                                           \
     do                                                                                                                 \
     {                                                                                                                  \
-        cublasStatus_t status = call;                                                                                  \
-        if (status != CUBLAS_STATUS_SUCCESS)                                                                           \
+        cublasMpStatus_t status = call;                                                                                \
+        if (status != CUBLASMP_STATUS_SUCCESS)                                                                         \
         {                                                                                                              \
-            fprintf(stderr, "cuBLAS error at %s:%d : %d\n", __FILE__, __LINE__, status);                               \
+            fprintf(stderr, "cuBLASMp error at %s:%d : %d\n", __FILE__, __LINE__, status);                             \
             exit(EXIT_FAILURE);                                                                                        \
         }                                                                                                              \
     } while (0)

@@ -64,6 +64,8 @@ endif ()
 function(build_sample sample_name)
     add_executable(${sample_name} ${sample_name}.cu)
 
+    set_target_properties(${sample_name} PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
+
     target_include_directories(${sample_name} PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
@@ -81,13 +83,13 @@ function(build_sample sample_name)
     )
 
     target_link_libraries(${sample_name} PUBLIC
-        ${MPI_CXX_LIBRARIES}
         cal
         cudart
-        cublas
-        cublasLt
         cublasmp
-        cuda
+        cal
+        ${MPI_CXX_LIBRARIES}
+        ${NVSHMEM_HOST_LIBRARIES}
+        ${NVSHMEM_DEVICE_LIBRARIES}
         nvidia-ml
         m
         ${CAL_MPI_LIBRARIES}
@@ -99,6 +101,7 @@ function(build_sample sample_name)
 endfunction(build_sample)
 
 build_sample("pgemm")
+build_sample("pmatmul")
 build_sample("ptrsm")
 build_sample("psyrk")
 build_sample("pgeadd")
