@@ -74,33 +74,35 @@
 
 #define CHECK_NVRTC(func)                                                      \
 {                                                                              \
-    nvrtcResult status = (func);                                               \
-    if (status != NVRTC_SUCCESS) {                                             \
+    nvrtcResult status_ = (func);                                              \
+    if (status_ != NVRTC_SUCCESS) {                                            \
         printf("NVRTC API failed at line %d with error: %s (%d)\n",            \
-               __LINE__, nvrtcGetErrorString(status), status);                 \
+               __LINE__, nvrtcGetErrorString(status_), status_);               \
         exit(EXIT_FAILURE);                                                    \
     }                                                                          \
 }
+
+//------------------------------------------------------------------------------
 
 void nvrtc_compile(int          sm_version,
                    const char*  device_fun_str,
                    const char** extra_options,
                    int          num_extra_options,
-                   void**       nvvm_buffer,
+                   char**       nvvm_buffer,
                    size_t*      nvvm_buffer_size);
 
 void nvrtc_compile(int          sm_version,
                    const char*  device_fun_str,
                    const char** extra_options,
                    int          num_extra_options,
-                   void**       nvvm_buffer,
+                   char**       nvvm_buffer,
                    size_t*      nvvm_buffer_size) {
     nvrtcProgram prog;
     CHECK_NVRTC( nvrtcCreateProgram(&prog, device_fun_str, NULL, 0, NULL, NULL))
-    char arch_str[17]  = "-arch=compute_";
-    arch_str[14]       = '0' + sm_version / 10;
-    arch_str[15]       = '0' + sm_version % 10;
-    arch_str[16]       = '\0';
+    char arch_str[20];
+    const char* arch_str_prefix = "-arch=compute_";
+    snprintf(arch_str, sizeof(arch_str), "%s%d", arch_str_prefix, sm_version);
+
     int num_options    = 4 + num_extra_options;
     const char** nvrtc_options = (const char**) malloc(num_options *
                                                        sizeof(const char*));
@@ -126,9 +128,9 @@ void nvrtc_compile(int          sm_version,
         printf("NVRTC FAILED");
         exit(EXIT_FAILURE);
     }
-    CHECK_NVRTC( nvrtcGetNVVMSize(prog, nvvm_buffer_size) )
-    *nvvm_buffer = malloc(*nvvm_buffer_size);
-    CHECK_NVRTC( nvrtcGetNVVM(prog, *nvvm_buffer) )
+    CHECK_NVRTC( nvrtcGetLTOIRSize(prog, nvvm_buffer_size) )
+    *nvvm_buffer = (char*) malloc(*nvvm_buffer_size);
+    CHECK_NVRTC( nvrtcGetLTOIR(prog, *nvvm_buffer) )
     CHECK_NVRTC( nvrtcDestroyProgram(&prog) )
 }
 
@@ -227,7 +229,7 @@ int main(void) {
     CHECK_CUSPARSE( cusparseCreateDnMat(&matC, A_num_rows, B_num_cols, ldc, dC,
                                         CUDA_R_32F, CUSPARSE_ORDER_ROW) )
     //--------------------------------------------------------------------------
-    void* nvvm_buffer_add, *nvvm_buffer_mul, *nvvm_buffer_epilogue;
+    char* nvvm_buffer_add, *nvvm_buffer_mul, *nvvm_buffer_epilogue;
     size_t nvvm_buffer_add_size, nvvm_buffer_mul_size,
            nvvm_buffer_epilogue_size;
     // extra options can be useful for providing cuda header location
@@ -298,3 +300,4 @@ int main(void) {
     CHECK_CUDA( cudaFree(dC) )
     return EXIT_SUCCESS;
 }
+
