@@ -102,8 +102,8 @@ static void generate_diagonal_dominant_symmetric_matrix(int64_t n, double* A, in
             else
             {
                 A[i + j * lda] = (double)(rand()) / RAND_MAX;
-                sum += A[i + j * lda];
             }
+            sum += A[i + j * lda];
         }
 
         A[j + j * lda] = 2 * sum;
