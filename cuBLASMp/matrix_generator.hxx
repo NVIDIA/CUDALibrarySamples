@@ -131,7 +131,7 @@ void generate_random_matrix(
 
     srand(rank);
 
-    auto generator = [&](T& val, int64_t i, int64_t j, bool diag) { val = double(rand()) / RAND_MAX; };
+    auto generator = [&](T& val, int64_t i, int64_t j, bool diag) { val = T(double(rand()) / RAND_MAX); };
 
     generate_distributed_matrix(m, n, a, mb, nb, ia, ja, lld, nprow, npcol, myprow, mypcol, generator);
 }

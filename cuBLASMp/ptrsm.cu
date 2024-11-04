@@ -97,7 +97,7 @@ int main(int argc, char* argv[])
     const int64_t m = opts.m;
     const int64_t n = opts.n;
     const int64_t ia = opts.ia;
-    const int64_t ja = opts.jb;
+    const int64_t ja = opts.ja;
     const int64_t ib = opts.ib;
     const int64_t jb = opts.jb;
     const int64_t mbA = opts.mbA;
@@ -138,7 +138,7 @@ int main(int argc, char* argv[])
     CUDA_CHECK(cudaStreamCreate(&stream));
 
     cublasMpHandle_t handle = nullptr;
-    CUBLAS_CHECK(cublasMpCreate(&handle, stream));
+    CUBLASMP_CHECK(cublasMpCreate(&handle, stream));
 
     cublasMpGrid_t grid = nullptr;
 
@@ -178,20 +178,19 @@ int main(int argc, char* argv[])
     CUDA_CHECK(cudaMemcpyAsync(d_A, h_A.data(), llda * loc_n_a * sizeof(double), cudaMemcpyHostToDevice, stream));
     CUDA_CHECK(cudaMemcpyAsync(d_B, h_B.data(), lldb * loc_n_b * sizeof(double), cudaMemcpyHostToDevice, stream));
 
-    CUBLAS_CHECK(cublasMpGridCreate(
-        handle,
+    CUBLASMP_CHECK(cublasMpGridCreate(
         nprow,
         npcol,
         opts.grid_layout == 'c' ? CUBLASMP_GRID_LAYOUT_COL_MAJOR : CUBLASMP_GRID_LAYOUT_ROW_MAJOR,
         cal_comm,
         &grid));
 
-    CUBLAS_CHECK(
-        cublasMpMatrixDescriptorCreate(handle, global_m_a, global_n_a, mbA, nbA, 0, 0, llda, CUDA_R_64F, grid, &descA));
-    CUBLAS_CHECK(
-        cublasMpMatrixDescriptorCreate(handle, global_m_b, global_n_b, mbB, nbB, 0, 0, lldb, CUDA_R_64F, grid, &descB));
+    CUBLASMP_CHECK(
+        cublasMpMatrixDescriptorCreate(global_m_a, global_n_a, mbA, nbA, 0, 0, llda, CUDA_R_64F, grid, &descA));
+    CUBLASMP_CHECK(
+        cublasMpMatrixDescriptorCreate(global_m_b, global_n_b, mbB, nbB, 0, 0, lldb, CUDA_R_64F, grid, &descB));
 
-    CUBLAS_CHECK(cublasMpTrsm_bufferSize(
+    CUBLASMP_CHECK(cublasMpTrsm_bufferSize(
         handle,
         CUBLAS_SIDE_LEFT,
         CUBLAS_FILL_MODE_LOWER,
@@ -221,7 +220,7 @@ int main(int argc, char* argv[])
 
     const double begin = MPI_Wtime();
 
-    CUBLAS_CHECK(cublasMpTrsm(
+    CUBLASMP_CHECK(cublasMpTrsm(
         handle,
         CUBLAS_SIDE_LEFT,
         CUBLAS_FILL_MODE_LOWER,
@@ -249,17 +248,20 @@ int main(int argc, char* argv[])
 
     const double end = MPI_Wtime();
 
-    printf(
-        "Duration: %lf GFlops: %lf\n",
-        end - begin,
-        ((((0.5 * m * (m - 1)) + ((0.5 * m * (m + 1)))) * n) * 1e-9) / (end - begin));
+    if (rank == 0)
+    {
+        printf(
+            "Duration: %lf GFlops: %lf\n",
+            end - begin,
+            ((((0.5 * m * (m - 1)) + ((0.5 * m * (m + 1)))) * n) * 1e-9) / (end - begin));
+    }
 
-    CUBLAS_CHECK(cublasMpMatrixDescriptorDestroy(handle, descA));
-    CUBLAS_CHECK(cublasMpMatrixDescriptorDestroy(handle, descB));
+    CUBLASMP_CHECK(cublasMpMatrixDescriptorDestroy(descA));
+    CUBLASMP_CHECK(cublasMpMatrixDescriptorDestroy(descB));
 
-    CUBLAS_CHECK(cublasMpGridDestroy(handle, grid));
+    CUBLASMP_CHECK(cublasMpGridDestroy(grid));
 
-    CUBLAS_CHECK(cublasMpDestroy(handle));
+    CUBLASMP_CHECK(cublasMpDestroy(handle));
 
     CUDA_CHECK(cudaFreeAsync(d_A, stream));
     CUDA_CHECK(cudaFreeAsync(d_B, stream));
@@ -274,6 +276,11 @@ int main(int argc, char* argv[])
     MPI_Barrier(MPI_COMM_WORLD);
 
     MPI_Finalize();
+
+    if (rank == 0)
+    {
+        printf("[SUCCEEDED]\n");
+    }
 
     return 0;
 };
