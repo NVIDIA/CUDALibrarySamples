@@ -141,7 +141,7 @@ int main(int argc, char* argv[])
 
     /* Offsets of A and B matrices (base-1) */
     const int64_t ia = opts.ia;
-    const int64_t ja = opts.jb;
+    const int64_t ja = opts.ja;
     const int64_t iq = opts.iq;
     const int64_t jq = opts.jq;
 
