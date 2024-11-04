@@ -178,7 +178,7 @@ int main(int argc, char* argv[])
                      .mbQ     = 1,
                      .nbQ     = 1,
                      .ia      = 3,
-                     .ja      = 3,
+                     .ja      = 1,
                      .ib      = 3,
                      .jb      = 1,
                      .iq      = 1,
@@ -213,7 +213,7 @@ int main(int argc, char* argv[])
 
     /* Offsets of A and B matrices (base-1) */
     const int64_t ia = opts.ia;
-    const int64_t ja = opts.jb;
+    const int64_t ja = opts.ja;
     const int64_t ib = opts.ib;
     const int64_t jb = opts.jb;
 
