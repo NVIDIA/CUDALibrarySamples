@@ -1,7 +1,7 @@
 from functools import partial
 
 import jax
-from jax._src.sharding import NamedSharding
+from jax.sharding import NamedSharding
 from jax.experimental.custom_partitioning import custom_partitioning
 from fft_common import Dir
 
@@ -21,22 +21,24 @@ def _supported_sharding(sharding, dist):
     return NamedSharding(sharding.mesh, dist.part_spec)
 
 
-def _partition(arg_shapes,
-               arg_shardings,
-               result_shape,
-               result_sharding,
+def _partition(mesh, 
+               arg_shapes,
+               result_shape, 
                dist,
                dir):
-    return lambda x: _fft(x, dist, dir), \
+
+    arg_shardings = jax.tree.map(lambda x: x.sharding, arg_shapes)
+    return mesh, lambda x: _fft(x, dist, dir), \
            _supported_sharding(arg_shardings[0], dist), \
-           [_supported_sharding(arg_shardings[0], dist)]
+           (_supported_sharding(arg_shardings[0], dist),)
 
 
-def _infer_sharding_from_operands(arg_shapes,
-                                  arg_shardings,
+def _infer_sharding_from_operands(mesh,
+                                  arg_shapes,
                                   result_shape,
                                   dist,
                                   dir):
+    arg_shardings = jax.tree.map(lambda x: x.sharding, arg_shapes)
     return _supported_sharding(arg_shardings[0], dist)
 
 
@@ -72,12 +74,12 @@ def xfft(x, dist, dir):
     Returns the transformed tensor.
     The output tensoris distributed according to dist.opposite
 
-    This function should be used with pjit like
+    This function should be used with jit like
 
-        pjit(xfft,
-             in_axis_resources=dist.part_spec,
-             out_axis_resources=dist.opposite.part_spec,
-             static_argnums=[1, 2]
+        jit(xfft,
+            in_shardings=sharding,
+            out_shardings=sharding_opposite,
+            static_argnums=[1, 2]
             )(x, dist, dir)
     """
 

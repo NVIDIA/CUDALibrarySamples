@@ -37,7 +37,7 @@ std::string PackDescriptorAsString(const T& descriptor) {
 template <typename T>
 const T* UnpackDescriptor(const char* opaque, std::size_t opaque_len) {
     if (opaque_len != sizeof(T)) {
-        throw std::runtime_error("Invalid opaque object size");
+        throw std::runtime_error("Invalid opaque object size with opaque_len = " + std::to_string(opaque_len) + ", and sizeof(T) = " + std::to_string(sizeof(T)));
     }
     return bit_cast<const T*>(opaque);
 }

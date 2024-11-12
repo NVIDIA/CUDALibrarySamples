@@ -3,38 +3,56 @@
 This code sample shows how to compute FFTs at scale with JAX.
 
 Specifically, it shows how to do multi-GPUs-multi-nodes (MGMN) FFTs in two ways
-1. `JAX-only`: using JAX-only tools: `jax.numpy.fft`, `custom_partitioning` and `pjit`. Those are all out-of-the-box JAX APIs.
-2. `JX+cuFFTMp`: using [cuFFTMp](https://docs.nvidia.com/hpc-sdk/cufftmp/index.html), a MGMN extension to [cuFFT](https://docs.nvidia.com/cuda/cufft/) based on [NVSHMEM](https://docs.nvidia.com/nvshmem/api/) which supports distributed FFTs with one-GPU-per-process. This is done using a JAX distributed-memory custom operation.
+1. `JAX-only`: using JAX-only tools: `jax.numpy.fft`, `custom_partitioning` and `jit`. Those are all out-of-the-box JAX APIs.
+2. `JAX+cuFFTMp`: using [cuFFTMp](https://docs.nvidia.com/hpc-sdk/cufftmp/index.html), a MGMN extension to [cuFFT](https://docs.nvidia.com/cuda/cufft/) based on [NVSHMEM](https://docs.nvidia.com/nvshmem/api/) which supports distributed FFTs with one-GPU-per-process. This is done using a JAX distributed-memory custom operation.
 
+# Dependency
+
+1. cuFFTMp
+- cuFFTMp is available in the HPC SDK which can be downloaded [here](https://developer.nvidia.com/nvidia-hpc-sdk-downloads). This sample was tested with cuFFTMp 11.2.6 @ CUDA 12 in HPC SDK 24.7.
+
+2. NVSHMEM
+- NVSHMEM is also available in the HPC SDK which can be downloaded [here](https://developer.nvidia.com/nvidia-hpc-sdk-downloads). NVSHMEM can also be downloaded as a standalone package from [here](https://developer.download.nvidia.com/compute/redist/nvshmem/). This sample was tested with NVSHMEM 3.0 @ CUDA 12.
+
+Note that early versions of cuFFTMp are compatible only with specific versions of NVSHMEM. Starting from cuFFTMp 11.2.6, NVSHMEM 3.0+ can be used. For details on cuFFTMp/NVSHMEM compatibility, see [here](https://docs.nvidia.com/hpc-sdk/cufftmp/usage/nvshmem_and_cufftmp.html#).
 
 # Quick start (with Docker)
 
 1. Clone the repo
-2. Install [cuFFTMp](https://docs.nvidia.com/hpc-sdk/cufftmp/index.html) in `./cufftmp` and [NVSHMEM](https://docs.nvidia.com/nvshmem/api/) in `./nvshmem`. This means `nvshmem.h` should be in `./nvshmem/include`, `libnvshmem_host.so` should be in `./nvshmem/lib`, `cufftMp.h` should be in `./cufftmp/include` and `libcufftMp.so` should be in `./cufftmp/lib`.
+2. Install [cuFFTMp](https://docs.nvidia.com/hpc-sdk/cufftmp/index.html) in `./cufftmp` and [NVSHMEM](https://docs.nvidia.com/nvshmem/api/) in `./nvshmem`. This means 
 
-    - cuFFTMp is available in the HPC SDK which can be downloaded [here](https://developer.nvidia.com/nvidia-hpc-sdk-downloads). This sample was tested with cuFFTMp 11.0.5 @ CUDA 11. Note that each version of cuFFTMp is compatible only with specific versions of NVSHMEM, see [here](https://docs.nvidia.com/hpc-sdk/cufftmp/usage/nvshmem_and_cufftmp.html#).
+- `nvshmem.h` should be in `./nvshmem/include/`,
+- `libnvshmem_host.so` should be in `./nvshmem/lib/`, 
+- `cufftMp.h` should be in `./cufftmp/include/`, and 
+- `libcufftMp.so` should be in `./cufftmp/lib/`.
 
-    - NVSHMEM can be downloaded [here](https://developer.download.nvidia.com/compute/redist/nvshmem/). This sample was tested with NVSHMEM 2.8 @ CUDA 11, which can be downloaded from [here](https://developer.download.nvidia.com/compute/redist/nvshmem/2.8.0/builds/cuda11.8/txz/rhel8/x64/).
+    E.g., with HPC SDK 24.7 (and future versions), you can find them at
+    ```
+    <HPC SDK>/Linux_x86_64/<HPC SDK version>/math_libs/<CUDA version>/nvshmem/include/ --> nvshmem/include/
+    <HPC SDK>/Linux_x86_64/<HPC SDK version>/comm_libs/<CUDA version>/nvshmem/lib/ --> nvshmem/lib/
+    <HPC SDK>/Linux_x86_64/<HPC SDK version>/math_libs/<CUDA version>/include/cufftmp/ --> cufftmp/include/
+    <HPC SDK>/Linux_x86_64/<HPC SDK version>/math_libs/<CUDA version>/lib64/ --> cufftmp/lib/
+    ```
+    For earlier versions of HPC SDK, see [cuFFTMp doc](https://docs.nvidia.com/hpc-sdk/cufftmp/usage/nvshmem_and_cufftmp.html#hpc-sdk-cufftmp-and-nvshmem) for locating compatible versions of NVSHMEM in HPC SDK.
 
 3. Build
 ```
 $ docker build -t fft_jax .
 ```
-4. Assuming 4 GPUs are available on the machine, the following runs a performance test on `512 x 512 x 512` tensor with the `JAX+cuFFTMp` implementation
+4. Assuming 4 GPUs are available on the machine, the following runs a performance test on `1024 x 1024 x 1024` tensor with the `JAX+cuFFTMp` implementation
 ```
-$ docker run --gpus all fft_jax mpirun -n 4 python3 /fft_jax/tests/fft_test.py cufftmp perf -n 512 --multiprocess=bootstrap
+$ docker run --gpus all fft_jax mpirun -n 4 python3 /fft_jax/tests/fft_test.py cufftmp perf -n 1024 --multiprocess=bootstrap
 ...
-cufftmp (perf): (512, 512, 512), num GPUs 4, num processes 4, relative L2 error 0.00e+00, cycles 10, time 3.74e+00 ms, perf 4.84e+03 GFlop/s, bandwidth 7.18e+01 GB/s/GPU
+cufftmp (perf): (1024, 1024, 1024), num GPUs 4, num processes 4, relative L2 error 0.00e+00, cycles 10, time_avg 1.22e+01 ms, time_med 1.22e+01 ms, time_std 5.92e-02 ms, time_min 1.21e+01 ms, time_max 1.23e+01 ms, perf 1.32e+04 GFlop/s, bandwidth 1.76e+02 GB/s/GPU
 &&&& PASSED
 ```
-This shows that it took in average `3.7ms` to run each FFT, with an overall throughput of `4.8 TFlop/s`.
+This shows that it took in average `12.2ms` to run each FFT, with an overall throughput of `13.2 TFlop/s`.
 
 To run using a `JAX-only` implementation, `xfft`,
 ```
-$ docker run --gpus all fft_jax mpirun -n 4 python3 /fft_jax/tests/fft_test.py xfft perf -n 512 --multiprocess=bootstrap
+$ docker run --gpus all fft_jax mpirun -n 4 python3 /fft_jax/tests/fft_test.py xfft perf -n 1024 --multiprocess=bootstrap
 ...
-xfft (perf): (512, 512, 512), num GPUs 4, num processes 4, relative L2 error 0.00e+00, cycles 10, time 3.73e+00 ms, perf 4.86e+03 GFlop/s, bandwidth 7.19e+01 GB/s/GPU
-&&&& PASSED
+xfft (perf): (1024, 1024, 1024), num GPUs 4, num processes 4, relative L2 error 0.00e+00, cycles 10, time_avg 1.43e+01 ms, time_med 1.37e+01 ms, time_std 1.76e+00 ms, time_min 1.35e+01 ms, time_max 1.95e+01 ms, perf 1.13e+04 GFlop/s, bandwidth 1.50e+02 GB/s/GPU
 ```
 where we see that performances are very similar.
 
@@ -52,11 +70,20 @@ pip install -e .
 4. Run, for instance with cuFFTMp
 ```
 $ export LD_LIBRARY_PATH=$(pwd)/nvshmem/lib:$(pwd)/cufftmp/lib:$LD_LIBRARY_PATH
-$ NVSHMEM_BOOTSTRAP=MPI mpirun -n 4 python3 ./tests/fft_test.py cufftmp perf -n 512 --multiprocess=bootstrap
+$ NVSHMEM_BOOTSTRAP=MPI mpirun -n 4 python3 ./tests/fft_test.py cufftmp perf -n 1024 --multiprocess=bootstrap
 ```
 
 # Benchmarks
 
+### JAX 0.4.36 + cuFFTMp 11.2.6 on H100s
+The following plots show performances of both implementations at scale on the NVIDIA [EOS](https://www.top500.org/system/180239/) cluster, compared against cuFFTMp.
+Results were obtained with cuFFTMp 11.2.6 and JAX 0.4.36. 
+
+The plot shows strong scaling results for two problem sizes: `1024 x 1024 x 1024` and `2048 x 2048 x 2048`. We use `median` (instead of `average`) of 10 cycles to collect the time for each transform. We see that both implementations strong scale well, with `JAX + cuFFTMp` slightly outperforming `JAX-only` on single-node and many-nodes.
+![FFT & JAX, strong scalings](misc/strong_eos.png)
+
+
+### JAX 0.4.1 + cuFFTMp 11.0.5 on A100s
 The following plots show performances of both implementations at scale on the NVIDIA [Selene](https://www.top500.org/system/179842/) cluster, compared against cuFFTMp.
 Results were obtained with cuFFTMp 11.0.5 and JAX 0.4.1.
 
@@ -92,8 +119,8 @@ The algorithm is then as simple as calling `y = fft_X(fft_Y(x))` for an input `x
 ## `JAX+cuFFTMp`
 
 `JAX+cuFFTMp` requires
-1. Exposing `cuFFTMp` to Python. This is done in `src/cufftmp_jax/lib` and is being built by `setup.py` and `src/cufftmp_jax/CMakeLists.txt`. The result of this is a sharded library with an interface based on Pybind11. This allows calling C++ and CUDA code directly from Python.
-2. Creating an interface between JAX, `pjit` and `cuFFTMp`. This is done in `src/cufftmp_jax/cufftmp_jax.py` and is similar to what is done for single-process custom op in JAX (see [here](https://jax.readthedocs.io/en/latest/Custom_Operation_for_GPUs.html) and also [here](https://github.com/dfm/extending-jax)). This also relies on `custom_partitioning` to express to JAX that the input to `JAX+cuFFTMp` is sharded along `X` and that the output is sharded along `Y`.
+1. Exposing `cuFFTMp` to Python. This is done in `src/cufftmp_jax/src` and is being built by `setup.py` and `src/cufftmp_jax/CMakeLists.txt`. The result of this is a sharded library with an interface based on Pybind11. This allows calling C++ and CUDA code directly from Python.
+2. Creating an interface between JAX, `jit` and `cuFFTMp`. This is done in `src/cufftmp_jax/cufftmp_jax.py` and is similar to what is done for single-process custom op in JAX (see [here](https://jax.readthedocs.io/en/latest/Custom_Operation_for_GPUs.html) and also [here](https://github.com/dfm/extending-jax)). This also relies on `custom_partitioning` to express to JAX that the input to `JAX+cuFFTMp` is sharded along `X` and that the output is sharded along `Y`.
 
 # Troubleshooting
 
