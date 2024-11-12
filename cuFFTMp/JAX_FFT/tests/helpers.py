@@ -1,8 +1,7 @@
 import argparse
 
 import jax
-from jax.experimental.pjit import pjit
-from jax.experimental.maps import xmap
+from jax.experimental.shard_map import shard_map
 
 
 def Frob_error_impl(dtest, dref):
@@ -14,7 +13,7 @@ def Frob_error_impl(dtest, dref):
     return error
 
 
-def Frob_error(dtest, dref, dist):
+def Frob_error(dtest, dref, mesh, dist):
 
     """Computes the relative error in the Frobenius norm
 
@@ -28,16 +27,16 @@ def Frob_error(dtest, dref, dist):
     ||dtest - dref||_F / ||dref||_F
     """
 
-    return pjit(
-        xmap(
-            Frob_error_impl,
-            in_axes=dist.axes_map,
-            out_axes={},
-            axis_resources={'gpus': 'gpus'}
-        ),
-        in_axis_resources=dist.part_spec,
-        out_axis_resources=None
-    )(dtest, dref)
+    return jax.jit(
+                shard_map(
+                    Frob_error_impl,
+                    mesh=mesh,
+                    in_specs=dist.part_spec,
+                    out_specs=jax.sharding.PartitionSpec(),
+                ),
+                in_shardings=jax.sharding.NamedSharding(mesh, dist.part_spec),
+                out_shardings=jax.sharding.NamedSharding(mesh, jax.sharding.PartitionSpec())
+            )(dtest, dref)
 
 
 def parser():
@@ -49,7 +48,7 @@ def parser():
         type=str,
         choices=['cufftmp', 'xfft'],
         default='cufftmp',
-        help='uses cuFFTMp or pjit+xmap'
+        help='uses cuFFTMp or jit+shard_map'
     )
     parser.add_argument(
         "mode",

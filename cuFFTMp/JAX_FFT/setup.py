@@ -69,17 +69,17 @@ extensions = [
     Extension(
         "cufftmp_jax.gpu_ops",
         [
-            "src/cufftmp_jax/lib/gpu_ops.cpp",
-            "src/cufftmp_jax/lib/kernels.cu",
+            "src/cufftmp_jax/src/gpu_ops.cpp",
+            "src/cufftmp_jax/src/kernels.cu",
         ],
     )]
 
 
 setup(
     name="fft_jax",
-    version='0.0.1',
-    author="Leopold Cambier",
-    author_email="lcambier@nvidia.com",
+    version='0.0.2',
+    author="Leopold Cambier, Zan Xu",
+    author_email="lcambier@nvidia.com, zanx@nvidia.com",
     license="All rights reserved",
     description=("FFT + JAX"),
     long_description=read("README.md"),
@@ -87,7 +87,13 @@ setup(
     packages=find_packages("src"),
     package_dir={"": "src"},
     include_package_data=True,
-    install_requires=["jax[cuda]", "jaxlib"],
+    install_requires=[
+        # We remove the following JAX dependencies because we base our container from jax toolbox.
+        # This avoids unnecessary update/downgrade of jax/jaxlib against the jax/jaxlib in container.
+        # For building in other containers/environments, please uncomment the following.
+        # "jax[cuda]", 
+        # "jaxlib"
+        ],
     ext_modules=extensions,
     cmdclass={"build_ext": CMakeBuildExt},
 )

@@ -1,7 +1,7 @@
 from enum import Enum
 
 import jax
-from jax.experimental import PartitionSpec
+from jax.sharding import PartitionSpec
 
 
 class Dist(Enum):
@@ -48,23 +48,6 @@ class Dist(Enum):
         else:
             return [0]
 
-    def xmap_shape(self, fft_dims):
-        ngpus = jax.device_count()
-        if self == Dist.SLABS_X:
-            return (
-                ngpus,
-                fft_dims[0] // ngpus,
-                fft_dims[1],
-                *fft_dims[2:]
-            )
-        else:
-            return (
-                fft_dims[0],
-                ngpus,
-                fft_dims[1] // ngpus,
-                *fft_dims[2:]
-            )
-
     def slab_shape(self, fft_dims):
         ngpus = jax.device_count()
         if self == Dist.SLABS_X:
@@ -87,12 +70,6 @@ class Dist(Enum):
         else:
             return (local_shape[0], local_shape[1] * ngpus, *local_shape[2:])
 
-    @property
-    def axes_map(dist):
-        if dist == Dist.SLABS_X:
-            return {0: "gpus"}
-        else:
-            return {1: "gpus"}
 
     @property
     def part_spec(dist):

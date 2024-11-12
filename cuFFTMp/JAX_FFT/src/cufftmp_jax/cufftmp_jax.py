@@ -9,8 +9,8 @@ import jax
 from jax.lib import xla_client
 from jax import core, dtypes
 from jax.interpreters import xla, mlir
-from jax.abstract_arrays import ShapedArray
-from jax._src.sharding import NamedSharding
+from jax.core import ShapedArray
+from jax.sharding import NamedSharding
 from jax.experimental.custom_partitioning import custom_partitioning
 from jaxlib.hlo_helpers import custom_call
 
@@ -49,34 +49,38 @@ def _supported_sharding(sharding, dist):
     return NamedSharding(sharding.mesh, dist.part_spec)
 
 
-def _partition(arg_shapes,
-               arg_shardings,
-               result_shape,
-               result_sharding,
+def _partition(mesh, 
+               arg_shapes,
+               result_shape, 
                dist,
                dir):
 
     """ Describes the required input and output sharding of the op.
-    `arg_shardings` and `result_sharding` are the shardings provided by the
-    user (i.e., in pjit).
+    `mesh`, `arg_shapes` and `result_shape` are the shapes provided by the
+    user (i.e., in jit).
     Returns:
     - The operation to perform locally on all GPUs
     - The output sharding
     - The input sharding """
+    
+    arg_shardings = jax.tree.map(lambda x: x.sharding, arg_shapes)
 
-    return lambda x: _cufftmp_bind(x,
-                                   num_parts=jax.device_count(),
-                                   dist=dist,
-                                   dir=dir), \
+    return mesh, \
+        lambda x: _cufftmp_bind(x,
+                                num_parts=jax.device_count(),
+                                dist=dist,
+                                dir=dir), \
         _supported_sharding(arg_shardings[0], dist.opposite), \
-        [_supported_sharding(arg_shardings[0], dist)]
+        (_supported_sharding(arg_shardings[0], dist),)
 
 
-def _infer_sharding_from_operands(arg_shapes,
-                                  arg_shardings,
+def _infer_sharding_from_operands(mesh,
+                                  arg_shapes,
                                   result_shape,
                                   dist,
                                   dir):
+
+    arg_shardings = jax.tree.map(lambda x: x.sharding, arg_shapes)
     return _supported_sharding(arg_shardings[0], dist)
 
 
@@ -94,13 +98,13 @@ def cufftmp(x, dist, dir):
     Returns the transformed tensor.
     The output tensoris distributed according to dist.opposite
 
-    This function should be used with pjit like
+    This function should be used with jit like
 
-        pjit(
-             cufftmp,
-             in_axis_resources=dist.part_spec,
-             out_axis_resources=dist.opposite.part_spec,
-             static_argnums=[1, 2]
+        jit(
+            cufftmp,
+            in_shardings=sharding,
+            out_shardings=sharding,
+            static_argnums=[1, 2]
             )(x, dist, dir)
 
     """
@@ -146,7 +150,7 @@ def _cufftmp_abstract(input, num_parts, dist, dir):
 
 
 # Implementation calling into the C++ bindings
-def _cufftmp_translation(ctx, input, num_parts, dist, dir):
+def _cufftmp_lowering(ctx, input, num_parts, dist, dir):
 
     assert num_parts == jax.device_count()
 
@@ -180,10 +184,10 @@ def _cufftmp_translation(ctx, input, num_parts, dist, dir):
     else:
         raise ValueError("Unsupported tensor rank; must be 2 or 3")
 
-    return [custom_call(
+    return custom_call(
         "gpu_cufftmp",
         # Output types
-        out_types=[output_type],
+        result_types=[output_type],
         # The inputs:
         operands=[input,],
         # Layout specification:
@@ -191,7 +195,7 @@ def _cufftmp_translation(ctx, input, num_parts, dist, dir):
         result_layouts=[layout,],
         # GPU specific additional data
         backend_config=opaque
-    )]
+    ).results
 
 
 # *********************************************
@@ -203,4 +207,4 @@ _cufftmp_prim.def_impl(partial(xla.apply_primitive, _cufftmp_prim))
 _cufftmp_prim.def_abstract_eval(_cufftmp_abstract)
 
 # Register the op with MLIR
-mlir.register_lowering(_cufftmp_prim, _cufftmp_translation, platform="gpu")
+mlir.register_lowering(_cufftmp_prim, _cufftmp_lowering, platform="gpu")
