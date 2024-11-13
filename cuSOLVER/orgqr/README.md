@@ -37,6 +37,7 @@ arm64-sbsa
 - [cusolverDnDorgqr_bufferSize API](https://docs.nvidia.com/cuda/cusolver/index.html#cuSolverDN-lt-t-gt-orgqr)
 - [cusolverDnDorgqr API](https://docs.nvidia.com/cuda/cusolver/index.html#cuSolverDN-lt-t-gt-orgqr)
 - [cusolverDnDgeqrf API](https://docs.nvidia.com/cuda/cusolver/index.html#cuSolverDN-lt-t-gt-geqrf)
+- [cusolverDnDgeqrf_bufferSize API](https://docs.nvidia.com/cuda/cusolver/index.html#cuSolverDN-lt-t-gt-geqrf)
 
 # Building (make)
 
@@ -63,7 +64,7 @@ $ Open cusolver_examples.sln project in Visual Studio and build
 
 # Usage
 ```
-$  ./cusolver_ormqr_example
+$  ./cusolver_orgqr_example
 ```
 
 Sample example output:
@@ -75,10 +76,10 @@ A = (matlab base-1)
 2.00 1.00
 =====
 after geqrf: info = 0
-after ormqr: info = 0
+after orgqr: info = 0
 Q = (matlab base-1)
 -0.22 0.53
 -0.87 0.27
 -0.44 -0.80
-|I - Q**T*Q| = 1.414214E+00
+|I - Q**T*Q| = 5.516832E-16
 ```
