@@ -139,12 +139,12 @@ int main(int argc, char *argv[]) {
     /* step 5: compute Q */
     CUSOLVER_CHECK(cusolverDnDorgqr(cusolverH, m, n, n, d_A, lda, d_tau, d_work, lwork, d_info));
 
-    /* check if QR is good or not */
+    /* check if orgqr is successful or not */
     CUDA_CHECK(cudaMemcpyAsync(&info, d_info, sizeof(int), cudaMemcpyDeviceToHost, stream));
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
-    std::printf("after ormqr: info = %d\n", info);
+    std::printf("after orgqr: info = %d\n", info);
     if (0 > info) {
         printf("%d-th parameter is wrong \n", -info);
         exit(1);
@@ -159,8 +159,14 @@ int main(int argc, char *argv[]) {
     print_matrix(m, n, Q.data(), lda);
 
     // step 6: measure R = I - Q**T*Q
+
+    // Set R = I.
+    std::fill(R.begin(), R.end(), 0.0);
+    for (int i = 0; i < n; i++) {
+        R[i + i * n] = 1.0;
+    }
     CUDA_CHECK(
-        cudaMemcpyAsync(R.data(), d_R, sizeof(double) * R.size(), cudaMemcpyDeviceToHost, stream));
+        cudaMemcpyAsync(d_R, R.data(), sizeof(double) * R.size(), cudaMemcpyHostToDevice, stream));
 
     CUBLAS_CHECK(cublasDgemm(cublasH,
                              CUBLAS_OP_T,  // Q**T
