@@ -104,7 +104,7 @@ struct TestBench {
     void fillData() {
         for (int i = 0; i < m * k * N; i++) Ahost[i] = InType(i);
         for (int i = 0; i < n * k * N; i++) Bhost[i] = InType(i);
-        for (int i = 0; i < m * N; i++) biasHost[i] = InType(i + 1);
+        for (int i = 0; i < m * N; i++) biasHost[i] = OutType(i + 1);
     }
 
     void copyDataToDevice() {
