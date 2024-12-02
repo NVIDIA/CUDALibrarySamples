@@ -32,6 +32,7 @@ Explore the examples of each CUDA library included in this repository:
 - [cuFFT - Fast Fourier Transforms](cuFFT/)
 - [cuFFTMp - Multi-process FFT](cuFFTMp/)
 - [cuFFTDx - Device-side FFT extensions](MathDx/cuFFTDx/)
+- [cuPQC - Post-Quantum Cryptography device library](MathDx/cuPQC/)
 - [cuRAND - Random number generation](cuRAND/)
 - [cuSOLVER - Dense and sparse direct solvers](cuSOLVER/)
 - [cuSOLVERMp - Multi-process solvers](cuSOLVERMp/)
