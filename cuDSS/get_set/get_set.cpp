@@ -272,6 +272,18 @@ int main (int argc, char *argv[]) {
     for (int i = 0; i < n; i++)
         printf("col reorder perm[%d] = %d\n", i, col_perm[i]);
 
+    int64_t memory_estimates[16] = {0};
+    CUDSS_CALL_AND_CHECK(cudssDataGet(handle, solverData, CUDSS_DATA_MEMORY_ESTIMATES,
+                                      &memory_estimates, sizeof(memory_estimates), &sizeWritten),
+                              status, "cudssDataGet for the memory estimates");
+    printf("memory estimates: device: %ld (stable) %ld (peak)\n",
+            memory_estimates[0], memory_estimates[1]);
+    printf("memory estimates: host: %ld (stable) %ld (peak)\n",
+            memory_estimates[2], memory_estimates[3]);
+    // (would only make sense for the hybrid memory mode)
+    //printf("memory estimates: hybrid peak: %ld = (GPU) %ld (CPU)\n",
+    //        memory_estimates[4], memory_estimates[5]);
+
     /* Factorization */
     CUDSS_CALL_AND_CHECK(cudssExecute(handle, CUDSS_PHASE_FACTORIZATION, solverConfig,
                          solverData, A, x, b), status, "cudssExecute for factor");
