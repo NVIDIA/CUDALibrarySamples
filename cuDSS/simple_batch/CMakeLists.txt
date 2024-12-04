@@ -1,5 +1,5 @@
 #
-# Copyright 2023-2024 NVIDIA Corporation.  All rights reserved.
+# Copyright 2024 NVIDIA Corporation.  All rights reserved.
 #
 # NOTICE TO LICENSEE:
 #
@@ -48,7 +48,7 @@
 #
 cmake_minimum_required(VERSION 3.19)
 
-set(EXAMPLE_NAME simple_hybrid_memory_mode)
+set(EXAMPLE_NAME simple_batch)
 
 project("cuDSS_${EXAMPLE_NAME}_example"
         DESCRIPTION  "cuDSS"
@@ -70,34 +70,37 @@ target_sources(${EXAMPLE_NAME}_example
     PUBLIC ${PROJECT_SOURCE_DIR}/${EXAMPLE_NAME}.cpp
 )
 
-target_include_directories(${EXAMPLE_NAME}_example
-    PUBLIC ${CUDSS_PATH}/include
+if (WIN32)
+    target_include_directories(${EXAMPLE_NAME}_example PUBLIC ${cudss_INCLUDE_DIR})
+    target_link_directories(${EXAMPLE_NAME}_example PUBLIC ${cudss_LIBRARY_DIR})
+endif()
+
+target_compile_options(${EXAMPLE_NAME}_example PRIVATE
+    "$<$<CONFIG:Debug>:-lineinfo -g>"
+    "$<$<CONFIG:RelWithDebInfo>:-lineinfo -g>"
 )
 
-target_link_directories(${EXAMPLE_NAME}_example
-    PUBLIC ${CUDSS_PATH}/lib
+target_link_libraries(${EXAMPLE_NAME}_example PUBLIC
+    cudss
 )
 
-target_link_libraries(${EXAMPLE_NAME}_example
-    PUBLIC cudss
-)
-
-if (BUILD_STATIC)
+if(BUILD_STATIC)
     add_executable(${EXAMPLE_NAME}_example_static)
 
     target_sources(${EXAMPLE_NAME}_example_static
         PUBLIC ${PROJECT_SOURCE_DIR}/${EXAMPLE_NAME}.cpp
     )
 
-    target_include_directories(${EXAMPLE_NAME}_example_static
-        PUBLIC ${CUDSS_PATH}/include
+    if (WIN32)
+        target_include_directories(${EXAMPLE_NAME}_example_static PUBLIC ${cudss_INCLUDE_DIR})
+        target_link_directories(${EXAMPLE_NAME}_example_static PUBLIC ${cudss_LIBRARY_DIR})
+        target_link_libraries(${EXAMPLE_NAME}_example_static PUBLIC
+        cudss
     )
+    else()
+        target_link_libraries(${EXAMPLE_NAME}_example_static PUBLIC
+            cudss_static
+        )
+    endif()
 
-    target_link_directories(${EXAMPLE_NAME}_example_static
-        PUBLIC ${CUDSS_PATH}/lib
-    )
-
-    target_link_libraries(${EXAMPLE_NAME}_example_static
-        PUBLIC cudss
-    )
 endif()
