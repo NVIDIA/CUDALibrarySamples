@@ -49,7 +49,7 @@
 cmake_minimum_required(VERSION 3.13)
 
 project("cuSOLVERSp2cuDSS"
-  DESCRIPTION  "A transition example from cuSOLVERSp to cuDSS"
+  DESCRIPTION  "A transition example from cuSOLVERSp/Rf to cuDSS"
   LANGUAGES CXX CUDA)
 
 set(CMAKE_CUDA_STANDARD          11)

@@ -55,7 +55,7 @@ using ordinal_type = int;
 #include "utils.hpp"
 
 void show_usage(const std::string &exec_name) {
-  std::cout << "usage: " << exec_name << " --solver <cudss;cusolver> --file <filename> --verbose\n";
+  std::cout << "usage: " << exec_name << " --solver <cudss;cusolver> --file <filename> --timer --verbose\n";
   std::cout << "  --solver : select a linear solver; cudss, cusolver\n";
   std::cout << "  --file : sparse matrix input as a matrix market format\n";
   std::cout << "  --timer,-t : enable timer to measure solver phases\n";  
@@ -121,19 +121,16 @@ int driver(int argc, char * argv[]) {
     
     /// CUSOLVERSP init/finalization
     cusolverSpHandle_t cusolversp;
-    cusparseHandle_t cusparse;
     cusparseMatDescr_t descriptor;    
     csrluInfoHost_t lu_info;
 
     CUSOLVER_CHECK(cusolverSpCreate(&cusolversp));
     CUSOLVER_CHECK(cusolverSpCreateCsrluInfoHost(&lu_info));
     
-    CUSPARSE_CHECK(cusparseCreate(&cusparse));
     CUSPARSE_CHECK(cusparseCreateMatDescr(&descriptor));        
 
     auto cusolver_finalize = [&]() {
       CUSPARSE_CHECK(cusparseDestroyMatDescr(descriptor));      
-      CUSPARSE_CHECK(cusparseDestroy(cusparse));
       
       CUSOLVER_CHECK(cusolverSpDestroyCsrluInfoHost(lu_info));      
       CUSOLVER_CHECK(cusolverSpDestroy(cusolversp));
@@ -154,9 +151,8 @@ int driver(int argc, char * argv[]) {
       CUDSS_CHECK(cudssDestroy(cudss));
     };
 
-    /// Assign stream to cusolversp, cusparse and cudss
+    /// Assign stream to cusolversp and cudss
     CUSOLVER_CHECK(cusolverSpSetStream(cusolversp, stream));
-    CUSPARSE_CHECK(cusparseSetStream(cusparse, stream));                                                          
     CUDSS_CHECK(cudssSetStream(cudss, stream));
 
     /// Set matrix descriptor; in this example, we use general matrix type and zero base index
@@ -178,7 +174,8 @@ int driver(int argc, char * argv[]) {
     /// Read A from matrix market file
     read_matrixmarket<value_type>(filename, m, n, h_ap, h_aj, h_ax, verbose);
     const ordinal_type nnz = h_ax.size();
-
+    std::cout << "-- read matrixmarket file\n";
+    
     if (verbose) {
       show_csr("A", m, n, h_ap, h_aj, h_ax);
     }
@@ -208,7 +205,7 @@ int driver(int argc, char * argv[]) {
     h_perm.resize(m);
     h_peri.resize(m);
 
-    /// Explicit reordering for cusolver; cudss does not need this process
+    /// Explicit reordering for cusolver; cudss does not need this process as it is included into the analysis phase
     if (!use_cudss) {
       CUSOLVER_CHECK(cusolverSpXcsrmetisndHost(cusolversp, m, nnz, descriptor,                                           
                                                h_ap.data(), h_aj.data(),
@@ -445,6 +442,8 @@ int driver(int argc, char * argv[]) {
       /// copy to device
       CUDA_CHECK(cudaMemcpyAsync(d_ax, h_ax.data(), sizeof(value_type)*h_ax.size(), cudaMemcpyHostToDevice, stream));
       CUDA_CHECK(cudaStreamSynchronize(stream));
+
+      std::cout << "-- the entries of A are modified\n";        
     }
 
     ///
@@ -452,7 +451,7 @@ int driver(int argc, char * argv[]) {
     ///
     if (use_cudss) {
       ///
-      /// Step 8.a.0: Create matrix objects; these can be reused from previous solve iterations
+      /// Step 8.a.0: Create matrix objects; these can be reused from previous solve iterations via cudssMatrixSetValues()
       ///
       cudssMatrix_t obj_A, obj_x, obj_b;  
       CUDSS_CHECK(cudssMatrixCreateCsr(&obj_A,
@@ -470,18 +469,18 @@ int driver(int argc, char * argv[]) {
       CUDA_CHECK(cudaStreamSynchronize(stream));
 
       ///
-      /// Step 4.a.1: Skip the Analyze phase
+      /// Step 8.a.1: Skip the Analyze phase
       ///
       
       ///
-      /// Step 4.a.2: Factorize
+      /// Step 8.a.2: Factorize
       ///
       {
         std::unique_ptr<timer_measurement_t> timer(new timer_measurement_t("cudss:refactorize", stream, use_timer));        
         CUDSS_CHECK(cudssExecute(cudss, CUDSS_PHASE_REFACTORIZATION, config, data, obj_A, obj_x, obj_b));
       }
       ///
-      /// Step 4.a.3: Solve
+      /// Step 8.a.3: Solve
       ///
       {
         std::unique_ptr<timer_measurement_t> timer(new timer_measurement_t("cudss:solve", stream, use_timer));                
@@ -490,7 +489,7 @@ int driver(int argc, char * argv[]) {
       CUDA_CHECK(cudaStreamSynchronize(stream));      
     
       ///
-      /// Step 4.a.4: Free objects
+      /// Step 8.a.4: Free objects
       /// 
       CUDSS_CHECK(cudssMatrixDestroy(obj_A));      
       CUDSS_CHECK(cudssMatrixDestroy(obj_b));
@@ -563,7 +562,8 @@ int driver(int argc, char * argv[]) {
   
       cusolverrf_finalize();
     }
-
+    std::cout << "-- A is refactorized\n";
+    
     /// 
     /// Step 9: Transfer data from device to host
     ///
