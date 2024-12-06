@@ -55,7 +55,7 @@ using ordinal_type = int;
 #include "utils.hpp"
 
 void show_usage(const std::string &exec_name) {
-  std::cout << "usage: " << exec_name << " --solver <cudss;cusolver> --file <filename> --verbose\n";
+  std::cout << "usage: " << exec_name << " --solver <cudss;cusolver> --file <filename> --timer --verbose\n";
   std::cout << "  --solver : select a linear solver; cudss, cusolver\n";
   std::cout << "  --file : sparse matrix input as a matrix market format\n";
   std::cout << "  --single-api,-s : use a single api for linear solve if available; \n";        
@@ -127,19 +127,16 @@ int driver(int argc, char * argv[]) {
     
     /// CUSOLVERSP init/finalization
     cusolverSpHandle_t cusolversp;
-    cusparseHandle_t cusparse;
     cusparseMatDescr_t descriptor;    
     csrcholInfo_t chol_info;
 
     CUSOLVER_CHECK(cusolverSpCreate(&cusolversp));
     CUSOLVER_CHECK(cusolverSpCreateCsrcholInfo(&chol_info));
     
-    CUSPARSE_CHECK(cusparseCreate(&cusparse));
     CUSPARSE_CHECK(cusparseCreateMatDescr(&descriptor));        
 
     auto cusolver_finalize = [&]() {
       CUSPARSE_CHECK(cusparseDestroyMatDescr(descriptor));      
-      CUSPARSE_CHECK(cusparseDestroy(cusparse));
       
       CUSOLVER_CHECK(cusolverSpDestroyCsrcholInfo(chol_info));      
       CUSOLVER_CHECK(cusolverSpDestroy(cusolversp));
@@ -160,9 +157,8 @@ int driver(int argc, char * argv[]) {
       CUDSS_CHECK(cudssDestroy(cudss));
     };
 
-    /// Assign stream to cusolversp, cusparse and cudss
+    /// Assign stream to cusolversp and cudss
     CUSOLVER_CHECK(cusolverSpSetStream(cusolversp, stream));
-    CUSPARSE_CHECK(cusparseSetStream(cusparse, stream));                                                          
     CUDSS_CHECK(cudssSetStream(cudss, stream));
 
     /// Set matrix descriptor; in this example, we use general matrix type and zero base index
@@ -184,7 +180,8 @@ int driver(int argc, char * argv[]) {
     /// Read A from matrix market file
     read_matrixmarket<value_type>(filename, m, n, h_ap, h_aj, h_ax, verbose);
     const ordinal_type nnz = h_ax.size();
-
+    std::cout << "-- read matrixmarket file\n";
+    
     if (verbose) {
       show_csr("A", m, n, h_ap, h_aj, h_ax);
     }

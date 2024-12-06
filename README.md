@@ -35,7 +35,7 @@ Explore the examples of each CUDA library included in this repository:
 - [cuRAND - Random number generation](cuRAND/)
 - [cuSOLVER - Dense and sparse direct solvers](cuSOLVER/)
 - [cuSOLVERMp - Multi-process solvers](cuSOLVERMp/)
-- [cuSOLVERSp2cuDSS - Transition example to cuDSS](cuSOLVERSp2cuDSS/)
+- [cuSOLVERSp2cuDSS - Transition example from cuSOLVERSp/Rf to cuDSS](cuSOLVERSp2cuDSS/)
 - [cuSPARSE - BLAS for sparse matrices](cuSPARSE/)
 - [cuSPARSELt - Lightweight BLAS for sparse matrices](cuSPARSELt/)
 - [cuTENSOR - Tensor linear algebra library](cuTENSOR/)
