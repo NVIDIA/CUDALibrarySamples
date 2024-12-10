@@ -47,7 +47,7 @@
  * Users Notice.
  */
 #include <cuda_runtime_api.h> // cudaMalloc, cudaMemcpy, etc.
-#include <cusparse.h>         // cusparseSpMM
+#include <cusparse.h>         // cusparseSpSV
 #include <stdio.h>            // printf
 #include <stdlib.h>           // EXIT_FAILURE
 
@@ -73,124 +73,127 @@
 
 int main(void) {
     // Host problem definition
-    int   A_num_rows      = 4;
-    int   A_num_cols      = 4;
-    int   A_nnz           = 9;
-    int   B_num_rows      = A_num_cols;
-    int   B_num_cols      = 3;
-    int   ldb             = B_num_rows;
-    int   ldc             = A_num_rows;
-    int   B_size          = ldb * B_num_cols;
-    int   C_size          = ldc * B_num_cols;
-    int   hA_csrOffsets[] = { 0, 3, 4, 7, 9 };
-    int   hA_columns[]    = { 0, 2, 3, 1, 0, 2, 3, 1, 3 };
-    float hA_values[]     = { 1.0f, 2.0f, 3.0f, 4.0f, 5.0f,
-                              6.0f, 7.0f, 8.0f, 9.0f };
-    float hB[]            = { 1.0f,  2.0f,  3.0f,  4.0f,
-                              5.0f,  6.0f,  7.0f,  8.0f,
-                              9.0f, 10.0f, 11.0f, 12.0f };
-    float hC[]            = { 0.0f, 0.0f, 0.0f, 0.0f,
-                              0.0f, 0.0f, 0.0f, 0.0f,
-                              0.0f, 0.0f, 0.0f, 0.0f };
-    float hC_result[]     = { 19.0f,  8.0f,  51.0f,  52.0f,
-                              43.0f, 24.0f, 123.0f, 120.0f,
-                              67.0f, 40.0f, 195.0f, 188.0f };
-    float alpha           = 1.0f;
-    float beta            = 0.0f;
+    const int A_num_rows      = 4;
+    const int A_num_cols      = 4;
+    const int A_nnz           = 9;
+    const int A_slice_size    = 2;
+    const int A_values_size   = 12;
+    int A_num_slices          = (A_num_rows + A_slice_size - 1) / A_slice_size; // 2 
+
+    int     hA_sliceOffsets[] = { 0, 6, 12 };
+    int     hA_columns[]      = { //Slice 0
+                                    0, 1,
+                                    2, -1,
+                                    3, -1,
+                                    //Slice 1
+                                    0, 1,
+                                    2, 3,
+                                    3, -1 };
+    float   hA_values[]     = { 1.0f, 4.0f,
+                                2.0f, 0.0f,
+                                3.0f, 0.0f,
+                                5.0f, 8.0f,
+                                6.0f, 9.0f,
+                                7.0f, 0.0f };
+    float   hX[]            = { 1.0f, 8.0f, 23.0f, 52.0f };
+    float   hY[]            = { 0.0f, 0.0f, 0.0f, 0.0f };
+    float   hY_result[]     = { 1.0f, 2.0f, 3.0f, 4.0f };
+    float   alpha           = 1.0f;
     //--------------------------------------------------------------------------
     // Device memory management
-    int   *dA_csrOffsets, *dA_columns;
-    float *dA_values, *dB, *dC;
-    CHECK_CUDA( cudaMalloc((void**) &dA_csrOffsets,
-                           (A_num_rows + 1) * sizeof(int)) )
-    CHECK_CUDA( cudaMalloc((void**) &dA_columns, A_nnz * sizeof(int))    )
-    CHECK_CUDA( cudaMalloc((void**) &dA_values,  A_nnz * sizeof(float))  )
-    CHECK_CUDA( cudaMalloc((void**) &dB,         B_size * sizeof(float)) )
-    CHECK_CUDA( cudaMalloc((void**) &dC,         C_size * sizeof(float)) )
+    int   *dA_sliceOffsets, *dA_columns;
+    float *dA_values, *dX, *dY;
+    CHECK_CUDA( cudaMalloc((void**) &dA_sliceOffsets,
+                           (A_num_slices + 1) * sizeof(int)) )
+    CHECK_CUDA( cudaMalloc((void**) &dA_columns, A_values_size * sizeof(int))        )
+    CHECK_CUDA( cudaMalloc((void**) &dA_values,  A_values_size * sizeof(float))      )
+    CHECK_CUDA( cudaMalloc((void**) &dX,         A_num_cols * sizeof(float)) )
+    CHECK_CUDA( cudaMalloc((void**) &dY,         A_num_rows * sizeof(float)) )
 
-    CHECK_CUDA( cudaMemcpy(dA_csrOffsets, hA_csrOffsets,
-                           (A_num_rows + 1) * sizeof(int),
+    CHECK_CUDA( cudaMemcpy(dA_sliceOffsets, hA_sliceOffsets,
+                           (A_num_slices + 1) * sizeof(int),
                            cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dA_columns, hA_columns, A_nnz * sizeof(int),
+    CHECK_CUDA( cudaMemcpy(dA_columns, hA_columns, A_values_size * sizeof(int),
                            cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dA_values, hA_values, A_nnz * sizeof(float),
+    CHECK_CUDA( cudaMemcpy(dA_values, hA_values, A_values_size * sizeof(float),
                            cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dB, hB, B_size * sizeof(float),
+    CHECK_CUDA( cudaMemcpy(dX, hX, A_num_cols * sizeof(float),
                            cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dC, hC, C_size * sizeof(float),
+    CHECK_CUDA( cudaMemcpy(dY, hY, A_num_rows * sizeof(float),
                            cudaMemcpyHostToDevice) )
     //--------------------------------------------------------------------------
     // CUSPARSE APIs
     cusparseHandle_t     handle = NULL;
     cusparseSpMatDescr_t matA;
-    cusparseDnMatDescr_t matB, matC;
+    cusparseDnVecDescr_t vecX, vecY;
     void*                dBuffer    = NULL;
     size_t               bufferSize = 0;
+    cusparseSpSVDescr_t  spsvDescr;
     CHECK_CUSPARSE( cusparseCreate(&handle) )
-    // Create sparse matrix A in CSR format
-    CHECK_CUSPARSE( cusparseCreateCsr(&matA, A_num_rows, A_num_cols, A_nnz,
-                                      dA_csrOffsets, dA_columns, dA_values,
-                                      CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
-                                      CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F) )
-    // Create dense matrix B
-    CHECK_CUSPARSE( cusparseCreateDnMat(&matB, A_num_cols, B_num_cols, ldb, dB,
-                                        CUDA_R_32F, CUSPARSE_ORDER_COL) )
-    // Create dense matrix C
-    CHECK_CUSPARSE( cusparseCreateDnMat(&matC, A_num_rows, B_num_cols, ldc, dC,
-                                        CUDA_R_32F, CUSPARSE_ORDER_COL) )
-    // allocate an external buffer if needed
-    CHECK_CUSPARSE( cusparseSpMM_bufferSize(
-                                 handle,
-                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                 &alpha, matA, matB, &beta, matC, CUDA_R_32F,
-                                 CUSPARSE_SPMM_ALG_DEFAULT, &bufferSize) )
+    // Create sparse matrix A in SELL format
+    CHECK_CUSPARSE( cusparseCreateSlicedEll(&matA, A_num_rows, A_num_cols, A_nnz,
+                                        A_values_size, A_slice_size,
+                                        dA_sliceOffsets, dA_columns, dA_values,
+                                        CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
+                                        CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F) )
+    // Create dense vector X
+    CHECK_CUSPARSE( cusparseCreateDnVec(&vecX, A_num_cols, dX, CUDA_R_32F) )
+    // Create dense vector y
+    CHECK_CUSPARSE( cusparseCreateDnVec(&vecY, A_num_rows, dY, CUDA_R_32F) )
+    // Create opaque data structure, that holds analysis data between calls.
+    CHECK_CUSPARSE( cusparseSpSV_createDescr(&spsvDescr) )
+    // Specify Lower|Upper fill mode.
+    cusparseFillMode_t fillmode = CUSPARSE_FILL_MODE_LOWER;
+    CHECK_CUSPARSE( cusparseSpMatSetAttribute(matA, CUSPARSE_SPMAT_FILL_MODE,
+                                              &fillmode, sizeof(fillmode)) )
+    // Specify Unit|Non-Unit diagonal type.
+    cusparseDiagType_t diagtype = CUSPARSE_DIAG_TYPE_NON_UNIT;
+    CHECK_CUSPARSE( cusparseSpMatSetAttribute(matA, CUSPARSE_SPMAT_DIAG_TYPE,
+                                              &diagtype, sizeof(diagtype)) )
+    // allocate an external buffer for analysis
+    CHECK_CUSPARSE( cusparseSpSV_bufferSize(
+                                handle, CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                &alpha, matA, vecX, vecY, CUDA_R_32F,
+                                CUSPARSE_SPSV_ALG_DEFAULT, spsvDescr,
+                                &bufferSize) )
     CHECK_CUDA( cudaMalloc(&dBuffer, bufferSize) )
-
-    // execute preprocess (optional)
-    CHECK_CUSPARSE( cusparseSpMM_preprocess(
-                                 handle,
-                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                 &alpha, matA, matB, &beta, matC, CUDA_R_32F,
-                                 CUSPARSE_SPMM_ALG_DEFAULT, dBuffer) )
-
-    // execute SpMM
-    CHECK_CUSPARSE( cusparseSpMM(handle,
-                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                 &alpha, matA, matB, &beta, matC, CUDA_R_32F,
-                                 CUSPARSE_SPMM_ALG_DEFAULT, dBuffer) )
+    CHECK_CUSPARSE( cusparseSpSV_analysis(
+                                handle, CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                &alpha, matA, vecX, vecY, CUDA_R_32F,
+                                CUSPARSE_SPSV_ALG_DEFAULT, spsvDescr, dBuffer) )
+    // execute SpSV
+    CHECK_CUSPARSE( cusparseSpSV_solve(handle, CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                       &alpha, matA, vecX, vecY, CUDA_R_32F,
+                                       CUSPARSE_SPSV_ALG_DEFAULT, spsvDescr) )
 
     // destroy matrix/vector descriptors
     CHECK_CUSPARSE( cusparseDestroySpMat(matA) )
-    CHECK_CUSPARSE( cusparseDestroyDnMat(matB) )
-    CHECK_CUSPARSE( cusparseDestroyDnMat(matC) )
+    CHECK_CUSPARSE( cusparseDestroyDnVec(vecX) )
+    CHECK_CUSPARSE( cusparseDestroyDnVec(vecY) )
+    CHECK_CUSPARSE( cusparseSpSV_destroyDescr(spsvDescr));
     CHECK_CUSPARSE( cusparseDestroy(handle) )
     //--------------------------------------------------------------------------
     // device result check
-    CHECK_CUDA( cudaMemcpy(hC, dC, C_size * sizeof(float),
+    CHECK_CUDA( cudaMemcpy(hY, dY, A_num_rows * sizeof(float),
                            cudaMemcpyDeviceToHost) )
     int correct = 1;
     for (int i = 0; i < A_num_rows; i++) {
-        for (int j = 0; j < B_num_cols; j++) {
-            if (hC[i + j * ldc] != hC_result[i + j * ldc]) {
-                correct = 0; // direct floating point comparison is not reliable
-                break;
-            }
+        if (hY[i] != hY_result[i]) { // direct floating point comparison is not
+            correct = 0;             // reliable
+            break;
         }
     }
     if (correct)
-        printf("spmm_csr_example test PASSED\n");
+        printf("spsv_sell_example test PASSED\n");
     else
-        printf("spmm_csr_example test FAILED: wrong result\n");
+        printf("spsv_sell_example test FAILED: wrong result\n");
     //--------------------------------------------------------------------------
     // device memory deallocation
     CHECK_CUDA( cudaFree(dBuffer) )
-    CHECK_CUDA( cudaFree(dA_csrOffsets) )
+    CHECK_CUDA( cudaFree(dA_sliceOffsets) )
     CHECK_CUDA( cudaFree(dA_columns) )
     CHECK_CUDA( cudaFree(dA_values) )
-    CHECK_CUDA( cudaFree(dB) )
-    CHECK_CUDA( cudaFree(dC) )
+    CHECK_CUDA( cudaFree(dX) )
+    CHECK_CUDA( cudaFree(dY) )
     return EXIT_SUCCESS;
 }

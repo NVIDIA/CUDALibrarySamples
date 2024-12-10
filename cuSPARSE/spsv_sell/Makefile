@@ -1,4 +1,4 @@
-# Copyright 1993-2022 NVIDIA Corporation.  All rights reserved.
+# Copyright 1993-2023 NVIDIA Corporation.  All rights reserved.
 #
 # NOTICE TO LICENSEE:
 #
@@ -48,16 +48,16 @@ CUDA_TOOLKIT := $(shell dirname $$(command -v nvcc))/..
 INC          := -I$(CUDA_TOOLKIT)/include
 LIBS         := -lcusparse
 
-all: spgemm_mem_example
+all: spsv_sell_example
 
-spgemm_mem_example: spgemm_mem_example.c
-	nvcc $(INC) spgemm_mem_example.c -o spgemm_mem_example $(LIBS)
+spsv_sell_example: spsv_sell_example.c
+	nvcc $(INC) spsv_sell_example.c -o spsv_sell_example $(LIBS)
 
 clean:
-	rm -f spgemm_mem_example
+	rm -f spsv_sell_example
 
 test:
-	@echo "\n==== SpGEMM mem Test ====\n"
-	./spgemm_mem_example
+	@echo "\n==== SpSV SELL Test ====\n"
+	./spsv_sell_example
 
 .PHONY: clean all test
