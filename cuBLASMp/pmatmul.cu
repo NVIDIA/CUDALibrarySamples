@@ -115,7 +115,7 @@ int main(int argc, char* argv[])
     MPI_CHECK(MPI_Bcast(&id, sizeof(nvshmemx_uniqueid_t), MPI_BYTE, 0, MPI_COMM_WORLD));
 
     nvshmemx_set_attr_uniqueid_args(rank, nranks, &id, &attr);
-    NVSHMEM_CHECK(nvshmemx_init_attr(NVSHMEMX_INIT_WITH_UNIQUEID, &attr));
+    NVSHMEM_CHECK(nvshmemx_hostlib_init_attr(NVSHMEMX_INIT_WITH_UNIQUEID, &attr));
 
     cudaStream_t stream = nullptr;
     CUDA_CHECK(cudaStreamCreate(&stream));
@@ -135,7 +135,7 @@ int main(int argc, char* argv[])
     void* d_work = nullptr;
 
     compute_t alpha = 1.0;
-    compute_t beta = 1.0;
+    compute_t beta = 0.0;
 
     size_t workspaceInBytesOnDevice = 0;
     size_t workspaceInBytesOnHost = 0;
@@ -214,7 +214,7 @@ int main(int argc, char* argv[])
             1,
             descB,
             &beta,
-            d_X1,
+            nullptr,
             1,
             1,
             descC,
@@ -250,7 +250,7 @@ int main(int argc, char* argv[])
             1,
             descB,
             &beta,
-            d_X1,
+            nullptr,
             1,
             1,
             descC,
@@ -346,7 +346,7 @@ int main(int argc, char* argv[])
             1,
             descA,
             &beta,
-            d_X2,
+            nullptr,
             1,
             1,
             descC,
@@ -382,7 +382,7 @@ int main(int argc, char* argv[])
             1,
             descA,
             &beta,
-            d_X2,
+            nullptr,
             1,
             1,
             descC,
@@ -421,6 +421,8 @@ int main(int argc, char* argv[])
     CUBLASMP_CHECK(cublasMpGridDestroy(grid_row_major));
 
     CUBLASMP_CHECK(cublasMpDestroy(handle));
+
+    nvshmemx_hostlib_finalize();
 
     CAL_CHECK(cal_comm_barrier(cal_comm, stream));
 

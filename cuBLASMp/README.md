@@ -6,6 +6,8 @@ This folder demonstrates cuBLASLMp library API usage.
 
 ### Samples
 
+* [ PMATMUL ](pmatmul.cu)
+
 * [ PGEMM ](pgemm.cu)
 
 * [ PTRSM ](ptrsm.cu)
@@ -41,7 +43,7 @@ This folder demonstrates cuBLASLMp library API usage.
 
 ### Prerequisites
 
-cuBLASMp is distributed through [NVIDIA Developer Zone](https://developer.nvidia.com/cublasmp-downloads) and also as a part of [HPC SDK](https://developer.nvidia.com/hpc-sdk). cuBLASMp requires CUDA Toolkit, HPC-X, NCCL and GDRCOPY to be installed on the system. The samples require C++11 compatible compiler. 
+cuBLASMp is distributed through [NVIDIA Developer Zone](https://developer.nvidia.com/cublasmp-downloads) and also as a part of [HPC SDK](https://developer.nvidia.com/hpc-sdk). cuBLASMp requires CUDA Toolkit, HPC-X, NVSHMEM, NCCL and GDRCOPY to be installed on the system. The samples require C++11 compatible compiler. 
 
 ### Build Steps
 
@@ -49,12 +51,17 @@ cuBLASMp is distributed through [NVIDIA Developer Zone](https://developer.nvidia
     cd CUDALibrarySamples/cuBLASMp
     mkdir build
     cd build
-    cmake .. -DCMAKE_BUILD_TYPE=Release
+    export CUBLASMP_HOME=<path/to/cublasmp>
+    export CAL_HOME=<path/to/libcal>
+    export NVSHMEM_HOME=<path/to/nvshmem>
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DCUBLASMP_INCLUDE_DIRECTORIES=${CUBLASMP_HOME}/include -DCUBLASMP_LIBRARIES=${CUBLASMP_HOME}/lib/libcublasmp.so -DCAL_INCLUDE_DIRECTORIES=${CAL_HOME}/include -DCAL_LIBRARIES=${CAL_HOME}/lib/libcal.so -DNVSHMEM_INCLUDE_DIRECTORIES=${NVSHMEM_HOME}/include -DNVSHMEM_HOST_LIBRARIES=${NVSHMEM_HOME}/lib/libnvshmem_host.so -DNVSHMEM_DEVICE_LIBRARIES=${NVSHMEM_HOME}/lib/libnvshmem_device.a
     make -j
 
 ### Running
 
 Run examples with mpi command and number of processes according to process grid values, i.e.
+
+`mpirun -n 2 ./pmatmul`
 
 `mpirun -n 2 ./pgemm`
 

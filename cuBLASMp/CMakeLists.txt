@@ -73,20 +73,18 @@ function(build_sample sample_name)
         ${CAL_INCLUDE_DIRECTORIES}
         ${CUBLASMP_INCLUDE_DIRECTORIES}
         ${CAL_MPI_INCLUDE_PATH}
+        ${NVSHMEM_INCLUDE_DIRECTORIES}
     )
 
     target_link_directories(${sample_name} PUBLIC
         ${CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES}
         ${CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES}/stubs
-        ${CAL_LINK_DIRECTORIES}
-        ${CUBLASMP_LINK_DIRECTORIES}
     )
 
     target_link_libraries(${sample_name} PUBLIC
-        cal
         cudart
-        cublasmp
-        cal
+        ${CUBLASMP_LIBRARIES}
+        ${CAL_LIBRARIES}
         ${MPI_CXX_LIBRARIES}
         ${NVSHMEM_HOST_LIBRARIES}
         ${NVSHMEM_DEVICE_LIBRARIES}
