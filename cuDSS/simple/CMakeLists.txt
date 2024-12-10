@@ -46,7 +46,7 @@
 # comments to the code, the above Disclaimer and U.S. Government End
 # Users Notice.
 #
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.19)
 
 set(EXAMPLE_NAME simple)
 
@@ -60,7 +60,7 @@ set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_EXTENSIONS        OFF)
 
 # Find cuDSS
-find_package(cudss REQUIRED)
+find_package(cudss 0.4.0 REQUIRED)
 
 set_source_files_properties(${EXAMPLE_NAME}.cpp PROPERTIES LANGUAGE CUDA)
 
