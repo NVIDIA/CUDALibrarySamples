@@ -47,7 +47,7 @@
  * Users Notice.
  */
 #include <cuda_runtime_api.h> // cudaMalloc, cudaMemcpy, etc.
-#include <cusparse.h>         // cusparseSpMM
+#include <cusparse.h>         // cusparseSDDMM
 #include <stdio.h>            // printf
 #include <stdlib.h>           // EXIT_FAILURE
 
@@ -189,7 +189,7 @@ int main(void) {
                                   CUSPARSE_OPERATION_NON_TRANSPOSE,
                                   &alpha, matA, matB, &beta, matC, CUDA_R_32F,
                                   CUSPARSE_SDDMM_ALG_DEFAULT, dBuffer) )
-    // execute SpMM
+    // execute SDDMM
     CHECK_CUSPARSE( cusparseSDDMM(handle,
                                   CUSPARSE_OPERATION_NON_TRANSPOSE,
                                   CUSPARSE_OPERATION_NON_TRANSPOSE,
