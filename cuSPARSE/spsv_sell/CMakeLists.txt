@@ -1,4 +1,4 @@
-# Copyright 1993-2022 NVIDIA Corporation.  All rights reserved.
+# Copyright 1993-2023 NVIDIA Corporation.  All rights reserved.
 #
 # NOTICE TO LICENSEE:
 #
@@ -44,20 +44,25 @@
 # software must include, in the user documentation and internal
 # comments to the code, the above Disclaimer and U.S. Government End
 # Users Notice.
-CUDA_TOOLKIT := $(shell dirname $$(command -v nvcc))/..
-INC          := -I$(CUDA_TOOLKIT)/include
-LIBS         := -lcusparse
+cmake_minimum_required(VERSION 3.9)
 
-all: spgemm_mem_example
+set(ROUTINE spsv_sell)
 
-spgemm_mem_example: spgemm_mem_example.c
-	nvcc $(INC) spgemm_mem_example.c -o spgemm_mem_example $(LIBS)
+project("${ROUTINE}_example"
+        DESCRIPTION  "GPU-Accelerated Sparse Linear Algebra"
+        HOMEPAGE_URL "https://docs.nvidia.com/cuda/cusparse/index.html"
+        LANGUAGES    C CUDA)
 
-clean:
-	rm -f spgemm_mem_example
+add_executable(${ROUTINE}_example)
 
-test:
-	@echo "\n==== SpGEMM mem Test ====\n"
-	./spgemm_mem_example
+target_sources(${ROUTINE}_example
+    PUBLIC ${PROJECT_SOURCE_DIR}/${ROUTINE}_example.c
+)
 
-.PHONY: clean all test
+target_include_directories(${ROUTINE}_example
+    PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
+)
+
+target_link_libraries(${ROUTINE}_example
+    PUBLIC cudart cusparse
+)

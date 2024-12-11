@@ -300,4 +300,3 @@ int main(void) {
     CHECK_CUDA( cudaFree(dC) )
     return EXIT_SUCCESS;
 }
-

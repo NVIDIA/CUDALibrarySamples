@@ -46,18 +46,18 @@
 # Users Notice.
 CUDA_TOOLKIT := $(shell dirname $$(command -v nvcc))/..
 INC          := -I$(CUDA_TOOLKIT)/include
-LIBS         := -lcusparse
+LIBS         := -lcudart -lcusparse
 
-all: spgemm_mem_example
+all: sddmm_bsr_example
 
-spgemm_mem_example: spgemm_mem_example.c
-	nvcc $(INC) spgemm_mem_example.c -o spgemm_mem_example $(LIBS)
+sddmm_bsr_example: sddmm_bsr_example.c
+	nvcc $(INC) sddmm_bsr_example.c -o sddmm_bsr_example $(LIBS)
 
 clean:
-	rm -f spgemm_mem_example
+	rm -f sddmm_bsr_example
 
 test:
-	@echo "\n==== SpGEMM mem Test ====\n"
-	./spgemm_mem_example
+	@echo "\n==== SDDMM BSR Test ====\n"
+	./sddmm_bsr_example
 
 .PHONY: clean all test

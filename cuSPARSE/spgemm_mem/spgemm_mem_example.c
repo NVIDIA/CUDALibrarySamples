@@ -155,7 +155,7 @@ int main(void) {
                                       CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
                                       CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F) )
     CHECK_CUSPARSE( cusparseCreateCsr(&matC, A_num_rows, B_num_cols, 0,
-                                      NULL, NULL, NULL,
+                                      dC_csrOffsets, NULL, NULL,
                                       CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
                                       CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F) )
     //--------------------------------------------------------------------------
@@ -188,7 +188,7 @@ int main(void) {
                                       spgemmDesc, chunk_fraction,
                                       &bufferSize3, NULL, NULL) )
     CHECK_CUDA( cudaMalloc((void**) &dBuffer3, bufferSize3) )
-    
+
     // inspect the matrices A and B to understand the memory requirement for
     // the next step
     CHECK_CUSPARSE(
@@ -204,7 +204,7 @@ int main(void) {
     CHECK_CUDA( cudaMalloc((void**) &dBuffer2, bufferSize2) )
 
     // compute the intermediate product of A * B
-    CHECK_CUSPARSE( 
+    CHECK_CUSPARSE(
         cusparseSpGEMM_compute(handle, opA, opB,
                                  &alpha, matA, matB, &beta, matC,
                                  computeType, alg,

@@ -131,6 +131,12 @@ int main(void) {
                                  CUSPARSE_SPMV_ALG_DEFAULT, &bufferSize) )
     CHECK_CUDA( cudaMalloc(&dBuffer, bufferSize) )
 
+    // execute preprocess (optional)
+    CHECK_CUSPARSE( cusparseSpMV_preprocess(
+                                 handle, CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                 &alpha, matA, vecX, &beta, vecY, CUDA_R_32F,
+                                 CUSPARSE_SPMV_ALG_DEFAULT, dBuffer) )
+
     // execute SpMV
     CHECK_CUSPARSE( cusparseSpMV(handle, CUSPARSE_OPERATION_NON_TRANSPOSE,
                                  &alpha, matA, vecX, &beta, vecY, CUDA_R_32F,
