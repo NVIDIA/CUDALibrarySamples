@@ -51,10 +51,13 @@ cuBLASMp is distributed through [NVIDIA Developer Zone](https://developer.nvidia
     cd CUDALibrarySamples/cuBLASMp
     mkdir build
     cd build
+    export HPCXROOT=<path/to/hpcx>
     export CUBLASMP_HOME=<path/to/cublasmp>
     export CAL_HOME=<path/to/libcal>
     export NVSHMEM_HOME=<path/to/nvshmem>
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DCUBLASMP_INCLUDE_DIRECTORIES=${CUBLASMP_HOME}/include -DCUBLASMP_LIBRARIES=${CUBLASMP_HOME}/lib/libcublasmp.so -DCAL_INCLUDE_DIRECTORIES=${CAL_HOME}/include -DCAL_LIBRARIES=${CAL_HOME}/lib/libcal.so -DNVSHMEM_INCLUDE_DIRECTORIES=${NVSHMEM_HOME}/include -DNVSHMEM_HOST_LIBRARIES=${NVSHMEM_HOME}/lib/libnvshmem_host.so -DNVSHMEM_DEVICE_LIBRARIES=${NVSHMEM_HOME}/lib/libnvshmem_device.a
+    source ${HPCXROOT}/hpcx-mt-init-ompi.sh
+    hpcx_load
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_ARCHITECTURES="70;80;90" -DCUBLASMP_INCLUDE_DIRECTORIES=${CUBLASMP_HOME}/include -DCUBLASMP_LIBRARIES=${CUBLASMP_HOME}/lib/libcublasmp.so -DCAL_INCLUDE_DIRECTORIES=${CAL_HOME}/include -DCAL_LIBRARIES=${CAL_HOME}/lib/libcal.so -DNVSHMEM_INCLUDE_DIRECTORIES=${NVSHMEM_HOME}/include -DNVSHMEM_HOST_LIBRARIES=${NVSHMEM_HOME}/lib/libnvshmem_host.so -DNVSHMEM_DEVICE_LIBRARIES=${NVSHMEM_HOME}/lib/libnvshmem_device.a
     make -j
 
 ### Running
