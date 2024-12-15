@@ -64,8 +64,6 @@ endif ()
 function(build_sample sample_name)
     add_executable(${sample_name} ${sample_name}.cu)
 
-    set_target_properties(${sample_name} PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
-
     target_include_directories(${sample_name} PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
