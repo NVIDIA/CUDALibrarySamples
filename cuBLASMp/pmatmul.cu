@@ -161,7 +161,7 @@ int main(int argc, char* argv[])
 
         std::vector<input_t> h_X0(loc_a_m * loc_a_n, input_t(0));
         std::vector<input_t> h_W0(loc_b_m * loc_b_n, input_t(0));
-        std::vector<output_t> h_X1(loc_c_m * loc_c_n, output_t(0));
+        std::vector<output_t> h_X1(loc_c_m * loc_c_n * nranks, output_t(0));
 
         generate_random_matrix(k, m, h_X0.data(), loc_a_m, loc_a_n, 1, 1, loc_a_m, 1, nranks, 1, rank);
         generate_random_matrix(k, n, h_W0.data(), loc_b_m, loc_b_n, 1, 1, loc_b_m, 1, nranks, 1, rank);
@@ -172,14 +172,14 @@ int main(int argc, char* argv[])
 
         CUDA_CHECK(cudaMalloc((void**)&d_X0, loc_a_m * loc_a_n * sizeof(input_t)));
         CUDA_CHECK(cudaMalloc((void**)&d_W0, loc_b_m * loc_b_n * sizeof(input_t)));
-        CUDA_CHECK(cudaMalloc((void**)&d_X1, loc_c_m * loc_c_n * sizeof(output_t)));
+        CUDA_CHECK(cudaMalloc((void**)&d_X1, loc_c_m * loc_c_n * nranks * sizeof(output_t)));
 
         CUDA_CHECK(
             cudaMemcpyAsync(d_X0, h_X0.data(), loc_a_m * loc_a_n * sizeof(input_t), cudaMemcpyHostToDevice, stream));
         CUDA_CHECK(
             cudaMemcpyAsync(d_W0, h_W0.data(), loc_b_m * loc_b_n * sizeof(input_t), cudaMemcpyHostToDevice, stream));
-        CUDA_CHECK(
-            cudaMemcpyAsync(d_X1, h_X1.data(), loc_c_m * loc_c_n * sizeof(output_t), cudaMemcpyHostToDevice, stream));
+        CUDA_CHECK(cudaMemcpyAsync(
+            d_X1, h_X1.data(), loc_c_m * loc_c_n * nranks * sizeof(output_t), cudaMemcpyHostToDevice, stream));
 
         CUBLASMP_CHECK(cublasMpMatrixDescriptorCreate(
             k, m, loc_a_m, loc_a_n, 0, 0, loc_a_m, cuda_input_type, grid_row_major, &descA));
