@@ -35,7 +35,38 @@
 
 #include <cublasLt.h>
 #include <cuda_fp8.h>
+#include <cuda_fp4.h>
 #include <cuda_runtime_api.h>
+
+
+static unsigned int roundoff(unsigned int  x, unsigned int granul) {
+  return granul * ((x + (granul - 1)) / granul);
+}
+
+template <typename T>
+static T ceildiv(T x, unsigned int divisor) {
+  return (x + (divisor - 1)) / divisor;
+}
+
+template <typename T>
+constexpr size_t sizeofBits() {
+  return sizeof(T) * 8;
+}
+
+template <>
+constexpr size_t sizeofBits<__nv_fp4_e2m1>() {
+  return 4;
+}
+
+template <typename T>
+constexpr size_t sizeofElements(size_t N) {
+  return ceildiv(N * sizeofBits<T>(), 8 * sizeof(T));
+}
+
+template <typename T>
+constexpr size_t sizeofBytes(size_t N) {
+  return sizeofElements<T>(N) * sizeof(T);
+}
 
 inline void checkCudaStatus(cudaError_t status) {
     if (status != cudaSuccess) {
@@ -51,16 +82,12 @@ inline void checkCublasStatus(cublasStatus_t status) {
     }
 }
 
-static unsigned int roundoff(unsigned int  x, unsigned int granul) {
-  return granul * ((x + (granul - 1)) / granul);
-}
-
 // Block scales used for mxfp8 and nvfp8 require a special layout: https://docs.nvidia.com/cuda/cublas/index.html#d-block-scaling-factors-layout for more details.
 inline int getScaleTensorSize(int rows, int cols, cublasLtMatmulMatrixScale_t ScaleMode) {
     if (ScaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F) return 1;
 
-    if (ScaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_VEC32_UE8M0) {
-        static const size_t S_VSCALE = 32;
+    if (ScaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_VEC32_UE8M0 || ScaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_VEC16_UE4M3) {
+        static const size_t S_VSCALE = ScaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_VEC32_UE8M0 ? 32 : 16;
         static const size_t S_BLOCK_COLS = 32;
         static const size_t S_BLOCK_ROWS = 4;
         static const size_t S_BLOCK_INNER = 4;
@@ -91,20 +118,22 @@ struct TestBench {
             cublasLtMatmulMatrixScale_t CScaleMode = CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
             cublasLtMatmulMatrixScale_t DScaleMode = CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
             cublasLtMatmulMatrixScale_t DOutScaleMode = CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F) :
-        m(m), n(n), k(k), N(N), alpha(alpha), beta(beta), workspaceSize(workspaceSize), Ahost(m * k * N), Bhost(n * k * N),
-        Chost(m * n * N), biasHost(m * N), AscaleHost(Ascale), BscaleHost(Bscale), CscaleHost(Cscale), DscaleHost(Dscale),
+        m(m), n(n), k(k), N(N), alpha(alpha), beta(beta), workspaceSize(workspaceSize), Ahost(sizeofElements<InType>(m * k * N)), Bhost(sizeofElements<InType>(n * k * N)),
+        Chost(sizeofElements<OutType>(m * n * N)), biasHost(sizeofElements<OutType>(m * N)), AscaleHost(Ascale), BscaleHost(Bscale), CscaleHost(Cscale), DscaleHost(Dscale),
         AScaleMode(AScaleMode), BScaleMode(BScaleMode), CScaleMode(CScaleMode), DScaleMode(DScaleMode), DOutScaleMode(DOutScaleMode) {
 
         checkCublasStatus(cublasLtCreate(&ltHandle));
-        checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&Adev), m * k * N * sizeof(InType)));
-        checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&Bdev), n * k * N  * sizeof(InType)));
-        checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&Cdev), m * n * N  * sizeof(OutType)));
-        checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&biasDev), m * N * sizeof(OutType)));
+        checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&Adev), sizeofBytes<InType>(m * k * N)));
+        checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&Bdev), sizeofBytes<InType>(n * k * N)));
+        checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&Cdev), sizeofBytes<OutType>(m * n * N)));
+        checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&biasDev), sizeofBytes<OutType>(m * N)));
         checkCudaStatus(cudaMalloc(&workspace, workspaceSize));
         checkCudaStatus(cudaStreamCreate(&stream));
 
-        // Currently only fp8 supports per-tensor scaling
-        perTensorScalingEnabled = std::is_same<InType, __nv_fp8_e4m3>::value || std::is_same<InType, __nv_fp8_e5m2>::value;
+        // Currently only fp4 and fp8 support per-tensor scaling
+        perTensorScalingEnabled = std::is_same<InType, __nv_fp8_e4m3>::value ||
+                                  std::is_same<InType, __nv_fp8_e5m2>::value || std::is_same<InType, __nv_fp4_e2m1>::value;
+
         AScaleNum = getScaleTensorSize(m, k, AScaleMode);
         BScaleNum = getScaleTensorSize(k, n, BScaleMode);
         CScaleNum = getScaleTensorSize(m, n, CScaleMode);
@@ -226,4 +255,11 @@ inline void TestBench<__half, __half, cuComplex>::fillData() {
     for (int i = 0; i < m * k * N; i++) Ahost[i] = __float2half_rn(i/100.);
     for (int i = 0; i < n * k * N; i++) Bhost[i] = __float2half_rn(i/100.);
     for (int i = 0; i < m * N; i++) biasHost[i] = __float2half_rn(i + 1);
+}
+
+template <>
+inline void TestBench<__nv_fp4_e2m1, __nv_fp4_e2m1, float, __nv_fp8_e4m3>::fillData() {
+    for (int i = 0; i < sizeofElements<__nv_fp4_e2m1>(m * k * N); i++) Ahost[i].__x = __nv_cvt_float2_to_fp4x2(float2{float(i % 5), float(i % 5) + 1}, __NV_E2M1, cudaRoundNearest);
+    for (int i = 0; i < sizeofElements<__nv_fp4_e2m1>(n * k * N); i++) Bhost[i].__x = __nv_cvt_float2_to_fp4x2(float2{float(i % 5), float(i % 5) + 1}, __NV_E2M1, cudaRoundNearest);
+    for (int i = 0; i < sizeofElements<__nv_fp4_e2m1>(m * N); i++) biasHost[i].__x =__nv_cvt_float2_to_fp4x2(float2{float(i % 5), float(i % 5) + 1}, __NV_E2M1, cudaRoundNearest);
 }
