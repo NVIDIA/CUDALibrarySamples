@@ -49,7 +49,7 @@ void LtNvfp4Matmul(cublasLtHandle_t ltHandle,
                  const __nv_fp8_e4m3 *c_scale, /* device pointer */
                  __nv_fp4_e2m1 *D,
                  int ldc,
-                 const __nv_fp8_e4m3 *d_scale, /* device pointer */
+                 const float *d_scale, /* device pointer */
                  __nv_fp8_e4m3 *d_out_scale, /* device pointer */
                  void *workspace,
                  size_t workspaceSize,
