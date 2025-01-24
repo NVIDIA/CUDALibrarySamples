@@ -104,7 +104,7 @@ inline int getScaleTensorSize(int rows, int cols, cublasLtMatmulMatrixScale_t Sc
     return 0;
 }
 
-template <typename InType, typename OutType = InType, typename ComputeType = OutType, typename ScaleType = ComputeType>
+template <typename InType, typename OutType = InType, typename ComputeType = OutType, typename ScaleType = ComputeType, typename DScaleType = ScaleType>
 struct TestBench {
     using SampleRunner = std::function<void()>;
 
@@ -112,7 +112,7 @@ struct TestBench {
             ComputeType alpha = ComputeType{0.0f}, ComputeType beta = ComputeType{0.0f},
             size_t workspaceSize = 1024 * 1024 * 4, int N = 1,
             ScaleType Ascale = ScaleType{2.0f}, ScaleType Bscale = ScaleType{0.5f},
-            ScaleType Cscale = ScaleType{1.0f}, ScaleType Dscale = ScaleType{1.0f},
+            ScaleType Cscale = ScaleType{1.0f}, DScaleType Dscale = DScaleType{1.0f},
             cublasLtMatmulMatrixScale_t AScaleMode = CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
             cublasLtMatmulMatrixScale_t BScaleMode = CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
             cublasLtMatmulMatrixScale_t CScaleMode = CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
@@ -144,7 +144,7 @@ struct TestBench {
             if (AScaleNum > 1) AscaleHostBuffer = static_cast<ScaleType *>(malloc(AScaleNum * sizeof(ScaleType)));
             if (BScaleNum > 1) BscaleHostBuffer = static_cast<ScaleType *>(malloc(BScaleNum * sizeof(ScaleType)));
             if (CScaleNum > 1) CscaleHostBuffer = static_cast<ScaleType *>(malloc(CScaleNum * sizeof(ScaleType)));
-            if (DScaleNum > 1) DscaleHostBuffer = static_cast<ScaleType *>(malloc(DScaleNum * sizeof(ScaleType)));
+            if (DScaleNum > 1) DscaleHostBuffer = static_cast<DScaleType *>(malloc(DScaleNum * sizeof(DScaleType)));
             checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&AscaleDev), AScaleNum * sizeof(*AscaleDev)));
             checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&BscaleDev), BScaleNum * sizeof(*BscaleDev)));
             checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&CscaleDev), CScaleNum * sizeof(*CscaleDev)));
@@ -234,11 +234,14 @@ struct TestBench {
     OutType *Cdev, *biasDev;
     cudaStream_t stream;
     cublasLtHandle_t ltHandle;
-    ScaleType AscaleHost, BscaleHost, CscaleHost, DscaleHost;
-    ScaleType *AscaleHostBuffer, *BscaleHostBuffer, *CscaleHostBuffer, *DscaleHostBuffer;
+    ScaleType AscaleHost, BscaleHost, CscaleHost;
+    DScaleType DscaleHost;
+    ScaleType *AscaleHostBuffer, *BscaleHostBuffer, *CscaleHostBuffer;
+    DScaleType *DscaleHostBuffer;
     int AScaleNum, BScaleNum, CScaleNum, DScaleNum, DOutScaleNum;
     ComputeType DamaxHost;
-    ScaleType *AscaleDev, *BscaleDev, *CscaleDev, *DscaleDev, *DOutscaleDev;
+    ScaleType *AscaleDev, *BscaleDev, *CscaleDev, *DOutscaleDev;
+    DScaleType *DscaleDev;
     ComputeType *DamaxDev;
     cublasLtMatmulMatrixScale_t AScaleMode, BScaleMode, CScaleMode, DScaleMode, DOutScaleMode;
 };
@@ -258,8 +261,8 @@ inline void TestBench<__half, __half, cuComplex>::fillData() {
 }
 
 template <>
-inline void TestBench<__nv_fp4_e2m1, __nv_fp4_e2m1, float, __nv_fp8_e4m3>::fillData() {
-    for (int i = 0; i < sizeofElements<__nv_fp4_e2m1>(m * k * N); i++) Ahost[i].__x = __nv_cvt_float2_to_fp4x2(float2{float(i % 5), float(i % 5) + 1}, __NV_E2M1, cudaRoundNearest);
-    for (int i = 0; i < sizeofElements<__nv_fp4_e2m1>(n * k * N); i++) Bhost[i].__x = __nv_cvt_float2_to_fp4x2(float2{float(i % 5), float(i % 5) + 1}, __NV_E2M1, cudaRoundNearest);
-    for (int i = 0; i < sizeofElements<__nv_fp4_e2m1>(m * N); i++) biasHost[i].__x =__nv_cvt_float2_to_fp4x2(float2{float(i % 5), float(i % 5) + 1}, __NV_E2M1, cudaRoundNearest);
+inline void TestBench<__nv_fp4_e2m1, __nv_fp4_e2m1, float, __nv_fp8_e4m3, float>::fillData() {
+    for (int i = 0; i < sizeofElements<__nv_fp4_e2m1>(m * k * N); i++) Ahost[i].__x = __nv_fp4x2_e2m1{float2{float(i % 5), float(i % 5) + 1}}.__x;
+    for (int i = 0; i < sizeofElements<__nv_fp4_e2m1>(n * k * N); i++) Bhost[i].__x = __nv_fp4x2_e2m1{float2{float(i % 5), float(i % 5) + 1}}.__x;
+    for (int i = 0; i < sizeofElements<__nv_fp4_e2m1>(m * N); i++) biasHost[i].__x =__nv_fp4x2_e2m1{float2{float(i % 5), float(i % 5) + 1}}.__x;
 }
