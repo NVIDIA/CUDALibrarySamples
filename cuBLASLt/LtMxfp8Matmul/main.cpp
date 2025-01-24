@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,25 +29,38 @@
 #include <vector>
 
 #include <cuda_runtime_api.h>
+#include <cuda_fp8.h>
 #include <cublasLt.h>
 
-#include "sample_cublasLt_LtIgemmTensor.h"
+#include "sample_cublasLt_LtMxfp8Matmul.h"
 #include "helpers.h"
 
 int main() {
-    TestBench<int8_t, int32_t, float> props(4, 4, 4);
+    TestBench<__nv_fp8_e4m3, __nv_fp8_e4m3, float, __nv_fp8_e8m0> props(64, 128, 256, 2.0f, 0.0f /* ignored */, 32ULL * 1024 * 1024, 1, __nv_fp8_e8m0{2.0f}, __nv_fp8_e8m0{0.5f}, __nv_fp8_e8m0{1.0f}, __nv_fp8_e8m0{1.0f},
+        CUBLASLT_MATMUL_MATRIX_SCALE_VEC32_UE8M0, CUBLASLT_MATMUL_MATRIX_SCALE_VEC32_UE8M0, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_VEC32_UE8M0);
 
     props.run([&props] {
-        LtIgemmTensor(props.ltHandle,
+        LtMxfp8Matmul(props.ltHandle,
                     props.m,
                     props.n,
                     props.k,
+                    &props.alpha,
+                    props.AscaleDev,
                     props.Adev,
-                    props.m,
+                    props.k,
+                    props.BscaleDev,
                     props.Bdev,
                     props.k,
+                    props.CscaleDev,
                     props.Cdev,
-                    props.m);
+                    props.m,
+                    props.DOutscaleDev,
+                    props.workspace,
+                    props.workspaceSize,
+                    props.AScaleMode,
+                    props.BScaleMode,
+                    props.CScaleMode,
+                    props.DOutScaleMode);
     });
 
     return 0;

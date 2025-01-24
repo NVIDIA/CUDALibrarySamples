@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,29 +26,33 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <vector>
-
-#include <cuda_runtime_api.h>
+#include <cuda_fp8.h>
 #include <cublasLt.h>
 
-#include "sample_cublasLt_LtIgemmTensor.h"
-#include "helpers.h"
-
-int main() {
-    TestBench<int8_t, int32_t, float> props(4, 4, 4);
-
-    props.run([&props] {
-        LtIgemmTensor(props.ltHandle,
-                    props.m,
-                    props.n,
-                    props.k,
-                    props.Adev,
-                    props.m,
-                    props.Bdev,
-                    props.k,
-                    props.Cdev,
-                    props.m);
-    });
-
-    return 0;
-}
+/// Sample wrapper executing mxfp8 matmul with cublasLtMatmul, with addition of per-tensor scaling, and
+/// the workspace to support split-K algorithms.
+///
+/// pointer mode is for alpha and beta is always host, to change it configure the appropriate matmul descriptor
+/// attribute matmul is not using cublas handle's configuration of math mode, here tensor ops are implicitly allowed; to
+/// change this configure appropriate attribute in the preference handle
+void LtMxfp8Matmul(cublasLtHandle_t ltHandle,
+                 int m,
+                 int n,
+                 int k,
+                 const float *alpha, /* host pointer */
+                 const __nv_fp8_e8m0 *a_scale, /* device pointer */
+                 const __nv_fp8_e4m3 *A,
+                 int lda,
+                 const __nv_fp8_e8m0 *b_scale, /* device pointer */
+                 const __nv_fp8_e4m3 *B,
+                 int ldb,
+                 const __nv_fp8_e8m0 *c_scale, /* device pointer */
+                 __nv_fp8_e4m3 *D,
+                 int ldc,
+                 __nv_fp8_e8m0 *d_out_scale, /* device pointer */
+                 void *workspace,
+                 size_t workspaceSize,
+                 cublasLtMatmulMatrixScale_t AScaleMode,
+                 cublasLtMatmulMatrixScale_t BScaleMode,
+                 cublasLtMatmulMatrixScale_t CScaleMode,
+                 cublasLtMatmulMatrixScale_t DOutScaleMode);
