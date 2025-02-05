@@ -1,5 +1,5 @@
 #
-# Copyright 2024 NVIDIA Corporation.  All rights reserved.
+# Copyright 2024-2025 NVIDIA Corporation.  All rights reserved.
 #
 # NOTICE TO LICENSEE:
 #
@@ -59,8 +59,10 @@ set(CMAKE_CUDA_STANDARD          11)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_EXTENSIONS        OFF)
 
+option(BUILD_STATIC "Building statically linked examples" OFF)
+
 # Find cuDSS
-find_package(cudss 0.4.0 REQUIRED)
+find_package(cudss 0.5.0 REQUIRED)
 
 set_source_files_properties(${EXAMPLE_NAME}.cpp PROPERTIES LANGUAGE CUDA)
 
@@ -89,6 +91,11 @@ if(BUILD_STATIC)
 
     target_sources(${EXAMPLE_NAME}_example_static
         PUBLIC ${PROJECT_SOURCE_DIR}/${EXAMPLE_NAME}.cpp
+    )
+
+    target_compile_options(${EXAMPLE_NAME}_example_static PRIVATE
+        "$<$<CONFIG:Debug>:-lineinfo -g>"
+        "$<$<CONFIG:RelWithDebInfo>:-lineinfo -g>"
     )
 
     if (WIN32)

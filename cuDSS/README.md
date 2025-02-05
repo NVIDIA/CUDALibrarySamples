@@ -4,7 +4,7 @@
 
 This folder demonstrates main cuDSS APIs usage.
 
-Note: samples are updated to work with the latest version of cuDSS available (currently: 0.4.0) and might be imcompatible with older versions. For further details, please check the release notes in the official documentation.
+Note: samples are updated to work with the latest version of cuDSS available (currently: 0.5.0) and might be imcompatible with older versions. For further details, please check the release notes in the official documentation.
 
 [cuDSS Documentation](https://docs.nvidia.com/cuda/cudss/index.html)
 
@@ -18,11 +18,11 @@ Note: samples are updated to work with the latest version of cuDSS available (cu
 
     The sample demonstrates how to use cuDSS for solving a complex sparse linear system without any advanced features
 
-* [Simple workflow for solving a real-valued sparse linear system using the hybrid host/device memory mode](simple_hybrid_memory_mode/)
+* [Hybrid host/device memory mode](simple_hybrid_memory_mode/)
 
     The sample demonstrates how to use cuDSS for solving a real sparse linear system using the hybrid host/device memory mode
 
-* [Simple workflow for solving a real-valued sparse linear system using the MGMN mode](simple_mgmn_mode/)
+* [Multi-gpu multi-node (MGMN) mode](simple_mgmn_mode/)
 
     The sample demonstrates how to use cuDSS for solving a real sparse linear system using the multi-GPU multi-node mode (available since cudss 0.3.0)
 
@@ -42,3 +42,11 @@ Note: samples are updated to work with the latest version of cuDSS available (cu
 
     The sample demonstrates how to use cuDSS batch APIs (available since cudss 0.4.0) for solving a non-uniform batch of linear systems where matrices and righthand sides
     can all be different
+
+* [Hybrid execution mode](simple_hybrid_execution_mode/)
+
+    The sample demonstrates how to use cuDSS for solving a real sparse linear system using the hybrid execution mode (available since cudss 0.5.0)
+
+* [Multi-threaded (MT) mode](simple_multithreaded_mode/)
+
+    The sample demonstrates how to use cuDSS for solving a real sparse linear system using the multithreading (MT) mode (available since cudss 0.5.0)
