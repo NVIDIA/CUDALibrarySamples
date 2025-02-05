@@ -41,7 +41,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__ void block_fft_kernel(t
     BlockLoad().Load(fft_data, thread_data, cufftdx::size_of<FFT>::value, complex_type { 0.0, 0.0 });
 
     // Execute FFT
-    extern __shared__ complex_type shared_mem[];
+    extern __shared__ __align__(alignof(float4)) complex_type shared_mem[];
     FFT().execute(thread_data, shared_mem);
 
     // Save results
@@ -60,13 +60,11 @@ void simple_block_fft() {
     // FFT is defined, its: size, type, direction, precision. Block() operator informs that FFT
     // will be executed on block level. Shared memory is required for co-operation between threads.
     // Additionally,
-    using FFT          = decltype(Block() + Size<128>() + Type<fft_type::c2c>() + Direction<fft_direction::forward>() +
-                         Precision<float>() + ElementsPerThread<8>() + FFTsPerBlock<2>() + SM<Arch>());
-    #if CUFFTDX_EXAMPLE_DETAIL_NVCC_12_2_BUG_WORKAROUND
-    using complex_type = example::value_type_t<FFT>;
-    #else
-    using complex_type = typename FFT::value_type;
-    #endif
+    using precision_type = float;
+    using complex_type = cufftdx::complex<precision_type>;
+
+    using FFT = decltype(Block() + Size<128>() + Type<fft_type::c2c>() + Direction<fft_direction::forward>() +
+                         Precision<precision_type>() + ElementsPerThread<8>() + FFTsPerBlock<2>() + SM<Arch>());
 
     // Allocate managed memory for input/output
     complex_type* data;

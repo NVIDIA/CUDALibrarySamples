@@ -69,6 +69,14 @@ namespace example {
                 }
             }
             {
+                const char* env_ptr = std::getenv("CUFFTDX_EXAMPLE_CUTLASS_INCLUDE_DIR");
+                if(env_ptr != nullptr) {
+                    cufftdx_include_dirs_array.push_back("--include-path=" + std::string(env_ptr));
+                } else {
+                    cufftdx_include_dirs_array.push_back("-DCUFFTDX_DISABLE_CUTLASS_DEPENDENCY");
+                }
+            }
+            {
                 const char* env_ptr = std::getenv("CUFFTDX_EXAMPLE_COMMONDX_INCLUDE_DIR");
                 if(env_ptr != nullptr) {
                     cufftdx_include_dirs_array.push_back("--include-path=" + std::string(env_ptr));

@@ -13,8 +13,8 @@
 namespace example {
     template<class T>
     inline auto get_random_complex_data(size_t size, T min, T max) ->
-        typename std::enable_if<std::is_floating_point<T>::value,
-                                std::vector<cufftdx::make_complex_type_t<T>>>::type {
+        std::enable_if_t<std::is_floating_point<T>::value,
+                                std::vector<cufftdx::make_complex_type_t<T>>> {
         using complex_type = cufftdx::make_complex_type_t<T>;
         std::random_device                rd;
         std::default_random_engine        gen(rd());
@@ -27,9 +27,9 @@ namespace example {
     }
 
     template<class T>
-    inline auto get_random_complex_data(size_t size, T min, T max) ->
-        typename std::enable_if<std::is_same<T, __half>::value,
-                                std::vector<cufftdx::make_complex_type_t<__half2>>>::type {
+    inline auto get_random_complex_data(size_t size, float min, float max) ->
+        std::enable_if_t<std::is_same<T, __half>::value || std::is_same<T, __half2>::value,
+                                std::vector<cufftdx::make_complex_type_t<__half2>>> {
         using complex_type = cufftdx::make_complex_type_t<__half2>;
         std::random_device                    rd;
         std::default_random_engine            gen(rd());
@@ -49,7 +49,7 @@ namespace example {
 
     template<class T>
     inline auto get_random_real_data(size_t size, T min, T max) ->
-        typename std::enable_if<std::is_floating_point<T>::value, std::vector<T>>::type {
+        std::enable_if_t<std::is_floating_point<T>::value, std::vector<T>> {
         std::random_device                rd;
         std::default_random_engine        gen(rd());
         std::uniform_real_distribution<T> distribution(min, max);
@@ -62,7 +62,7 @@ namespace example {
 
     template<class T>
     inline auto get_random_real_data(size_t size, float min, float max) ->
-        typename std::enable_if<std::is_same<T, __half>::value, std::vector<__half2>>::type {
+        std::enable_if_t<std::is_same<T, __half>::value, std::vector<__half2>> {
         std::random_device                    rd;
         std::default_random_engine            gen(rd());
         std::uniform_real_distribution<float> distribution(min, max);

@@ -31,7 +31,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__ void convolution_kernel
     example::io<FFT>::load(data, thread_data, local_fft_id);
 
     // Execute FFT
-    extern __shared__ complex_type shared_mem[];
+    extern __shared__ __align__(alignof(float4)) complex_type shared_mem[];
     FFT().execute(thread_data, shared_mem, workspace);
 
     // Scale values
@@ -99,9 +99,9 @@ double measure_cufftdx(const unsigned int&       kernel_runs,
 
     // create workspaces for FFT and IFFT
     cudaError_t error_code = cudaSuccess;
-    auto        workspace  = make_workspace<FFT>(error_code);
+    auto        workspace  = make_workspace<FFT>(error_code, stream);
     CUDA_CHECK_AND_EXIT(error_code);
-    auto workspace_inverse = make_workspace<IFFT>(error_code);
+    auto workspace_inverse = make_workspace<IFFT>(error_code, stream);
     CUDA_CHECK_AND_EXIT(error_code);
 
     // run cuFFTDx

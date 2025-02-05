@@ -30,7 +30,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
     example::io<FFT>::load(input, thread_data, local_fft_id);
 
     // Execute FFT
-    extern __shared__ complex_type shared_mem[];
+    extern __shared__ __align__(alignof(float4)) complex_type shared_mem[];
     FFT().execute(thread_data, shared_mem, workspace);
 
     // Save results
@@ -50,7 +50,7 @@ __launch_bounds__(FFTF::max_threads_per_block) __global__
                          typename FFTI::workspace_type workspacei) {
     using complex_type = typename FFTF::value_type;
 
-    extern __shared__ complex_type shared_mem[];
+    extern __shared__ __align__(alignof(float4)) complex_type shared_mem[];
 
     // Local array for thread
     complex_type thread_data[FFTF::storage_size];
@@ -184,8 +184,8 @@ example::fft_results<RealType> cufftdx_fft_2d_r2c_c2r(RealType* real_values, Com
         UseSharedMemoryStridedIO ? fft_x_shared_memory_smem_io : FFTX::shared_memory_size;
     error_code = cudaFuncSetAttribute(fft_2d_kernel_x<FFTR2CX,
                                                       FFTC2RX,
-                                                      ((fft_size_y / 2) + 1),
-                                                      ((fft_size_y / 2) + 1),
+                                                      FFTY::output_length,
+                                                      FFTY::output_length,
                                                       UseSharedMemoryStridedIO,
                                                       complex_type>,
                                       cudaFuncAttributeMaxDynamicSharedMemorySize,
@@ -193,13 +193,13 @@ example::fft_results<RealType> cufftdx_fft_2d_r2c_c2r(RealType* real_values, Com
     CUDA_CHECK_AND_EXIT(error_code);
 
     // Create workspaces for FFTs
-    auto workspace_y_r2c = cufftdx::make_workspace<FFTR2CY>(error_code);
+    auto workspace_y_r2c = cufftdx::make_workspace<FFTR2CY>(error_code, stream);
     CUDA_CHECK_AND_EXIT(error_code);
-    auto workspace_x_r2c = cufftdx::make_workspace<FFTR2CX>(error_code);
+    auto workspace_x_r2c = cufftdx::make_workspace<FFTR2CX>(error_code, stream);
     CUDA_CHECK_AND_EXIT(error_code);
-    auto workspace_y_c2r = cufftdx::make_workspace<FFTC2RY>(error_code);
+    auto workspace_y_c2r = cufftdx::make_workspace<FFTC2RY>(error_code, stream);
     CUDA_CHECK_AND_EXIT(error_code);
-    auto workspace_x_c2r = cufftdx::make_workspace<FFTC2RX>(error_code);
+    auto workspace_x_c2r = cufftdx::make_workspace<FFTC2RX>(error_code, stream);
     CUDA_CHECK_AND_EXIT(error_code);
 
     // Synchronize device before execution
@@ -207,7 +207,7 @@ example::fft_results<RealType> cufftdx_fft_2d_r2c_c2r(RealType* real_values, Com
 
     // Out-of-place R2C kernel (R2C Y dimension)
     const auto grid_fft_size_y_r2c = ((fft_size_x + FFTR2CY::ffts_per_block - 1) / FFTR2CY::ffts_per_block);
-    const auto grid_fft_size_x     = ((((fft_size_y / 2) + 1) + FFTX::ffts_per_block - 1) / FFTX::ffts_per_block);
+    const auto grid_fft_size_x     = ((FFTY::output_length + FFTX::ffts_per_block - 1) / FFTX::ffts_per_block);
     const auto grid_fft_size_y_c2r = ((fft_size_x + FFTC2RY::ffts_per_block - 1) / FFTC2RY::ffts_per_block);
     auto       fft_2d_execution    = [&](cudaStream_t stream) {
         fft_2d_kernel_y<FFTY, real_type, complex_type>
@@ -218,8 +218,8 @@ example::fft_results<RealType> cufftdx_fft_2d_r2c_c2r(RealType* real_values, Com
         // In-place C2CF (R2C X dimension) and C2CI (C2R X dimension) kernel
         fft_2d_kernel_x<FFTR2CX,
                         FFTC2RX,
-                        ((fft_size_y / 2) + 1),
-                        ((fft_size_y / 2) + 1),
+                        FFTY::output_length,
+                        FFTY::output_length,
                         UseSharedMemoryStridedIO,
                         complex_type><<<grid_fft_size_x, FFTX::block_dim, fft_x_shared_memory, stream>>>(
             cufftdx_complex_values, cufftdx_complex_values, workspace_x_r2c, workspace_x_c2r);
@@ -315,7 +315,7 @@ void fft_2d() {
 
     // Host data
     static constexpr size_t flat_fft_size_real          = fft_size_x * fft_size_y;
-    static constexpr size_t flat_fft_size_complex       = fft_size_x * ((fft_size_y / 2) + 1);
+    static constexpr size_t flat_fft_size_complex       = fft_size_x * fft_y_r2c::output_length;
     static constexpr size_t flat_fft_size_real_bytes    = flat_fft_size_real * sizeof(precision_type);
     static constexpr size_t flat_fft_size_complex_bytes = flat_fft_size_complex * sizeof(complex_type);
 #ifdef CUFFTDX_EXAMPLE_DETAIL_DEBUG_FFT_2D

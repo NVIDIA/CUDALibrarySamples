@@ -7,7 +7,7 @@ namespace example {
     // ((Real, Real), (Imag, Imag)) layout.
     __device__ __host__ __forceinline__ cufftdx::complex<__half2> to_rrii(
         cufftdx::complex<__half2> riri) {
-#if (defined(__CUDA_ARCH__) && __CUDA_ARCH__ > 0)
+#if (defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 530)
         cufftdx::complex<__half2> rrii(__lows2half2(riri.x, riri.y),
                                        __highs2half2(riri.x, riri.y));
 #else
@@ -21,7 +21,7 @@ namespace example {
     __device__ __host__ __forceinline__ cufftdx::complex<__half2> to_rrii(
         __half2 ri1,
         __half2 ri2) {
-#if (defined(__CUDA_ARCH__) && __CUDA_ARCH__ > 0)
+#if (defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 530)
         cufftdx::complex<__half2> rrii(__lows2half2(ri1, ri2),
                                        __highs2half2(ri1, ri2));
 #else
@@ -35,7 +35,7 @@ namespace example {
     // ((Real, Imag), (Real, Imag)) layout.
     __device__ __host__ __forceinline__ cufftdx::complex<__half2> to_riri(
         cufftdx::complex<__half2> rrii) {
-#if (defined(__CUDA_ARCH__) && __CUDA_ARCH__ > 0)
+#if (defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 530)
         cufftdx::complex<__half2> riri(__lows2half2(rrii.x, rrii.y),
                                        __highs2half2(rrii.x, rrii.y));
 #else
@@ -49,7 +49,7 @@ namespace example {
     // ((Real, Real), (Imag, Imag)) layout.
     // Example: for rrii equal to ((1,2), (3,4)), it return __half2 (1, 3).
     __device__ __host__ __forceinline__ __half2 to_ri1(cufftdx::complex<__half2> rrii) {
-#if (defined(__CUDA_ARCH__) && __CUDA_ARCH__ > 0)
+#if (defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 530)
         return __lows2half2(rrii.x, rrii.y);
 #else
         return __half2 {rrii.x.x, rrii.y.x};
@@ -60,7 +60,7 @@ namespace example {
     // ((Real, Real), (Imag, Imag)) layout.
     // Example: for rrii equal to ((1,2), (3,4)), it return __half2 (2, 4).
     __device__ __host__ __forceinline__ __half2 to_ri2(cufftdx::complex<__half2> rrii) {
-#if (defined(__CUDA_ARCH__) && __CUDA_ARCH__ > 0)
+#if (defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 530)
         return __highs2half2(rrii.x, rrii.y);
 #else
         return __half2 {rrii.x.y, rrii.y.y};
