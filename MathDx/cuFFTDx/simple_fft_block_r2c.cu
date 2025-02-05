@@ -18,14 +18,14 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
     // ID of FFT in CUDA block, in range [0; FFT::ffts_per_block)
     const unsigned int local_fft_id = threadIdx.y;
     // Load data from global memory to registers
-    example::io<FFT>::load_r2c(input_data, thread_data, local_fft_id);
+    example::io<FFT>::load(input_data, thread_data, local_fft_id);
 
     // Execute FFT
-    extern __shared__ complex_type shared_mem[];
+    extern __shared__ __align__(alignof(float4)) complex_type shared_mem[];
     FFT().execute(thread_data, shared_mem);
 
     // Save results
-    example::io<FFT>::store_r2c(thread_data, output_data, local_fft_id);
+    example::io<FFT>::store(thread_data, output_data, local_fft_id);
 }
 
 // In this example a one-dimensional real-to-complex transform is performed by a CUDA block.
@@ -37,28 +37,32 @@ template<unsigned int Arch>
 void simple_block_fft_r2c() {
     using namespace cufftdx;
 
+    // R2C and C2R specific properties describing data layout and execution mode for
+    // the requested transform.
+    using real_fft_options = RealFFTOptions<complex_layout::natural, real_mode::normal>;
+
     // FFT is defined, its: size, type, direction, precision. Block() operator informs that FFT
     // will be executed on block level. Shared memory is required for co-operation between threads.
     using FFT          = decltype(Block() + Size<128>() + Type<fft_type::r2c>() + Direction<fft_direction::forward>() +
-                         Precision<float>() + ElementsPerThread<8>() + FFTsPerBlock<2>() + SM<Arch>());
+                         Precision<float>() + ElementsPerThread<8>() + FFTsPerBlock<2>() + real_fft_options() + SM<Arch>());
     using complex_type = typename FFT::value_type;
     using real_type    = typename complex_type::value_type;
 
     // Allocate managed memory for input/output
     real_type* input_data;
-    auto       input_size       = FFT::ffts_per_block * cufftdx::size_of<FFT>::value;
+    auto       input_size       = FFT::ffts_per_block * FFT::input_length;
     auto       input_size_bytes = input_size * sizeof(real_type);
     CUDA_CHECK_AND_EXIT(cudaMallocManaged(&input_data, input_size_bytes));
     for (size_t i = 0; i < input_size; i++) {
         input_data[i] = float(i);
     }
     complex_type* output_data;
-    auto          output_size       = FFT::ffts_per_block * (cufftdx::size_of<FFT>::value / 2 + 1);
+    auto          output_size       = FFT::ffts_per_block * FFT::output_length;
     auto          output_size_bytes = output_size * sizeof(complex_type);
     CUDA_CHECK_AND_EXIT(cudaMallocManaged(&output_data, output_size_bytes));
 
     std::cout << "input [1st FFT]:\n";
-    for (size_t i = 0; i < cufftdx::size_of<FFT>::value; i++) {
+    for (size_t i = 0; i < FFT::input_length; i++) {
         std::cout << input_data[i] << std::endl;
     }
 
@@ -74,7 +78,7 @@ void simple_block_fft_r2c() {
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     std::cout << "output [1st FFT]:\n";
-    for (size_t i = 0; i < (cufftdx::size_of<FFT>::value / 2 + 1); i++) {
+    for (size_t i = 0; i < FFT::output_length; i++) {
         std::cout << output_data[i].x << " " << output_data[i].y << std::endl;
     }
 

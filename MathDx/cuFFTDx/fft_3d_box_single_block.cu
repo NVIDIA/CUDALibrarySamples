@@ -34,7 +34,7 @@ __launch_bounds__(MaxThreadsPerBlock) __global__
     complex_type   thread_data[required_storage_size];
 
     // Shared memory use for exchanging data between threads
-    extern __shared__ complex_type shared_memory[];
+    extern __shared__ __align__(alignof(float4)) complex_type shared_memory[];
 
     // Load data from global memory to registers.
     static constexpr unsigned int stride_x = fft_size_y * fft_size_z;

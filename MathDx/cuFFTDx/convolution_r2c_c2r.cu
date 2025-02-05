@@ -18,10 +18,10 @@ __launch_bounds__(FFTR2C::max_threads_per_block) __global__ void convolution_ker
     // ID of FFT in CUDA block, in range [0; FFTR2C::ffts_per_block)
     const unsigned int local_fft_id = threadIdx.y;
     // Load data from global memory to registers
-    example::io<FFTR2C>::load_r2c(data, thread_data, local_fft_id);
+    example::io<FFTR2C>::load(data, thread_data, local_fft_id);
 
     // Execute FFT
-    extern __shared__ complex_type shared_mem[];
+    extern __shared__ __align__(alignof(float4)) complex_type shared_mem[];
     FFTR2C().execute(thread_data, shared_mem);
 
     // Scale values
@@ -35,7 +35,7 @@ __launch_bounds__(FFTR2C::max_threads_per_block) __global__ void convolution_ker
     FFTC2R().execute(thread_data, shared_mem);
 
     // Save results
-    example::io<FFTC2R>::store_c2r(thread_data, data, local_fft_id);
+    example::io<FFTC2R>::store(thread_data, data, local_fft_id);
 }
 
 // This example demonstrates how to use cuFFTDx t operform a convolution using one-dimensional FFTs.

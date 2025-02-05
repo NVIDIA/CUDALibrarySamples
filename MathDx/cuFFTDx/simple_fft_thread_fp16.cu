@@ -54,7 +54,7 @@ int main(int, char**) {
     using complex_type = typename FFT::value_type;
 
     // Host data
-    std::vector<complex_type> input(cufftdx::size_of<FFT>::value * threads_count);
+    std::vector<complex_type> input(FFT::input_length * threads_count);
     for (size_t i = 0; i < input.size(); i++) {
         float v1 = static_cast<float>(i);
         float v2 = static_cast<float>(i + input.size());
@@ -63,7 +63,7 @@ int main(int, char**) {
     }
 
     std::cout << "input [1st FFT]:\n";
-    for (size_t i = 0; i < cufftdx::size_of<FFT>::value; i++) {
+    for (size_t i = 0; i < FFT::input_length; i++) {
         std::cout << __half2float(input[i].x.x) << " " << __half2float(input[i].x.y) << std::endl;
     }
 
@@ -85,7 +85,7 @@ int main(int, char**) {
     CUDA_CHECK_AND_EXIT(cudaFree(device_buffer));
 
     std::cout << "output [1st FFT]:\n";
-    for (size_t i = 0; i < cufftdx::size_of<FFT>::value; i++) {
+    for (size_t i = 0; i < FFT::output_length; i++) {
         std::cout << __half2float(output[i].x.x) << " " << __half2float(output[i].x.y) << std::endl;
     }
 

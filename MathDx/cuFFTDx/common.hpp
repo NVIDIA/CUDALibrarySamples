@@ -5,8 +5,15 @@
 #include <tuple>
 #include <cmath>
 #include <chrono>
+#include <random>
+#include <algorithm>
 
 #include <cuda_runtime_api.h>
+#include <cufft.h>
+
+#include "cuda_fp16.h"
+
+#include <cufftdx.hpp>
 
 #ifndef CUDA_CHECK_AND_EXIT
 #    define CUDA_CHECK_AND_EXIT(error)                                                                      \
@@ -36,9 +43,21 @@
 #    endif
 #endif
 
+
 namespace example {
-    template <typename T>
-    using value_type_t = typename T::value_type;
+
+    constexpr unsigned int warp_size = 32u;
+
+    enum class dimension
+    {
+        x,
+        y,
+        z
+    };
+
+    constexpr bool is_power_of_2(int size) {
+        return (size & (size - 1)) == 0;
+    }
 
     inline unsigned int get_cuda_device_arch() {
         int device;
@@ -145,7 +164,7 @@ namespace example {
     float measure_host_ms(Function&& kernel) {
         auto t1 = std::chrono::high_resolution_clock::now();
         kernel();
-        auto t2 = std::chrono::high_resolution_clock::now();
+        auto                                     t2       = std::chrono::high_resolution_clock::now();
         std::chrono::duration<float, std::milli> ms_float = t2 - t1;
         return ms_float.count();
     }
@@ -153,7 +172,7 @@ namespace example {
     template<class T>
     struct fft_results {
         std::vector<T> output;
-        float avg_time_in_ms;
+        float          avg_time_in_ms;
     };
 
     template<template<unsigned int> class Functor>
@@ -191,6 +210,177 @@ namespace example {
         }
         return 1;
     }
+
+    constexpr unsigned int closest_power_of_2(unsigned int v) {
+        static_assert(sizeof(v) == 4, "This supports only 32bit types");
+        v--;
+        v |= v >> 1;
+        v |= v >> 2;
+        v |= v >> 4;
+        v |= v >> 8;
+        v |= v >> 16;
+        return ++v;
+    }
+
+    namespace detail {
+        template<typename, typename = void>
+        struct has_x_field: std::false_type {};
+
+        template<typename T>
+        struct has_x_field<T, std::void_t<decltype(T::x)>>: std::true_type {};
+
+        template<typename, typename = void>
+        struct has_y_field: std::false_type {};
+
+        template<typename T>
+        struct has_y_field<T, std::void_t<decltype(T::y)>>: std::true_type {};
+    } // namespace detail
+
+    // This detects all variations of complex types:
+    // * cufftComplex
+    // * float2
+    // * cufftdx::complex<>
+    // useful for thrust transformations
+    template<typename T, typename = void>
+    struct has_complex_interface: std::false_type {};
+
+    template<typename T>
+    struct has_complex_interface<T,
+                                 std::enable_if_t<
+                                     detail::has_x_field<T>::value and
+                                     detail::has_y_field<T>::value>>:
+        std::is_same<decltype(T::x), decltype(T::y)> {};
+
+
+    template<class T>
+    inline __device__ constexpr
+    T get_zero() {
+        if constexpr(not has_complex_interface<T>::value) {
+            if constexpr(std::is_same_v<T, __half2>) {
+                return __half2{};
+            } else {
+                return 0.;
+            }
+        } else {
+            using value_type = decltype(T::x);
+            return T{get_zero<value_type>(), get_zero<value_type>()};
+        }
+    }
+
+    template<int Num, int Denom, typename Precision = float>
+    struct rational_scaler {
+        static constexpr int numerator = Num;
+        static constexpr int denominator = Denom;
+
+        static constexpr Precision scale =
+            static_cast<Precision>(Num) / static_cast<Precision>(Denom);
+
+        template<typename T, typename = void>
+        __device__ __forceinline__
+            std::enable_if_t<not example::has_complex_interface<T>::value, T>
+            operator()(const T& val) {
+            return scale * val;
+        }
+
+        template<typename T>
+        __device__ __forceinline__
+            std::enable_if_t<example::has_complex_interface<T>::value, T>
+            operator()(const T& val) {
+            return {scale * val.x, scale * val.y};
+        }
+    };
+
+    template<typename T>
+    struct vector_type;
+
+    template<>
+    struct vector_type<float> {
+        using type = float2;
+    };
+
+    template<>
+    struct vector_type<double> {
+        using type = double2;
+    };
+
+    template<typename T, typename = void>
+    struct get_value_type {
+        using type = T;
+    };
+
+    template<typename T>
+    struct get_value_type<T, std::void_t<typename T::value_type>> {
+        using type = typename T::value_type;
+    };
+
+    template<typename T>
+    using get_value_type_t = typename get_value_type<T>::type;
+
+    template<typename T>
+    using value_type_t = typename T::value_type;
+
+    template<typename T>
+    struct cufft_precision;
+
+    template<typename T, typename = void>
+    struct cufft_value_type {
+    private:
+        static constexpr bool is_double = std::is_same_v<T, double>;
+        static_assert(std::is_same_v<T, float> or std::is_same_v<T, double>,
+                      "cuFFT reference supports only float or double inputs");
+
+    public:
+        using type = std::conditional_t<is_double, cufftDoubleReal, cufftReal>;
+    };
+
+    template<typename T>
+    struct cufft_value_type<T,
+                            std::enable_if_t<
+                                has_complex_interface<T>::value
+                            >> {
+    private:
+        // We know that this field exists because has_complex_interface checks it
+        using value_type = decltype(T::x);
+        static constexpr bool is_double = std::is_same_v<value_type, double>;
+        static_assert(std::is_same_v<value_type, float> or std::is_same_v<value_type, double>,
+                      "cuFFT reference supports only float or double inputs");
+
+    public:
+        using type = std::conditional_t<is_double, cufftDoubleComplex, cufftComplex>;
+    };
+
+    template<typename T>
+    using cufft_value_type_t = typename cufft_value_type<T>::type;
+
+    struct identity {
+        template<typename T>
+        __device__ __forceinline__
+            T
+            operator()(const T& val) {
+            return val;
+        }
+    };
+
+    template<typename T>
+    T get_nan() {
+        T ret;
+        if constexpr(has_complex_interface<T>::value) {
+            // Since it has a complex interface we know that it has
+            // x and y fields
+            using precision = decltype(T::x);
+            ret = {std::numeric_limits<precision>::quiet_NaN(), std::numeric_limits<precision>::quiet_NaN()};
+        } else {
+            ret = std::numeric_limits<T>::quiet_NaN();
+        }
+
+        return ret;
+    }
+
+    template<typename T>
+    T div_up(T div, T quot) {
+        return (div + quot - 1) / quot;
+    }
+
 } // namespace example
 
 #endif // CUFFTDX_EXAMPLE_COMMON_HPP_

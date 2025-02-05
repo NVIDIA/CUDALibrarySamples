@@ -11,7 +11,6 @@
 template<class FFT, bool InputInRRIILayout = false, bool OutputInRRIILayout = false>
 __launch_bounds__(FFT::max_threads_per_block) __global__ void block_fft_kernel(typename FFT::value_type* data) {
     using complex_type = typename FFT::value_type;
-
     // Local array for thread
     complex_type thread_data[FFT::storage_size];
 
@@ -21,7 +20,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__ void block_fft_kernel(t
     example::io<FFT>::load<InputInRRIILayout>(data, thread_data, local_fft_id);
 
     // Execute FFT
-    extern __shared__ complex_type shared_mem[];
+    extern __shared__ __align__(alignof(float4)) complex_type shared_mem[];
     FFT().execute(thread_data, shared_mem);
 
     // Save results
@@ -68,7 +67,7 @@ void simple_block_fft_complex_half2() {
     }
 
     std::cout << "input [1st FFT]:\n";
-    for (size_t i = 0; i < cufftdx::size_of<FFT>::value; i++) {
+    for (size_t i = 0; i < FFT::input_length; i++) {
         std::cout << __half2float(data[i].x.x) << " " << __half2float(data[i].x.y) << std::endl;
     }
 
@@ -84,7 +83,7 @@ void simple_block_fft_complex_half2() {
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     std::cout << "output [1st FFT]:\n";
-    for (size_t i = 0; i < cufftdx::size_of<FFT>::value; i++) {
+    for (size_t i = 0; i < FFT::output_length; i++) {
         std::cout << __half2float(data[i].x.x) << " " << __half2float(data[i].x.y) << std::endl;
     }
 

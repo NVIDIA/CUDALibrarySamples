@@ -18,14 +18,14 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
     // ID of FFT in CUDA block, in range [0; FFT::ffts_per_block)
     const unsigned int local_fft_id = threadIdx.y;
     // Load data from global memory to registers
-    example::io<FFT>::load_r2c(input_data, thread_data, local_fft_id);
+    example::io<FFT>::load(input_data, thread_data, local_fft_id);
 
     // Execute FFT
-    extern __shared__ complex_type shared_mem[];
+    extern __shared__ __align__(alignof(float4)) complex_type shared_mem[];
     FFT().execute(thread_data, shared_mem);
 
     // Save results
-    example::io<FFT>::store_r2c<false /* Store to output in RRII layout */>(thread_data, output_data, local_fft_id);
+    example::io<FFT>::store(thread_data, output_data, local_fft_id);
 }
 
 // In this example a one-dimensional real-to-complex transform is performed by a CUDA block.
@@ -61,12 +61,12 @@ void simple_block_fft_r2c_fp16() {
         input_data[i] = __half2 {float(i), float(i + input_size)};
     }
     complex_type* output_data;
-    auto          output_size       = FFT::ffts_per_block / implicit_batching * (cufftdx::size_of<FFT>::value / 2 + 1);
+    auto          output_size       = FFT::ffts_per_block / implicit_batching * FFT::output_length;
     auto          output_size_bytes = output_size * sizeof(complex_type);
     CUDA_CHECK_AND_EXIT(cudaMallocManaged(&output_data, output_size_bytes));
 
     std::cout << "input [1st FFT]:\n";
-    for (size_t i = 0; i < cufftdx::size_of<FFT>::value; i++) {
+    for (size_t i = 0; i < FFT::input_length; i++) {
         std::cout << __half2float(input_data[i].x) << std::endl;
     }
 
@@ -82,7 +82,7 @@ void simple_block_fft_r2c_fp16() {
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     std::cout << "output [1st FFT]:\n";
-    for (size_t i = 0; i < (cufftdx::size_of<FFT>::value / 2 + 1); i++) {
+    for (size_t i = 0; i < FFT::output_length; i++) {
         std::cout << __half2float(output_data[i].x.x) << " " << __half2float(output_data[i].x.y) << std::endl;
     }
 

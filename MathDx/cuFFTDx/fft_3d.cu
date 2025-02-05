@@ -1,5 +1,6 @@
 #include <iostream>
 #include <iomanip>
+#include <sstream>
 #include <vector>
 #include <limits>
 
@@ -11,14 +12,16 @@
 #include "common.hpp"
 #include "random.hpp"
 
-// #define CUFFTDX_EXAMPLE_DETAIL_DEBUG_FFT_2D
+// #define CUFFTDX_EXAMPLE_DETAIL_DEBUG_FFT_3D
+
 inline constexpr unsigned int cufftdx_example_warm_up_runs = 5;
 inline constexpr unsigned int cufftdx_example_performance_runs = 20;
 
 template<class FFT, example::dimension_description Dimension,
-         unsigned int SizeX, unsigned int SizeY, class ComplexType = typename FFT::value_type>
+         unsigned int SizeX, unsigned int SizeY, unsigned int SizeZ,
+         class ComplexType = typename FFT::value_type>
 __launch_bounds__(FFT::max_threads_per_block) __global__
-    void fft_2d_kernel_y(const ComplexType* input, ComplexType* output, typename FFT::workspace_type workspace) {
+    void fft_3d_kernel_z(const ComplexType* input, ComplexType* output, typename FFT::workspace_type workspace) {
     using complex_type = typename FFT::value_type;
     using io_type      = example::io_generic_strided<FFT>;
 
@@ -28,20 +31,21 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
     // ID of FFT in CUDA block, in range [0; FFT::ffts_per_block)
     const unsigned int local_fft_id = threadIdx.y;
     // Load data from global memory to registers
-    io_type::load_strided<Dimension, SizeX, SizeY>(input, thread_data, local_fft_id);
+    io_type::load_strided<Dimension, SizeX, SizeY, SizeZ>(input, thread_data, local_fft_id);
 
     // Execute FFT
     extern __shared__ __align__(alignof(float4)) complex_type shared_mem[];
     FFT().execute(thread_data, shared_mem, workspace);
 
     // Save results
-    io_type::store_strided<Dimension, SizeX, SizeY>(thread_data, output, local_fft_id);
+    io_type::store_strided<Dimension, SizeX, SizeY, SizeZ>(thread_data, output, local_fft_id);
 }
 
 template<class FFT, bool UseSharedMemoryStridedIO, example::dimension_description Dimension,
-         unsigned int SizeX, unsigned int SizeY, class ComplexType = typename FFT::value_type>
+         unsigned int SizeX, unsigned int SizeY, unsigned int SizeZ,
+         class ComplexType = typename FFT::value_type>
 __launch_bounds__(FFT::max_threads_per_block) __global__
-    void fft_2d_kernel_x(const ComplexType* input, ComplexType* output, typename FFT::workspace_type workspace) {
+    void fft_3d_kernel_yx(const ComplexType* input, ComplexType* output, typename FFT::workspace_type workspace) {
     using complex_type = typename FFT::value_type;
     using io_type      = example::io_generic_strided<FFT>;
 
@@ -54,9 +58,9 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
     const unsigned int local_fft_id = threadIdx.y;
     // Load data from global memory to registers
     if constexpr (UseSharedMemoryStridedIO) {
-        io_type::load_strided<Dimension, SizeX, SizeY>(input, thread_data, shared_mem, local_fft_id);
+        io_type::load_strided<Dimension, SizeX, SizeY, SizeZ>(input, thread_data, shared_mem, local_fft_id);
     } else {
-        io_type::load_strided<Dimension, SizeX, SizeY>(input, thread_data, local_fft_id);
+        io_type::load_strided<Dimension, SizeX, SizeY, SizeZ>(input, thread_data, local_fft_id);
     }
 
     // Execute FFT
@@ -64,14 +68,14 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
 
     // Save results
     if constexpr (UseSharedMemoryStridedIO) {
-        io_type::store_strided<Dimension, SizeX, SizeY>(thread_data, shared_mem, output, local_fft_id);
+        io_type::store_strided<Dimension, SizeX, SizeY, SizeZ>(thread_data, shared_mem, output, local_fft_id);
     } else {
-        io_type::store_strided<Dimension, SizeX, SizeY>(thread_data, output, local_fft_id);
+        io_type::store_strided<Dimension, SizeX, SizeY, SizeZ>(thread_data, output, local_fft_id);
     }
 }
 
 template<class T>
-example::fft_results<T> cufft_fft_2d(unsigned int fft_size_x, unsigned int fft_size_y, T* input, T* output, cudaStream_t stream) {
+example::fft_results<T> cufft_fft_3d(unsigned int fft_size_x, unsigned int fft_size_y, unsigned int fft_size_z, T* input, T* output, cudaStream_t stream) {
     using complex_type = cufftComplex;
     static_assert(sizeof(T) == sizeof(complex_type), "");
     static_assert(std::alignment_of_v<T> == std::alignment_of_v<complex_type>, "");
@@ -81,7 +85,7 @@ example::fft_results<T> cufft_fft_2d(unsigned int fft_size_x, unsigned int fft_s
 
     // Create cuFFT plan
     cufftHandle plan;
-    CUFFT_CHECK_AND_EXIT(cufftPlan2d(&plan, fft_size_x, fft_size_y, CUFFT_C2C));
+    CUFFT_CHECK_AND_EXIT(cufftPlan3d(&plan, fft_size_x, fft_size_y, fft_size_z, CUFFT_C2C));
     CUFFT_CHECK_AND_EXIT(cufftSetStream(plan, stream));
 
     // Execute cuFFT
@@ -93,7 +97,7 @@ example::fft_results<T> cufft_fft_2d(unsigned int fft_size_x, unsigned int fft_s
     cufft_execution(stream);
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
     // Copy results to host
-    const size_t flat_fft_size       = fft_size_x * fft_size_y;
+    const size_t flat_fft_size       = fft_size_x * fft_size_y * fft_size_z;
     const size_t flat_fft_size_bytes = flat_fft_size * sizeof(complex_type);
     std::vector<T> output_host(flat_fft_size, {std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN()});
     CUDA_CHECK_AND_EXIT(cudaMemcpy(output_host.data(), output, flat_fft_size_bytes, cudaMemcpyDeviceToHost));
@@ -113,46 +117,71 @@ example::fft_results<T> cufft_fft_2d(unsigned int fft_size_x, unsigned int fft_s
     return example::fft_results<T>{ output_host, (time / cufftdx_example_performance_runs) };
 }
 
-template<class FFTX, class FFTY, bool UseSharedMemoryStridedIO, class T>
-example::fft_results<T> cufftdx_fft_2d(T* input, T* output, cudaStream_t stream) {
+template<class FFTX, class FFTY, class FFTZ, bool UseSharedMemoryStridedIO, class T>
+example::fft_results<T> cufftdx_fft_3d(T* input, T* output, cudaStream_t stream) {
     using dim_desc_type                      = example::dimension_description;
     using complex_type                       = typename FFTX::value_type;
+    static constexpr unsigned int fft_size_z = cufftdx::size_of<FFTZ>::value;
     static constexpr unsigned int fft_size_y = cufftdx::size_of<FFTY>::value;
     static constexpr unsigned int fft_size_x = cufftdx::size_of<FFTX>::value;
 
     // Checks that FFTX and FFTY are correctly defined
     static_assert(std::is_same_v<cufftdx::precision_of_t<FFTX>, cufftdx::precision_of_t<FFTY>>,
-                  "FFTY and FFTX must have the same precision");
+                  "FFTX and FFTY must have the same precision");
+    static_assert(std::is_same_v<cufftdx::precision_of_t<FFTY>, cufftdx::precision_of_t<FFTZ>>,
+                  "FFTY and FFTZ must have the same precision");
+
     static_assert(std::is_same_v<typename FFTX::value_type, typename FFTY::value_type>,
-                  "FFTY and FFTX must operator on the same type");
+                  "FFTX and FFTY must operator on the same type");
+    static_assert(std::is_same_v<typename FFTY::value_type, typename FFTZ::value_type>,
+                  "FFTY and FFTZ must operator on the same type");
+
     static_assert(sizeof(T) == sizeof(complex_type), "");
     static_assert(std::alignment_of_v<T> == std::alignment_of_v<complex_type>, "");
+
     // Checks below are not caused by any limitation in cuFFTDx, but rather in the example IO functions.
-    static_assert((fft_size_x % FFTY::ffts_per_block == 0),
-                  "FFTsPerBlock for FFTX must divide Y dimension as IO doesn't check if a batch is in range");
+    static_assert(((fft_size_x * fft_size_y) % FFTZ::ffts_per_block == 0),
+                  "FFTsPerBlock for FFTZ must divide X * Y number of batches as IO doesn't check if a batch is in range");
+    static_assert(((fft_size_x * fft_size_z) % FFTY::ffts_per_block == 0),
+                  "FFTsPerBlock for FFTY must divide X * Z number of batches as IO doesn't check if a batch is in range");
+    static_assert(((fft_size_z * fft_size_y) % FFTX::ffts_per_block == 0),
+                  "FFTsPerBlock for FFTX must divide Z * Y number of batches as IO doesn't check if a batch is in range");
+
 
     complex_type* cufftdx_input  = reinterpret_cast<complex_type*>(input);
     complex_type* cufftdx_output = reinterpret_cast<complex_type*>(output);
 
     // Set shared memory requirements
+    // FFT -> Z
     auto error_code = cudaFuncSetAttribute(
-        fft_2d_kernel_y<FFTY, dim_desc_type::Y, fft_size_x, fft_size_y, complex_type>,
-        cudaFuncAttributeMaxDynamicSharedMemorySize, FFTY::shared_memory_size);
+        fft_3d_kernel_z<FFTZ, dim_desc_type::Z, fft_size_x, fft_size_y, fft_size_z, complex_type>, cudaFuncAttributeMaxDynamicSharedMemorySize, FFTZ::shared_memory_size);
     CUDA_CHECK_AND_EXIT(error_code);
 
-    // Shared memory IO for strided kernel may require more memory than FFTX::shared_memory_size.
-    // Note: For some fft_size_x and depending on GPU architecture fft_x_shared_memory_smem_io may exceed max shared
-    // memory and cudaFuncSetAttribute will fail.
+    // FFT -> Y
+    unsigned int fft_y_shared_memory_smem_io =
+        std::max<unsigned>({FFTY::shared_memory_size, FFTY::ffts_per_block * fft_size_y * sizeof(complex_type)});
+    unsigned int fft_y_shared_memory =
+        UseSharedMemoryStridedIO ? fft_y_shared_memory_smem_io : FFTY::shared_memory_size;
+    error_code = cudaFuncSetAttribute(fft_3d_kernel_yx<FFTY, UseSharedMemoryStridedIO, dim_desc_type::Y,
+                                          fft_size_x, fft_size_y, fft_size_z, complex_type>,
+                                      cudaFuncAttributeMaxDynamicSharedMemorySize,
+                                      fft_y_shared_memory);
+    CUDA_CHECK_AND_EXIT(error_code);
+
+    // FFT -> X
     unsigned int fft_x_shared_memory_smem_io =
         std::max<unsigned>({FFTX::shared_memory_size, FFTX::ffts_per_block * fft_size_x * sizeof(complex_type)});
     unsigned int fft_x_shared_memory =
         UseSharedMemoryStridedIO ? fft_x_shared_memory_smem_io : FFTX::shared_memory_size;
-    error_code = cudaFuncSetAttribute(fft_2d_kernel_x<FFTX, UseSharedMemoryStridedIO, dim_desc_type::X, fft_size_x, fft_size_y, complex_type>,
+    error_code = cudaFuncSetAttribute(fft_3d_kernel_yx<FFTX, UseSharedMemoryStridedIO, dim_desc_type::X,
+                                          fft_size_x, fft_size_y, fft_size_z, complex_type>,
                                       cudaFuncAttributeMaxDynamicSharedMemorySize,
                                       fft_x_shared_memory);
     CUDA_CHECK_AND_EXIT(error_code);
 
     // Create workspaces for FFTs
+    auto workspace_z = cufftdx::make_workspace<FFTZ>(error_code, stream);
+    CUDA_CHECK_AND_EXIT(error_code);
     auto workspace_y = cufftdx::make_workspace<FFTY>(error_code, stream);
     CUDA_CHECK_AND_EXIT(error_code);
     auto workspace_x = cufftdx::make_workspace<FFTX>(error_code, stream);
@@ -161,25 +190,35 @@ example::fft_results<T> cufftdx_fft_2d(T* input, T* output, cudaStream_t stream)
     // Synchronize device before execution
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
-    // Define 2D FFT execution
-    const auto grid_fft_size_y = ((fft_size_x + FFTY::ffts_per_block - 1) / FFTY::ffts_per_block);
-    const auto grid_fft_size_x = ((fft_size_y + FFTX::ffts_per_block - 1) / FFTX::ffts_per_block);
-    auto fft_2d_execution = [&](cudaStream_t stream) {
-        fft_2d_kernel_y<FFTY, dim_desc_type::Y, fft_size_x, fft_size_y, complex_type>
-            <<<grid_fft_size_y, FFTY::block_dim, FFTY::shared_memory_size, stream>>>(
-                cufftdx_input, cufftdx_output, workspace_y);
+    // Define 2D FFT execution - ??
+    const auto grid_fft_size_z = ((fft_size_y * fft_size_x + FFTZ::ffts_per_block - 1) / FFTZ::ffts_per_block);
+    const auto grid_fft_size_y = ((fft_size_z * fft_size_x + FFTY::ffts_per_block - 1) / FFTY::ffts_per_block);
+    const auto grid_fft_size_x = ((fft_size_y * fft_size_z + FFTX::ffts_per_block - 1) / FFTX::ffts_per_block);
+    auto fft_3d_execution = [&](cudaStream_t stream) {
+        // FFT -> Z
+        fft_3d_kernel_z<FFTZ, dim_desc_type::Z, fft_size_x, fft_size_y, fft_size_z, complex_type>
+            <<<grid_fft_size_z, FFTZ::block_dim, FFTZ::shared_memory_size, stream>>>(
+                cufftdx_input, cufftdx_output, workspace_z);
         CUDA_CHECK_AND_EXIT(cudaGetLastError());
-        fft_2d_kernel_x<FFTX, UseSharedMemoryStridedIO, dim_desc_type::X, fft_size_x, fft_size_y, complex_type>
+
+        // FFT -> Y
+        fft_3d_kernel_yx<FFTY, UseSharedMemoryStridedIO, dim_desc_type::Y, fft_size_x, fft_size_y, fft_size_z, complex_type>
+            <<<grid_fft_size_y, FFTY::block_dim, fft_y_shared_memory, stream>>>(
+                cufftdx_output, cufftdx_output, workspace_y);
+        CUDA_CHECK_AND_EXIT(cudaGetLastError());
+
+        // FFT -> X
+        fft_3d_kernel_yx<FFTX, UseSharedMemoryStridedIO, dim_desc_type::X, fft_size_x, fft_size_y, fft_size_z, complex_type>
             <<<grid_fft_size_x, FFTX::block_dim, fft_x_shared_memory, stream>>>(
                 cufftdx_output, cufftdx_output, workspace_x);
         CUDA_CHECK_AND_EXIT(cudaGetLastError());
     };
 
     // Correctness run
-    fft_2d_execution(stream);
+    fft_3d_execution(stream);
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
     // Copy results to host
-    static constexpr size_t flat_fft_size       = fft_size_x * fft_size_y;
+    static constexpr size_t flat_fft_size       = fft_size_x * fft_size_y * fft_size_z;
     static constexpr size_t flat_fft_size_bytes = flat_fft_size * sizeof(complex_type);
     std::vector<complex_type> output_host(flat_fft_size, {std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN()});
     CUDA_CHECK_AND_EXIT(cudaMemcpy(output_host.data(), output, flat_fft_size_bytes, cudaMemcpyDeviceToHost));
@@ -188,7 +227,7 @@ example::fft_results<T> cufftdx_fft_2d(T* input, T* output, cudaStream_t stream)
     // Performance measurements
     auto time = example::measure_execution_ms(
         [&](cudaStream_t stream) {
-            fft_2d_execution(stream);
+            fft_3d_execution(stream);
         },
         cufftdx_example_warm_up_runs,
         cufftdx_example_performance_runs,
@@ -196,10 +235,11 @@ example::fft_results<T> cufftdx_fft_2d(T* input, T* output, cudaStream_t stream)
 
     // Return results
     return example::fft_results<T>{ output_host, (time / cufftdx_example_performance_runs) };
+
 }
 
-// Example showing how cuFFTDx can be used to perform a 2D FFT in 2 kernels. The first kernel performs FFT along the contiguous
-// dimension (Y), and the 2nd along the strided one.
+// Example showing how cuFFTDx can be used to perform a 3D FFT in 3 kernels. The first kernel performs FFT along the contiguous
+// dimension (Z), and the 2nd (Y) and 3rd (X) along the strided one.
 //
 // Notes:
 // * This examples shows how to use cuFFTDx to run multi-dimensional FFT. Final performance will vary depending on the
@@ -209,65 +249,78 @@ example::fft_results<T> cufftdx_fft_2d(T* input, T* output, cudaStream_t stream)
 // * cuFFTDx with enabled shared memory IO usually be the faster cuFFTDx option for larger (>512) sizes.
 // * The shared memory IO cuFFTDx has high shared memory requirements and will not work for all possible sizes in X dimension.
 template<unsigned int Arch>
-void fft_2d() {
+void fft_3d() {
     using precision_type                     = float;
     using complex_type                       = cufftdx::complex<precision_type>;
 
     // FFT Sizes
+    static constexpr unsigned int fft_size_z = 32;
     static constexpr unsigned int fft_size_y = 1024;
     static constexpr unsigned int fft_size_x = 1024;
     // Kernel Settings
-    static constexpr unsigned int ept_y = 16;
-    static constexpr unsigned int fpb_y = 1;
-    static constexpr unsigned int ept_x = 16;
-    static constexpr unsigned int fpb_x = 8;
+    static constexpr unsigned int ept_z = 16;
+    static constexpr unsigned int fpb_z = 4;
+    static constexpr unsigned int ept_y = 32;
+    static constexpr unsigned int fpb_y = 2;
+    static constexpr unsigned int ept_x = 32;
+    static constexpr unsigned int fpb_x = 2;
 
     // Other recommended configurations to test:
-    // 1:
-    // static constexpr unsigned int fft_size_y = 16384;
-    // static constexpr unsigned int fft_size_x = 4096;
+    // 1.
+    // static constexpr unsigned int fft_size_z = 32;
+    // static constexpr unsigned int fft_size_y = 512;
+    // static constexpr unsigned int fft_size_x = 1024;
+    // static constexpr unsigned int ept_z = 16;
+    // static constexpr unsigned int fpb_z = 1;
     // static constexpr unsigned int ept_y = 16;
     // static constexpr unsigned int fpb_y = 1;
+    // static constexpr unsigned int ept_x = 16;
+    // static constexpr unsigned int fpb_x = 1;
+    // 2.
+    // static constexpr unsigned int fft_size_z = 16;
+    // static constexpr unsigned int fft_size_y = 2048;
+    // static constexpr unsigned int fft_size_x = 1024;
+    // static constexpr unsigned int ept_z = 8;
+    // static constexpr unsigned int fpb_z = 4;
+    // static constexpr unsigned int ept_y = 32;
+    // static constexpr unsigned int fpb_y = 2;
     // static constexpr unsigned int ept_x = 16;
     // static constexpr unsigned int fpb_x = 2;
-    // 2:
-    // static constexpr unsigned int fft_size_y = 2048;
-    // static constexpr unsigned int fft_size_x = 2048;
-    // static constexpr unsigned int ept_y = 16;
+    // 3.
+    // static constexpr unsigned int fft_size_z = 4;
+    // static constexpr unsigned int fft_size_y = 8;
+    // static constexpr unsigned int fft_size_x = 16;
+    // static constexpr unsigned int ept_z = 2;
+    // static constexpr unsigned int fpb_z = 1;
+    // static constexpr unsigned int ept_y = 4;
     // static constexpr unsigned int fpb_y = 1;
     // static constexpr unsigned int ept_x = 8;
-    // static constexpr unsigned int fpb_x = 4;
-    // 3:
-    // static constexpr unsigned int fft_size_y = 128;
-    // static constexpr unsigned int fft_size_x = 128;
-    // static constexpr unsigned int ept_y = 16;
-    // static constexpr unsigned int fpb_y = 1;
-    // static constexpr unsigned int ept_x = 16;
-    // static constexpr unsigned int fpb_x = 8;
-    // 4:
-    // static constexpr unsigned int fft_size_y = 1281;
-    // static constexpr unsigned int fft_size_x = 721;
-    // static constexpr unsigned int ept_y = 16;
-    // static constexpr unsigned int fpb_y = 1;
+    // static constexpr unsigned int fpb_x = 1;
+    // 4.
+    // static constexpr unsigned int fft_size_z = 4;
+    // static constexpr unsigned int fft_size_y = 8;
+    // static constexpr unsigned int fft_size_x = 16;
+    // static constexpr unsigned int ept_z = 2;
+    // static constexpr unsigned int fpb_z = 2;
+    // static constexpr unsigned int ept_y = 4;
+    // static constexpr unsigned int fpb_y = 2;
     // static constexpr unsigned int ept_x = 8;
-    // static constexpr unsigned int fpb_x = 4;
+    // static constexpr unsigned int fpb_x = 2;
 
     using namespace cufftdx;
     using fft_base = decltype(Block() + Type<fft_type::c2c>() + Direction<fft_direction::forward>() +
                               Precision<precision_type>() + SM<Arch>());
+    using fft_z    = decltype(fft_base() + Size<fft_size_z>() + ElementsPerThread<ept_z>() + FFTsPerBlock<fpb_z>());
     using fft_y    = decltype(fft_base() + Size<fft_size_y>() + ElementsPerThread<ept_y>() + FFTsPerBlock<fpb_y>());
     using fft_x    = decltype(fft_base() + Size<fft_size_x>() + ElementsPerThread<ept_x>() + FFTsPerBlock<fpb_x>());
-    using fft      = fft_y;
 
     // Host data
-    static constexpr size_t flat_fft_size       = fft_size_x * fft_size_y;
+    static constexpr size_t flat_fft_size       = fft_size_x * fft_size_y * fft_size_z;
     static constexpr size_t flat_fft_size_bytes = flat_fft_size * sizeof(complex_type);
-#ifdef CUFFTDX_EXAMPLE_DETAIL_DEBUG_FFT_2D
+#ifdef CUFFTDX_EXAMPLE_DETAIL_DEBUG_FFT_3D
     std::vector<complex_type> input_host(flat_fft_size);
     for (size_t i = 0; i < flat_fft_size; i++) {
-        float sign      = (i % 3 == 0) ? -1.0f : 1.0f;
-        input_host[i].x = sign * static_cast<float>(i) / flat_fft_size;
-        input_host[i].y = sign * static_cast<float>(i) / flat_fft_size;
+        input_host[i] = complex_type {float(i), float(1)};
     }
 #else
     auto input_host = example::get_random_complex_data<precision_type>(flat_fft_size, -1, 1);
@@ -287,15 +340,15 @@ void fft_2d() {
     cudaStream_t stream;
     CUDA_CHECK_AND_EXIT(cudaStreamCreate(&stream));
 
-    // cuFFTDx 2D
-    auto cufftdx_results = cufftdx_fft_2d<fft_x, fft_y, false>(input, output, stream);
+    // cuFFTDx 3D
+    auto cufftdx_results = cufftdx_fft_3d<fft_x, fft_y, fft_z, false>(input, output, stream);
 
     // cuFFTDx 2D
     // * Uses shared memory to speed-up IO in the strided kernel
-    auto cufftdx_smemio_results = cufftdx_fft_2d<fft_x, fft_y, true>(input, output, stream);
+    auto cufftdx_smemio_results = cufftdx_fft_3d<fft_x, fft_y, fft_z, true>(input, output, stream);
 
     // cuFFT as reference
-    auto cufft_results = cufft_fft_2d(fft_size_x, fft_size_y, input, output, stream);
+    auto cufft_results = cufft_fft_3d(fft_size_x, fft_size_y, fft_size_z, input, output, stream);
 
     // Destroy created CUDA stream
     CUDA_CHECK_AND_EXIT(cudaStreamDestroy(stream));
@@ -304,9 +357,9 @@ void fft_2d() {
     CUDA_CHECK_AND_EXIT(cudaFree(input));
     CUDA_CHECK_AND_EXIT(cudaFree(output));
 
-    std::cout << "FFT: (" << fft_size_x << ", " << fft_size_y << ")\n";
+    std::cout << "FFT: (" << fft_size_x << ", " << fft_size_y << ", " << fft_size_z << ")\n";
 
-#ifdef CUFFTDX_EXAMPLE_DETAIL_DEBUG_FFT_2D
+#ifdef CUFFTDX_EXAMPLE_DETAIL_DEBUG_FFT_3D
     std::cout << "cuFFT, cuFFTDx\n";
     for (size_t i = 0; i < 8; i++) {
         std::cout << i << ": ";
@@ -357,10 +410,10 @@ void fft_2d() {
 }
 
 template<unsigned int Arch>
-struct fft_2d_functor {
-    void operator()() { return fft_2d<Arch>(); }
+struct fft_3d_functor {
+    void operator()() { return fft_3d<Arch>(); }
 };
 
 int main(int, char**) {
-    return example::sm_runner<fft_2d_functor>();
+    return example::sm_runner<fft_3d_functor>();
 }

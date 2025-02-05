@@ -12,9 +12,9 @@ template<class FFT>
 __launch_bounds__(FFT::max_threads_per_block) __global__ void block_fft_kernel(typename FFT::value_type* data) {
     using complex_type = typename FFT::value_type;
 
-    extern __shared__  unsigned char shared_mem[];
+    extern __shared__ __align__(alignof(float4)) unsigned char shared_mem[];
 
-    auto this_block_data = data + cufftdx::size_of<FFT>::value * (FFT::ffts_per_block/FFT::implicit_type_batching) * blockIdx.x;
+    auto this_block_data = data + cufftdx::size_of<FFT>::value * (FFT::ffts_per_block / FFT::implicit_type_batching) * blockIdx.x;
 
     example::io<FFT>::load_to_smem(this_block_data, shared_mem);
 
@@ -48,10 +48,10 @@ void simple_block_fft() {
     }
 
     // Shared memory must fit input data and must be big enough to run FFT
-    auto shared_memory_size = std::max((unsigned int)FFT::shared_memory_size, (unsigned int)size_bytes);
+    auto shared_memory_size = std::max<unsigned int>(FFT::shared_memory_size, size_bytes);
 
     std::cout << "input [1st FFT]:\n";
-    for (size_t i = 0; i < cufftdx::size_of<FFT>::value; i++) {
+    for (size_t i = 0; i < FFT::input_length; i++) {
         std::cout << data[i].x << " " << data[i].y << std::endl;
     }
 
@@ -67,7 +67,7 @@ void simple_block_fft() {
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     std::cout << "output [1st FFT]:\n";
-    for (size_t i = 0; i < cufftdx::size_of<FFT>::value; i++) {
+    for (size_t i = 0; i < FFT::output_length; i++) {
         std::cout << data[i].x << " " << data[i].y << std::endl;
     }
 
