@@ -1,5 +1,5 @@
 #
-# Copyright 2023-2024 NVIDIA Corporation.  All rights reserved.
+# Copyright 2023-2025 NVIDIA Corporation.  All rights reserved.
 #
 # NOTICE TO LICENSEE:
 #
@@ -59,8 +59,10 @@ set(CMAKE_CUDA_STANDARD          11)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_EXTENSIONS        OFF)
 
+option(BUILD_STATIC "Building statically linked examples" OFF)
+
 # Find cuDSS
-find_package(cudss 0.4.0 REQUIRED)
+find_package(cudss 0.5.0 REQUIRED)
 
 set_source_files_properties(${EXAMPLE_NAME}.cpp PROPERTIES LANGUAGE CUDA)
 
@@ -70,13 +72,15 @@ target_sources(${EXAMPLE_NAME}_example
     PUBLIC ${PROJECT_SOURCE_DIR}/${EXAMPLE_NAME}.cpp
 )
 
-target_include_directories(${EXAMPLE_NAME}_example
-    PUBLIC ${CUDSS_PATH}/include
+target_compile_options(${EXAMPLE_NAME}_example PRIVATE
+    "$<$<CONFIG:Debug>:-lineinfo -g>"
+    "$<$<CONFIG:RelWithDebInfo>:-lineinfo -g>"
 )
 
-target_link_directories(${EXAMPLE_NAME}_example
-    PUBLIC ${CUDSS_PATH}/lib
-)
+if (WIN32)
+    target_include_directories(${EXAMPLE_NAME}_example PUBLIC ${cudss_INCLUDE_DIR})
+    target_link_directories(${EXAMPLE_NAME}_example PUBLIC ${cudss_LIBRARY_DIR})
+endif()
 
 target_link_libraries(${EXAMPLE_NAME}_example
     PUBLIC cudss
@@ -89,15 +93,20 @@ if (BUILD_STATIC)
         PUBLIC ${PROJECT_SOURCE_DIR}/${EXAMPLE_NAME}.cpp
     )
 
-    target_include_directories(${EXAMPLE_NAME}_example_static
-        PUBLIC ${CUDSS_PATH}/include
+    target_compile_options(${EXAMPLE_NAME}_example_static PRIVATE
+        "$<$<CONFIG:Debug>:-lineinfo -g>"
+        "$<$<CONFIG:RelWithDebInfo>:-lineinfo -g>"
     )
 
-    target_link_directories(${EXAMPLE_NAME}_example_static
-        PUBLIC ${CUDSS_PATH}/lib
+    if (WIN32)
+        target_include_directories(${EXAMPLE_NAME}_example_static PUBLIC ${cudss_INCLUDE_DIR})
+        target_link_directories(${EXAMPLE_NAME}_example_static PUBLIC ${cudss_LIBRARY_DIR})
+        target_link_libraries(${EXAMPLE_NAME}_example_static PUBLIC
+        cudss
     )
-
-    target_link_libraries(${EXAMPLE_NAME}_example_static
-        PUBLIC cudss
-    )
+    else()
+        target_link_libraries(${EXAMPLE_NAME}_example_static PUBLIC
+            cudss_static
+        )
+    endif()
 endif()
