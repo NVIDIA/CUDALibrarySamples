@@ -1,6 +1,6 @@
 # MathDx Library - API Examples
 
-This folder includes examples for cuFFTDx and cuBLASDx libraries available in MathDx [package](https://developer.nvidia.com/mathdx) package. The examples are also shipped in the package.
+This folder includes examples for cuFFTDx, cuBLASDx, cuSolverDx and cuRANDDX libraries available in MathDx [package](https://developer.nvidia.com/mathdx) package. The examples are also shipped in the package.
 
 ## [cuBLASDx](cuBLASDx)
 
@@ -40,6 +40,7 @@ This folder includes examples for cuFFTDx and cuBLASDx libraries available in Ma
 * [cuFFTDx API documentation](https://docs.nvidia.com/cuda/cufftdx/index.html)
 
 #### Examples
+
 
 |              Group           |         Subgroup         |            Example                |                                  Description                                  |
 |------------------------------|--------------------------|-----------------------------------|-------------------------------------------------------------------------------|
@@ -85,4 +86,16 @@ This folder includes examples for cuFFTDx and cuBLASDx libraries available in Ma
 | Mixed Precision Examples     |                          | mixed_precision_fft_1d            | Example showing how to use separate storage and compute precisions            |
 |                              |                          | mixed_precision_fft_2d            | Mixed precision 2D FFT with benchmarking and accuracy comparison              |
 |                              |                          |                                   |                                                                               |
+
+
+## [cuSolverDx](cuSolverDx)
+
+* [cuSolverDx download page](https://developer.nvidia.com/cusolverdx-downloads)
+* [cuSolverDx API documentation](https://docs.nvidia.com/cuda/cusolverdx/index.html)
+
+
+## [cuRANDDx](cuRANDDx)
+
+* [cuRANDDx download page](https://developer.nvidia.com/curanddx-downloads)
+* [cuRANDDx API documentation](https://docs.nvidia.com/cuda/curanddx/index.html)
 
