@@ -18,6 +18,18 @@ template<unsigned int Arch>
 int single_gemm_performance() {
     using namespace cublasdx;
 
+    // Use decoupled precision for input
+    using input_type_a = float;
+    using input_type_b = float;
+    using input_type_c = float;
+
+    // Use decoupled compute precision
+    using PA = __half;
+    using PB = __half;
+    using PC = __half;
+
+    constexpr auto type = cublasdx::type::real;
+
     // Parameters m, n, k define the dimensions of matrices A, B, and C.
     constexpr unsigned int m = 64;
     constexpr unsigned int n = 64;
@@ -28,11 +40,6 @@ int single_gemm_performance() {
 
     // Flag to use library-suggested leading dimension (potential performance improvement).
     constexpr bool UseSuggestedLD = false;
-
-    using PA = __half;
-    using PB = __half;
-    using PC = __half;
-    constexpr auto type = cublasdx::type::real;
 
     // Choose arrangement for A, B, C: row-major or column-major
     constexpr auto a_arrangement = cublasdx::row_major;
@@ -52,17 +59,27 @@ int single_gemm_performance() {
     bool verbose = true;
     cudaStream_t stream;
     CUDA_CHECK_AND_EXIT(cudaStreamCreate(&stream))
-    int status = benchmark_mixed_precision_gemm<GEMM, Arch, BlockSize, UseSuggestedLD>(stream, verbose);
+    int status = benchmark_mixed_precision_gemm<GEMM,
+                                                input_type_a,
+                                                input_type_b,
+                                                input_type_c,
+                                                Arch,
+                                                BlockSize,
+                                                UseSuggestedLD>
+                                                (stream, verbose);
+
     CUDA_CHECK_AND_EXIT(cudaStreamDestroy(stream));
 
     return status;
 }
 
-template<unsigned int Arch>
 struct single_gemm_performance_functor {
-    int operator()() { return single_gemm_performance<Arch>(); }
+    template<int Arch>
+    int operator()(std::integral_constant<int, Arch>) {
+        return single_gemm_performance<Arch>();
+    }
 };
 
 int main(int, char**) {
-    return example::sm_runner<single_gemm_performance_functor>();
+    return example::sm_runner(single_gemm_performance_functor{});
 }

@@ -24,7 +24,7 @@ using arr_desc  = Arrangement<cublasdx::row_major, cublasdx::col_major>;
 using BLAS = decltype(Block() + Function<function::MM>() + size_desc() + type_desc() + arr_desc() + Precision<__half, __half, float>() + SM<BLAS_SM>());
 
 __constant__ dim3         blas_block_dim     = BLAS::block_dim;
-__constant__ unsigned int blas_shared_memory = BLAS::shared_memory_size;
+__constant__ unsigned int blas_shared_memory = cublasdx::get_shared_storage_size<BLAS>();
 
 extern "C" __global__ void test_kernel(typename BLAS::a_value_type* a, typename BLAS::b_value_type* b, typename BLAS::c_value_type* c)
 {
@@ -35,15 +35,7 @@ extern "C" __global__ void test_kernel(typename BLAS::a_value_type* a, typename 
     auto b_global_tensor = cublasdx::make_tensor(b, BLAS::get_layout_gmem_b());
     auto c_global_tensor = cublasdx::make_tensor(c, BLAS::get_layout_gmem_c());
 
-// libcu++ doesn't support structured bindings for cuda::std::tuple before 2.1.0 version
-#if _LIBCUDACXX_CUDA_API_VERSION >= 2001000
-    auto [smem_a, smem_b, smem_c] = BLAS::slice_shared_memory(smem);
-#else
-    auto sliced_smem = BLAS::slice_shared_memory(smem);
-    auto smem_a = cuda::std::get<0>(sliced_smem);
-    auto smem_b = cuda::std::get<1>(sliced_smem);
-    auto smem_c = cuda::std::get<2>(sliced_smem);
-#endif
+    auto [smem_a, smem_b, smem_c] = cublasdx::slice_shared_memory<BLAS>(smem);
     auto a_shared_tensor = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_a());
     auto b_shared_tensor = cublasdx::make_tensor(smem_b, BLAS::get_layout_smem_b());
     auto c_shared_tensor = cublasdx::make_tensor(smem_c, BLAS::get_layout_smem_c());

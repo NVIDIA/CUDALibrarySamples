@@ -106,7 +106,7 @@ double measure_cublasdx(unsigned int kernel_warm_up_repeats,
     // The memory required is the maximum of the memory required for the row reduction and the two matrix multiplications
     // C := Q @ K.T / sqrt(Q.shape[-1]) + M and R := softmax(C) @ V.
     const size_t redn_smem_size = (BLAS1::c_size + cublasdx::leading_dimension_of<BLAS1>::c + BLAS1::block_dim.x) * sizeof(ValueType);
-    const auto shared_memory = std::max<size_t>(std::max<size_t>(BLAS1::shared_memory_size, redn_smem_size), BLAS2::shared_memory_size);
+    const auto shared_memory = std::max<size_t>(std::max<size_t>(cublasdx::get_shared_storage_size<BLAS1>(), redn_smem_size), cublasdx::get_shared_storage_size<BLAS2>());
     CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(scaled_dot_product_attention<BLAS1, BLAS2>, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_memory));
 
     // Execute kernel.
@@ -256,13 +256,13 @@ int scaled_dot_product_attention_performance() {
     return 0;
 }
 
-template<unsigned int Arch>
 struct scaled_dot_product_attention_performance_functor {
-    int operator()() {
+    template<int Arch>
+    int operator()(std::integral_constant<int, Arch>) {
         return scaled_dot_product_attention_performance<Arch>();
     }
 };
 
 int main(int, char**) {
-    return example::sm_runner<scaled_dot_product_attention_performance_functor>();
+    return example::sm_runner(scaled_dot_product_attention_performance_functor{});
 }
