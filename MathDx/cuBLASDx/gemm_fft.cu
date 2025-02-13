@@ -28,8 +28,8 @@ void reference(const ValueType* a,
     CUBLAS_CHECK_AND_EXIT(cublasSetStream(handle, stream));
     constexpr bool is_a_transposed = (cublasdx::arrangement_of<GEMM>::a == cublasdx::row_major);
     constexpr bool is_b_transposed = (cublasdx::arrangement_of<GEMM>::b == cublasdx::row_major);
-    const auto a_transpose = example::detail::get_cublas_transpose_mode(cublasdx::arrangement_of<GEMM>::a);
-    const auto b_transpose = example::detail::get_cublas_transpose_mode(cublasdx::arrangement_of<GEMM>::b);
+    const auto a_transpose = example::get_cublas_transpose_mode(cublasdx::arrangement_of<GEMM>::a);
+    const auto b_transpose = example::get_cublas_transpose_mode(cublasdx::arrangement_of<GEMM>::b);
     static_assert(cublasdx::arrangement_of<GEMM>::c == cublasdx::arrangement::col_major, "Only column-major C matrix supported");
 
     // Prepare cuFFT
@@ -105,7 +105,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__ void gemm_fft_kernel(co
     auto b_global_tensor = cublasdx::make_tensor(b, GEMM::get_layout_gmem_b());
     auto c_global_tensor = cublasdx::make_tensor(c, GEMM::get_layout_gmem_c());
 
-    auto [smem_a, smem_b, smem_c] = GEMM::slice_shared_memory(reinterpret_cast<char*>(smem));
+    auto [smem_a, smem_b, smem_c] = cublasdx::slice_shared_memory<GEMM>(reinterpret_cast<char*>(smem));
     auto a_shared_tensor = cublasdx::make_tensor(smem_a, GEMM::get_layout_smem_a());
     auto b_shared_tensor = cublasdx::make_tensor(smem_b, GEMM::get_layout_smem_b());
     auto c_shared_tensor = cublasdx::make_tensor(smem_c, GEMM::get_layout_smem_c());
@@ -263,7 +263,7 @@ int gemm_fft() {
     }
 
     // Get max shared memory required by FFT and GEMM
-    constexpr auto shared_memory_size = std::max({FFT::shared_memory_size, GEMM::shared_memory_size});
+    constexpr auto shared_memory_size = std::max({FFT::shared_memory_size, cublasdx::get_shared_storage_size<GEMM>()});
     // Increase max shared memory if needed
     CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(
         gemm_fft_kernel<FFT, GEMM>,
@@ -304,11 +304,13 @@ int gemm_fft() {
     return 0;
 }
 
-template<unsigned int Arch>
 struct gemm_fft_functor {
-    int operator()() { return gemm_fft<Arch>(); }
+    template<int Arch>
+    int operator()(std::integral_constant<int, Arch>) {
+        return gemm_fft<Arch>();
+    }
 };
 
 int main(int, char**) {
-    return example::sm_runner<gemm_fft_functor>();
+    return example::sm_runner(gemm_fft_functor{});
 }

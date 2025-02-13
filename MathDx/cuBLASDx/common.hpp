@@ -5,10 +5,16 @@
 #include <vector>
 #include <random>
 #include <complex>
+#include <algorithm>
 
 #include <cuda_runtime_api.h>
 #include <cufft.h>
 #include <cublas_v2.h>
+
+#if !defined(CUBLASDX_EXAMPLE_NVRTC) && !defined(CUBLASDX_EXAMPLE_NO_THRUST)
+#include <thrust/transform.h>
+#include <thrust/execution_policy.h>
+#endif
 
 #ifndef CUBLASDX_EXAMPLE_NVRTC
 #include <cuda/std/complex>
@@ -17,6 +23,7 @@
 #ifndef CUBLASDX_EXAMPLE_NVRTC
 #include <cublasdx.hpp>
 #include <cuda_fp16.h>
+#include "arch_runner.hpp"
 #endif
 
 #ifdef __NVCC__
@@ -91,7 +98,105 @@ namespace example {
     template <typename T>
     using c_value_type_t = typename T::c_value_type;
 
+    inline unsigned int get_cuda_device_arch() {
+        int device;
+        CUDA_CHECK_AND_EXIT(cudaGetDevice(&device));
+
+        int major = 0;
+        int minor = 0;
+        CUDA_CHECK_AND_EXIT(cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device));
+        CUDA_CHECK_AND_EXIT(cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, device));
+
+        return static_cast<unsigned>(major) * 100 + static_cast<unsigned>(minor) * 10;
+    }
+
+    inline unsigned int get_multiprocessor_count(int device) {
+        int multiprocessor_count = 0;
+        CUDA_CHECK_AND_EXIT(cudaDeviceGetAttribute(&multiprocessor_count, cudaDevAttrMultiProcessorCount, device));
+        return multiprocessor_count;
+    }
+
+    inline unsigned int get_multiprocessor_count() {
+        int device = 0;
+        CUDA_CHECK_AND_EXIT(cudaGetDevice(&device));
+        return get_multiprocessor_count(device);
+    }
+
+
     #ifndef CUBLASDX_EXAMPLE_NVRTC
+
+    // Don't use thrust::device_vector to avoid unnecessary
+    // device destructors (parallel_for CUDA errors in some Volta/Driver setups)
+    template<typename T, typename Alloc = void>
+    struct device_vector {
+            T* _ptr;
+            size_t _size = 0;
+
+            device_vector() = default;
+            device_vector(size_t s) {
+                _size = s;
+                CUDA_CHECK_AND_EXIT(cudaMalloc(&_ptr, _size * sizeof(T)));
+            }
+
+            device_vector(const std::vector<T>& other) {
+                *this = other;
+            }
+
+            device_vector(const device_vector<T>& other) {
+                *this = other;
+            }
+
+            device_vector(device_vector<T>&& other) {
+                *this = std::move(other);
+            }
+
+            operator std::vector<T>() const {
+                std::vector<T> ret(_size);
+                CUDA_CHECK_AND_EXIT(cudaMemcpy(ret.data(), _ptr, _size * sizeof(T), cudaMemcpyDeviceToHost));
+                return ret;
+            }
+
+            device_vector& operator=(const std::vector<T>& other) {
+                reset();
+                _size = other.size();
+                CUDA_CHECK_AND_EXIT(cudaMalloc(&_ptr, _size * sizeof(T)));
+                CUDA_CHECK_AND_EXIT(cudaMemcpy(_ptr, other.data(), _size * sizeof(T), cudaMemcpyHostToDevice));
+                return *this;
+            }
+
+            device_vector& operator=(const device_vector<T>& other) {
+                reset();
+                _size = other.size();
+                CUDA_CHECK_AND_EXIT(cudaMalloc(&_ptr, _size * sizeof(T)));
+                CUDA_CHECK_AND_EXIT(cudaMemcpy(_ptr, other.data(), _size * sizeof(T), cudaMemcpyDeviceToDevice));
+                return *this;
+            }
+
+            device_vector& operator=(device_vector<T>&& other) {
+                reset();
+                std::swap(_size, other._size);
+                std::swap(_ptr, other._ptr);
+                return *this;
+            }
+
+            T      * begin()              { return _ptr; }
+            T      * end()                { return _ptr + _size; }
+            T      * data()         const { return _ptr; }
+            T const* cbegin()       const { return _ptr; }
+            T const* cend()         const { return _ptr + _size; }
+            size_t   size()         const { return _size; }
+
+            void reset() {
+                if(_size != 0) {
+                    _size = 0;
+                    CUDA_CHECK_AND_EXIT(cudaFree(_ptr));
+                }
+            }
+
+            ~device_vector() {
+                reset();
+            }
+    };
 
     namespace detail {
 
@@ -119,6 +224,7 @@ namespace example {
 
 
     template<typename T>
+    CUBLASDX_HOST_DEVICE
     constexpr bool is_complex() {
         return detail::is_complex_helper<T>::value;
     }
@@ -136,30 +242,149 @@ namespace example {
         using type = T;
     };
 
-    template<typename T1, typename T2>
-    constexpr T1 convert(T2 v) {
-        if constexpr (is_complex<T1>() && is_complex<T2>()) {
-            return T1(v);
-        } else if constexpr (is_complex<T1>()) {
-            return T1(v, v);
-        } else if constexpr (is_complex<T2>()) {
-            return v.real();
-        } else {
-            return T1(v);
-        }
+    namespace detail {
+
+        template<class T, class = void>
+        struct promote;
+
+        template<class T>
+        struct promote<T, std::enable_if_t<commondx::is_signed_integral_v<T> and
+                                           not is_complex<T>()>> {
+            using value_type = int64_t;
+        };
+
+        template<class T>
+        struct promote<T, std::enable_if_t<commondx::is_unsigned_integral_v<T> and
+                                           not is_complex<T>()>> {
+            using value_type = uint64_t;
+        };
+
+        template<class T>
+        struct promote<T, std::enable_if_t<commondx::is_floating_point_v<T> and
+                                           not is_complex<T>()>> {
+            using value_type = double;
+        };
+
+        template<class T, template<class> class Complex>
+        struct promote<Complex<T>, std::enable_if_t<is_complex<Complex<T>>()>> {
+            using promoted_internal = typename promote<T>::value_type;
+
+            using value_type = cublasdx::complex<promoted_internal>;
+        };
+
+        template<class ValueType>
+        using get_reference_value_type_t = typename promote<ValueType>::value_type;
     }
 
     template<typename T1, typename T2>
-    void copy_hth(const std::vector<T1>& h1, std::vector<T2>& h2, const size_t size) {
-        for (size_t i = 0; i < size; ++i) {
-            if constexpr (is_complex<T2>()) {
-                h2[i] = T2(static_cast<typename T2::value_type>(h1[i].real()),
-                           static_cast<typename T2::value_type>(h1[i].imag()));
-            } else {
-                h2[i] = T2(h1[i]);
-            }
+    CUBLASDX_HOST_DEVICE
+    constexpr T1 convert(T2 v) {
+        constexpr bool is_output_complex = cublasdx::detail::has_complex_interface_v<T1>;
+        constexpr bool is_input_complex = cublasdx::detail::has_complex_interface_v<T2>;
+        if constexpr (is_input_complex and is_output_complex) {
+            using t1_vt = typename T1::value_type;
+            return T1(convert<t1_vt>(v.real()), convert<t1_vt>(v.imag()));
+        } else if constexpr (is_output_complex) {
+            using t1_vt = typename T1::value_type;
+            return T1(convert<t1_vt>(v), convert<t1_vt>(v));
+        } else if constexpr (is_input_complex) {
+            return convert<T1>(v.real());
+        } else if constexpr (COMMONDX_STL_NAMESPACE::is_convertible_v<T2, T1>){
+            return static_cast<T1>(v);
+        } else if constexpr (COMMONDX_STL_NAMESPACE::is_constructible_v<T1, T2>){
+            return T1(v);
+        } else {
+            static_assert(COMMONDX_STL_NAMESPACE::is_convertible_v<T2, T1>, "Please provide your own conversion function");
         }
     }
+
+    template<typename T>
+    struct converter {
+        template<class V>
+        CUBLASDX_HOST_DEVICE constexpr
+        T operator()(V const& v) const { return convert<T>(v); }
+    };
+
+
+    // device_gemm_performance utilities
+    template<class BLAS>
+    CUBLASDX_HOST_DEVICE
+    auto get_block_coord() {
+        constexpr auto arr_a = cublasdx::arrangement_of<BLAS>::a;
+        constexpr auto arr_b = cublasdx::arrangement_of<BLAS>::b;
+
+        constexpr bool is_a_global_col = arr_a == cublasdx::col_major;
+        constexpr bool is_b_global_col = arr_b == cublasdx::col_major;
+
+        // Handle row-major symmetrically to col-major
+        constexpr bool reverse_block_coord = not is_a_global_col and not is_b_global_col;
+        return cute::conditional_return<reverse_block_coord>
+            (cute::make_coord(blockIdx.y, blockIdx.x, cute::_), cute::make_coord(blockIdx.x, blockIdx.y, cute::_));
+    }
+
+    template<class BLAS, class GEMMShape, class T>
+    CUBLASDX_HOST_DEVICE
+    auto make_device_gmem_tensor_a(GEMMShape gemm_shape, T* data) {
+        constexpr auto arr_a = cublasdx::arrangement_of<BLAS>::a;
+        return cublasdx::make_tensor(cute::make_gmem_ptr(data),
+                                     cute::make_layout(cute::select<0, 2>(gemm_shape),
+                                                       cute::conditional_t<arr_a == cublasdx::col_major, cute::LayoutLeft, cute::LayoutRight>{}));
+    }
+
+    template<class BLAS, class GEMMShape, class T>
+    CUBLASDX_HOST_DEVICE
+    auto make_device_gmem_tensor_b(GEMMShape gemm_shape, T* data) {
+        constexpr auto arr_b = cublasdx::arrangement_of<BLAS>::b;
+        return cublasdx::make_tensor(cute::make_gmem_ptr(data),
+                                     cute::make_layout(cute::select<2, 1>(gemm_shape),
+                                                       cute::conditional_t<arr_b == cublasdx::col_major, cute::LayoutLeft, cute::LayoutRight>{}));
+    }
+
+    template<class BLAS, class GEMMShape, class T>
+    CUBLASDX_HOST_DEVICE
+    auto make_device_gmem_tensor_c(GEMMShape gemm_shape, T* data) {
+        constexpr auto arr_c = cublasdx::arrangement_of<BLAS>::c;
+        return cublasdx::make_tensor(cute::make_gmem_ptr(data),
+                                     cute::make_layout(cute::select<0, 1>(gemm_shape),
+                                                       cute::conditional_t<arr_c == cublasdx::col_major, cute::LayoutLeft, cute::LayoutRight>{}));
+    }
+
+    template<class BLAS, class ATensor, class BlockCoord>
+    CUBLASDX_HOST_DEVICE
+    auto get_block_tile_slice_a(ATensor    const& a_tensor,
+                                BlockCoord const& block_coord) {
+        constexpr auto tile_m = cublasdx::size_of<BLAS>::m;
+        constexpr auto tile_k = cublasdx::size_of<BLAS>::k;
+        return cute::local_tile(a_tensor, cute::make_shape(cute::Int<tile_m>{}, cute::Int<tile_k>{}), cute::select<0, 2>(block_coord));
+    }
+
+    template<class BLAS, class BTensor, class BlockCoord>
+    CUBLASDX_HOST_DEVICE
+    auto get_block_tile_slice_b(BTensor    const& b_tensor,
+                                BlockCoord const& block_coord) {
+        constexpr auto tile_k = cublasdx::size_of<BLAS>::k;
+        constexpr auto tile_n = cublasdx::size_of<BLAS>::n;
+        return cute::local_tile(b_tensor, cute::make_shape(cute::Int<tile_k>{}, cute::Int<tile_n>{}), cute::select<2, 1>(block_coord));
+    }
+
+    template<class BLAS, class CTensor, class BlockCoord>
+    CUBLASDX_HOST_DEVICE
+    auto get_block_tile_c(CTensor         & c_tensor,
+                          BlockCoord const& block_coord) {
+        constexpr auto tile_m = cublasdx::size_of<BLAS>::m;
+        constexpr auto tile_n = cublasdx::size_of<BLAS>::n;
+        return cute::local_tile(c_tensor, cute::make_shape(cute::Int<tile_m>{}, cute::Int<tile_n>{}), cute::select<0, 1>(block_coord));
+    }
+
+    template<class Stage, class Tensor>
+    CUBLASDX_HOST_DEVICE
+    auto get_tile_from_slice(Tensor & tensor, Stage const& stage) {
+        // We assume a local_tile partition, where the first 2 dimensions
+        // are tile itself, and the third is iteration dimension
+        return tensor(cute::_, cute::_, stage);
+    }
+
+    // end of device_gemm_performance utilities
 
     // This assumed no customized leading dimension
     template<typename BLAS>
@@ -180,7 +405,7 @@ namespace example {
             return {real, imag};
         }
         else {
-            return {real};
+            return T(real);
         }
     }
 
@@ -268,34 +493,29 @@ namespace example {
     } // namespace detail
 
     template<typename T>
-    std::enable_if_t<!is_complex<T>(), std::vector<T>> get_random_data(const float  min,
-                                                                       const float  max,
-                                                                       const size_t size) {
+    std::vector<T> get_random_data(const float  min,
+                                   const float  max,
+                                   const size_t size) {
         std::random_device                    rd;
         std::mt19937                          gen(rd());
-        std::uniform_real_distribution<float> dist(min, max);
+        using gen_t = std::conditional_t<commondx::is_floating_point_v<T>, float, int>;
+        using dist_t = std::conditional_t<commondx::is_floating_point_v<T>,
+                                          std::uniform_real_distribution<float>,
+                                          std::uniform_int_distribution<int>>;
+
+        dist_t dist(static_cast<gen_t>(min), static_cast<gen_t>(max));
 
         std::vector<T> ret(size);
-        for (auto& v : ret) {
-            v = convert<T>(dist(gen));
-        }
-        return ret;
-    }
 
-    template<typename T>
-    std::enable_if_t<is_complex<T>(), std::vector<T>> get_random_data(const float  min,
-                                                                      const float  max,
-                                                                      const size_t size) {
-        std::random_device                    rd;
-        std::mt19937                          gen(rd());
-        std::uniform_real_distribution<float> dist(min, max);
-
-        std::vector<T> ret(size);
-        for (auto& v : ret) {
-            using scalar_type = typename T::value_type;
-            scalar_type r     = static_cast<scalar_type>(dist(gen));
-            scalar_type i     = static_cast<scalar_type>(dist(gen));
-            v                 = T(r, i);
+        for (size_t v = 0; v < ret.size(); ++v) {
+            if constexpr(is_complex<T>()) {
+                using scalar_type = typename T::value_type;
+                scalar_type r     = static_cast<scalar_type>(dist(gen));
+                scalar_type i     = static_cast<scalar_type>(dist(gen));
+                ret[v]            = T(r, i);
+            } else {
+                ret[v] = convert<T>(dist(gen));
+            }
         }
         return ret;
     }
@@ -309,97 +529,96 @@ namespace example {
         return output;
     }
 
-    template <class ValueType, class Functor> __device__ __forceinline__
+    template <class ValueType, class Functor> CUBLASDX_DEVICE
     void transform(ValueType *data, int size, Functor transformer) {
         for (int i = threadIdx.x; i < size; i += blockDim.x) {
             data[i] = transformer(i, data[i]);
         }
     }
 
-    template <class ValueType> __device__ __forceinline__
+    template <class ValueType> CUBLASDX_DEVICE
     void set(ValueType *data, int size, ValueType value) {
         for (int i = threadIdx.x; i < size; i += blockDim.x) {
             data[i] = value;
         }
     }
 
-    template <class ValueType> __device__  __forceinline__
+    template <class ValueType> CUBLASDX_DEVICE
     auto exp(ValueType value) {
         return cuda::std::exp(value);
     }
 
-    __device__  __forceinline__
+    CUBLASDX_DEVICE
     auto exp(__half value) {
         return hexp(value);
     }
 
+    template<class T1, class T2>
+    CUBLASDX_HOST_DEVICE
+    void swap(T1& v1, T2& v2) {
+        auto tmp = v1;
+        v1 = v2;
+        v2 = tmp;
+    }
+
+    struct cublasdx_enable_example_sm {
+        #if defined(CUBLASDX_EXAMPLE_ENABLE_SM_70)
+        static constexpr bool sm_70 = true;
+        #else
+        static constexpr bool sm_70 = false;
+        #endif
+
+        #if defined(CUBLASDX_EXAMPLE_ENABLE_SM_72)
+        static constexpr bool sm_72 = true;
+        #else
+        static constexpr bool sm_72 = false;
+        #endif
+
+        #if defined(CUBLASDX_EXAMPLE_ENABLE_SM_75)
+        static constexpr bool sm_75 = true;
+        #else
+        static constexpr bool sm_75 = false;
+        #endif
+
+        #if defined(CUBLASDX_EXAMPLE_ENABLE_SM_80)
+        static constexpr bool sm_80 = true;
+        #else
+        static constexpr bool sm_80 = false;
+        #endif
+
+        #if defined(CUBLASDX_EXAMPLE_ENABLE_SM_86)
+        static constexpr bool sm_86 = true;
+        #else
+        static constexpr bool sm_86 = false;
+        #endif
+
+        #if defined(CUBLASDX_EXAMPLE_ENABLE_SM_87)
+        static constexpr bool sm_87 = true;
+        #else
+        static constexpr bool sm_87 = false;
+        #endif
+
+        #if defined(CUBLASDX_EXAMPLE_ENABLE_SM_89)
+        static constexpr bool sm_89 = true;
+        #else
+        static constexpr bool sm_89 = false;
+        #endif
+
+        #if defined(CUBLASDX_EXAMPLE_ENABLE_SM_90)
+        static constexpr bool sm_90 = true;
+        #else
+        static constexpr bool sm_90 = false;
+        #endif
+    };
+
+    template<class Functor, class ... Args>
+    auto sm_runner(Functor functor, Args&& ... args) {
+        auto cuda_device_arch = get_cuda_device_arch();
+        return arch_runner<cublasdx_enable_example_sm, int>(cuda_device_arch, functor, static_cast<Args&&>(args)...);
+    }
+
     #endif // CUBLASDX_EXAMPLE_NVRTC
 
-    inline unsigned int get_cuda_device_arch() {
-        int device;
-        CUDA_CHECK_AND_EXIT(cudaGetDevice(&device));
-
-        int major = 0;
-        int minor = 0;
-        CUDA_CHECK_AND_EXIT(cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device));
-        CUDA_CHECK_AND_EXIT(cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, device));
-
-        return static_cast<unsigned>(major) * 100 + static_cast<unsigned>(minor) * 10;
-    }
-
-    inline unsigned int get_multiprocessor_count(int device) {
-        int multiprocessor_count = 0;
-        CUDA_CHECK_AND_EXIT(cudaDeviceGetAttribute(&multiprocessor_count, cudaDevAttrMultiProcessorCount, device));
-        return multiprocessor_count;
-    }
-
-    inline unsigned int get_multiprocessor_count() {
-        int device = 0;
-        CUDA_CHECK_AND_EXIT(cudaGetDevice(&device));
-        return get_multiprocessor_count(device);
-    }
-
-    template<template<unsigned int> class Functor>
-    inline int sm_runner() {
-        // Get CUDA device compute capability
-        const auto cuda_device_arch = get_cuda_device_arch();
-
-        switch (cuda_device_arch) {
-// All SM supported by cuBLASDx
-#ifdef CUBLASDX_EXAMPLE_ENABLE_SM_70
-            case 700: return Functor<700>()();
-#endif
-#ifdef CUBLASDX_EXAMPLE_ENABLE_SM_72
-            case 720: return Functor<720>()();
-#endif
-#ifdef CUBLASDX_EXAMPLE_ENABLE_SM_75
-            case 750: return Functor<750>()();
-#endif
-#ifdef CUBLASDX_EXAMPLE_ENABLE_SM_80
-            case 800: return Functor<800>()();
-#endif
-#ifdef CUBLASDX_EXAMPLE_ENABLE_SM_86
-            case 860: return Functor<860>()();
-#endif
-#ifdef CUBLASDX_EXAMPLE_ENABLE_SM_87
-            case 870: return Functor<870>()();
-#endif
-#ifdef CUBLASDX_EXAMPLE_ENABLE_SM_89
-            case 890: return Functor<890>()();
-#endif
-#ifdef CUBLASDX_EXAMPLE_ENABLE_SM_90
-            case 900: return Functor<900>()();
-#endif
-#ifdef CUBLASDX_EXAMPLE_ENABLE_SM_90
-            default: {
-                if (cuda_device_arch > 900) {
-                    return Functor<900>()();
-                }
-            }
-#endif
-        }
-        return 1;
-    }
 } // namespace example
 
 #endif

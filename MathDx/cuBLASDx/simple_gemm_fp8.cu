@@ -19,7 +19,7 @@ __launch_bounds__(BLAS::max_threads_per_block) __global__ void gemm_kernel(const
     auto b_global_tensor = cublasdx::make_tensor(b, BLAS::get_layout_gmem_b());
     auto c_global_tensor = cublasdx::make_tensor(c, BLAS::get_layout_gmem_c());
 
-    auto [smem_a, smem_b, smem_c] = BLAS::slice_shared_memory(smem);
+    auto [smem_a, smem_b, smem_c] = cublasdx::slice_shared_memory<BLAS>(smem);
     auto a_shared_tensor          = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_a());
     auto b_shared_tensor          = cublasdx::make_tensor(smem_b, BLAS::get_layout_smem_b());
     auto c_shared_tensor          = cublasdx::make_tensor(smem_c, BLAS::get_layout_smem_c());
@@ -112,10 +112,10 @@ int simple_gemm() {
 
     // Increase max dynamic shared memory for the kernel if needed
     CUDA_CHECK_AND_EXIT(
-        cudaFuncSetAttribute(gemm_kernel<BLAS>, cudaFuncAttributeMaxDynamicSharedMemorySize, BLAS::shared_memory_size));
+        cudaFuncSetAttribute(gemm_kernel<BLAS>, cudaFuncAttributeMaxDynamicSharedMemorySize, cublasdx::get_shared_storage_size<BLAS>()));
 
     // Execute kernel
-    gemm_kernel<BLAS><<<1, BLAS::block_dim, BLAS::shared_memory_size>>>(a, b, c, alpha, beta);
+    gemm_kernel<BLAS><<<1, BLAS::block_dim, cublasdx::get_shared_storage_size<BLAS>()>>>(a, b, c, alpha, beta);
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     // Copy results back to host
@@ -129,10 +129,10 @@ int simple_gemm() {
     CUDA_CHECK_AND_EXIT(cudaFree(c));
 
     // Calculate reference
-    auto reference_host_output = example::reference_gemm<BLAS, TA, TB, TC>(alpha, host_a, host_b, beta, host_c);
+    auto reference_host_output = example::reference_gemm<BLAS>(alpha, host_a, host_b, beta, host_c);
 
     // Check against reference
-    if (example::check(host_output, reference_host_output)) {
+    if (example::check_error<BLAS>(host_output, reference_host_output)) {
         std::cout << "Success" << std::endl;
         return 0;
     }
@@ -144,11 +144,13 @@ int simple_gemm() {
 #endif
 }
 
-template<unsigned int Arch>
 struct simple_gemm_functor {
-    int operator()() { return simple_gemm<Arch>(); }
+    template<int Arch>
+    int operator()(std::integral_constant<int, Arch>) {
+        return simple_gemm<Arch>();
+    }
 };
 
 int main(int, char**) {
-    return example::sm_runner<simple_gemm_functor>();
+    return example::sm_runner(simple_gemm_functor{});
 }
