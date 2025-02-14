@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 NVIDIA Corporation.  All rights reserved.
+ * Copyright 2024-2025 NVIDIA Corporation.  All rights reserved.
  *
  * NOTICE TO LICENSEE:
  *
@@ -295,10 +295,10 @@ int main (int argc, char *argv[]) {
     int *nrows = n, *ncols = n;
     int *ldb = ncols, *ldx = nrows;
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateBatchDn(&b, batchCount, ncols, nrhs, ldb,
-        batch_b_values_d, CUDA_R_64F, CUDSS_LAYOUT_COL_MAJOR),
+        batch_b_values_d, CUDA_R_32I, CUDA_R_64F, CUDSS_LAYOUT_COL_MAJOR),
         status, "cudssMatrixCreateBatchDn for b");
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateBatchDn(&x, batchCount, nrows, nrhs, ldx,
-        batch_x_values_d, CUDA_R_64F, CUDSS_LAYOUT_COL_MAJOR),
+        batch_x_values_d, CUDA_R_32I, CUDA_R_64F, CUDSS_LAYOUT_COL_MAJOR),
         status, "cudssMatrixCreateBatchDn for x");
 
     /* Create a matrix object for the batch of sparse input matrices. */
