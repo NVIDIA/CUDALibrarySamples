@@ -827,7 +827,7 @@ void LtSgemmCustomFind(cublasLtHandle_t ltHandle,
     int kernelRepeats = 10; //number of time the CUDA kernels will be run back to back
     customMatmulPerf_t perfResults[ALGO_COMBINATIONS];
     int nbAlgoIds = 0;
-    #define ALGO_IDS 4
+    #define ALGO_IDS 16
     int algoIdA[ALGO_IDS];
     cudaDataType_t scaleType = CUDA_R_32F, Atype = CUDA_R_32F, Btype = CUDA_R_32F, Ctype = CUDA_R_32F;
     cublasComputeType_t computeType = CUBLAS_COMPUTE_32F;
