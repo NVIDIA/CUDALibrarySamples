@@ -848,6 +848,12 @@ void LtSgemmCustomFind(cublasLtHandle_t ltHandle,
     checkCudaStatus(cudaEventCreate(&startEvent, cudaEventBlockingSync));
     checkCudaStatus(cudaEventCreate(&stopEvent, cudaEventBlockingSync));
 
+    int device;
+    checkCudaStatus(cudaGetDevice(&device));
+    int clusterLaunchSupported;
+    checkCudaStatus(cudaDeviceGetAttribute(&clusterLaunchSupported, cudaDevAttrClusterLaunch, device));
+    uint16_t cgaLastShape = clusterLaunchSupported ? CUBLASLT_CLUSTER_SHAPE_END : CUBLASLT_CLUSTER_SHAPE_AUTO + 1;
+
     // Loop over the Algo IDs
     for (int idx = 0; (idx < nbAlgoIds) && (AlgoCount < AlgoCombinations); idx++) {
         cublasLtMatmulAlgo_t algo;
@@ -890,31 +896,57 @@ void LtSgemmCustomFind(cublasLtHandle_t ltHandle,
             // Loop over different stages count
             for (int stagesIdx = 0; stagesIdx < nbStages; stagesIdx++) {
                 checkCublasStatus(cublasLtMatmulAlgoConfigSetAttribute(&algo, CUBLASLT_ALGO_CONFIG_STAGES_ID, &stagesA[stagesIdx], sizeof(stagesA[stagesIdx])));
-                // Loop over the different custom option if any
-                for (int customOption = 0; customOption <= customOptionMax; customOption++) {
-                    checkCublasStatus(cublasLtMatmulAlgoConfigSetAttribute(&algo, CUBLASLT_ALGO_CONFIG_CUSTOM_OPTION, &customOption, sizeof(customOption)));
-                    // loop over the CTAs swizzling support
-                    for (int k = 0; k <= swizzlingMax; k++) {
-                        int splitK_trial = 0;
-                        if (splitkSupport) {
-                            splitK_trial += sizeof(splitKSequenceA) / sizeof(splitKSequenceA[0]);
-                        }
-                        // Loop over the splitK value over a fixed sequence splitKSequenceA in addtion to the case where splitK is not enabled
-                        for (int l = 0; (l < (1 + splitK_trial)) && (AlgoCount < AlgoCombinations); l++) {
-                            int splitK_val = 0;
-                            int redScheme = CUBLASLT_REDUCTION_SCHEME_NONE;
-                            checkCublasStatus(cublasLtMatmulAlgoConfigSetAttribute(&algo, CUBLASLT_ALGO_CONFIG_SPLITK_NUM, &splitK_val, sizeof(splitK_val)));
-                            checkCublasStatus(cublasLtMatmulAlgoConfigSetAttribute(&algo, CUBLASLT_ALGO_CONFIG_CTA_SWIZZLING, &k, sizeof(k)));
-                            checkCublasStatus(cublasLtMatmulAlgoConfigSetAttribute(&algo, CUBLASLT_ALGO_CONFIG_REDUCTION_SCHEME, &redScheme, sizeof(int)));
+                // Loop over different cluster configurations on devices that support it
+                for (uint16_t cgaIdx = 0; cgaIdx < cgaLastShape; cgaIdx++) {
+                    checkCublasStatus(cublasLtMatmulAlgoConfigSetAttribute(&algo, CUBLASLT_ALGO_CONFIG_CLUSTER_SHAPE_ID, &cgaIdx, sizeof(cgaIdx)));
+                    // Loop over the different custom option if any
+                    for (int customOption = 0; customOption <= customOptionMax; customOption++) {
+                        checkCublasStatus(cublasLtMatmulAlgoConfigSetAttribute(&algo, CUBLASLT_ALGO_CONFIG_CUSTOM_OPTION, &customOption, sizeof(customOption)));
+                        // loop over the CTAs swizzling support
+                        for (int k = 0; k <= swizzlingMax; k++) {
+                            int splitK_trial = 0;
+                            if (splitkSupport) {
+                                splitK_trial += sizeof(splitKSequenceA) / sizeof(splitKSequenceA[0]);
+                            }
+                            // Loop over the splitK value over a fixed sequence splitKSequenceA in addtion to the case where splitK is not enabled
+                            for (int l = 0; (l < (1 + splitK_trial)) && (AlgoCount < AlgoCombinations); l++) {
+                                int splitK_val = 0;
+                                int redScheme = CUBLASLT_REDUCTION_SCHEME_NONE;
+                                checkCublasStatus(cublasLtMatmulAlgoConfigSetAttribute(&algo, CUBLASLT_ALGO_CONFIG_SPLITK_NUM, &splitK_val, sizeof(splitK_val)));
+                                checkCublasStatus(cublasLtMatmulAlgoConfigSetAttribute(&algo, CUBLASLT_ALGO_CONFIG_CTA_SWIZZLING, &k, sizeof(k)));
+                                checkCublasStatus(cublasLtMatmulAlgoConfigSetAttribute(&algo, CUBLASLT_ALGO_CONFIG_REDUCTION_SCHEME, &redScheme, sizeof(int)));
 
-                            if (l > 0) { // Split-K case
-                                splitK_val = splitKSequenceA[l - 1];
-                                checkCublasStatus(cublasLtMatmulAlgoConfigSetAttribute(&algo, CUBLASLT_ALGO_CONFIG_SPLITK_NUM, &splitKSequenceA[l - 1], sizeof(splitKSequenceA[l - 1])));
-                                // Going over all the reduction schemes
-                                for (redScheme = 1 ; redScheme < (int)CUBLASLT_REDUCTION_SCHEME_MASK && (AlgoCount < AlgoCombinations); redScheme = redScheme << 1) {
-                                    if (redScheme & redMask) {
-                                        checkCublasStatus(cublasLtMatmulAlgoConfigSetAttribute(&algo, CUBLASLT_ALGO_CONFIG_REDUCTION_SCHEME, &redScheme, sizeof(redScheme)));
+                                if (l > 0) { // Split-K case
+                                    splitK_val = splitKSequenceA[l - 1];
+                                    checkCublasStatus(cublasLtMatmulAlgoConfigSetAttribute(&algo, CUBLASLT_ALGO_CONFIG_SPLITK_NUM, &splitKSequenceA[l - 1], sizeof(splitKSequenceA[l - 1])));
+                                    // Going over all the reduction schemes
+                                    for (redScheme = 1 ; redScheme < (int)CUBLASLT_REDUCTION_SCHEME_MASK && (AlgoCount < AlgoCombinations); redScheme = redScheme << 1) {
+                                        if (redScheme & redMask) {
+                                            checkCublasStatus(cublasLtMatmulAlgoConfigSetAttribute(&algo, CUBLASLT_ALGO_CONFIG_REDUCTION_SCHEME, &redScheme, sizeof(redScheme)));
 
+                                            status = customMatmulRun( ltHandle,
+                                                                    operationDesc,
+                                                                    alpha, // host or device pointer
+                                                                    A, Adesc,
+                                                                    B, Bdesc,
+                                                                    beta, // host or device pointer
+                                                                    C, Cdesc,
+                                                                    C, Cdesc,
+                                                                    algo,
+                                                                    kernelRepeats,
+                                                                    workSpace,
+                                                                    workSpaceSize,
+                                                                    perfResults[AlgoCount],
+                                                                    stream,
+                                                                    startEvent, stopEvent);
+                                            perfResults[AlgoCount].status = status;
+                                            if (status == CUBLAS_STATUS_SUCCESS) AlgoCount++;
+
+                                        } // end if
+                                    } // end for
+                                } else { // Non-splitK case
+                                    // if user preference is ok with workspace
+                                    if (AlgoCount < AlgoCombinations) {
                                         status = customMatmulRun( ltHandle,
                                                                 operationDesc,
                                                                 alpha, // host or device pointer
@@ -932,34 +964,12 @@ void LtSgemmCustomFind(cublasLtHandle_t ltHandle,
                                                                 startEvent, stopEvent);
                                         perfResults[AlgoCount].status = status;
                                         if (status == CUBLAS_STATUS_SUCCESS) AlgoCount++;
-
-                                    } // end if
-                                } // end for
-                            } else { // Non-splitK case
-                                // if user preference is ok with workspace
-                                if (AlgoCount < AlgoCombinations) {
-                                    status = customMatmulRun( ltHandle,
-                                                            operationDesc,
-                                                            alpha, // host or device pointer
-                                                            A, Adesc,
-                                                            B, Bdesc,
-                                                            beta, // host or device pointer
-                                                            C, Cdesc,
-                                                            C, Cdesc,
-                                                            algo,
-                                                            kernelRepeats,
-                                                            workSpace,
-                                                            workSpaceSize,
-                                                            perfResults[AlgoCount],
-                                                            stream,
-                                                            startEvent, stopEvent);
-                                    perfResults[AlgoCount].status = status;
-                                    if (status == CUBLAS_STATUS_SUCCESS) AlgoCount++;
+                                    }
                                 }
-                            }
-                        }  // end l
-                    }  // end k
-                } //end customOption
+                            }  // end l
+                        }  // end k
+                    } //end customOption
+                } // end cgaIdx
             } // end stagesIdx
         } // end tileIdx
         delete [] tileA;
