@@ -266,3 +266,5 @@ inline void TestBench<__nv_fp4_e2m1, __nv_fp4_e2m1, float, __nv_fp8_e4m3, float>
     for (int i = 0; i < sizeofElements<__nv_fp4_e2m1>(n * k * N); i++) Bhost[i].__x = __nv_fp4x2_e2m1{float2{float(i % 5), float(i % 5) + 1}}.__x;
     for (int i = 0; i < sizeofElements<__nv_fp4_e2m1>(m * N); i++) biasHost[i].__x =__nv_fp4x2_e2m1{float2{float(i % 5), float(i % 5) + 1}}.__x;
 }
+
+const char *tileToString(cublasLtMatmulTile_t tile);
