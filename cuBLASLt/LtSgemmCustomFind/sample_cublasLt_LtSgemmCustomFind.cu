@@ -162,14 +162,21 @@ void LtSgemmCustomFind(cublasLtHandle_t ltHandle,
                       int m,
                       int n,
                       int k,
-                      const float *alpha, /* host pointer */
-                      const float *A,
+                      cudaDataType_t scaleType,
+                      const void *alpha, /* host pointer */
+                      cudaDataType_t Atype,
+                      const void *A,
                       int lda,
-                      const float *B,
+                      cudaDataType_t Btype,
+                      const void *B,
                       int ldb,
-                      const float *beta, /* host pointer */
-                      float *C,
+                      const void *beta, /* host pointer */
+                      cudaDataType_t Ctype,
+                      const void *C,
                       int ldc,
+                      cudaDataType_t Dtype,
+                      void *D,
+                      int ldd,
                       void *workSpace,
                       size_t workSpaceSize) {
     cublasStatus_t status = CUBLAS_STATUS_SUCCESS;
@@ -189,7 +196,6 @@ void LtSgemmCustomFind(cublasLtHandle_t ltHandle,
     int nbAlgoIds = 0;
     #define ALGO_IDS 16
     int algoIdA[ALGO_IDS];
-    cudaDataType_t scaleType = CUDA_R_32F, Atype = CUDA_R_32F, Btype = CUDA_R_32F, Ctype = CUDA_R_32F;
     cublasComputeType_t computeType = CUBLAS_COMPUTE_32F;
     // create operation desciriptor; see cublasLtMatmulDescAttributes_t for details about defaults; here we just need to
     // set the transforms for A and B
@@ -201,8 +207,9 @@ void LtSgemmCustomFind(cublasLtHandle_t ltHandle,
     checkCublasStatus(cublasLtMatrixLayoutCreate(&Adesc, Atype, transa == CUBLAS_OP_N ? m : k, transa == CUBLAS_OP_N ? k : m, lda));
     checkCublasStatus(cublasLtMatrixLayoutCreate(&Bdesc, Btype, transb == CUBLAS_OP_N ? k : n, transb == CUBLAS_OP_N ? n : k, ldb));
     checkCublasStatus(cublasLtMatrixLayoutCreate(&Cdesc, Ctype, m, n, ldc));
+    checkCublasStatus(cublasLtMatrixLayoutCreate(&Ddesc, Dtype, m, n, ldd));
 
-    checkCublasStatus(cublasLtMatmulAlgoGetIds(ltHandle, computeType, scaleType, Atype, Btype, Ctype, Ctype, ALGO_IDS, algoIdA, &nbAlgoIds));
+    checkCublasStatus(cublasLtMatmulAlgoGetIds(ltHandle, computeType, scaleType, Atype, Btype, Ctype, Dtype, ALGO_IDS, algoIdA, &nbAlgoIds));
 
     // Create CUDA event to time the execution time of each algo
     checkCudaStatus(cudaEventCreate(&startEvent, cudaEventBlockingSync));
@@ -219,7 +226,7 @@ void LtSgemmCustomFind(cublasLtHandle_t ltHandle,
         cublasLtMatmulAlgo_t algo;
         size_t sizeWritten = 0;
         // Initialize algo structure with given Algo ID
-        status = cublasLtMatmulAlgoInit(ltHandle, computeType, scaleType, Atype, Btype, Ctype, Ctype, algoIdA[idx], &algo);
+        status = cublasLtMatmulAlgoInit(ltHandle, computeType, scaleType, Atype, Btype, Ctype, Dtype, algoIdA[idx], &algo);
         if (status != CUBLAS_STATUS_SUCCESS) {
             continue;
         }
@@ -291,7 +298,7 @@ void LtSgemmCustomFind(cublasLtHandle_t ltHandle,
                                                                     B, Bdesc,
                                                                     beta, // host or device pointer
                                                                     C, Cdesc,
-                                                                    C, Cdesc,
+                                                                    D, Ddesc,
                                                                     algo,
                                                                     kernelRepeats,
                                                                     workSpace,
@@ -314,7 +321,7 @@ void LtSgemmCustomFind(cublasLtHandle_t ltHandle,
                                                                 B, Bdesc,
                                                                 beta, // host or device pointer
                                                                 C, Cdesc,
-                                                                C, Cdesc,
+                                                                D, Ddesc,
                                                                 algo,
                                                                 kernelRepeats,
                                                                 workSpace,
