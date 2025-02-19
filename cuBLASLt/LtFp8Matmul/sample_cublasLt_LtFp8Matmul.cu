@@ -48,10 +48,13 @@ void LtFp8Matmul(cublasLtHandle_t ltHandle,
                  const float *b_scale, /* device pointer */
                  const __nv_fp8_e4m3 *B,
                  int ldb,
+                 const float *beta, /* host pointer */
                  const float *c_scale, /* device pointer */
-                 __nv_fp8_e4m3 *D,
+                 __nv_bfloat16 *C,
                  int ldc,
                  const float *d_scale, /* device pointer */
+                 __nv_fp8_e4m3 *D,
+                 int ldd,
                  float *amax_d, /* device pointer */
                  void *workspace,
                  size_t workspaceSize) {
@@ -61,7 +64,6 @@ void LtFp8Matmul(cublasLtHandle_t ltHandle,
 
     cublasOperation_t transa = CUBLAS_OP_T;
     cublasOperation_t transb = CUBLAS_OP_N;
-    float beta = 0.0; // Can be non-zero starting from 12.0
 
     int returnedResults                             = 0;
     cublasLtMatmulHeuristicResult_t heuristicResult = {};
@@ -84,7 +86,7 @@ void LtFp8Matmul(cublasLtHandle_t ltHandle,
     checkCublasStatus(cublasLtMatrixLayoutCreate(&Adesc, CUDA_R_8F_E4M3, transa == CUBLAS_OP_N ? m : k, transa == CUBLAS_OP_N ? k : m, lda));
     checkCublasStatus(cublasLtMatrixLayoutCreate(&Bdesc, CUDA_R_8F_E4M3, transb == CUBLAS_OP_N ? k : n, transb == CUBLAS_OP_N ? n : k, ldb));
     checkCublasStatus(cublasLtMatrixLayoutCreate(&Cdesc, CUDA_R_16BF, m, n, ldc));
-    checkCublasStatus(cublasLtMatrixLayoutCreate(&Ddesc, CUDA_R_8F_E4M3, m, n, ldc));
+    checkCublasStatus(cublasLtMatrixLayoutCreate(&Ddesc, CUDA_R_8F_E4M3, m, n, ldd));
 
     // create preference handle; here we could use extra attributes to disable tensor ops or to make sure algo selected
     // will work with badly aligned A, B, C; here for simplicity we just assume A,B,C are always well aligned (e.g.
@@ -108,7 +110,7 @@ void LtFp8Matmul(cublasLtHandle_t ltHandle,
                                      B,
                                      Bdesc,
                                      &beta,
-                                     nullptr,
+                                     C,
                                      Cdesc,
                                      D,
                                      Ddesc,

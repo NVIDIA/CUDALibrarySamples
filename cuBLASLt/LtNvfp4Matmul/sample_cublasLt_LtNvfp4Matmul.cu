@@ -48,10 +48,13 @@ void LtNvfp4Matmul(cublasLtHandle_t ltHandle,
                  const __nv_fp8_e4m3 *b_scale, /* device pointer */
                  const typename StorageType<__nv_fp4_e2m1>::type *B,
                  int ldb,
+                 const float *beta,
                  const __nv_fp8_e4m3 *c_scale, /* device pointer */
-                 typename StorageType<__nv_fp4_e2m1>::type *D,
+                 __nv_bfloat16 *C,
                  int ldc,
                  const float *d_scale, /* device pointer */
+                 typename StorageType<__nv_fp4_e2m1>::type *D,
+                 int ldd,
                  __nv_fp8_e4m3 *d_out_scale, /* device pointer */
                  void *workspace,
                  size_t workspaceSize,
@@ -66,7 +69,6 @@ void LtNvfp4Matmul(cublasLtHandle_t ltHandle,
 
     cublasOperation_t transa = CUBLAS_OP_T;
     cublasOperation_t transb = CUBLAS_OP_N;
-    float beta = 0.0; // Can be non-zero starting from 12.0
 
     int returnedResults                             = 0;
     cublasLtMatmulHeuristicResult_t heuristicResult = {};
@@ -95,7 +97,7 @@ void LtNvfp4Matmul(cublasLtHandle_t ltHandle,
     checkCublasStatus(cublasLtMatrixLayoutCreate(&Adesc, CUDA_R_4F_E2M1, transa == CUBLAS_OP_N ? m : k, transa == CUBLAS_OP_N ? k : m, lda));
     checkCublasStatus(cublasLtMatrixLayoutCreate(&Bdesc, CUDA_R_4F_E2M1, transb == CUBLAS_OP_N ? k : n, transb == CUBLAS_OP_N ? n : k, ldb));
     checkCublasStatus(cublasLtMatrixLayoutCreate(&Cdesc, CUDA_R_16BF, m, n, ldc));
-    checkCublasStatus(cublasLtMatrixLayoutCreate(&Ddesc, CUDA_R_4F_E2M1, m, n, ldc));
+    checkCublasStatus(cublasLtMatrixLayoutCreate(&Ddesc, CUDA_R_4F_E2M1, m, n, ldd));
 
     // create preference handle; here we could use extra attributes to disable tensor ops or to make sure algo selected
     // will work with badly aligned A, B, C; here for simplicity we just assume A,B,C are always well aligned (e.g.
@@ -119,7 +121,7 @@ void LtNvfp4Matmul(cublasLtHandle_t ltHandle,
                                      B,
                                      Bdesc,
                                      &beta,
-                                     nullptr,
+                                     C,
                                      Cdesc,
                                      D,
                                      Ddesc,

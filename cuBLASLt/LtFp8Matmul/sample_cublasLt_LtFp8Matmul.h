@@ -46,10 +46,13 @@ void LtFp8Matmul(cublasLtHandle_t ltHandle,
                  const float *b_scale, /* device pointer */
                  const __nv_fp8_e4m3 *B,
                  int ldb,
+                 const float *beta, /* host pointer */
                  const float *c_scale, /* device pointer */
-                 __nv_fp8_e4m3 *D,
+                 __nv_bfloat16 *C,
                  int ldc,
                  const float *d_scale, /* device pointer */
+                 __nv_fp8_e4m3 *D,
+                 int ldd,
                  float *amax_d, /* device pointer */
                  void *workspace,
                  size_t workspaceSize);

@@ -48,10 +48,13 @@ void LtNvfp4Matmul(cublasLtHandle_t ltHandle,
                  const __nv_fp8_e4m3 *b_scale, /* device pointer */
                  const typename StorageType<__nv_fp4_e2m1>::type *B,
                  int ldb,
+                 const float *beta,
                  const __nv_fp8_e4m3 *c_scale, /* device pointer */
-                 typename StorageType<__nv_fp4_e2m1>::type *D,
+                 __nv_bfloat16 *C,
                  int ldc,
                  const float *d_scale, /* device pointer */
+                 typename StorageType<__nv_fp4_e2m1>::type *D,
+                 int ldd,
                  __nv_fp8_e4m3 *d_out_scale, /* device pointer */
                  void *workspace,
                  size_t workspaceSize,
