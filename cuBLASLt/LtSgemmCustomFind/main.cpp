@@ -31,14 +31,14 @@
 #include <cuda_runtime_api.h>
 #include <cublasLt.h>
 
-#include "sample_cublasLt_LtSgemmCustomFind.h"
+#include "LtMatmulCustomFind.h"
 #include "helpers.h"
 
 int main() {
     TestBench<float> props(1024, 512, 4096, 2.0f, 0.0f, 1024 * 1024 * 16);
 
     props.run([&props] {
-        LtSgemmCustomFind(props.ltHandle,
+        LtMatmulCustomFind(props.ltHandle,
                         CUBLAS_OP_N,
                         CUBLAS_OP_N,
                         props.m,

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2020-2025, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,17 +26,18 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#pragma once
+
 #include <stdio.h>
 #include <algorithm>
 
 #include <cuda_runtime.h>
 #include <cublasLt.h>
 
-#include "sample_cublasLt_LtSgemmCustomFind.h"
 #include "helpers.h"
 
 /* Structure to store information about different run trials */
-typedef struct {
+struct customMatmulPerf_t {
     cublasLtMatmulAlgo_t algo;
     cublasStatus_t status;
     float time;
@@ -45,10 +46,10 @@ typedef struct {
     cublasLtReductionScheme_t reductionScheme;
     int customOption;
     float wavesCount;
-} customMatmulPerf_t;
+};
 
 // Utility function to print customMatmulPerf_t structure
-static void printPerfStructure(const customMatmulPerf_t &perf) {
+inline void printPerfStructure(const customMatmulPerf_t &perf) {
     cublasLtMatmulTile_t tile;
     int algoId, swizzle, customOption, numSplitsK, reductionScheme, stages;
 
@@ -73,11 +74,11 @@ static void printPerfStructure(const customMatmulPerf_t &perf) {
         perf.wavesCount);
 }
 
-static inline bool time_compare(const customMatmulPerf_t &perf_a, const customMatmulPerf_t &perf_b) {
+inline bool time_compare(const customMatmulPerf_t &perf_a, const customMatmulPerf_t &perf_b) {
     return ((perf_a.status == CUBLAS_STATUS_SUCCESS) && (perf_a.time < perf_b.time));
 }
 
-static cublasStatus_t customMatmulRun(cublasLtHandle_t ltHandle,  // to get the capabilities (required a GPU)
+inline cublasStatus_t customMatmulRun(cublasLtHandle_t ltHandle,  // to get the capabilities (required a GPU)
                  cublasLtMatmulDesc_t operationDesc,
                  const void *alpha, /* host or device pointer */
                  const void *A,
@@ -156,29 +157,29 @@ static cublasStatus_t customMatmulRun(cublasLtHandle_t ltHandle,  // to get the 
 }
 
 /// Sample wrapper running through multiple algo and config attributes combination for single precision gemm using cublasLt low-level API
-void LtSgemmCustomFind(cublasLtHandle_t ltHandle,
-                      cublasOperation_t transa,
-                      cublasOperation_t transb,
-                      int m,
-                      int n,
-                      int k,
-                      cudaDataType_t scaleType,
-                      const void *alpha, /* host pointer */
-                      cudaDataType_t Atype,
-                      const void *A,
-                      int lda,
-                      cudaDataType_t Btype,
-                      const void *B,
-                      int ldb,
-                      const void *beta, /* host pointer */
-                      cudaDataType_t Ctype,
-                      const void *C,
-                      int ldc,
-                      cudaDataType_t Dtype,
-                      void *D,
-                      int ldd,
-                      void *workSpace,
-                      size_t workSpaceSize) {
+inline void LtMatmulCustomFind(cublasLtHandle_t ltHandle,
+                               cublasOperation_t transa,
+                               cublasOperation_t transb,
+                               int m,
+                               int n,
+                               int k,
+                               cudaDataType_t scaleType,
+                               const void *alpha, /* host pointer */
+                               cudaDataType_t Atype,
+                               const void *A,
+                               int lda,
+                               cudaDataType_t Btype,
+                               const void *B,
+                               int ldb,
+                               const void *beta, /* host pointer */
+                               cudaDataType_t Ctype,
+                               const void *C,
+                               int ldc,
+                               cudaDataType_t Dtype,
+                               void *D,
+                               int ldd,
+                               void *workSpace,
+                               size_t workSpaceSize) {
     cublasStatus_t status = CUBLAS_STATUS_SUCCESS;
     cublasLtMatmulDesc_t operationDesc = NULL;
     cublasLtMatrixLayout_t Adesc = NULL, Bdesc = NULL, Cdesc = NULL, Ddesc = NULL;
