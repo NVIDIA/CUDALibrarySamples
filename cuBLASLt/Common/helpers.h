@@ -263,10 +263,10 @@ inline void TestBench<__half, __half, cuComplex>::fillData() {
 }
 
 template <>
-inline void TestBench<__nv_fp4_e2m1, __nv_fp4_e2m1, float, __nv_fp8_e4m3, float>::fillData() {
+inline void TestBench<__nv_fp4_e2m1, __nv_fp4_e2m1, float, __nv_fp8_e4m3, float, __nv_bfloat16>::fillData() {
     for (size_t i = 0; i < Ahost.size(); i++) Ahost[i] = __nv_fp4x2_e2m1{float2{float(i % 5), float(i % 5) + 1}};
     for (size_t i = 0; i < Bhost.size(); i++) Bhost[i] = __nv_fp4x2_e2m1{float2{float(i % 5), float(i % 5) + 1}};
-    for (size_t i = 0; i < Chost.size(); i++) Chost[i] = __nv_fp4x2_e2m1{float2{float(i % 5), float(i % 5) + 1}};
+    for (size_t i = 0; i < Chost.size(); i++) Chost[i] = __nv_bfloat16(i % 5);
     for (size_t i = 0; i < biasHost.size(); i++) biasHost[i] = __nv_fp4x2_e2m1{float2{float(i % 5), float(i % 5) + 1}};
 }
 
