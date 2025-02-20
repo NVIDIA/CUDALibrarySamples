@@ -26,21 +26,42 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <vector>
+
+#include <cuda_runtime_api.h>
 #include <cublasLt.h>
 
-void LtSgemmCustomFind(cublasLtHandle_t ltHandle,
-                       cublasOperation_t transa,
-                       cublasOperation_t transb,
-                       int m,
-                       int n,
-                       int k,
-                       const float *alpha, /* host pointer */
-                       const float *A,
-                       int lda,
-                       const float *B,
-                       int ldb,
-                       const float *beta, /* host pointer */
-                       float *C,
-                       int ldc,
-                       void *workSpace,
-                       size_t workSpaceSize);
+#include "LtMatmulCustomFind.h"
+#include "helpers.h"
+
+int main() {
+    TestBench<float> props(1024, 512, 4096, 2.0f, 0.0f, 1024 * 1024 * 16);
+
+    props.run([&props] {
+        LtMatmulCustomFind(props.ltHandle,
+                        CUBLAS_OP_T,
+                        CUBLAS_OP_N,
+                        props.m,
+                        props.n,
+                        props.k,
+                        CUDA_R_32F,
+                        &props.alpha,
+                        CUDA_R_8F_E4M3,
+                        props.Adev,
+                        props.k,
+                        CUDA_R_8F_E4M3,
+                        props.Bdev,
+                        props.k,
+                        &props.beta,
+                        CUDA_R_16BF,
+                        props.Cdev,
+                        props.m,
+                        CUDA_R_8F_E4M3,
+                        props.Ddev,
+                        props.m,
+                        props.workspace,
+                        props.workspaceSize);
+    });
+
+    return 0;
+}

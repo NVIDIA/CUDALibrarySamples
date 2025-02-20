@@ -29,6 +29,8 @@
 #include <cuda_fp4.h>
 #include <cublasLt.h>
 
+#include "helpers.h"
+
 /// Sample wrapper executing nvfp4 matmul with cublasLtMatmul, with addition of per-tensor block scaling, and
 /// the workspace to support split-K algorithms.
 ///
@@ -41,15 +43,18 @@ void LtNvfp4Matmul(cublasLtHandle_t ltHandle,
                  int k,
                  const float *alpha, /* host pointer */
                  const __nv_fp8_e4m3 *a_scale, /* device pointer */
-                 const __nv_fp4_e2m1 *A,
+                 const typename StorageType<__nv_fp4_e2m1>::type *A,
                  int lda,
                  const __nv_fp8_e4m3 *b_scale, /* device pointer */
-                 const __nv_fp4_e2m1 *B,
+                 const typename StorageType<__nv_fp4_e2m1>::type *B,
                  int ldb,
+                 const float *beta,
                  const __nv_fp8_e4m3 *c_scale, /* device pointer */
-                 __nv_fp4_e2m1 *D,
+                 __nv_bfloat16 *C,
                  int ldc,
                  const float *d_scale, /* device pointer */
+                 typename StorageType<__nv_fp4_e2m1>::type *D,
+                 int ldd,
                  __nv_fp8_e4m3 *d_out_scale, /* device pointer */
                  void *workspace,
                  size_t workspaceSize,
