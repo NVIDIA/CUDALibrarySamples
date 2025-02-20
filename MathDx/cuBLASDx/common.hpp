@@ -224,7 +224,7 @@ namespace example {
 
 
     template<typename T>
-    CUBLASDX_HOST_DEVICE
+    __host__ __device__ __forceinline__
     constexpr bool is_complex() {
         return detail::is_complex_helper<T>::value;
     }
@@ -277,7 +277,7 @@ namespace example {
     }
 
     template<typename T1, typename T2>
-    CUBLASDX_HOST_DEVICE
+    __host__ __device__ __forceinline__
     constexpr T1 convert(T2 v) {
         constexpr bool is_output_complex = cublasdx::detail::has_complex_interface_v<T1>;
         constexpr bool is_input_complex = cublasdx::detail::has_complex_interface_v<T2>;
@@ -301,14 +301,14 @@ namespace example {
     template<typename T>
     struct converter {
         template<class V>
-        CUBLASDX_HOST_DEVICE constexpr
+        __host__ __device__ __forceinline__ constexpr
         T operator()(V const& v) const { return convert<T>(v); }
     };
 
 
     // device_gemm_performance utilities
     template<class BLAS>
-    CUBLASDX_HOST_DEVICE
+    __host__ __device__ __forceinline__
     auto get_block_coord() {
         constexpr auto arr_a = cublasdx::arrangement_of<BLAS>::a;
         constexpr auto arr_b = cublasdx::arrangement_of<BLAS>::b;
@@ -323,7 +323,7 @@ namespace example {
     }
 
     template<class BLAS, class GEMMShape, class T>
-    CUBLASDX_HOST_DEVICE
+    __host__ __device__ __forceinline__
     auto make_device_gmem_tensor_a(GEMMShape gemm_shape, T* data) {
         constexpr auto arr_a = cublasdx::arrangement_of<BLAS>::a;
         return cublasdx::make_tensor(cute::make_gmem_ptr(data),
@@ -332,7 +332,7 @@ namespace example {
     }
 
     template<class BLAS, class GEMMShape, class T>
-    CUBLASDX_HOST_DEVICE
+    __host__ __device__ __forceinline__
     auto make_device_gmem_tensor_b(GEMMShape gemm_shape, T* data) {
         constexpr auto arr_b = cublasdx::arrangement_of<BLAS>::b;
         return cublasdx::make_tensor(cute::make_gmem_ptr(data),
@@ -341,7 +341,7 @@ namespace example {
     }
 
     template<class BLAS, class GEMMShape, class T>
-    CUBLASDX_HOST_DEVICE
+    __host__ __device__ __forceinline__
     auto make_device_gmem_tensor_c(GEMMShape gemm_shape, T* data) {
         constexpr auto arr_c = cublasdx::arrangement_of<BLAS>::c;
         return cublasdx::make_tensor(cute::make_gmem_ptr(data),
@@ -350,7 +350,7 @@ namespace example {
     }
 
     template<class BLAS, class ATensor, class BlockCoord>
-    CUBLASDX_HOST_DEVICE
+    __host__ __device__ __forceinline__
     auto get_block_tile_slice_a(ATensor    const& a_tensor,
                                 BlockCoord const& block_coord) {
         constexpr auto tile_m = cublasdx::size_of<BLAS>::m;
@@ -359,7 +359,7 @@ namespace example {
     }
 
     template<class BLAS, class BTensor, class BlockCoord>
-    CUBLASDX_HOST_DEVICE
+    __host__ __device__ __forceinline__
     auto get_block_tile_slice_b(BTensor    const& b_tensor,
                                 BlockCoord const& block_coord) {
         constexpr auto tile_k = cublasdx::size_of<BLAS>::k;
@@ -368,7 +368,7 @@ namespace example {
     }
 
     template<class BLAS, class CTensor, class BlockCoord>
-    CUBLASDX_HOST_DEVICE
+    __host__ __device__ __forceinline__
     auto get_block_tile_c(CTensor         & c_tensor,
                           BlockCoord const& block_coord) {
         constexpr auto tile_m = cublasdx::size_of<BLAS>::m;
@@ -377,7 +377,7 @@ namespace example {
     }
 
     template<class Stage, class Tensor>
-    CUBLASDX_HOST_DEVICE
+    __host__ __device__ __forceinline__
     auto get_tile_from_slice(Tensor & tensor, Stage const& stage) {
         // We assume a local_tile partition, where the first 2 dimensions
         // are tile itself, and the third is iteration dimension
@@ -529,32 +529,32 @@ namespace example {
         return output;
     }
 
-    template <class ValueType, class Functor> CUBLASDX_DEVICE
+    template <class ValueType, class Functor> __device__ __forceinline__
     void transform(ValueType *data, int size, Functor transformer) {
         for (int i = threadIdx.x; i < size; i += blockDim.x) {
             data[i] = transformer(i, data[i]);
         }
     }
 
-    template <class ValueType> CUBLASDX_DEVICE
+    template <class ValueType> __device__ __forceinline__
     void set(ValueType *data, int size, ValueType value) {
         for (int i = threadIdx.x; i < size; i += blockDim.x) {
             data[i] = value;
         }
     }
 
-    template <class ValueType> CUBLASDX_DEVICE
+    template <class ValueType> __device__ __forceinline__
     auto exp(ValueType value) {
         return cuda::std::exp(value);
     }
 
-    CUBLASDX_DEVICE
+    __device__ __forceinline__
     auto exp(__half value) {
         return hexp(value);
     }
 
     template<class T1, class T2>
-    CUBLASDX_HOST_DEVICE
+    __host__ __device__ __forceinline__
     void swap(T1& v1, T2& v2) {
         auto tmp = v1;
         v1 = v2;

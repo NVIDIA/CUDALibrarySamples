@@ -1,6 +1,6 @@
 # cuSolverDx Library - API Examples
 
-All examples are shipped within [cuSolverDx package](https://developer.nvidia.com/cusolverdx-downloads), and the github examples could be more frequently updated than the examples shipped in the release packages.  
+All examples are shipped within [cuSolverDx package](https://developer.nvidia.com/cusolverdx-downloads), and the github examples could be more frequently updated than the examples shipped in the release packages.
 
 ## Description
 
@@ -31,3 +31,13 @@ ctest
 ## Examples
 
 For the detailed descriptions of the examples please visit [Examples](https://docs.nvidia.com/cuda/cusolverdx/examples/index.html) section of the cuSolverDx documentation.
+
+|              Group           |            Example                |                                  Description                                                      |
+|------------------------------|-----------------------------------|---------------------------------------------------------------------------------------------------|
+| Introduction Examples        | posv_batched                      | Introduction example                                                                              |
+| Cholesky Examples            | simple_potrf                      | Cholesky factorization                                                                            |
+|                              | potrf_runtime_ld                  | Cholesky factorization with runtime leading dimensions                                            |
+| LU Examples                  | getrf_wo_pivot                    | LU factorization without pivoting                                                                 |
+|                              | gesv_batched_wo_pivot             | Solves a batched linear systems with multiple right hand sides after performing LU factorization  |
+| NVRTC Examples               | nvrtc_potrs                       | Using cuSolverDx with NVTRC runtime compilation and nvJitLink runtime linking                     |
+| Advanced Examples            | blocked_potrf                     | Cholesky factorization using blocked algorithm for matrices too large to fit in the shared memory |
