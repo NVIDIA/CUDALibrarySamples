@@ -276,45 +276,6 @@ template <> void print_vector(const int &m, const cuDoubleComplex *A) {
     std::printf("\n");
 }
 
-template <typename T> void generate_random_matrix(int m, int n, T **A, int *lda) {
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_real_distribution<typename traits<T>::S> dis(-1.0, 1.0);
-    auto rand_gen = std::bind(dis, gen);
-
-    *lda = n;
-
-    size_t matrix_mem_size = static_cast<size_t>(*lda * m * sizeof(T));
-    // suppress gcc 7 size warning
-    if (matrix_mem_size <= PTRDIFF_MAX)
-        *A = (T *)malloc(matrix_mem_size);
-    else
-        throw std::runtime_error("Memory allocation size is too large");
-
-    if (*A == NULL)
-        throw std::runtime_error("Unable to allocate host matrix");
-
-    // random matrix and accumulate row sums
-    for (int i = 0; i < m; ++i) {
-        for (int j = 0; j < n; ++j) {
-            T *A_row = (*A) + *lda * i;
-            A_row[j] = traits<T>::rand(rand_gen);
-        }
-    }
-}
-
-// Makes matrix A of size mxn and leading dimension lda diagonal dominant
-template <typename T> void make_diag_dominant_matrix(int m, int n, T *A, int lda) {
-    for (int i = 0; i < std::min(m, n); ++i) {
-        T *A_row = A + lda * i;
-        auto row_sum = traits<typename traits<T>::S>::zero;
-        for (int j = 0; j < n; ++j) {
-            row_sum += traits<T>::abs(A_row[j]);
-        }
-        A_row[i] = traits<T>::add(A_row[i], row_sum);
-    }
-}
-
 // Returns cudaDataType value as defined in library_types.h for the string
 // containing type name
 cudaDataType get_cuda_library_type(std::string type_string) {

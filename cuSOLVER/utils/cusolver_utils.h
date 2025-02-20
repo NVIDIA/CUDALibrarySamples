@@ -234,11 +234,10 @@ void generate_random_matrix(cusolver_int_t m, cusolver_int_t n, T **A, int *lda)
     if (*A == NULL)
         throw std::runtime_error("Unable to allocate host matrix");
 
-    // random matrix and accumulate row sums
-    for (int i = 0; i < m; ++i) {
-        for (int j = 0; j < n; ++j) {
-            T *A_row = (*A) + *lda * i;
-            A_row[j] = traits<T>::rand(rand_gen);
+    for (int j = 0; j < n; ++j) {
+        for (int i = 0; i < m; ++i) {
+            T *A_col = (*A) + *lda * j;
+            A_col[i] = traits<T>::rand(rand_gen);
         }
     }
 }
@@ -246,13 +245,13 @@ void generate_random_matrix(cusolver_int_t m, cusolver_int_t n, T **A, int *lda)
 // Makes matrix A of size mxn and leading dimension lda diagonal dominant
 template <typename T>
 void make_diag_dominant_matrix(cusolver_int_t m, cusolver_int_t n, T *A, int lda) {
-    for (int i = 0; i < std::min(m, n); ++i) {
-        T *A_row = A + lda * i;
-        auto row_sum = traits<typename traits<T>::S>::zero;
-        for (int j = 0; j < n; ++j) {
-            row_sum += traits<T>::abs(A_row[j]);
+    for (int j = 0; j < std::min(m, n); ++j) {
+        T *A_col = A + lda * j;
+        auto col_sum = traits<typename traits<T>::S>::zero;
+        for (int i = 0; i < m; ++i) {
+            col_sum += traits<T>::abs(A_col[i]);
         }
-        A_row[i] = traits<T>::add(A_row[i], row_sum);
+        A_col[j] = traits<T>::add(A_col[j], col_sum);
     }
 }
 
