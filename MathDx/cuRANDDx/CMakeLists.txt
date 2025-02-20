@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.23.0)
 
 # cuRANDDx example project
-project(curanddx_example VERSION ${CMAKE_PROJECT_VERSION} LANGUAGES CXX CUDA)
+project(curanddx_example VERSION 0.1.0 LANGUAGES CXX CUDA)
 
 if(PROJECT_IS_TOP_LEVEL)
     if(NOT MSVC)

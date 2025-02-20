@@ -112,17 +112,18 @@ if(PROJECT_IS_TOP_LEVEL OR CUBLASDX_TEST_PACKAGE)
 
     if(USE_MATHDX_PACKAGE)
         message(STATUS "Example: Using mathDx package to find cuBLASDx")
-        find_package(mathdx REQUIRED COMPONENTS cublasdx CONFIG
+        set(cufftdx_SEPARATE_TWIDDLES_CUDA_ARCHITECTURES "${CUBLASDX_CUDA_ARCHITECTURES}")
+        find_package(mathdx REQUIRED COMPONENTS cublasdx cufftdx CONFIG
             PATHS
                 "${PROJECT_SOURCE_DIR}/../.." # example/cublasdx
                 "${PROJECT_SOURCE_DIR}/../../.." # include/cublasdx/example
-                "/opt/nvidia/mathdx/24.08"
+                "/opt/nvidia/mathdx/25.01"
         )
     elseif(USE_CUBLASDX_PACKAGE)
         message(STATUS "Example: Using cuBLASDx package to find cuBLASDx")
         find_package(cublasdx REQUIRED CONFIG HINTS ${cublasdx_DIR}
             PATHS
-                "/opt/nvidia/mathdx/24.08/include/cublasdx"
+                "/opt/nvidia/mathdx/25.01/include/cublasdx"
                 "${PROJECT_SOURCE_DIR}/../../cublasdx"
         )
     else()
@@ -132,11 +133,12 @@ endif()
 
 # cuFFTDx
 if(USE_MATHDX_PACKAGE)
+    set(cufftdx_SEPARATE_TWIDDLES_CUDA_ARCHITECTURES "${CUBLASDX_CUDA_ARCHITECTURES}")
     find_package(mathdx REQUIRED COMPONENTS cufftdx CONFIG
         PATHS
             "${PROJECT_SOURCE_DIR}/../.." # example/cublasdx
             "${PROJECT_SOURCE_DIR}/../../.." # include/cublasdx/example
-            "/opt/nvidia/mathdx/24.08"
+            "/opt/nvidia/mathdx/25.01"
     )
 else()
     find_package(cufftdx CONFIG HINTS ${cufftdx_DIR} PATHS "/opt/cufftdx")

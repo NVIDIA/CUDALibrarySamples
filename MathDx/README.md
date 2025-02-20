@@ -1,6 +1,6 @@
 # MathDx Library - API Examples
 
-This folder includes examples for cuFFTDx, cuBLASDx, cuSolverDx and cuRANDDX libraries available in MathDx [package](https://developer.nvidia.com/mathdx) package. The examples are also shipped in the package.
+This folder includes examples for cuFFTDx, cuBLASDx, cuSolverDx and cuRANDDx libraries available in MathDx [package](https://developer.nvidia.com/mathdx) package. The examples are also shipped in the package.
 
 ## [cuBLASDx](cuBLASDx)
 
@@ -9,29 +9,32 @@ This folder includes examples for cuFFTDx, cuBLASDx, cuSolverDx and cuRANDDX lib
 
 #### Examples
 
-| Group                 | Subgroup       | Example                        | Description                                                           |
-|-----------------------|----------------|--------------------------------|-----------------------------------------------------------------------|
-| Introduction Examples |                | introduction_example           | cuBLASDx API introduction example                                     |
-| Simple GEMM Examples  | Basic Example  | simple_gemm_fp32               | Performs fp32 GEMM                                                    |
-|                       |                | simple_gemm_cfp16              | Performs complex fp16 GEMM                                            |
-|                       |                | simple_gemm_fp8                | Performs fp8 GEMM                                                     |
-|                       | Extra Examples | simple_gemm_leading_dimensions | Performs GEMM with non-default leading dimensions                     |
-|                       |                | simple_gemm_std_complex_fp32   | Performs GEMM with cuda::std::complex as data type                    |
-|                       |                | simple_gemm_mixed_precision    | Performs a mixed precision GEMM                                       |
-|                       |                | simple_gemm_transform          | Performs GEMM with custom load and store operators                    |
-|                       |                | simple_gemm_custom_layout      | Performs GEMM with a custom user provided CuTe layout                 |
-| NVRTC Examples        |                | nvrtc_gemm                     | Performs GEMM, kernel is compiled using NVRTC                         |
-| GEMM Performance      |                | single_gemm_performance        | Benchmark for single GEMM                                             |
-|                       |                | fused_gemm_performance         | Benchmark for 2 GEMMs fused into a single kernel                      |
-| Advanced Examples     | Fusion         | fused_gemm                     | Performs 2 GEMMs in a single kernel                                   |
-|                       |                | gemm_fft                       | Perform GEMM and FFT in a single kernel                               |
-|                       |                | gemm_fft_fp16                  | Perform GEMM and FFT in a single kernel (half-precision complex type) |
-|                       |                | gemm_fft_performance           | Benchmark for GEMM and FFT fused into a single kernel                 |
-|                       | Deep Learning  | scaled_dot_prod_attn           | Scaled dot product attention using cuBLASDx                           |
-|                       |                | scaled_dot_prod_attn_batched   | Multi-head attention using cuBLASDx                                   |
-|                       | Other          | multiblock_gemm                | Proof-of-concept for single large GEMM using multiple CUDA blocks     |
-|                       |                | batched_gemm_fp64              | Manual batching in a single CUDA block                                |
-|                       |                | blockdim_gemm_fp16             | BLAS execution with different block dimensions                        |
+| Group                 | Subgroup       | Example                        | Description                                                                    |
+|-----------------------|----------------|--------------------------------|--------------------------------------------------------------------------------|
+| Introduction Examples |                | introduction_example           | cuBLASDx API introduction example                                              |
+| Simple GEMM Examples  | Basic Example  | simple_gemm_fp32               | Performs fp32 GEMM                                                             |
+|                       |                | simple_gemm_int8_int8_int32    | Performs integral GEMM using Tensor Cores                                      |
+|                       |                | simple_gemm_cfp16              | Performs complex fp16 GEMM                                                     |
+|                       |                | simple_gemm_fp8                | Performs fp8 GEMM                                                              |
+|                       | Extra Examples | simple_gemm_leading_dimensions | Performs GEMM with non-default leading dimensions                              |
+|                       |                | simple_gemm_fp32_decoupled     | Performs fp32 GEMM using 16-bit input type to save on storage and transfers    |
+|                       |                | simple_gemm_std_complex_fp32   | Performs GEMM with cuda::std::complex as data type                             |
+|                       |                | simple_gemm_mixed_precision    | Performs a mixed precision GEMM                                                |
+|                       |                | simple_gemm_transform          | Performs GEMM with custom load and store operators                             |
+|                       |                | simple_gemm_custom_layout      | Performs GEMM with a custom user provided CuTe layout                          |
+|                       |                | simple_gemm_aat                | Performs GEMM where C = A * A^T                                                |
+| NVRTC Examples        |                | nvrtc_gemm                     | Performs GEMM, kernel is compiled using NVRTC                                  |
+| GEMM Performance      |                | single_gemm_performance        | Benchmark for single GEMM                                                      |
+|                       |                | fused_gemm_performance         | Benchmark for 2 GEMMs fused into a single kernel                               |
+|                       |                | device_gemm_performance        | Benchmark entire device GEMMs using cuBLASDx for single tile                   |
+| Advanced Examples     | Fusion         | fused_gemm                     | Performs 2 GEMMs in a single kernel                                            |
+|                       |                | gemm_fft                       | Perform GEMM and FFT in a single kernel                                        |
+|                       |                | gemm_fft_fp16                  | Perform GEMM and FFT in a single kernel (half-precision complex type)          |
+|                       |                | gemm_fft_performance           | Benchmark for GEMM and FFT fused into a single kernel                          |
+|                       | Deep Learning  | scaled_dot_prod_attn           | Scaled dot product attention using cuBLASDx                                    |
+|                       |                | scaled_dot_prod_attn_batched   | Multi-head attention using cuBLASDx                                            |
+|                       | Other          | batched_gemm_fp64              | Manual batching in a single CUDA block                                         |
+|                       |                | blockdim_gemm_fp16             | BLAS execution with different block dimensions                                 |
 
 
 ## [cuFFTDx](cuFFTDx)
@@ -93,9 +96,31 @@ This folder includes examples for cuFFTDx, cuBLASDx, cuSolverDx and cuRANDDX lib
 * [cuSolverDx download page](https://developer.nvidia.com/cusolverdx-downloads)
 * [cuSolverDx API documentation](https://docs.nvidia.com/cuda/cusolverdx/index.html)
 
+#### Examples
+
+|              Group           |            Example                |                                  Description                                                      |
+|------------------------------|-----------------------------------|---------------------------------------------------------------------------------------------------|
+| Introduction Examples        | posv_batched                      | Introduction example                                                                              |
+| Cholesky Examples            | simple_potrf                      | Cholesky factorization                                                                            |
+|                              | potrf_runtime_ld                  | Cholesky factorization with runtime leading dimensions                                            |
+| LU Examples                  | getrf_wo_pivot                    | LU factorization without pivoting                                                                 |
+|                              | gesv_batched_wo_pivot             | Solves a batched linear systems with multiple right hand sides after performing LU factorization  |
+| NVRTC Examples               | nvrtc_potrs                       | Using cuSolverDx with NVTRC runtime compilation and nvJitLink runtime linking                     |
+| Advanced Examples            | blocked_potrf                     | Cholesky factorization using blocked algorithm for matrices too large to fit in the shared memory |
+
 
 ## [cuRANDDx](cuRANDDx)
 
 * [cuRANDDx download page](https://developer.nvidia.com/curanddx-downloads)
 * [cuRANDDx API documentation](https://docs.nvidia.com/cuda/curanddx/index.html)
 
+#### Examples
+
+|            Example                |                                  Description                                                      |
+|-----------------------------------|---------------------------------------------------------------------------------------------------|
+| Introduction Example              | Introduction example (Philox RNG)                                                                 |
+| PCG Generator Example             | Generate sequence of 32-bit random values using PCG generator                                     |
+| Separate Initialization Kernel    | Initialize RNG states in a separate kernel                                                        |
+| Skipping Values                   | Example of using skip methods                                                                     |
+| Quasirandom Generator             | Example of using Sobol quasirandom generator                                                      |
+| NVRTC Example                     | Using cuRANDDx with NVRTC                                                                         |

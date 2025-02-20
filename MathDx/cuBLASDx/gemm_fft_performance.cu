@@ -77,11 +77,7 @@ double measure_cublas_cufft(ValueType*         a,
     double time = example::measure::execution(
         [&](cudaStream_t) {
             // Transform output
-            thrust::transform(execution_policy,
-                              thrust::device_pointer_cast(a),
-                              thrust::device_pointer_cast(a) + global_a_size * batch_size,
-                              thrust::device_pointer_cast(a),
-                              unary_op);
+            thrust::transform(execution_policy, a, a + (global_a_size * batch_size), a, unary_op);
             // Run cuBLAS
             CUBLAS_CHECK_AND_EXIT(cublasCgemmStridedBatched(handle,
                                                             a_transpose,
@@ -105,11 +101,7 @@ double measure_cublas_cufft(ValueType*         a,
             CUFFT_CHECK_AND_EXIT(cufftExecC2C(
                 plan, reinterpret_cast<cufftComplex*>(c), reinterpret_cast<cufftComplex*>(output), CUFFT_FORWARD));
             // Transform output
-            thrust::transform(execution_policy,
-                              thrust::device_pointer_cast(output),
-                              thrust::device_pointer_cast(output) + global_c_size * batch_size,
-                              thrust::device_pointer_cast(output),
-                              unary_op);
+            thrust::transform(execution_policy, output, output + (global_c_size * batch_size), output, unary_op);
         },
         warm_up_repeats, repeats, stream);
     CUDA_CHECK_AND_EXIT(cudaPeekAtLastError());
