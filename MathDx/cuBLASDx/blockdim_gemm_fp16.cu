@@ -22,7 +22,7 @@ __global__ void gemm_kernel(const ValueType* a,
     auto c_global_tensor = cublasdx::make_tensor(c, BLAS::get_layout_gmem_c());
     auto out_global_tensor = cublasdx::make_tensor(output, BLAS::get_layout_gmem_c());
 
-    auto [smem_a, smem_b, smem_c] = BLAS::slice_shared_memory(smem);
+    auto [smem_a, smem_b, smem_c] = cublasdx::slice_shared_memory<BLAS>(smem);
     auto a_shared_tensor = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_a());
     auto b_shared_tensor = cublasdx::make_tensor(smem_b, BLAS::get_layout_smem_b());
     auto c_shared_tensor = cublasdx::make_tensor(smem_c, BLAS::get_layout_smem_c());
@@ -208,10 +208,10 @@ int simple_gemm() {
 
     // Increase max dynamic shared memory for the kernel if needed
     CUDA_CHECK_AND_EXIT(
-        cudaFuncSetAttribute(gemm_kernel<Scenario, BLAS>, cudaFuncAttributeMaxDynamicSharedMemorySize, BLAS::shared_memory_size));
+        cudaFuncSetAttribute(gemm_kernel<Scenario, BLAS>, cudaFuncAttributeMaxDynamicSharedMemorySize, cublasdx::get_shared_storage_size<BLAS>()));
 
     // Execute kernel
-    gemm_kernel<Scenario, BLAS><<<1, kernel_block_dim, BLAS::shared_memory_size>>>(a, b, c, alpha, beta, output);
+    gemm_kernel<Scenario, BLAS><<<1, kernel_block_dim, cublasdx::get_shared_storage_size<BLAS>()>>>(a, b, c, alpha, beta, output);
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
     CUDA_CHECK_AND_EXIT(cudaGetLastError());
 
@@ -229,7 +229,7 @@ int simple_gemm() {
     auto reference_host_output = example::reference_gemm<BLAS>(alpha, host_a, host_b, beta, host_c);
 
     // Check against reference
-    if (example::check(host_output, reference_host_output)) {
+    if (example::check_error<BLAS>(host_output, reference_host_output)) {
         std::cout << Scenario << ": Success" << std::endl;
         return 0;
     }
@@ -237,9 +237,9 @@ int simple_gemm() {
     return 1;
 }
 
-template<unsigned int Arch>
 struct simple_gemm_functor {
-    int operator()() {
+    template<int Arch>
+    int operator()(std::integral_constant<int, Arch>) {
         int status = 0;
         status = simple_gemm<0, Arch>();
         if(status) return status;
@@ -253,5 +253,5 @@ struct simple_gemm_functor {
 };
 
 int main(int, char**) {
-    return example::sm_runner<simple_gemm_functor>();
+    return example::sm_runner(simple_gemm_functor{});
 }

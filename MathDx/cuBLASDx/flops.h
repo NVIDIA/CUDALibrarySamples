@@ -36,7 +36,7 @@ namespace example {
     double cublasDxXgemm_flop<float>(int M, int N, int K) {
         return (1.0 * FLOPS_SGEMM(M, N, K));
     }
-
+ 
     template<>
     double cublasDxXgemm_flop<double>(int M, int N, int K) {
         return (1.0 * FLOPS_DGEMM(M, N, K));
@@ -61,7 +61,7 @@ namespace example {
     double cublasDxXtrsm_flop<float>(char side, int M, int N) {
         return (1.0 * FLOPS_STRSM(side, M, N));
     }
-
+ 
     template<>
     double cublasDxXtrsm_flop<double>(char side, int M, int N) {
         return (1.0 * FLOPS_DTRSM(side, M, N));

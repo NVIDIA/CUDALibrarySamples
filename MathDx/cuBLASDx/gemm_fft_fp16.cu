@@ -52,8 +52,8 @@ void reference(const ValueType* a,
     CUBLAS_CHECK_AND_EXIT(cublasSetStream(handle, stream));
     constexpr bool is_a_transposed = (cublasdx::arrangement_of<BLAS>::a == cublasdx::row_major);
     constexpr bool is_b_transposed = (cublasdx::arrangement_of<BLAS>::b == cublasdx::row_major);
-    const auto a_transpose = example::detail::get_cublas_transpose_mode(cublasdx::arrangement_of<BLAS>::a);
-    const auto b_transpose = example::detail::get_cublas_transpose_mode(cublasdx::arrangement_of<BLAS>::b);
+    const auto a_transpose = example::get_cublas_transpose_mode(cublasdx::arrangement_of<BLAS>::a);
+    const auto b_transpose = example::get_cublas_transpose_mode(cublasdx::arrangement_of<BLAS>::b);
     static_assert(cublasdx::arrangement_of<BLAS>::c == cublasdx::arrangement::col_major, "Only column-major C matrix supported");
 
     // Run cuBLAS
@@ -98,7 +98,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__ void gemm_fft_fp16_kern
 
     extern __shared__ complex_type smem[];
 
-    auto [smem_a, smem_b, smem_c] = BLAS::slice_shared_memory(reinterpret_cast<char*>(smem));
+    auto [smem_a, smem_b, smem_c] = cublasdx::slice_shared_memory<BLAS>(reinterpret_cast<char*>(smem));
 
     // Compute FFT(B, axis=0).
     fft_complex_type thread_data[FFT::storage_size];
@@ -251,7 +251,7 @@ int gemm_fft_fp16() {
     }
 
     // Get max shared memory required by FFT and GEMM
-    constexpr auto shared_memory_size = std::max({FFT::shared_memory_size, BLAS::shared_memory_size});
+    constexpr auto shared_memory_size = std::max({FFT::shared_memory_size, cublasdx::get_shared_storage_size<BLAS>()});
     // Increase max shared memory if needed
     CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(
         gemm_fft_fp16_kernel<FFT, BLAS>,
@@ -321,11 +321,13 @@ int gemm_fft_fp16() {
     return 0;
 }
 
-template<unsigned int Arch>
 struct gemm_fft_fp16_functor {
-    int operator()() { return gemm_fft_fp16<Arch>(); }
+    template<int Arch>
+    int operator()(std::integral_constant<int, Arch>) {
+        return gemm_fft_fp16<Arch>();
+    }
 };
 
 int main(int, char**) {
-    return example::sm_runner<gemm_fft_fp16_functor>();
+    return example::sm_runner(gemm_fft_fp16_functor{});
 }

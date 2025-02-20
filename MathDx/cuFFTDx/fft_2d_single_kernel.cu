@@ -8,8 +8,7 @@
 #include <cufftdx.hpp>
 #include <cufft.h>
 
-#include "block_io.hpp"
-#include "block_io_strided.hpp"
+#include "block_io_generic_strided.hpp"
 #include "common.hpp"
 #include "random.hpp"
 
@@ -27,10 +26,13 @@ __launch_bounds__(FFTX::max_threads_per_block) __global__
                        ComplexType*                  output,
                        typename FFTX::workspace_type workspace_x,
                        typename FFTY::workspace_type workspace_y) {
-    using complex_type = ComplexType;
+    using complex_type  = ComplexType;
+    using dim_desc_type = example::dimension_description;
+    using io_y_type     = example::io_generic_strided<FFTY>;
+    using io_x_type     = example::io_generic_strided<FFTX>;
 
     // Shared memory
-    extern __shared__ complex_type shared_mem[];
+    extern __shared__ __align__(alignof(float4)) complex_type shared_mem[];
 
     // Local array for thread
     complex_type thread_data[RequiredStorageSize];
@@ -41,13 +43,15 @@ __launch_bounds__(FFTX::max_threads_per_block) __global__
     const unsigned int local_fft_id = threadIdx.y;
     if(blockIdx.x < (cufftdx::size_of<FFTX>::value / FFTX::ffts_per_block)) {
         // Load data from global memory to registers
-        example::io<FFTY>::load(input, thread_data, local_fft_id);
+        io_y_type::load_strided<dim_desc_type::Y, cufftdx::size_of<FFTX>::value, cufftdx::size_of<FFTY>::value>(
+            input, thread_data, local_fft_id);
 
         // Execute FFTY
         FFTY().execute(thread_data, shared_mem, workspace_y);
 
         // Save results
-        example::io<FFTY>::store(thread_data, output, local_fft_id);
+        io_y_type::store_strided<dim_desc_type::Y, cufftdx::size_of<FFTX>::value, cufftdx::size_of<FFTY>::value>(
+            thread_data, output, local_fft_id);
     }
 
     // Synchronize the whole CUDA Grid
@@ -56,12 +60,13 @@ __launch_bounds__(FFTX::max_threads_per_block) __global__
 
     // FFTX
     if(blockIdx.x < (cufftdx::size_of<FFTY>::value / FFTY::ffts_per_block)) {
-        static constexpr unsigned int stride = cufftdx::size_of<FFTY>::value;
         // Load data from global memory to registers
         if constexpr (UseSharedMemoryStridedIO) {
-            example::io_strided<FFTX>::load_strided<stride>(output, thread_data, shared_mem, local_fft_id);
+            io_x_type::load_strided<
+                dim_desc_type::X, cufftdx::size_of<FFTX>::value, cufftdx::size_of<FFTY>::value>(output, thread_data, shared_mem, local_fft_id);
         } else {
-            example::io_strided<FFTX>::load_strided<stride>(output, thread_data, local_fft_id);
+            io_x_type::load_strided<
+                dim_desc_type::X, cufftdx::size_of<FFTX>::value, cufftdx::size_of<FFTY>::value>(output, thread_data, local_fft_id);
         }
 
         // Execute FFTX
@@ -69,9 +74,11 @@ __launch_bounds__(FFTX::max_threads_per_block) __global__
 
         // Save results
         if constexpr (UseSharedMemoryStridedIO) {
-            example::io_strided<FFTX>::store_strided<stride>(thread_data, shared_mem, output, local_fft_id);
+            io_x_type::store_strided<
+                dim_desc_type::X, cufftdx::size_of<FFTX>::value, cufftdx::size_of<FFTY>::value>(thread_data, shared_mem, output, local_fft_id);
         } else {
-            example::io_strided<FFTX>::store_strided<stride>(thread_data, output, local_fft_id);
+            io_x_type::store_strided<
+                dim_desc_type::X, cufftdx::size_of<FFTX>::value, cufftdx::size_of<FFTY>::value>(thread_data, output, local_fft_id);
         }
     }
 }
@@ -165,9 +172,9 @@ example::fft_results<T> cufftdx_fft_2d(T* input, T* output, cudaStream_t stream)
     CUDA_CHECK_AND_EXIT(error_code);
 
     // Create workspaces for FFTs
-    auto workspace_y = cufftdx::make_workspace<FFTY>(error_code);
+    auto workspace_y = cufftdx::make_workspace<FFTY>(error_code, stream);
     CUDA_CHECK_AND_EXIT(error_code);
-    auto workspace_x = cufftdx::make_workspace<FFTX>(error_code);
+    auto workspace_x = cufftdx::make_workspace<FFTX>(error_code, stream);
     CUDA_CHECK_AND_EXIT(error_code);
 
     // Synchronize device before execution

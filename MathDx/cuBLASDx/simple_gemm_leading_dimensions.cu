@@ -23,7 +23,7 @@ __launch_bounds__(BLAS::max_threads_per_block) //
     auto b_global_tensor = cublasdx::make_tensor(b, BLAS::get_layout_gmem_b());
     auto c_global_tensor = cublasdx::make_tensor(c, BLAS::get_layout_gmem_c());
 
-    auto [smem_a, smem_b, smem_c] = BLAS::slice_shared_memory(smem);
+    auto [smem_a, smem_b, smem_c] = cublasdx::slice_shared_memory<BLAS>(smem);
     auto a_shared_tensor = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_a());
     auto b_shared_tensor = cublasdx::make_tensor(smem_b, BLAS::get_layout_smem_b());
     auto c_shared_tensor = cublasdx::make_tensor(smem_c, BLAS::get_layout_smem_c());
@@ -65,7 +65,7 @@ __launch_bounds__(BLASWithoutLD::max_threads_per_block) //
     auto b_global_tensor = cublasdx::make_tensor(b, BLASWithoutLD::get_layout_gmem_b(ldb));
     auto c_global_tensor = cublasdx::make_tensor(c, BLASWithoutLD::get_layout_gmem_c(ldc));
 
-    auto [smem_a, smem_b, smem_c] = BLASWithoutLD::slice_shared_memory(smem, lda, ldb, ldc);
+    auto [smem_a, smem_b, smem_c] = cublasdx::slice_shared_memory<BLASWithoutLD>(smem, lda, ldb, ldc);
     auto ta = cublasdx::make_tensor(smem_a, BLASWithoutLD::get_layout_smem_a(lda));
     auto tb = cublasdx::make_tensor(smem_b, BLASWithoutLD::get_layout_smem_b(ldb));
     auto tc = cublasdx::make_tensor(smem_c, BLASWithoutLD::get_layout_smem_c(ldc));
@@ -186,10 +186,10 @@ int simple_gemm_with_leading_dimensions() {
 
     // Increase max dynamic shared memory for the kernel if needed
     CUDA_CHECK_AND_EXIT(
-        cudaFuncSetAttribute(gemm_kernel<BLAS>, cudaFuncAttributeMaxDynamicSharedMemorySize, BLAS::shared_memory_size));
+        cudaFuncSetAttribute(gemm_kernel<BLAS>, cudaFuncAttributeMaxDynamicSharedMemorySize, cublasdx::get_shared_storage_size<BLAS>()));
 
     // Execute kernel with GEMM with defined leading dimensions (known at compile time)
-    gemm_kernel<BLAS><<<1, BLAS::block_dim, BLAS::shared_memory_size>>>(alpha, a, b, beta, c, output);
+    gemm_kernel<BLAS><<<1, BLAS::block_dim, cublasdx::get_shared_storage_size<BLAS>()>>>(alpha, a, b, beta, c, output);
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     // Copy results back to host
@@ -203,10 +203,10 @@ int simple_gemm_with_leading_dimensions() {
     // Increase max dynamic shared memory for the kernel if needed
     CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(gemm_kernel_dynamic_ld<BLASWithoutLD>,
                                              cudaFuncAttributeMaxDynamicSharedMemorySize,
-                                             BLASWithoutLD::get_shared_memory_size(lda, ldb, ldc)));
+                                             cublasdx::get_shared_storage_size<BLASWithoutLD>(lda, ldb, ldc)));
 
     // Execute kernel
-    gemm_kernel_dynamic_ld<BLASWithoutLD><<<1, BLASWithoutLD::block_dim, BLASWithoutLD::get_shared_memory_size(lda, ldb, ldc)>>>(
+    gemm_kernel_dynamic_ld<BLASWithoutLD><<<1, BLASWithoutLD::block_dim, cublasdx::get_shared_storage_size<BLASWithoutLD>(lda, ldb, ldc)>>>(
         alpha, a, lda, b, ldb, beta, c, ldc, output);
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
@@ -224,8 +224,8 @@ int simple_gemm_with_leading_dimensions() {
     auto reference_host_output = example::reference_gemm<BLAS>(alpha, host_a, host_b, beta, host_c);
 
     // Check both results against reference
-    auto correct_static_ld  = example::check(host_output, reference_host_output);
-    auto correct_dynamic_ld = example::check(host_output_dynamic_ld, reference_host_output);
+    auto correct_static_ld  = example::check_error<BLAS>(host_output, reference_host_output);
+    auto correct_dynamic_ld = example::check_error<BLAS>(host_output_dynamic_ld, reference_host_output);
     if (correct_static_ld && correct_dynamic_ld) {
         std::cout << "Success" << std::endl;
         return 0;
@@ -235,11 +235,13 @@ int simple_gemm_with_leading_dimensions() {
     return 0;
 }
 
-template<unsigned int Arch>
 struct simple_gemm_with_leading_dimensions_functor {
-    int operator()() { return simple_gemm_with_leading_dimensions<Arch>(); }
+    template<int Arch>
+    int operator()(std::integral_constant<int, Arch>) {
+        return simple_gemm_with_leading_dimensions<Arch>();
+    }
 };
 
 int main(int, char**) {
-    return example::sm_runner<simple_gemm_with_leading_dimensions_functor>();
+    return example::sm_runner(simple_gemm_with_leading_dimensions_functor{});
 }

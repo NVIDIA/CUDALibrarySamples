@@ -88,7 +88,8 @@ double measure_cublasdx(unsigned int kernel_warm_up_repeats,
                         cudaStream_t     stream) {
 
     // Increase max dynamic shared memory for the kernel if needed.
-    const auto shared_memory = std::max<size_t>(BLAS1::shared_memory_size, BLAS2::shared_memory_size);
+    const auto shared_memory = std::max<size_t>(cublasdx::get_shared_storage_size<BLAS1>(), cublasdx::get_shared_storage_size<BLAS2>());
+
     CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(fused_gemm_kernel<BLAS1, BLAS2>, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_memory));
 
     // Execute kernel.
@@ -149,12 +150,12 @@ double measure_cublas(unsigned int kernel_warm_up_repeats,
     cublasHandle_t handle;
     CUBLAS_CHECK_AND_EXIT(cublasCreate(&handle));
 
-    const auto a_transpose = example::detail::get_cublas_transpose_mode(cublasdx::arrangement_of<BLAS1>::a);
-    const auto b_transpose = example::detail::get_cublas_transpose_mode(cublasdx::arrangement_of<BLAS1>::b);
+    const auto a_transpose = example::get_cublas_transpose_mode(cublasdx::arrangement_of<BLAS1>::a);
+    const auto b_transpose = example::get_cublas_transpose_mode(cublasdx::arrangement_of<BLAS1>::b);
     static_assert(cublasdx::arrangement_of<BLAS1>::c == cublasdx::arrangement::col_major, "Only column-major C matrix supported");
 
-    const auto c_transpose = example::detail::get_cublas_transpose_mode(cublasdx::arrangement_of<BLAS2>::a);
-    const auto d_transpose = example::detail::get_cublas_transpose_mode(cublasdx::arrangement_of<BLAS2>::b);
+    const auto c_transpose = example::get_cublas_transpose_mode(cublasdx::arrangement_of<BLAS2>::a);
+    const auto d_transpose = example::get_cublas_transpose_mode(cublasdx::arrangement_of<BLAS2>::b);
     static_assert(cublasdx::arrangement_of<BLAS2>::c == cublasdx::arrangement::col_major, "Only column-major C matrix supported");
 
     cublasSetStream(handle, stream);
@@ -361,13 +362,13 @@ int fused_gemm_performance() {
     return 0;
 }
 
-template<unsigned int Arch>
 struct fused_gemm_performance_functor {
-    int operator()() {
+    template<int Arch>
+    int operator()(std::integral_constant<int, Arch>) {
         return fused_gemm_performance<Arch>();
     }
 };
 
 int main(int, char**) {
-    return example::sm_runner<fused_gemm_performance_functor>();
+    return example::sm_runner(fused_gemm_performance_functor{});
 }

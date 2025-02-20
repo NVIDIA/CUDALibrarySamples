@@ -20,7 +20,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__ void block_fft_kernel(t
     example::io<FFT>::load(data, thread_data, local_fft_id);
 
     // Execute FFT
-    extern __shared__ complex_type shared_mem[];
+    extern __shared__ __align__(alignof(float4)) complex_type shared_mem[];
     FFT().execute(thread_data, shared_mem);
 
     // Save results
@@ -56,7 +56,7 @@ void simple_block_fft() {
     }
 
     std::cout << "input [1st FFT]:\n";
-    for (size_t i = 0; i < cufftdx::size_of<FFT>::value; i++) {
+    for (size_t i = 0; i < FFT::input_length; i++) {
         std::cout << data[i].x << " " << data[i].y << std::endl;
     }
 
@@ -72,7 +72,7 @@ void simple_block_fft() {
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     std::cout << "output [1st FFT]:\n";
-    for (size_t i = 0; i < cufftdx::size_of<FFT>::value; i++) {
+    for (size_t i = 0; i < FFT::output_length; i++) {
         std::cout << data[i].x << " " << data[i].y << std::endl;
     }
 

@@ -18,8 +18,8 @@ void block_fft_performance(const cudaStream_t& stream, bool verbose) {
 
     using FFT_base = decltype(Block() + Type<FFTType>() + Precision<PrecisionType>() + SM<Arch>());
 
-    using FFT_with_direction = typename std::
-        conditional<FFTType == fft_type::c2c, decltype(FFT_base() + Direction<FFTDirection>()), FFT_base>::type;
+    using FFT_with_direction =
+        std::conditional_t<FFTType == fft_type::c2c, decltype(FFT_base() + Direction<FFTDirection>()), FFT_base>;
 
     benchmark_block_fft<FFT_with_direction, FFTSize, ElementsPerThread, FFTsPerBlock, UseSuggested>(stream, verbose);
 

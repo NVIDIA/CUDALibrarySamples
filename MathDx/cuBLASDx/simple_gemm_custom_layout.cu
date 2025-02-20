@@ -31,7 +31,7 @@ __launch_bounds__(BLAS::max_threads_per_block) //
     auto b_global_tensor = cublasdx::make_tensor(b, BLAS::get_layout_gmem_b());
     auto c_global_tensor = cublasdx::make_tensor(c, BLAS::get_layout_gmem_c());
 
-    auto [smem_a, smem_b, smem_c] = BLAS::slice_shared_memory(smem, a_layout, b_layout, c_layout);
+    auto [smem_a, smem_b, smem_c] = cublasdx::slice_shared_memory<BLAS>(smem, a_layout, b_layout, c_layout);
     auto a_shared_tensor = cute::make_tensor(cute::make_smem_ptr(smem_a), a_layout);
     auto b_shared_tensor = cute::make_tensor(cute::make_smem_ptr(smem_b), b_layout);
     auto c_shared_tensor = cute::make_tensor(cute::make_smem_ptr(smem_c), c_layout);
@@ -126,7 +126,7 @@ int simple_gemm() {
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     // Increase max dynamic shared memory for the kernel if needed
-    unsigned int shared_memory_size = BLAS::get_shared_memory_size(a_layout, b_layout, c_layout);
+    unsigned int shared_memory_size = cublasdx::get_shared_storage_size<BLAS>(a_layout, b_layout, c_layout);
     CUDA_CHECK_AND_EXIT(
         cudaFuncSetAttribute(gemm_kernel<BLAS, decltype(a_layout), decltype(b_layout), decltype(c_layout)>, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_memory_size));
 
@@ -150,7 +150,7 @@ int simple_gemm() {
     CUDA_CHECK_AND_EXIT(cudaPeekAtLastError());
 
     // Check against reference
-    if (example::check(host_output, reference_host_output)) {
+    if (example::check_error<BLAS>(host_output, reference_host_output)) {
         std::cout << "Success" << std::endl;
         return 0;
     }
@@ -158,11 +158,13 @@ int simple_gemm() {
     return 1;
 }
 
-template<unsigned int Arch>
 struct simple_gemm_functor {
-    int operator()() { return simple_gemm<Arch>(); }
+    template<int Arch>
+    int operator()(std::integral_constant<int, Arch>) {
+        return simple_gemm<Arch>();
+    }
 };
 
 int main(int, char**) {
-    return example::sm_runner<simple_gemm_functor>();
+    return example::sm_runner(simple_gemm_functor{});
 }

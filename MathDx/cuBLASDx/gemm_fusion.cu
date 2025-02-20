@@ -185,7 +185,7 @@ int simple_gemm() {
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     // Increase max dynamic shared memory for the kernel if needed
-    const auto shared_memory = std::max<size_t>(BLAS1::shared_memory_size, BLAS2::shared_memory_size);
+    const auto shared_memory = std::max<size_t>(cublasdx::get_shared_storage_size<BLAS1>(), cublasdx::get_shared_storage_size<BLAS2>());
     CUDA_CHECK_AND_EXIT(
         cudaFuncSetAttribute(gemm_kernel<BLAS1, BLAS2>, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_memory));
 
@@ -212,7 +212,7 @@ int simple_gemm() {
     auto reference_host_output = example::reference_gemm<BLAS2>(alpha2, blas2_host_c, host_d, beta2, host_f);
 
     // Check against reference
-    if (example::check(host_output, reference_host_output)) {
+    if (example::check_error<BLAS2>(host_output, reference_host_output)) {
         std::cout << "Success" << std::endl;
         return 0;
     }
@@ -220,11 +220,13 @@ int simple_gemm() {
     return 1;
 }
 
-template<unsigned int Arch>
 struct simple_gemm_functor {
-    int operator()() { return simple_gemm<Arch>(); }
+    template<int Arch>
+    int operator()(std::integral_constant<int, Arch>) {
+        return simple_gemm<Arch>();
+    }
 };
 
 int main(int, char**) {
-    return example::sm_runner<simple_gemm_functor>();
+    return example::sm_runner(simple_gemm_functor{});
 }

@@ -18,7 +18,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__ void block_fft_kernel(t
                                                                                unsigned int                 repeats,
                                                                                typename FFT::workspace_type workspace) {
     using complex_type = typename FFT::value_type;
-    extern __shared__ unsigned char shared_mem[];
+    extern __shared__ __align__(alignof(float4)) unsigned char shared_mem[];
 
     // Local array for thread
     complex_type thread_data[FFT::storage_size];
@@ -46,14 +46,14 @@ void benchmark_block_fft(const cudaStream_t& stream, bool verbose = false) {
     using FFT_complete = decltype(FFTBase() + Size<S>());
 
     static constexpr unsigned int inside_repeats = 4000;
-    static constexpr unsigned int kernel_runs = 1;
+    static constexpr unsigned int kernel_runs    = 1;
     static constexpr unsigned int warm_up_runs   = 1;
 
     static constexpr unsigned int fft_size            = S;
     static constexpr unsigned int elements_per_thread = UseSuggested ? FFT_complete::elements_per_thread : EPT;
     static constexpr unsigned int ffts_per_block      = UseSuggested ? FFT_complete::suggested_ffts_per_block : FPB;
 
-    using FFT = decltype(FFT_complete() + ElementsPerThread<elements_per_thread>() + FFTsPerBlock<ffts_per_block>());
+    using FFT          = decltype(FFT_complete() + ElementsPerThread<elements_per_thread>() + FFTsPerBlock<ffts_per_block>());
     using complex_type = typename FFT::value_type;
 
     // Increase max shared memory if needed
@@ -68,16 +68,9 @@ void benchmark_block_fft(const cudaStream_t& stream, bool verbose = false) {
                                                       FFT::shared_memory_size));
 
     unsigned int multiprocessor_count = example::get_multiprocessor_count();
-    unsigned int cuda_blocks = blocks_per_multiprocessor * multiprocessor_count;
+    unsigned int cuda_blocks          = blocks_per_multiprocessor * multiprocessor_count;
 
-    // The memory required to run fft (number of complex_type values that must be allocated).
-    // For r2c, the input consists of fft_size real numbers and the output consists of (fft_size / 2 + 1) complex numbers.
-    // One memory block will be used to store input and output, so the memory block must fit
-    // max((fft_size + 1) / 2, fft_size / 2 + 1) = (fft_size / 2 + 1) complex numbers.
-    // For c2r, the input consists of (fft_size / 2 + 1) complex numbers and the output consists of fft_size real numbers,
-    // so the minimal required memory size is the same.
-    unsigned int input_size =
-        ffts_per_block * cuda_blocks * (type_of<FFT>::value == fft_type::c2c ? fft_size : (fft_size / 2 + 1));
+    unsigned int input_size = ffts_per_block * cuda_blocks * CUFFTDX_STD::max(FFT::input_length, FFT::output_length);
 
     // Host data
     std::vector<complex_type> input =
@@ -92,7 +85,7 @@ void benchmark_block_fft(const cudaStream_t& stream, bool verbose = false) {
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     cudaError_t error_code = cudaSuccess;
-    auto        workspace  = make_workspace<FFT>(error_code);
+    auto        workspace  = make_workspace<FFT>(error_code, stream);
     CUDA_CHECK_AND_EXIT(error_code);
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
     CUDA_CHECK_AND_EXIT(cudaGetLastError());
@@ -103,7 +96,9 @@ void benchmark_block_fft(const cudaStream_t& stream, bool verbose = false) {
             block_fft_kernel<FFT><<<cuda_blocks, FFT::block_dim, FFT::shared_memory_size, stream>>>(
                 device_buffer, inside_repeats, workspace);
         },
-        warm_up_runs, kernel_runs, stream);
+        warm_up_runs,
+        kernel_runs,
+        stream);
 
     // Check kernel error
     CUDA_CHECK_AND_EXIT(cudaGetLastError());
@@ -118,7 +113,9 @@ void benchmark_block_fft(const cudaStream_t& stream, bool verbose = false) {
             block_fft_kernel<FFT><<<cuda_blocks, FFT::block_dim, FFT::shared_memory_size, stream>>>(
                 device_buffer, 2 * inside_repeats, workspace);
         },
-        warm_up_runs, kernel_runs, stream);
+        warm_up_runs,
+        kernel_runs,
+        stream);
 
     CUDA_CHECK_AND_EXIT(cudaFree(device_buffer));
 
@@ -127,9 +124,7 @@ void benchmark_block_fft(const cudaStream_t& stream, bool verbose = false) {
     double gflops = 1.0 * kernel_runs * inside_repeats * ffts_per_block * cuda_blocks * 5.0 * fft_size *
                     (std::log(fft_size) / std::log(2)) / time_n / 1000000.0;
 
-    static const std::string fft_type_name = type_of<FFT>::value == fft_type::c2c ? "c2c" :
-                                             (type_of<FFT>::value == fft_type::c2r ? "c2r" :
-                                             "r2c");
+    static const std::string fft_type_name = type_of<FFT>::value == fft_type::c2c ? "c2c" : (type_of<FFT>::value == fft_type::c2r ? "c2r" : "r2c");
     if (verbose) {
         std::cout << "FFT type: " << fft_type_name << std::endl;
         std::cout << "FFT size: " << fft_size << std::endl;

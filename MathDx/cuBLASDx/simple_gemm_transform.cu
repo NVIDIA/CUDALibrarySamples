@@ -53,23 +53,26 @@ __launch_bounds__(BLAS::max_threads_per_block) //
     auto b_global_tensor = cublasdx::make_tensor(b, BLAS::get_layout_gmem_b());
     auto c_global_tensor = cublasdx::make_tensor(c, BLAS::get_layout_gmem_c());
 
-    auto [smem_a, smem_b, smem_c] = BLAS::slice_shared_memory(smem);
+    auto [smem_a, smem_b] = cublasdx::slice_shared_memory_ab<BLAS>(smem);
     auto a_shared_tensor = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_a());
     auto b_shared_tensor = cublasdx::make_tensor(smem_b, BLAS::get_layout_smem_b());
-    auto c_shared_tensor = cublasdx::make_tensor(smem_c, BLAS::get_layout_smem_c());
 
     using alignment = cublasdx::alignment_of<BLAS>;
     cublasdx::copy<BLAS, alignment::a>(a_global_tensor, a_shared_tensor);
     cublasdx::copy<BLAS, alignment::b>(b_global_tensor, b_shared_tensor);
-    cublasdx::copy<BLAS, alignment::c>(c_global_tensor, c_shared_tensor);
     cublasdx::copy_wait();
 
-    BLAS().execute(alpha, a_shared_tensor, b_shared_tensor, beta, c_shared_tensor, a_load_op, b_load_op, c_load_op, c_store_op);
+    auto [c_frag, partitioner] =
+        BLAS().execute(a_shared_tensor, b_shared_tensor, a_load_op, b_load_op);
 
-    __syncthreads();
+    auto d_frag = partitioner.make_accumulator_fragment();
+    cublasdx::copy_fragment<alignment::c>(c_global_tensor, d_frag, partitioner);
+    cublasdx::transform(d_frag, c_load_op);
+    cublasdx::axpby(alpha, c_frag, beta, d_frag);
+    cublasdx::transform(d_frag, c_store_op);
 
     auto out_global_tensor = cublasdx::make_tensor(output, BLAS::get_layout_gmem_c());
-    cublasdx::copy<BLAS, alignment::c>(c_shared_tensor, out_global_tensor);
+    cublasdx::copy_fragment<alignment::c>(d_frag, out_global_tensor, partitioner);
 }
 
 // This is an example of fp16 general matrix-matrix multiplication (GEMM) performed
@@ -130,21 +133,11 @@ int simple_gemm() {
     using value_type = typename example::uniform_value_type_t<BLAS>;
 
     // Allocate managed memory for a, b, c, and output
-    value_type* inputs;
-    value_type* output;
 
     constexpr auto global_a_size = example::global_memory_size_of<BLAS>::a_size;
     constexpr auto global_b_size = example::global_memory_size_of<BLAS>::b_size;
     constexpr auto global_c_size = example::global_memory_size_of<BLAS>::c_size;
 
-    auto inputs_size       = global_a_size + global_b_size + global_c_size;
-    auto inputs_size_bytes = inputs_size * sizeof(value_type);
-    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&inputs, inputs_size_bytes));
-    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&output, global_c_size * sizeof(value_type)));
-
-    value_type* a     = inputs;
-    value_type* b     = a + (global_a_size);
-    value_type* c     = b + (global_b_size);
     value_type  alpha = value_type(1.0);
     value_type  beta  = value_type(1.0);
 
@@ -152,48 +145,57 @@ int simple_gemm() {
     auto host_a = example::get_random_data<value_type>(0.1, 1.0, global_a_size);
     auto host_b = example::get_random_data<value_type>(0.1, 1.0, global_b_size);
     auto host_c = example::get_random_data<value_type>(0.1, 1.0, global_c_size);
-    CUDA_CHECK_AND_EXIT(cudaMemcpy(a, host_a.data(), global_a_size * sizeof(value_type), cudaMemcpyHostToDevice));
-    CUDA_CHECK_AND_EXIT(cudaMemcpy(b, host_b.data(), global_b_size * sizeof(value_type), cudaMemcpyHostToDevice));
-    CUDA_CHECK_AND_EXIT(cudaMemcpy(c, host_c.data(), global_c_size * sizeof(value_type), cudaMemcpyHostToDevice));
-    CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
+
+    example::device_vector<value_type> a = host_a;
+    example::device_vector<value_type> b = host_b;
+    example::device_vector<value_type> c = host_c;
+
+    example::device_vector<value_type> output(c.size());
 
     // Increase max dynamic shared memory for the kernel if needed
+    auto shared_size = cublasdx::get_shared_storage_size<BLAS>();
     CUDA_CHECK_AND_EXIT(
-        cudaFuncSetAttribute(gemm_kernel<BLAS>, cudaFuncAttributeMaxDynamicSharedMemorySize, BLAS::shared_memory_size));
+        cudaFuncSetAttribute(gemm_kernel<BLAS>, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_size));
 
     // Execute kernel
-    gemm_kernel<BLAS><<<1, BLAS::block_dim, BLAS::shared_memory_size>>>(a, b, c, alpha, beta, output, a_load_op, b_load_op, c_load_op, c_store_op);
+    gemm_kernel<BLAS><<<1, BLAS::block_dim, shared_size>>>
+        (a.data(),
+         b.data(),
+         c.data(),
+         alpha,
+         beta,
+         output.data(),
+         a_load_op, b_load_op, c_load_op, c_store_op);
+
     CUDA_CHECK_AND_EXIT(cudaPeekAtLastError());
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     // Copy results back to host
-    std::vector<value_type> host_output(global_c_size);
-    CUDA_CHECK_AND_EXIT(
-        cudaMemcpy(host_output.data(), output, global_c_size * sizeof(value_type), cudaMemcpyDeviceToHost));
-    CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
-
-    // Free device memory
-    CUDA_CHECK_AND_EXIT(cudaFree(inputs));
-    CUDA_CHECK_AND_EXIT(cudaFree(output));
+    std::vector<value_type> host_output = output;
 
     // Calculate reference
-    auto reference_host_output = example::reference_gemm<BLAS>(alpha, host_a, host_b, beta, host_c, a_load_op, b_load_op, c_load_op, c_store_op);
+    cudaStream_t str = 0;
+    auto reference_host_output = example::reference_gemm<BLAS>(alpha, host_a, host_b, beta, host_c, str, a_load_op, b_load_op, c_load_op, c_store_op);
+
     CUDA_CHECK_AND_EXIT(cudaPeekAtLastError());
 
     // Check against reference
-    if (example::check(host_output, reference_host_output)) {
+    if (example::check_error<BLAS>(host_output, reference_host_output)) {
         std::cout << "Success" << std::endl;
         return 0;
     }
+
     std::cout << "Failure" << std::endl;
     return 1;
 }
 
-template<unsigned int Arch>
 struct simple_gemm_functor {
-    int operator()() { return simple_gemm<Arch>(); }
+    template<int Arch>
+    int operator()(std::integral_constant<int, Arch>) {
+        return simple_gemm<Arch>();
+    }
 };
 
 int main(int, char**) {
-    return example::sm_runner<simple_gemm_functor>();
+    return example::sm_runner(simple_gemm_functor{});
 }

@@ -33,7 +33,7 @@ __launch_bounds__(FFT::max_threads_per_block)
     }
 
     // Execute FFT
-    extern __shared__ complex_type shared_memory[];
+    extern __shared__ __align__(alignof(float4)) complex_type shared_memory[];
     FFT().execute(thread_data, shared_memory, workspace);
 
     // Save results
@@ -69,6 +69,9 @@ void introduction_example() {
                          + SM<Arch>() + Block());
     using complex_type = typename FFT::value_type;
 
+    cudaStream_t stream;
+    CUDA_CHECK_AND_EXIT(cudaStreamCreate(&stream));
+
     // Allocate managed memory for input/output
     complex_type* data;
     auto          size       = FFT::ffts_per_block * cufftdx::size_of<FFT>::value;
@@ -80,11 +83,11 @@ void introduction_example() {
     }
 
     cudaError_t error_code = cudaSuccess;
-    auto workspace = make_workspace<FFT>(error_code);
+    auto workspace = make_workspace<FFT>(error_code, stream);
     CUDA_CHECK_AND_EXIT(error_code);
 
     std::cout << "input [1st FFT]:\n";
-    for (size_t i = 0; i < cufftdx::size_of<FFT>::value; i++) {
+    for (size_t i = 0; i < FFT::input_length; i++) {
         std::cout << data[i].x << " " << data[i].y << std::endl;
     }
 
@@ -95,16 +98,17 @@ void introduction_example() {
         FFT::shared_memory_size));
 
     // Invokes kernel with FFT::block_dim threads in CUDA block
-    block_fft_kernel<FFT><<<1, FFT::block_dim, FFT::shared_memory_size>>>(data, workspace);
+    block_fft_kernel<FFT><<<1, FFT::block_dim, FFT::shared_memory_size, stream>>>(data, workspace);
     CUDA_CHECK_AND_EXIT(cudaPeekAtLastError());
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     std::cout << "output [1st FFT]:\n";
-    for (size_t i = 0; i < cufftdx::size_of<FFT>::value; i++) {
+    for (size_t i = 0; i < FFT::output_length; i++) {
         std::cout << data[i].x << " " << data[i].y << std::endl;
     }
 
     CUDA_CHECK_AND_EXIT(cudaFree(data));
+    CUDA_CHECK_AND_EXIT(cudaStreamDestroy(stream));
     std::cout << "Success" << std::endl;
 }
 
