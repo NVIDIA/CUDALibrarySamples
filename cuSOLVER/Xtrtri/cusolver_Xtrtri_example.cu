@@ -162,8 +162,8 @@ int main(int argc, char *argv[]) {
     const cublasDiagType_t diag = CUBLAS_DIAG_NON_UNIT;
 
     printf("Generating random diagonal dominant matrix...\n");
-    generate_random_matrix<data_type>(n, lda, &h_A, &lda);
-    make_diag_dominant_matrix<data_type>(n, lda, h_A, lda);
+    generate_random_matrix<data_type>(lda, n, &h_A, &lda);
+    make_diag_dominant_matrix<data_type>(lda, n, h_A, lda);
 
     // zero lower triangle
     for (cusolver_int_t j = 0; j < n; j++) {
