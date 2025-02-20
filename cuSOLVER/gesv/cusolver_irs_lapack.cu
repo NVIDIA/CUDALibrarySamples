@@ -67,9 +67,9 @@ int main(int argc, const char *argv[]) {
     std::cout << "make A diagonal dominant..." << std::endl;
     make_diag_dominant_matrix<T>(N, N, hA, lda);
     std::cout << "Generating matrix B on host..." << std::endl;
-    generate_random_matrix<T>(nrhs, N, &hB, &ldb);
+    generate_random_matrix<T>(N, nrhs, &hB, &ldb);
     std::cout << "Generating matrix X on host..." << std::endl;
-    generate_random_matrix<T>(nrhs, N, &hX, &ldx);
+    generate_random_matrix<T>(N, nrhs, &hX, &ldx);
 
     if (verbose) {
         std::cout << "A: \n";
