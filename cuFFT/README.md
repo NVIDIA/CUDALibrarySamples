@@ -40,7 +40,7 @@ This folder demonstrates cuFFT APIs usage.
 
 ##### MutliGPU 3D FFT C2C example
 
-* [cuFFT MGPU 3D R2C:C2R](3d_mgpu_c2c/)
+* [cuFFT MGPU 3D C2C](3d_mgpu_c2c/)
 
     The sample compute MultiGPU 3D FFT using C2C. See example for detailed description.
 
