@@ -132,22 +132,6 @@ Encoding options:
                 optionally, written into an output TIFF file.
                 Default: disabled.
 
-        -r
-        --rowsxstrip
-                Specifies the number of consecutive rows  to  use  to  divide  the  images  into
-                strips.  Each image is divided in strips of the same size (except  possibly  the
-                last strip) and then the strips are  compressed  as  independent  byte  streams.
-                This option is ignored if -E is not specified.
-                Default: 1.
-
-        -s
-        --stripalloc
-                Specifies the initial estimate of the maximum size  of  compressed  strips.   If
-                during compression one or more strips require more  space,  the  compression  is
-                aborted and restarted automatically with a safe estimate. 
-                This option is ignored if -E is not specified.
-                Default: the size, in bytes, of a strip in the uncompressed images.
-
         --encode-out
                 Enables the writing of the compressed  images  to  an  output  TIFF  file named
                 outFile.tif.
