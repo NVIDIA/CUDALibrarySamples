@@ -231,22 +231,6 @@ static void usage(const char *pname) {
 		"\t\toptionally, written into an output TIFF file.\n"
 		"\t\tDefault: disabled.\n"
 		"\n"
-		"\t-r\n"
-		"\t--rowsxstrip\n"
-		"\t\tSpecifies the number of consecutive rows  to  use  to  divide  the  images  into\n"
-		"\t\tstrips.  Each image is divided in strips of the same size (except  possibly  the\n"
-		"\t\tlast strip) and then the strips are  compressed  as  independent  byte  streams.\n"
-		"\t\tThis option is ignored if -E is not specified.\n"
-		"\t\tDefault: 1.\n"
-		"\n"
-		"\t-s\n"
-		"\t--stripalloc\n"
-		"\t\tSpecifies the initial estimate of the maximum size  of  compressed  strips.   If\n"
-		"\t\tduring compression one or more strips require more  space,  the  compression  is\n"
-		"\t\taborted and restarted automatically with a safe estimate. \n"
-		"\t\tThis option is ignored if -E is not specified.\n"
-		"\t\tDefault: the size, in bytes, of a strip in the uncompressed images.\n" 
-		"\n"
 		"\t--encode-out\n"
 		"\t\tEnables the writing of the compressed  images  to  an  output  TIFF  file named\n"
 		"\t\toutFile.tif.\n"
@@ -291,8 +275,6 @@ int main(int argc, char **argv) {
 	int frameEnd = INT_MAX;
 	int decodeRange = 0;
 	int doEncode = 0;
-	int encRowsPerStrip = 1;
-	unsigned long long encStripAllocSize = 0;
 	int encWriteOut = 0;
 
 	int och;
@@ -348,12 +330,6 @@ int main(int argc, char **argv) {
 				break;
 			case 'E':
 				doEncode = 1;
-				break;
-			case 'r':
-				encRowsPerStrip = atoi(optarg);
-				break;
-			case 's':
-				encStripAllocSize = atoi(optarg);
 				break;
 			case   2:
 				encWriteOut = 1;
@@ -520,150 +496,44 @@ int main(int argc, char **argv) {
 		decoder = NULL;
 
 		unsigned int nSubFiles = nDecode;
-		unsigned int nStripOut = DIV_UP(nrow, encRowsPerStrip);
-		unsigned int totStrips = nSubFiles*nStripOut;
 
-		unsigned long long *stripSize_d = NULL;
-		unsigned long long *stripOffs_d = NULL;
-		unsigned char      *stripData_d = NULL;
-
-		if (encStripAllocSize <= 0) {
-			encStripAllocSize = encRowsPerStrip*ncol*(pixelSize);
-		}
-
-		CHECK_CUDA(cudaMalloc(&stripSize_d, sizeof(*stripSize_d)*totStrips));
-		CHECK_CUDA(cudaMalloc(&stripOffs_d, sizeof(*stripOffs_d)*totStrips));
-		CHECK_CUDA(cudaMalloc(&stripData_d, sizeof(*stripData_d)*totStrips*encStripAllocSize));
-
-		nvTiffEncodeCtx_t *ctx = nvTiffEncodeCtxCreate(devId, nSubFiles, nStripOut);
-
-		printf("Encoding %u, %s %ux%u images using %d rows per strip and %llu bytes per strip... ",
-			nDecode,
-			photometricInt == 2 ? "RGB" : "Grayscale",
-			ncol,
-			nrow,
-			encRowsPerStrip,
-			encStripAllocSize);
+		printf("Encoding %u, %s %ux%u images ... ",
+			nDecode, image_info[0].photometric_int == 2 ? "RGB" : "Grayscale",
+			image_info[0].image_width, image_info[0].image_height);
 		fflush(stdout);
-		int rv;
-		auto enc_start = perfclock::now();
-		do {
-			rv = nvTiffEncode(ctx,
-					  nrow,
-					  ncol,
-					  pixelSize,
-					  encRowsPerStrip,
-					  nSubFiles,
-					  nvtiff_out.data(),
-					  encStripAllocSize,
-					  stripSize_d,
-					  stripOffs_d,
-					  stripData_d,
-					  stream);
-			if (rv != NVTIFF_ENCODE_SUCCESS) {
-				printf("error, while encoding images!\n");
-				exit(EXIT_FAILURE);
-			}
-			rv = nvTiffEncodeFinalize(ctx, stream);
-			if (rv != NVTIFF_ENCODE_SUCCESS) {
-				if (rv == NVTIFF_ENCODE_COMP_OVERFLOW) {
-					printf("overflow, using %llu bytes per strip...", ctx->stripSizeMax);
 
-					// * free ctx mem
-					// * reallocate a larger stripData_d buffer
-					// * init a new ctx and retry
-					// * retry compression
-					encStripAllocSize = ctx->stripSizeMax;
-					nvTiffEncodeCtxDestroy(ctx);
-					CHECK_CUDA(cudaFree(stripData_d));
-					CHECK_CUDA(cudaMalloc(&stripData_d, sizeof(*stripData_d)*totStrips*encStripAllocSize));
-					ctx = nvTiffEncodeCtxCreate(devId, nSubFiles, nStripOut);
-				} else {
-					printf("error, while finalizing compressed images!\n");
-					exit(EXIT_FAILURE);
-				}
-			}
-		} while(rv == NVTIFF_ENCODE_COMP_OVERFLOW);
+        auto enc_start = perfclock::now();
+
+		nvtiffEncoder_t encoder;
+		CHECK_NVTIFF(nvtiffEncoderCreate(&encoder, nullptr, nullptr, stream));
+		nvtiffEncodeParams_t params;
+		CHECK_NVTIFF(nvtiffEncodeParamsCreate(&params));
+		CHECK_NVTIFF(nvtiffEncodeParamsSetImageInfo(params, &image_info[0]));
+		CHECK_NVTIFF(nvtiffEncodeParamsSetInputs(params, nvtiff_out.data(), nSubFiles));
+		CHECK_NVTIFF(nvtiffEncode(encoder, &params, 1, stream));
+		CHECK_NVTIFF(nvtiffEncodeFinalize(encoder, &params, 1, stream));
 
 		CHECK_CUDA(cudaStreamSynchronize(stream));
 		auto enc_end = perfclock::now();
 		double enc_time = std::chrono::duration<float>(enc_end - enc_start).count();
 
+	    size_t stripSizeTotal = 0;
+        size_t metadataSize = 0;
+		CHECK_NVTIFF(nvtiffGetBitstreamSize(encoder, &params, 1, &metadataSize, &stripSizeTotal));
 		printf("done in %lf secs (compr. ratio: %.2lfx)\n\n",
-		enc_time, double(nvtiff_out_size[0])*nSubFiles/ctx->stripSizeTot);
-
-		//printf("Total size of compressed strips: %llu bytes\n", ctx->stripSizeTot);
+				enc_time, double(nvtiff_out_size[0])*nSubFiles/stripSizeTotal);
 
 		if (encWriteOut) {
-			unsigned long long *stripSize_h = (unsigned long long *)malloc(sizeof(*stripSize_h)*totStrips);
-			CHECK_CUDA(cudaMemcpy(stripSize_h,
-					      stripSize_d,
-					      sizeof(*stripSize_h)*totStrips,
-					      cudaMemcpyDeviceToHost));
-
-			unsigned long long *stripOffs_h = (unsigned long long *)malloc(sizeof(*stripOffs_h)*totStrips);
-			CHECK_CUDA(cudaMemcpy(stripOffs_h,
-					      stripOffs_d,
-					      sizeof(*stripOffs_h)*totStrips,
-					      cudaMemcpyDeviceToHost));
-
-			unsigned char *stripData_h = (unsigned char *)malloc(sizeof(*stripData_h)*ctx->stripSizeTot);
-			CHECK_CUDA(cudaMemcpy(stripData_h,
-					      stripData_d,
-					      ctx->stripSizeTot,
-					      cudaMemcpyDeviceToHost));
-#if 0
-			FILE *fp = Fopen("stripData.txt", "w");
-
-			size_t stripSize = sizeof(*stripData_h)*encRowsPerStrip*ncol*pixelSize;
-			for(unsigned int i = 0; i < nSubFiles; i++) {
-
-				fprintf(fp, "compressed image %d:\n", i);
-				for(unsigned int j = 0; j < nStripOut; j++) {
-
-					unsigned long long off = stripOffs_h[i*nStripOut + j];
-					unsigned long long len = stripSize_h[i*nStripOut + j];
-
-					fprintf(fp, "\tstrip %5u, size: %6llu bytes (ratio: %5.2lfx), "
-						    "fingerprint: %02X %02X %02X %02X ... %02X %02X %02X %02X\n",
-						j, len, double(stripSize)/len,
-						stripData_h[off + 0],
-						stripData_h[off + 1],
-						stripData_h[off + 2],
-						stripData_h[off + 3],
-						stripData_h[off + len-4],
-						stripData_h[off + len-3],
-						stripData_h[off + len-2],
-						stripData_h[off + len-1]);
-				}
-				fprintf(fp, "\n");
-			}
-			fclose(fp);
-#endif
 			printf("\tWriting %u compressed images to TIFF file... ", nDecode); fflush(stdout);
 			auto write_start = perfclock::now();
-			nvTiffWriteFile("outFile.tif",
-					VER_REG_TIFF,
-					nSubFiles,
-					nrow,
-					ncol,
-					encRowsPerStrip,
-					samplesPerPixel,
-					bitsPerSample,
-					photometricInt,
-					planarConf,
-					stripSize_h,
-					stripOffs_h,
-					stripData_h,
-					sampleFormat);
+			CHECK_NVTIFF(nvtiffWriteTiffFile(encoder, &params, 1, "outFile.tif", stream));
 			auto write_end = perfclock::now();
 			double write_time = std::chrono::duration<float>(write_end - write_start).count();
 			printf("done in %lf secs\n\n", write_time);
-		
-			free(stripSize_h);
-			free(stripOffs_h);
-			free(stripData_h);
+
 		}
+        CHECK_NVTIFF(nvtiffEncodeParamsDestroy(params, stream));
+		CHECK_NVTIFF(nvtiffEncoderDestroy(encoder, stream));
 
 #ifdef LIBTIFF_TEST
 		tif = TIFFOpen("libTiffOut.tif", "w");
@@ -722,14 +592,6 @@ int main(int argc, char **argv) {
 			TIFFClose(tif);
 		}
 #endif
-
-		CHECK_CUDA(cudaFree(stripSize_d));
-		CHECK_CUDA(cudaFree(stripOffs_d));
-		CHECK_CUDA(cudaFree(stripData_d));
-		
-		free(bitsPerSample);
-
-		nvTiffEncodeCtxDestroy(ctx);
 	}
 
 	// cleanup
