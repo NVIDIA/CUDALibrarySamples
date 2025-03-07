@@ -41,6 +41,8 @@ void execute_example(char* input_data, const size_t in_bytes)
   const size_t chunk_size = 65536;
   const size_t batch_size = (in_bytes + chunk_size - 1) / chunk_size;
 
+  static_assert(chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize, "Chunk size must be less than the constant specified in the nvCOMP library");
+
   char* device_input_data;
   CUDA_CHECK(cudaMalloc(&device_input_data, in_bytes));
   CUDA_CHECK(cudaMemcpyAsync(device_input_data, input_data, in_bytes, cudaMemcpyHostToDevice, stream));

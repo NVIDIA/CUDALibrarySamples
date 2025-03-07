@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2020-2024 NVIDIA CORPORATION & AFFILIATES.
+ * SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES.
  * All rights reserved. SPDX-License-Identifier: LicenseRef-NvidiaProprietary
  *
  * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
@@ -28,7 +28,8 @@ class BatchData
 public:
   BatchData(
       const std::vector<std::vector<char>>& host_data,
-      const size_t chunk_size) :
+      const size_t chunk_size,
+      const size_t alignment) :
       m_ptrs(),
       m_sizes(),
       m_data(),
@@ -36,11 +37,12 @@ public:
   {
     m_size = compute_batch_size(host_data, chunk_size);
 
-    m_data = nvcomp::thrust::device_vector<uint8_t>(chunk_size * size());
+    const size_t aligned_chunk_size = roundUpTo(chunk_size, alignment);
+    m_data = nvcomp::thrust::device_vector<uint8_t>(aligned_chunk_size * size());
 
     std::vector<void*> uncompressed_ptrs(size());
     for (size_t i = 0; i < size(); ++i) {
-      uncompressed_ptrs[i] = static_cast<void*>(data() + chunk_size * i);
+      uncompressed_ptrs[i] = static_cast<void*>(data() + aligned_chunk_size * i);
     }
 
     m_ptrs = nvcomp::thrust::device_vector<void*>(uncompressed_ptrs);
@@ -63,7 +65,9 @@ public:
     }
   }
 
-  BatchData(const BatchDataCPU& batch_data, bool copy_data = false) :
+  BatchData(const BatchDataCPU& batch_data,
+            const bool copy_data,
+            const size_t alignment) :
       m_ptrs(),
       m_sizes(),
       m_data(),
@@ -73,17 +77,17 @@ public:
     m_sizes = nvcomp::thrust::device_vector<size_t>(
         batch_data.sizes(), batch_data.sizes() + size());
 
-    size_t data_size = std::accumulate(
-        batch_data.sizes(),
-        batch_data.sizes() + size(),
-        static_cast<size_t>(0));
+    size_t data_size = 0;
+    for (size_t i = 0; i < size(); ++i) {
+      data_size += roundUpTo(batch_data.sizes()[i], alignment);
+    }
     m_data = nvcomp::thrust::device_vector<uint8_t>(data_size);
 
     size_t offset = 0;
     std::vector<void*> ptrs(size());
     for (size_t i = 0; i < size(); ++i) {
       ptrs[i] = data() + offset;
-      offset += batch_data.sizes()[i];
+      offset += roundUpTo(batch_data.sizes()[i], alignment);
     }
     m_ptrs = nvcomp::thrust::device_vector<void*>(ptrs);
 
@@ -96,20 +100,23 @@ public:
     }
   }
 
-  BatchData(const size_t max_output_size, const size_t batch_size) :
+  BatchData(const size_t max_output_size,
+            const size_t batch_size,
+            const size_t alignment) :
       m_ptrs(),
       m_sizes(),
       m_data(),
       m_size(batch_size)
   {
-    m_data = nvcomp::thrust::device_vector<uint8_t>(max_output_size * size());
+    const size_t aligned_max_output_size = roundUpTo(max_output_size, alignment);
+    m_data = nvcomp::thrust::device_vector<uint8_t>(aligned_max_output_size * size());
 
-    std::vector<size_t> sizes(size(), max_output_size);
+    std::vector<size_t> sizes(size(), aligned_max_output_size);
     m_sizes = nvcomp::thrust::device_vector<size_t>(sizes);
 
     std::vector<void*> ptrs(batch_size);
     for (size_t i = 0; i < batch_size; ++i) {
-      ptrs[i] = data() + max_output_size * i;
+      ptrs[i] = data() + aligned_max_output_size * i;
     }
     m_ptrs = nvcomp::thrust::device_vector<void*>(ptrs);
   }

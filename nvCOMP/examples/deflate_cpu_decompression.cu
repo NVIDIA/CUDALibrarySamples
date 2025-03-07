@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2020-2024 NVIDIA CORPORATION & AFFILIATES.
+ * SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES.
  * All rights reserved. SPDX-License-Identifier: LicenseRef-NvidiaProprietary
  *
  * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
@@ -10,25 +10,33 @@
  * its affiliates is strictly prohibited.
 */
 
-#include "BatchData.h"
 #include "zlib.h"
 #include "libdeflate.h"
 #include "nvcomp/deflate.h"
+#include "BatchData.h"
+
 
 BatchDataCPU GetBatchDataCPU(const BatchData& batch_data, bool copy_data)
 {
-  BatchDataCPU compress_data_cpu(
+  BatchDataCPU batch_data_cpu(
       batch_data.ptrs(),
       batch_data.sizes(),
       batch_data.data(),
       batch_data.size(),
       copy_data);
-  return compress_data_cpu;
+  return batch_data_cpu;
 }
 
-// Benchmark performance from the binary data file fname
-static void run_example(const std::vector<std::vector<char>>& data, int algo)
+static void run_example(const std::vector<std::vector<char>>& data,
+                        int algo,
+                        size_t warmup_iteration_count, size_t total_iteration_count)
 {
+  assert(!data.empty());
+  assert(algo >= 0 && algo <= 1);
+    if(warmup_iteration_count >= total_iteration_count) {
+    throw std::runtime_error("ERROR: the total iteration count must be greater than the warmup iteration count");
+  }
+
   size_t total_bytes = 0;
   for (const std::vector<char>& part : data) {
     total_bytes += part.size();
@@ -39,18 +47,31 @@ static void run_example(const std::vector<std::vector<char>>& data, int algo)
   std::cout << "uncompressed (B): " << total_bytes << std::endl;
 
   const size_t chunk_size = 1 << 16;
+  static_assert(chunk_size <= nvcompDeflateCompressionMaxAllowedChunkSize, "Chunk size must be less than the constant specified in the nvCOMP library");
 
-  // build up metadata
-  BatchData input_data(data, chunk_size);
-  static nvcompBatchedDeflateOpts_t nvcompBatchedDeflateOpts = nvcompBatchedDeflateDefaultOpts;
+  auto nvcompBatchedDeflateOpts = nvcompBatchedDeflateDefaultOpts;
+
+  // Query compression alignment requirements
+  nvcompAlignmentRequirements_t compression_alignment_reqs;
+  nvcompStatus_t status = nvcompBatchedDeflateCompressGetRequiredAlignments(
+      nvcompBatchedDeflateOpts,
+      &compression_alignment_reqs);
+  if (status != nvcompSuccess) {
+    throw std::runtime_error("ERROR: nvcompBatchedDeflateCompressGetRequiredAlignments() not successful");
+  }
+
+  // Build up GPU data
+  BatchData input_data(data, chunk_size, compression_alignment_reqs.input);
+  const size_t chunk_count = input_data.size();
+
   // Compress on the GPU using batched API
   size_t comp_temp_bytes;
-  nvcompStatus_t status = nvcompBatchedDeflateCompressGetTempSize(
-      input_data.size(),
+  status = nvcompBatchedDeflateCompressGetTempSize(
+      chunk_count,
       chunk_size,
       nvcompBatchedDeflateOpts,
       &comp_temp_bytes);
-  if( status != nvcompSuccess){
+  if (status != nvcompSuccess) {
     throw std::runtime_error("ERROR: nvcompBatchedDeflateCompressGetTempSize() not successful");
   }
 
@@ -60,11 +81,11 @@ static void run_example(const std::vector<std::vector<char>>& data, int algo)
   size_t max_out_bytes;
   status = nvcompBatchedDeflateCompressGetMaxOutputChunkSize(
       chunk_size, nvcompBatchedDeflateOpts, &max_out_bytes);
-  if( status != nvcompSuccess){
+  if (status != nvcompSuccess) {
     throw std::runtime_error("ERROR: nvcompBatchedDeflateCompressGetMaxOutputChunkSize() not successful");
   }
 
-  BatchData compress_data(max_out_bytes, input_data.size());
+  BatchData compressed_data(max_out_bytes, chunk_count, compression_alignment_reqs.output);
 
   cudaStream_t stream;
   CUDA_CHECK(cudaStreamCreate(&stream));
@@ -72,38 +93,45 @@ static void run_example(const std::vector<std::vector<char>>& data, int algo)
   cudaEvent_t start, end;
   CUDA_CHECK(cudaEventCreate(&start));
   CUDA_CHECK(cudaEventCreate(&end));
-  CUDA_CHECK(cudaEventRecord(start, stream));
 
-  status = nvcompBatchedDeflateCompressAsync(
-      input_data.ptrs(),
-      input_data.sizes(),
-      chunk_size,
-      input_data.size(),
-      d_comp_temp,
-      comp_temp_bytes,
-      compress_data.ptrs(),
-      compress_data.sizes(),
-      nvcompBatchedDeflateOpts,
-      stream);
-  if (status != nvcompSuccess) {
-    throw std::runtime_error("nvcompBatchedDeflateCompressAsync() failed.");
+  auto perform_compression = [&]() {
+    if (nvcompBatchedDeflateCompressAsync(
+          input_data.ptrs(),
+          input_data.sizes(),
+          chunk_size,
+          chunk_count,
+          d_comp_temp,
+          comp_temp_bytes,
+          compressed_data.ptrs(),
+          compressed_data.sizes(),
+          nvcompBatchedDeflateOpts,
+          stream) != nvcompSuccess) {
+      throw std::runtime_error("nvcompBatchedDeflateCompressAsync() failed.");
+    }
+  };
+
+  // Warm-up compression iterations
+  for (size_t iter = 0; iter < warmup_iteration_count; ++iter) {
+    perform_compression();
   }
-  
+
+  CUDA_CHECK(cudaEventRecord(start, stream));
+  for (size_t iter = warmup_iteration_count; iter < total_iteration_count; ++iter) {
+    perform_compression();
+  }
   CUDA_CHECK(cudaEventRecord(end, stream));
   CUDA_CHECK(cudaStreamSynchronize(stream));
 
-  // free compression memory
-  CUDA_CHECK(cudaFree(d_comp_temp));
-
   float ms;
   CUDA_CHECK(cudaEventElapsedTime(&ms, start, end));
+  ms /= total_iteration_count - warmup_iteration_count;
 
   // compute compression ratio
-  std::vector<size_t> compressed_sizes_host(compress_data.size());
+  std::vector<size_t> compressed_sizes_host(chunk_count);
   CUDA_CHECK(cudaMemcpy(
       compressed_sizes_host.data(),
-      compress_data.sizes(),
-      compress_data.size() * sizeof(*compress_data.sizes()),
+      compressed_data.sizes(),
+      chunk_count * sizeof(*compressed_data.sizes()),
       cudaMemcpyDeviceToHost));
 
   size_t comp_bytes = 0;
@@ -118,31 +146,31 @@ static void run_example(const std::vector<std::vector<char>>& data, int algo)
             << (double)total_bytes / (1.0e6 * ms) << std::endl;
 
   // Allocate and prepare output/compressed batch
-  BatchDataCPU compress_data_cpu = GetBatchDataCPU(compress_data, true);
-  BatchDataCPU decompress_data_cpu = GetBatchDataCPU(input_data, false);
+  BatchDataCPU compressed_data_cpu = GetBatchDataCPU(compressed_data, true);
+  BatchDataCPU decompressed_data_cpu = GetBatchDataCPU(input_data, false);
 
   // loop over chunks on the CPU, decompressing each one
-  for (size_t i = 0; i < input_data.size(); ++i) {
-    if(algo==0){
+  for (size_t i = 0; i < chunk_count; ++i) {
+    if (algo == 0) {
         struct libdeflate_decompressor  *decompressor;
         decompressor = libdeflate_alloc_decompressor();
-        enum libdeflate_result res = libdeflate_deflate_decompress(decompressor, compress_data_cpu.ptrs()[i], compress_data_cpu.sizes()[i], 
-                                                   decompress_data_cpu.ptrs()[i], decompress_data_cpu.sizes()[i], NULL);
-    
+        enum libdeflate_result res = libdeflate_deflate_decompress(decompressor, compressed_data_cpu.ptrs()[i], compressed_data_cpu.sizes()[i], 
+                                                   decompressed_data_cpu.ptrs()[i], decompressed_data_cpu.sizes()[i], NULL);
+
        if (res != LIBDEFLATE_SUCCESS) {
        throw std::runtime_error(
            "libdeflate CPU failed to decompress chunk " + std::to_string(i) + ".");
        }
-    }else if (algo==1){
+    } else if (algo == 1) {
         z_stream zs1;
         zs1.zalloc = NULL;
         zs1.zfree = NULL;
         zs1.msg = NULL;
-        zs1.next_in = (Bytef*)compress_data_cpu.ptrs()[i];
-        zs1.avail_in = static_cast<uInt>(compress_data_cpu.sizes()[i]);
-        zs1.next_out = (Bytef*)decompress_data_cpu.ptrs()[i];
-        zs1.avail_out = static_cast<uInt>(decompress_data_cpu.sizes()[i]);
-
+        zs1.next_in = (Bytef*)compressed_data_cpu.ptrs()[i];
+        zs1.avail_in = static_cast<uInt>(compressed_data_cpu.sizes()[i]);
+        zs1.next_out = (Bytef*)decompressed_data_cpu.ptrs()[i];
+        zs1.avail_out = static_cast<uInt>(decompressed_data_cpu.sizes()[i]);
+        // -15 to disable zlib header/footer (raw deflate)
         int ret = inflateInit2(&zs1, -15);
         if (ret != Z_OK) {
            throw std::runtime_error("inflateInit2 error " + std::to_string(ret));
@@ -159,96 +187,67 @@ static void run_example(const std::vector<std::vector<char>>& data, int algo)
     }
   }
   // Validate decompressed data against input
-  if (!(decompress_data_cpu == input_data))
+  if (!(decompressed_data_cpu == input_data)) {
     throw std::runtime_error("Failed to validate CPU decompressed data");
-  else
+  } else {
     std::cout << "CPU decompression validated :)" << std::endl;
+  }
+
+  CUDA_CHECK(cudaFree(d_comp_temp));
 
   CUDA_CHECK(cudaEventDestroy(start));
   CUDA_CHECK(cudaEventDestroy(end));
   CUDA_CHECK(cudaStreamDestroy(stream));
 }
 
-std::vector<char> readFile(const std::string& filename)
-{
-  std::vector<char> buffer(4096);
-  std::vector<char> host_data;
-
-  std::ifstream fin(filename, std::ifstream::binary);
-  fin.exceptions(std::ifstream::failbit | std::ifstream::badbit);
-
-  size_t num;
-  do {
-    num = fin.readsome(buffer.data(), buffer.size());
-    host_data.insert(host_data.end(), buffer.begin(), buffer.begin() + num);
-  } while (num > 0);
-
-  return host_data;
-}
-
-std::vector<std::vector<char>>
-multi_file(const std::vector<std::string>& filenames)
-{
-  std::vector<std::vector<char>> split_data;
-
-  for (auto const& filename : filenames) {
-    split_data.emplace_back(readFile(filename));
-  }
-
-  return split_data;
-}
-
 int main(int argc, char* argv[])
 {
- std::vector<std::string> file_names;
+  std::vector<std::string> file_names;
 
- if (argc < 5) {
-   std::cerr << "Must choose the algorithm (-a <0>) and specify at least one file (-f <inputfile>)." << std::endl;
-   return 1;
- }
- int algo = 0;
- int i = 1; bool choose_algo = false; bool input_file = false;
- do{
-  if(strcmp(argv[i], "-a") !=0 && strcmp(argv[i], "-f") != 0){
-    std::cerr << "The config only could be -a (choose algorithm: 0 libdeflate, 1 zlib_inflate) or -f (add input files)." << std::endl;
+  int algo = -1;
+  size_t warmup_iteration_count = 2;
+  size_t total_iteration_count = 5;
+
+  do {
+    if (argc < 5) {
+      break;
+    }
+
+    int i = 1;
+    while (i < argc) {
+      const char* current_argv = argv[i++];
+      if (strcmp(current_argv, "-a") == 0) {
+        if(i >= argc) {
+          std::cerr << "Missing value for argument '-a <algorithm>'" << std::endl;
+          return 1;
+        }
+        algo = atoi(argv[i++]);
+      } else if (strcmp(current_argv, "-f") == 0) {
+          // parse until next `-` argument
+          while (i < argc && argv[i][0] != '-') {
+            file_names.emplace_back(argv[i++]);
+          }
+      } else {
+        std::cerr << "Unknown argument: " << current_argv << std::endl;
+        return 1;
+      }
+    }
+  } while (0);
+
+  if (argc < 5) {
+    std::cerr << "Must choose an algorithm via '-a <algo>', and must specify at least one file via '-f <file>'." << std::endl;
     return 1;
-  }else if(strcmp(argv[i], "-a") ==0){
-    choose_algo = true;
-    i++;
-    if( (i < argc) && (atoi(argv[i]) == 0 ||  atoi(argv[i]) == 1)){
-      algo = atoi(argv[2]);
-      i++;
-    }else{
-      std::cerr<<"`-a` could only be 0, 1. (0 libdeflate, 1 zlib_inflate)"<<std::endl;
-      return 1;
-    }
-  }else if (strcmp(argv[i], "-f") == 0){
-    i++;
-    if(i >= argc){
-      std::cerr<<"Specify at least one input file." <<std::endl;
-      return 1;
-    }
-    do{
-      input_file = true;
-      file_names.push_back(argv[i]);
-      i++;
-    }while(i < argc && strcmp(argv[i], "-a") !=0);
-  }
- }while(i < argc);
-
- if(!choose_algo){
-  std::cerr<<"Have to choose an algorithm use `-a`. `-a` could be 0, 1. (0 libdeflate, 1 zlib_inflate)"<<std::endl;
-  return 1;
- }
-
- if(!input_file){
-   std::cerr<<"Specify at least one input file by using `-f`"<<std::endl;
+  } else if (algo < 0 || algo > 1) {
+    std::cerr << "Must choose an algorithm via '-a <algo>'. '<algo>' can be 0 or 1. (0 libdeflate, 1 zlib_inflate)" << std::endl;
+    return 1;
+  } else if (file_names.empty()) {
+   std::cerr << "Must specify at least one file via '-f <file>'" << std::endl;
    return 1;
- }
+  }
 
   auto data = multi_file(file_names);
-  run_example(data, algo);
+
+  run_example(data, algo, warmup_iteration_count, total_iteration_count);
 
   return 0;
 }
-
