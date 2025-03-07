@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2020-2024 NVIDIA CORPORATION & AFFILIATES.
+ * SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES.
  * All rights reserved. SPDX-License-Identifier: LicenseRef-NvidiaProprietary
  *
  * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
@@ -22,6 +22,7 @@
 #include <vector>
 #include <cuda_runtime.h>
 
+#ifndef CUDA_CHECK
 #define CUDA_CHECK(func)                                                       \
   do {                                                                         \
     cudaError_t rt = (func);                                                   \
@@ -31,6 +32,7 @@
       throw;                                                                   \
     }                                                                          \
   } while (0)
+#endif // CUDA_CHECK
 
 size_t compute_batch_size(
     const std::vector<std::vector<char>>& data, const size_t chunk_size)
@@ -76,4 +78,40 @@ std::vector<void*> get_input_ptrs(
           static_cast<const void*>(data[i].data() + j * chunk_size));
   }
   return input_ptrs;
+}
+
+std::vector<char> read_file(const std::string& filename)
+{
+  std::ifstream fin(filename, std::ifstream::in | std::ifstream::binary | std::ifstream::ate);
+  if (!fin) {
+    throw std::runtime_error("Unable to open file: " + filename);
+  }
+  fin.exceptions(std::ifstream::failbit | std::ifstream::badbit);
+
+  // Query size
+  size_t size = fin.tellg();
+  fin.seekg(0, std::ifstream::beg);
+
+  // Read the file
+  std::vector<char> host_data(size);
+  fin.read(host_data.data(), size);
+
+  return host_data;
+}
+
+std::vector<std::vector<char>> multi_file(const std::vector<std::string>& filenames)
+{
+  std::vector<std::vector<char>> split_data;
+
+  for (auto const& filename : filenames) {
+    split_data.emplace_back(read_file(filename));
+  }
+
+  return split_data;
+}
+
+template <typename U, typename T>
+U roundUpTo(const U num, const T chunk)
+{
+  return ((num + chunk - 1) / chunk) * chunk;
 }

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES.
  * All rights reserved. SPDX-License-Identifier: LicenseRef-NvidiaProprietary
  *
  * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
@@ -10,13 +10,11 @@
  * its affiliates is strictly prohibited.
 */
 
+#include "snappy.h"
+#include "nvcomp/snappy.h"
 #include "BatchData.h"
 
-#include "lz4.h"
-#include "lz4hc.h"
-#include "nvcomp/lz4.h"
 
-// Benchmark performance from the binary data file fname
 static void run_example(const std::vector<std::vector<char>>& data,
                         size_t warmup_iteration_count, size_t total_iteration_count)
 {
@@ -25,16 +23,17 @@ static void run_example(const std::vector<std::vector<char>>& data,
     throw std::runtime_error("ERROR: the total iteration count must be greater than the warmup iteration count");
   }
 
-  size_t total_bytes = 0;
-  for (const std::vector<char>& part : data) {
-    total_bytes += part.size();
-  }
+  size_t total_bytes =
+    std::accumulate(data.begin(), data.end(), size_t(0), [](const size_t& a, const std::vector<char>& part) {
+        return a + part.size();
+  });
 
   std::cout << "----------" << std::endl;
   std::cout << "files: " << data.size() << std::endl;
   std::cout << "uncompressed (B): " << total_bytes << std::endl;
 
   const size_t chunk_size = 1 << 16;
+  static_assert(chunk_size <= snappy::kBlockSize, "Chunk size must be less than the constant specified in the Snappy library");
 
   // Build up input batch on CPU
   BatchDataCPU input_data_cpu(data, chunk_size);
@@ -45,41 +44,32 @@ static void run_example(const std::vector<std::vector<char>>& data,
 
   // Allocate and prepare output/compressed batch
   BatchDataCPU compressed_data_cpu(
-      LZ4_compressBound(chunk_size), chunk_count);
+      snappy::MaxCompressedLength(chunk_size), chunk_count);
 
   // loop over chunks on the CPU, compressing each one
   for (size_t i = 0; i < chunk_count; ++i) {
-    // could use LZ4_compress_default or LZ4_compress_fast instead
-    const int size = LZ4_compress_HC(
-        static_cast<const char*>(input_data_cpu.ptrs()[i]),
-        static_cast<char*>(compressed_data_cpu.ptrs()[i]),
-        static_cast<int>(input_data_cpu.sizes()[i]),
-        static_cast<int>(compressed_data_cpu.sizes()[i]),
-        12);
-    if (size == 0) {
+    snappy::RawCompress(static_cast<const char*>(input_data_cpu.ptrs()[i]),
+                   input_data_cpu.sizes()[i],
+                   static_cast<char*>(compressed_data_cpu.ptrs()[i]),
+                   &compressed_data_cpu.sizes()[i]);
+    if (compressed_data_cpu.sizes()[i] == 0) {
       throw std::runtime_error(
-          "LZ4 CPU failed to compress chunk " + std::to_string(i) + ".");
+          "Snappy CPU failed to compress chunk " + std::to_string(i) + ".");
     }
-
-    // set the actual compressed size
-    compressed_data_cpu.sizes()[i] = static_cast<size_t>(size);
   }
 
   // compute compression ratio
-  size_t* compressed_sizes_host = compressed_data_cpu.sizes();
-  size_t comp_bytes = 0;
-  for (size_t i = 0; i < chunk_count; ++i)
-    comp_bytes += compressed_sizes_host[i];
+  size_t comp_bytes = std::accumulate(compressed_data_cpu.sizes(), compressed_data_cpu.sizes() + chunk_count, size_t(0));
 
   std::cout << "comp_size: " << comp_bytes
             << ", compressed ratio: " << std::fixed << std::setprecision(2)
             << (double)total_bytes / comp_bytes << std::endl;
 
   // Copy compressed data to GPU
-  BatchData compressed_data(compressed_data_cpu, true, nvcompBatchedLZ4DecompressRequiredAlignments.input);
+  BatchData compressed_data(compressed_data_cpu, true, nvcompBatchedSnappyDecompressRequiredAlignments.input);
 
   // Allocate and build up decompression batch on GPU
-  BatchData decomp_data(input_data_cpu, false, nvcompBatchedLZ4DecompressRequiredAlignments.output);
+  BatchData decomp_data(input_data_cpu, false, nvcompBatchedSnappyDecompressRequiredAlignments.output);
 
   // Create CUDA stream
   cudaStream_t stream;
@@ -90,12 +80,12 @@ static void run_example(const std::vector<std::vector<char>>& data,
   CUDA_CHECK(cudaEventCreate(&start));
   CUDA_CHECK(cudaEventCreate(&end));
 
-  // lz4 GPU decompression
+  // Snappy GPU decompression
   size_t decomp_temp_bytes;
-  nvcompStatus_t status = nvcompBatchedLZ4DecompressGetTempSize(
+  nvcompStatus_t status = nvcompBatchedSnappyDecompressGetTempSize(
       chunk_count, chunk_size, &decomp_temp_bytes);
   if (status != nvcompSuccess) {
-    throw std::runtime_error("nvcompBatchedLZ4DecompressGetTempSize() failed.");
+    throw std::runtime_error("nvcompBatchedSnappyDecompressGetTempSize() failed.");
   }
 
   void* d_decomp_temp;
@@ -110,7 +100,7 @@ static void run_example(const std::vector<std::vector<char>>& data,
   CUDA_CHECK(cudaStreamSynchronize(stream));
 
   auto perform_decompression = [&]() {
-    if (nvcompBatchedLZ4DecompressAsync(
+    if (nvcompBatchedSnappyDecompressAsync(
           compressed_data.ptrs(),
           compressed_data.sizes(),
           decomp_data.sizes(),
@@ -121,7 +111,7 @@ static void run_example(const std::vector<std::vector<char>>& data,
           decomp_data.ptrs(),
           d_status_ptrs,
           stream) != nvcompSuccess) {
-      throw std::runtime_error("ERROR: nvcompBatchedLZ4DecompressAsync() not successful");
+      throw std::runtime_error("ERROR: nvcompBatchedSnappyDecompressAsync() not successful");
     }
   };
 

@@ -114,7 +114,10 @@ int main(int argc, char** argv)
   nvtxRangePushA("Compressor setup");
 
   // Create an LZ4 compressor, get the max output size, and temp storage size
-  LZ4Manager compressor(1 << 16, nvcompBatchedLZ4Opts_t{NVCOMP_TYPE_CHAR}, stream);
+  const size_t chunk_size = 1 << 16;
+  static_assert(chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize, "Chunk size must be less than the constant specified in the nvCOMP library");
+
+  LZ4Manager compressor(chunk_size, nvcompBatchedLZ4Opts_t{NVCOMP_TYPE_CHAR}, stream);
   const CompressionConfig comp_config = compressor.configure_compression(n);
   size_t lcompbuf = comp_config.max_compressed_buffer_size;
 
