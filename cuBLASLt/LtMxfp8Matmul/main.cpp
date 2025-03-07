@@ -37,7 +37,7 @@
 
 int main() {
     TestBench<__nv_fp8_e4m3, __nv_fp8_e4m3, float, __nv_fp8_e8m0, __nv_fp8_e8m0, __nv_bfloat16> props(
-        64, 128, 256, 2.0f, 1.0f, 32ULL * 1024 * 1024, 1, __nv_fp8_e8m0{2.0f}, __nv_fp8_e8m0{0.5f}, __nv_fp8_e8m0{1.0f}, __nv_fp8_e8m0{1.0f},
+        64, 128, 256, 2.0f, 1.0f, 32ULL * 1024 * 1024, 1, false, __nv_fp8_e8m0{2.0f}, __nv_fp8_e8m0{0.5f}, __nv_fp8_e8m0{1.0f}, __nv_fp8_e8m0{1.0f},
         CUBLASLT_MATMUL_MATRIX_SCALE_VEC32_UE8M0, CUBLASLT_MATMUL_MATRIX_SCALE_VEC32_UE8M0, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_VEC32_UE8M0);
 
     props.run([&props] {

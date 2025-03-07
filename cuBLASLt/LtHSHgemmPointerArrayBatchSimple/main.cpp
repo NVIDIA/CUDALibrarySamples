@@ -1,3 +1,8 @@
+#include <vector>
+
+#include <cuda_runtime_api.h>
+#include <cublasLt.h>
+
 /*
  * Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
  *
@@ -26,47 +31,32 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <vector>
-
-#include <cuda_runtime_api.h>
-#include <cuda_fp4.h>
-#include <cublasLt.h>
-
-#include "sample_cublasLt_LtNvfp4Matmul.h"
+#include "sample_cublasLt_LtHSHgemmPointerArrayBatchSimple.h"
 #include "helpers.h"
 
 int main() {
-    TestBench<__nv_fp4_e2m1, __nv_fp4_e2m1, float, __nv_fp8_e4m3, float, __nv_bfloat16> props(
-        64, 128, 256, 2.0f, 1.0f, 32ULL * 1024 * 1024, 1, false, __nv_fp8_e4m3{2.0f}, __nv_fp8_e4m3{0.5f}, __nv_fp8_e4m3{1.0f}, float{1.0f},
-        CUBLASLT_MATMUL_MATRIX_SCALE_VEC16_UE4M3, CUBLASLT_MATMUL_MATRIX_SCALE_VEC16_UE4M3, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_VEC16_UE4M3);
+    TestBench<__half, __half, float> props(4, 4, 4, 2.0f, 0.0f, 4 * 1024 * 1024 * 2, 2, true);
 
     props.run([&props] {
-        LtNvfp4Matmul(props.ltHandle,
-                    props.m,
-                    props.n,
-                    props.k,
-                    &props.alpha,
-                    props.AscaleDev,
-                    props.Adev,
-                    props.k,
-                    props.BscaleDev,
-                    props.Bdev,
-                    props.k,
-                    &props.beta,
-                    props.CscaleDev,
-                    props.Cdev,
-                    props.m,
-                    props.DscaleDev,
-                    props.Ddev,
-                    props.m,
-                    props.DOutscaleDev,
-                    props.workspace,
-                    props.workspaceSize,
-                    props.AScaleMode,
-                    props.BScaleMode,
-                    props.CScaleMode,
-                    props.DScaleMode,
-                    props.DOutScaleMode);
+        LtHSHgemmPointerArrayBatchSimple(props.ltHandle,
+                                    CUBLAS_OP_N,
+                                    CUBLAS_OP_N,
+                                    props.m,
+                                    props.n,
+                                    props.k,
+                                    &props.alpha,
+                                    props.APtrArrayDev,
+                                    props.m,
+                                    props.BPtrArrayDev,
+                                    props.k,
+                                    &props.beta,
+                                    props.CPtrArrayDev,
+                                    props.m,
+                                    props.DPtrArrayDev,
+                                    props.m,
+                                    props.N,
+                                    props.workspace,
+                                    props.workspaceSize);
     });
 
     return 0;
