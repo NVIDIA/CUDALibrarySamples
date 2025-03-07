@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES.
  * All rights reserved. SPDX-License-Identifier: LicenseRef-NvidiaProprietary
  *
  * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
@@ -31,15 +31,19 @@ void run_benchmark(
     const size_t duplicate_count,
     const size_t num_files,
     const bool compressed_inputs,
-    const bool single_output_buffer)
+    const bool single_output_buffer,
+    const std::string& output_compressed_filename,
+    const std::string& output_decompressed_filename)
 {
   run_benchmark_template(
       nvcompBatchedSnappyCompressGetTempSize,
       nvcompBatchedSnappyCompressGetMaxOutputChunkSize,
       nvcompBatchedSnappyCompressAsync,
+      nvcompBatchedSnappyCompressGetRequiredAlignments,
       nvcompBatchedSnappyDecompressGetTempSize,
       nvcompBatchedSnappyDecompressAsync,
       nvcompBatchedSnappyGetDecompressSizeAsync,
+      nvcompBatchedSnappyDecompressRequiredAlignments,
       inputAlwaysValid,
       nvcompBatchedSnappyDefaultOpts,
       data,
@@ -50,5 +54,7 @@ void run_benchmark(
       duplicate_count,
       num_files,
       compressed_inputs,
-      single_output_buffer);
+      single_output_buffer,
+      output_compressed_filename,
+      output_decompressed_filename);
 }

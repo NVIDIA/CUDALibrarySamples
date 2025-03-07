@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES.
  * All rights reserved. SPDX-License-Identifier: LicenseRef-NvidiaProprietary
  *
  * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
@@ -45,8 +45,10 @@ static bool handleCommandLineArgument(
   return false;
 }
 
-static bool isANSInputValid(const std::vector<std::vector<char>>& data)
+static bool isANSInputValid(const std::vector<std::vector<char>>& data,
+                            bool compressed_inputs)
 {
+  (void)compressed_inputs;
   for (const auto& chunk : data) {
     if (chunk.size() > (1ULL << 32) - 1) {
       std::cerr << "ERROR: ANS doesn't support chunk sizes larger than "
@@ -74,15 +76,19 @@ void run_benchmark(
     const size_t duplicate_count,
     const size_t num_files,
     const bool compressed_inputs,
-    const bool single_output_buffer)
+    const bool single_output_buffer,
+    const std::string& output_compressed_filename,
+    const std::string& output_decompressed_filename)
 {
   run_benchmark_template(
       nvcompBatchedANSCompressGetTempSize,
       nvcompBatchedANSCompressGetMaxOutputChunkSize,
       nvcompBatchedANSCompressAsync,
+      nvcompBatchedANSCompressGetRequiredAlignments,
       nvcompBatchedANSDecompressGetTempSize,
       nvcompBatchedANSDecompressAsync,
       nvcompBatchedANSGetDecompressSizeAsync,
+      nvcompBatchedANSDecompressRequiredAlignments,
       isANSInputValid,
       nvcompBatchedANSOpts,
       data,
@@ -93,5 +99,7 @@ void run_benchmark(
       duplicate_count,
       num_files,
       compressed_inputs,
-      single_output_buffer);
+      single_output_buffer,
+      output_compressed_filename,
+      output_decompressed_filename);
 }

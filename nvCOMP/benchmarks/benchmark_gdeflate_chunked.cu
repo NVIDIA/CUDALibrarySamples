@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2020-2024 NVIDIA CORPORATION & AFFILIATES.
+ * SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES.
  * All rights reserved. SPDX-License-Identifier: LicenseRef-NvidiaProprietary
  *
  * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
@@ -12,6 +12,9 @@
 
 #include "benchmark_template_chunked.cuh"
 #include "nvcomp/gdeflate.h"
+
+#include <limits>
+#include <stdint.h>
 
 static nvcompBatchedGdeflateOpts_t nvcompBatchedGdeflateOpts = {1};
 
@@ -34,12 +37,14 @@ static bool handleCommandLineArgument(
   return false;
 }
 
-static bool isGdeflateInputValid(const std::vector<std::vector<char>>& data)
+static bool isGdeflateInputValid(const std::vector<std::vector<char>>& data,
+                                 bool compressed_inputs)
 {
+  (void)compressed_inputs;
   for (const auto& chunk : data) {
-    if (chunk.size() > 65536) {
+    if (chunk.size() > nvcompGdeflateCompressionMaxAllowedChunkSize) {
       std::cerr << "ERROR: Gdeflate doesn't support chunk sizes larger than "
-                   "65536 bytes."
+                   "2GB."
                 << std::endl;
       return false;
     }
@@ -57,15 +62,19 @@ void run_benchmark(
     const size_t duplicate_count,
     const size_t num_files,
     const bool compressed_inputs,
-    const bool single_output_buffer)
+    const bool single_output_buffer,
+    const std::string& output_compressed_filename,
+    const std::string& output_decompressed_filename)
 {
   run_benchmark_template(
       nvcompBatchedGdeflateCompressGetTempSize,
       nvcompBatchedGdeflateCompressGetMaxOutputChunkSize,
       nvcompBatchedGdeflateCompressAsync,
+      nvcompBatchedGdeflateCompressGetRequiredAlignments,
       nvcompBatchedGdeflateDecompressGetTempSize,
       nvcompBatchedGdeflateDecompressAsync,
       nvcompBatchedGdeflateGetDecompressSizeAsync,
+      nvcompBatchedGdeflateDecompressRequiredAlignments,
       isGdeflateInputValid,
       nvcompBatchedGdeflateOpts,
       data,
@@ -76,5 +85,7 @@ void run_benchmark(
       duplicate_count,
       num_files,
       compressed_inputs,
-      single_output_buffer);
+      single_output_buffer,
+      output_compressed_filename,
+      output_decompressed_filename);
 }
