@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2020-2024 NVIDIA CORPORATION & AFFILIATES.
+ * SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES.
  * All rights reserved. SPDX-License-Identifier: LicenseRef-NvidiaProprietary
  *
  * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
@@ -14,26 +14,20 @@
 #include "nvcomp/zstd.h"
 
 static nvcompBatchedZstdOpts_t nvcompBatchedZstdTestOpts{};
-static std::string filename;
-static bool do_output;
 
 static bool handleCommandLineArgument(
     const std::string& arg,
     const char* const* additionalArgs,
     size_t& additionalArgsUsed)
 {
-  if (arg == "--output-file" || arg == "-o") {
-    const char* const typeArg = *additionalArgs;
-    additionalArgsUsed = 1;
-    filename = typeArg;
-    do_output = true;
-    return true;
-  }
-  return false; // Any other parameters means that we took in an invalid argument
+  // Zstd has no options.
+  return false;
 }
 
-static bool isZstdInputValid(const std::vector<std::vector<char>>& data)
+static bool isZstdInputValid(const std::vector<std::vector<char>>& data,
+                             bool compressed_inputs)
 {
+  (void)compressed_inputs;
   for (const auto& chunk : data) {
     if (chunk.size() > nvcompZstdCompressionMaxAllowedChunkSize) {
       std::cerr << "ERROR: Zstd doesn't support chunk sizes larger than "
@@ -55,15 +49,19 @@ void run_benchmark(
     const size_t duplicate_count,
     const size_t num_files,
     const bool compressed_inputs,
-    const bool single_output_buffer)
+    const bool single_output_buffer,
+    const std::string& output_compressed_filename,
+    const std::string& output_decompressed_filename)
 {
   run_benchmark_template(
       nvcompBatchedZstdCompressGetTempSize,
       nvcompBatchedZstdCompressGetMaxOutputChunkSize,
       nvcompBatchedZstdCompressAsync,
+      nvcompBatchedZstdCompressGetRequiredAlignments,
       nvcompBatchedZstdDecompressGetTempSize,
       nvcompBatchedZstdDecompressAsync,
       nvcompBatchedZstdGetDecompressSizeAsync,
+      nvcompBatchedZstdDecompressRequiredAlignments,
       isZstdInputValid,
       nvcompBatchedZstdTestOpts,
       data,
@@ -75,6 +73,6 @@ void run_benchmark(
       num_files,
       compressed_inputs,
       single_output_buffer,
-      do_output,
-      filename);
+      output_compressed_filename,
+      output_decompressed_filename);
 }

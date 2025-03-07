@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES.
  * All rights reserved. SPDX-License-Identifier: LicenseRef-NvidiaProprietary
  *
  * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
@@ -34,15 +34,15 @@ void run_benchmark_from_file(char* fname, nvcompManagerBase& batch_manager, int 
 static void print_usage()
 {
   printf("Usage: benchmark_hlif [format_type] [OPTIONS]\n");
-  printf("  %-35s One of <snappy / bitcomp / ans / cascaded/ gdeflate / deflate / lz4 / zstd>\n", "[ format_type ]");
+  printf("  %-35s One of <snappy / bitcomp / ans / cascaded / gdeflate / deflate / lz4 / zstd> (required).\n", "[ format_type ]");
   printf("  %-35s Binary dataset filename (required).\n", "-f, --filename");
   printf("  %-35s Chunk size (default 64 kB).\n", "-c, --chunk-size");
   printf("  %-35s GPU device number (default 0)\n", "-g, --gpu");
   printf("  %-35s Number of times to execute the benchmark (for averaging) (default 1)\n", "-n, --num-iters");
-  printf("  %-35s Data type (default 'char', options are 'char', 'short', 'int')\n", "-t, --type");
+  printf("  %-35s Data type (default 'char', options are 'char', 'short', 'int', 'longlong', 'float16')\n", "-t, --type");
   printf(
       "  %-35s Output GPU memory allocation sizes (default off)\n",
-      "-m --memory");
+      "-m, --memory");
   exit(1);
 }
 
@@ -69,6 +69,11 @@ int main(int argc, char* argv[])
   char** argv_end = argv + argc;
   argv += 1;
   nvcompANSDataType_t ans_data_type = nvcompANSDataType_t::uint8;
+
+  if(argc < 4) {
+    print_usage();
+    return 1;
+  }
 
   // First the format
   comp_format = std::string{*argv++};

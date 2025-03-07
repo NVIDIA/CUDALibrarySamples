@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2020-2024 NVIDIA CORPORATION & AFFILIATES.
+ * SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES.
  * All rights reserved. SPDX-License-Identifier: LicenseRef-NvidiaProprietary
  *
  * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
@@ -29,6 +29,7 @@
 #include <string>
 #include <thrust/device_vector.h>
 #include <vector>
+#include <memory>
 
 namespace nvcomp {
 
@@ -61,8 +62,11 @@ static bool handleCommandLineArgument(
     size_t& additionalArgsUsed);
 
 // A helper function for if the input data requires no validation.
-static bool inputAlwaysValid(const std::vector<std::vector<char>>& data)
+static bool inputAlwaysValid(const std::vector<std::vector<char>>& data,
+                             bool compressed_inputs)
 {
+  (void)data;
+  (void)compressed_inputs;
   return true;
 }
 
@@ -150,7 +154,7 @@ class BatchData
 {
 public:
   BatchData(
-      const std::vector<std::vector<char>>& host_data) :
+      const std::vector<std::vector<char>>& host_data, const size_t alignment) :
       m_ptrs(),
       m_sizes(),
       m_data(),
@@ -165,9 +169,17 @@ public:
       if (chunk_size < host_data[i].size()) {
         chunk_size = host_data[i].size();
       }
-      // align to 8B boundaries for now
-      // TODO: Set appropriate alignment based on reqs for each compressor
-      prefixsum[i+1] = nvcomp::roundUpTo(prefixsum[i] + host_data[i].size(), 8);
+      // Align according to the given alignment
+      prefixsum[i+1] = nvcomp::roundUpTo(prefixsum[i] + host_data[i].size(), alignment);
+    }
+
+    size_t batch_bytes_required = prefixsum.back() * sizeof(uint8_t);
+
+    size_t gpu_bytes_free, gpu_bytes_total;
+    CUDA_CHECK(cudaMemGetInfo(&gpu_bytes_free, &gpu_bytes_total));
+    if(gpu_bytes_free < batch_bytes_required) {
+      std::cerr << "WARNING: Cannot fit data in GPU memory. Could not run benchmark." << std::endl;
+      std::exit(0);
     }
 
     m_data = nvcomp::thrust::device_vector<uint8_t>(prefixsum.back());
@@ -178,20 +190,12 @@ public:
     }
 
     m_ptrs = nvcomp::thrust::device_vector<void*>(uncompressed_ptrs);
+
     std::vector<size_t> sizes(m_size);
     for (size_t i = 0; i < sizes.size(); ++i) {
       sizes[i] = host_data[i].size();
     }
     m_sizes = nvcomp::thrust::device_vector<size_t>(sizes);
-
-    size_t batch_bytes_required = prefixsum.back() * sizeof(uint8_t);
-    
-    size_t gpu_bytes_free, gpu_bytes_total;
-    CUDA_CHECK(cudaMemGetInfo( &gpu_bytes_free, &gpu_bytes_total ));
-    if(gpu_bytes_free < batch_bytes_required){
-      std::cerr << "WARNING: Cannot fit compressed file in GPU memory. Could not run benchmark." << std::endl;
-      std::exit(0);
-    }
 
     // copy data to GPU
     for (size_t i = 0; i < host_data.size(); ++i) {
@@ -203,29 +207,30 @@ public:
     }
   }
 
-  BatchData(const size_t max_output_size, const size_t batch_size) :
+  BatchData(const size_t max_output_size, const size_t batch_size, const size_t alignment) :
       m_ptrs(),
       m_sizes(),
       m_data(),
       host_ptrs(batch_size),
       m_size(batch_size)
   {
-    size_t batch_bytes_required = max_output_size * size() * sizeof(uint8_t);
-    
+    const size_t aligned_max_output_size = roundUpTo(max_output_size, alignment);
+    size_t batch_bytes_required = aligned_max_output_size * size() * sizeof(uint8_t);
+
     size_t gpu_bytes_free, gpu_bytes_total;
-    CUDA_CHECK(cudaMemGetInfo( &gpu_bytes_free, &gpu_bytes_total ));
-    if(gpu_bytes_free < batch_bytes_required){
-      std::cerr << "WARNING: Cannot fit compressed file in GPU memory. Could not run benchmark." << std::endl;
+    CUDA_CHECK(cudaMemGetInfo(&gpu_bytes_free, &gpu_bytes_total));
+    if(gpu_bytes_free < batch_bytes_required) {
+      std::cerr << "WARNING: Cannot fit data in GPU memory. Could not run benchmark." << std::endl;
       std::exit(0);
     }
 
-    m_data = nvcomp::thrust::device_vector<uint8_t>(max_output_size * size());
+    m_data = nvcomp::thrust::device_vector<uint8_t>(aligned_max_output_size * size());
 
-    std::vector<size_t> sizes(size(), max_output_size);
+    std::vector<size_t> sizes(size(), aligned_max_output_size);
     m_sizes = nvcomp::thrust::device_vector<size_t>(sizes);
 
-    for (size_t i = 0; i < batch_size; ++i) {
-      host_ptrs[i] = data() + max_output_size * i;
+    for (size_t i = 0; i < size(); ++i) {
+      host_ptrs[i] = data() + aligned_max_output_size * i;
     }
     m_ptrs = nvcomp::thrust::device_vector<void*>(host_ptrs);
   }
@@ -236,9 +241,9 @@ public:
   BatchData(const BatchData& other) = delete;
   BatchData& operator=(const BatchData& other) = delete;
 
-  void load_data (const std::vector<std::vector<char>>& host_data)
+  void load_data(const std::vector<std::vector<char>>& host_data)
   {
-    // copy data to GPU
+    // copy the data to GPU
     for (size_t i = 0; i < host_data.size(); ++i) {
       CUDA_CHECK(cudaMemcpy(
           get_ptrs()[i],
@@ -246,8 +251,15 @@ public:
           host_data[i].size(),
           cudaMemcpyHostToDevice));
     }
+
+    // copy the size to GPU
+    std::vector<size_t> sizes(m_size);
+    for (size_t i = 0; i < sizes.size(); ++i) {
+      sizes[i] = host_data[i].size();
+    }
+    m_sizes = sizes;
   }
-  
+
   void** ptrs()
   {
     return m_ptrs.data().get();
@@ -334,18 +346,19 @@ std::vector<std::vector<char>> readFileWithPageSizes(const std::string& filename
 
 
 std::vector<std::vector<char>>
-multi_file(const std::vector<std::string>& filenames, const size_t chunk_size,
-    const bool has_page_sizes, const size_t multiple_of, const size_t duplicate_count)
+multi_file(const std::vector<std::string>& filenames,
+    const bool perform_chunking, const size_t chunk_size,
+    const size_t multiple_of, const size_t duplicate_count)
 {
   std::vector<std::vector<char>> split_data;
 
   for (auto const& filename : filenames) {
-    if (!has_page_sizes) {
-      std::vector<char> filedata = readFile(filename);
-      const size_t filedata_original_size = filedata.size();
-      const size_t filedata_padding_size = (multiple_of - (filedata_original_size % multiple_of)) % multiple_of;
-      const size_t filedata_padded_size = filedata_original_size + filedata_padding_size;
+    std::vector<char> filedata = readFile(filename);
+    const size_t filedata_original_size = filedata.size();
+    const size_t filedata_padding_size = (multiple_of - (filedata_original_size % multiple_of)) % multiple_of;
+    const size_t filedata_padded_size = filedata_original_size + filedata_padding_size;
 
+    if (perform_chunking) {
       const size_t num_chunks
           = (filedata_padded_size + chunk_size - 1) / chunk_size;
       size_t offset = 0;
@@ -363,8 +376,7 @@ multi_file(const std::vector<std::string>& filenames, const size_t chunk_size,
         assert(offset <= filedata_padded_size);
       }
     } else {
-      std::vector<std::vector<char>> filedata = readFileWithPageSizes(filename);
-      split_data.insert(split_data.end(), filedata.begin(), filedata.end());
+       split_data.emplace_back(filedata);
     }
   }
 
@@ -391,9 +403,11 @@ template<
     typename CompGetTempT,
     typename CompGetSizeT,
     typename CompAsyncT,
+    typename CompAlignmentReqsT,
     typename DecompGetTempT,
     typename DecompAsyncT,
     typename DecompGetSizeT,
+    typename DecompAlignmentReqsT,
     typename IsInputValidT,
     typename FormatOptsT>
 void
@@ -401,9 +415,11 @@ run_benchmark_template(
     CompGetTempT BatchedCompressGetTempSize,
     CompGetSizeT BatchedCompressGetMaxOutputChunkSize,
     CompAsyncT BatchedCompressAsync,
+    CompAlignmentReqsT BatchedCompressAlignmentReqs,
     DecompGetTempT BatchedDecompressGetTempSize,
     DecompAsyncT BatchedDecompressAsync,
     DecompGetSizeT BatchedDecompressGetSize,
+    DecompAlignmentReqsT BatchedDecompressAlignmentReqs,
     IsInputValidT IsInputValid,
     const FormatOptsT format_opts,
     const std::vector<std::vector<char>>& data,
@@ -415,52 +431,62 @@ run_benchmark_template(
     const size_t num_files,
     const bool compressed_inputs = false,
     const bool single_output_buffer = false,
-    const bool file_output = false,
-    const std::string output_filename = "")
+    const std::string& output_compressed_filename = "",
+    const std::string& output_decompressed_filename = "")
 {
-  benchmark_assert(IsInputValid(data), "Invalid input data");
+  benchmark_assert(IsInputValid(data, compressed_inputs), "Invalid input data");
 
-  const std::string separator = use_tabs ? "\t" : ",";
-
+  const size_t batch_size = data.size();
   size_t total_bytes = 0;
-  size_t chunk_size = 0;
-  for (const std::vector<char>& part : data) {
-    total_bytes += part.size();
-    if (part.size() > chunk_size) {
-      chunk_size = part.size();
-    }
+  size_t max_input_chunk_size = 0;
+  std::vector<size_t> h_input_sizes;
+  h_input_sizes.reserve(batch_size);
+  for (const std::vector<char>& chunk : data) {
+    auto chunk_size = chunk.size();
+    total_bytes += chunk_size;
+    max_input_chunk_size = std::max(chunk_size, max_input_chunk_size);
+    h_input_sizes.emplace_back(chunk_size);
   }
+
   cudaEvent_t start, end;
   CUDA_CHECK(cudaEventCreate(&start));
   CUDA_CHECK(cudaEventCreate(&end));
-  
-  // build up metadata
-  BatchData input_data(data);
 
   cudaStream_t stream;
   CUDA_CHECK(cudaStreamCreate(&stream));
 
-  const size_t batch_size = input_data.size();
+  nvcompAlignmentRequirements_t compression_alignment_reqs;
+  nvcompStatus_t status = BatchedCompressAlignmentReqs(format_opts, &compression_alignment_reqs);
+  benchmark_assert(status == nvcompSuccess,
+      "BatchedCompressAlignmentReqs() failed.");
 
-  std::vector<size_t> h_input_sizes(batch_size);
-  CUDA_CHECK(cudaMemcpy(h_input_sizes.data(), input_data.sizes(),
-      sizeof(size_t)*batch_size, cudaMemcpyDeviceToHost));
+  // Conditional container, used for round-trip compression-decompression benchmarking
+  std::unique_ptr<BatchData> input_data;
+  if(!compressed_inputs) {
+    // Note:
+    // In C++14, make_unique<> would be a safer alternative
+    // Note 2:
+    // We need to respect the input alignment requirement of the compressor
+    input_data = std::unique_ptr<BatchData>(new BatchData(data, compression_alignment_reqs.input));
+  }
 
+  // Run multiple iterations to collect data to average
   size_t compressed_size = 0;
-  double comp_time = 0.0;
-  double decomp_time = 0.0;
+  double comp_time_s = 0.0;
+  double decomp_time_s = 0.0;
   for (size_t iter = 0; iter < count; ++iter) {
-    // compression
-    nvcompStatus_t status;
+    // Compression
     size_t comp_bytes = 0;
     float compress_ms = 0;
 
-    size_t max_out_bytes;
-    if(compressed_inputs){
-      max_out_bytes = chunk_size;
-    }else{
+    size_t max_compressed_chunk_size;
+    size_t max_uncompressed_chunk_size;
+    if (compressed_inputs) {
+      max_compressed_chunk_size = max_input_chunk_size;
+    } else {
+      max_uncompressed_chunk_size = max_input_chunk_size;
       status = BatchedCompressGetMaxOutputChunkSize(
-        chunk_size, format_opts, &max_out_bytes);
+        max_uncompressed_chunk_size, format_opts, &max_compressed_chunk_size);
       benchmark_assert(status == nvcompSuccess,
         "BatchedGetMaxOutputChunkSize() failed.");
     }
@@ -472,13 +498,19 @@ run_benchmark_template(
     CUDA_CHECK(cudaMalloc(
         &d_uncomp_sizes, batch_size*sizeof(*d_uncomp_sizes)));
     std::vector<size_t> h_ucomp_sizes(batch_size);
-    
-    BatchData compress_data(max_out_bytes, batch_size); 
-    if(!compressed_inputs){
+
+    // Note:
+    // We need to respect the output alignment requirement of the compressor
+    // and the input alignment requirement of the decompressor
+    BatchData compressed_data(max_compressed_chunk_size,
+                              batch_size,
+                              std::max(compression_alignment_reqs.output, BatchedDecompressAlignmentReqs.input));
+
+    if(!compressed_inputs) {
       // Compress on the GPU using batched API
       size_t comp_temp_bytes;
       status = BatchedCompressGetTempSize(
-          batch_size, chunk_size, format_opts, &comp_temp_bytes);
+          batch_size, max_uncompressed_chunk_size, format_opts, &comp_temp_bytes);
       benchmark_assert(status == nvcompSuccess,
           "BatchedCompressGetTempSize() failed.");
 
@@ -488,14 +520,14 @@ run_benchmark_template(
       CUDA_CHECK(cudaEventRecord(start, stream));
 
       status = BatchedCompressAsync(
-          input_data.ptrs(),
-          input_data.sizes(),
-          chunk_size,
+          input_data->ptrs(),
+          input_data->sizes(),
+          max_uncompressed_chunk_size,
           batch_size,
           d_comp_temp,
           comp_temp_bytes,
-          compress_data.ptrs(),
-          compress_data.sizes(),
+          compressed_data.ptrs(),
+          compressed_data.sizes(),
           format_opts,
           stream);
       benchmark_assert(status == nvcompSuccess,
@@ -510,39 +542,63 @@ run_benchmark_template(
       CUDA_CHECK(cudaEventElapsedTime(&compress_ms, start, end));
 
       // compute compression ratio
-      std::vector<size_t> compressed_sizes_host(compress_data.size());
+      std::vector<size_t> compressed_sizes_host(batch_size);
       CUDA_CHECK(cudaMemcpy(
           compressed_sizes_host.data(),
-          compress_data.sizes(),
-          compress_data.size() * sizeof(*compress_data.sizes()),
+          compressed_data.sizes(),
+          batch_size * sizeof(*compressed_data.sizes()),
           cudaMemcpyDeviceToHost));
       for (size_t ix = 0 ; ix < batch_size; ++ix) {
         comp_bytes += compressed_sizes_host[ix];
       }
 
-      h_ucomp_sizes = h_input_sizes;
-      CUDA_CHECK(cudaMemcpy(d_uncomp_sizes, h_input_sizes.data(), sizeof(size_t) * batch_size, cudaMemcpyDefault));
+      // During warmup, exercise the uncompressed size determination as well.
+      // Note: This only serves verification purposes. Given we perform a round trip
+      //       compression-decompression, the uncompressed sizes are known.
+      if (warmup) {
+        status = BatchedDecompressGetSize(
+          compressed_data.ptrs(),
+          compressed_data.sizes(),
+          d_uncomp_sizes,
+          batch_size,
+          stream);
+        benchmark_assert(
+          status == nvcompSuccess,
+          "BatchedDecompressGetSize() not successful");
+        CUDA_CHECK(cudaStreamSynchronize(stream));
+        CUDA_CHECK(cudaMemcpy(h_ucomp_sizes.data(), d_uncomp_sizes, sizeof(size_t) * batch_size, cudaMemcpyDefault));
+        for (size_t i=0; i<batch_size; ++i) {
+          benchmark_assert(h_ucomp_sizes[i] == h_input_sizes[i], "Batch item uncompressed size wrongly determined: i=" + std::to_string(i) + ": act_size=" +
+            std::to_string(h_ucomp_sizes[i]) + " exp_size=" +
+            std::to_string(h_input_sizes[i]));
+        }
+      } else {
+        h_ucomp_sizes = h_input_sizes;
+        CUDA_CHECK(cudaMemcpy(d_uncomp_sizes, h_input_sizes.data(), sizeof(size_t) * batch_size, cudaMemcpyDefault));
+      }
 
       // Then do file output
-      if (file_output) {
+      if (!output_compressed_filename.empty()) {
         std::vector<uint8_t> comp_data(comp_bytes);
         std::vector<uint8_t*> comp_ptrs(batch_size);
-        cudaMemcpy(comp_ptrs.data(), compress_data.ptrs(), sizeof(size_t) * batch_size, cudaMemcpyDefault);
+        CUDA_CHECK(cudaMemcpy(comp_ptrs.data(), compressed_data.ptrs(), sizeof(size_t) * batch_size, cudaMemcpyDefault));
         size_t ix_offset = 0;
         for (int ix_chunk = 0; ix_chunk < batch_size; ++ix_chunk) {
-          cudaMemcpy(&comp_data[ix_offset], comp_ptrs[ix_chunk], compressed_sizes_host[ix_chunk], cudaMemcpyDefault);
+          CUDA_CHECK(cudaMemcpy(&comp_data[ix_offset], comp_ptrs[ix_chunk], compressed_sizes_host[ix_chunk], cudaMemcpyDefault));
+          std::ofstream outfile{output_compressed_filename.c_str() + std::string(".") + std::to_string(ix_chunk), outfile.binary};
+          outfile.write(reinterpret_cast<char*>(&comp_data[ix_offset]), compressed_sizes_host[ix_chunk]);
+          outfile.close();
           ix_offset += compressed_sizes_host[ix_chunk];
         }
-
-        std::ofstream outfile{output_filename.c_str(), outfile.binary};
-        outfile.write(reinterpret_cast<char*>(comp_data.data()), ix_offset);
-        outfile.close();
       }
-    }else{
-      compress_data.load_data(data);
+    } else {
+      // Load input directly into the compressed data buffer
+      compressed_data.load_data(data);
+
+      // Determine the size of decompressed chunks
       status = BatchedDecompressGetSize(
-          compress_data.ptrs(),
-          compress_data.sizes(),
+          compressed_data.ptrs(),
+          compressed_data.sizes(),
           d_uncomp_sizes,
           batch_size,
           stream);
@@ -550,13 +606,20 @@ run_benchmark_template(
         status == nvcompSuccess,
         "BatchedDecompressGetSize() not successful");
       CUDA_CHECK(cudaStreamSynchronize(stream));
+
+      // Copy to host the expected decompressed chunk sizes
       CUDA_CHECK(cudaMemcpy(h_ucomp_sizes.data(), d_uncomp_sizes, sizeof(size_t) * batch_size, cudaMemcpyDefault));
+      max_uncompressed_chunk_size = 0;
+      for (auto& uncompressed_chunk_size : h_ucomp_sizes) {
+        max_uncompressed_chunk_size = std::max(max_uncompressed_chunk_size, uncompressed_chunk_size);
+      }
       comp_bytes = total_bytes;
     }
-    //Decompression
+
+    // Decompression
     size_t decomp_temp_bytes;
     status = BatchedDecompressGetTempSize(
-        compress_data.size(), chunk_size, &decomp_temp_bytes);
+        batch_size, max_uncompressed_chunk_size, &decomp_temp_bytes);
     benchmark_assert(status == nvcompSuccess,
         "BatchedDecompressGetTempSize() failed.");
 
@@ -573,20 +636,24 @@ run_benchmark_template(
     for (size_t i = 0; i < batch_size; ++i) {
       total_uncomp_size += h_ucomp_sizes[i];
     }
-    nvcomp::thrust::device_vector<uint8_t> one_buffer( total_uncomp_size);
+    nvcomp::thrust::device_vector<uint8_t> one_buffer;
     void ** d_output_ptrs;
 
-    if(single_output_buffer){
+    if(single_output_buffer) {
+      one_buffer = nvcomp::thrust::device_vector<uint8_t>(total_uncomp_size);
       size_t offset = 0;
       for (size_t i = 0; i < batch_size; ++i) {
+        benchmark_assert(offset % BatchedDecompressAlignmentReqs.output == 0,
+                         "Decompression output alignment requirement is not met");
         h_output_ptrs[i] = static_cast<void*>(one_buffer.data().get() + offset);
         offset += h_ucomp_sizes[i];
       }
+
       d_output_ptrs_tight = nvcomp::thrust::device_vector<void*>(h_output_ptrs);
       CUDA_CHECK(cudaEventRecord(start, stream));
       status = BatchedDecompressAsync(
-          compress_data.ptrs(),
-          compress_data.sizes(),
+          compressed_data.ptrs(),
+          compressed_data.sizes(),
           d_uncomp_sizes,
           d_decomp_sizes,
           batch_size,
@@ -601,8 +668,7 @@ run_benchmark_template(
 
       CUDA_CHECK(cudaEventRecord(end, stream));
       CUDA_CHECK(cudaStreamSynchronize(stream));
-
-    }else{
+    } else {
       size_t gpu_bytes_free, gpu_bytes_total;
       size_t benchmark_out_bytes = 0;
       CUDA_CHECK(cudaMemGetInfo( &gpu_bytes_free, &gpu_bytes_total ));
@@ -610,7 +676,7 @@ run_benchmark_template(
         benchmark_out_bytes += h_ucomp_sizes[i];
       }
 
-      if(gpu_bytes_free < benchmark_out_bytes){
+      if(gpu_bytes_free < benchmark_out_bytes) {
         std::cerr << "WARNING: Not enough memory. Could not run benchmark." << std::endl;
         std::exit(0);
       }
@@ -619,13 +685,15 @@ run_benchmark_template(
           CUDA_CHECK(cudaMalloc(&h_output_ptrs[i], h_ucomp_sizes[i]));
       }
       CUDA_CHECK(cudaMalloc(&d_output_ptrs, sizeof(*d_output_ptrs)*batch_size));
+      // Note:
+      // output alignment requirements are implicitly met
       CUDA_CHECK(cudaMemcpy(d_output_ptrs, h_output_ptrs.data(),
           sizeof(*d_output_ptrs)*batch_size, cudaMemcpyHostToDevice));
-    
+
       CUDA_CHECK(cudaEventRecord(start, stream));
       status = BatchedDecompressAsync(
-          compress_data.ptrs(),
-          compress_data.sizes(),
+          compressed_data.ptrs(),
+          compressed_data.sizes(),
           d_uncomp_sizes,
           d_decomp_sizes,
           batch_size,
@@ -656,7 +724,7 @@ run_benchmark_template(
     for (size_t i = 0; i < batch_size; ++i) {
       benchmark_assert(h_decomp_statuses[i] == nvcompSuccess, "Batch item not successfuly decompressed: i=" + std::to_string(i) + ": status=" +
       std::to_string(h_decomp_statuses[i]));
-      if(!compressed_inputs){
+      if(!compressed_inputs) {
         benchmark_assert(h_decomp_sizes[i] == h_input_sizes[i], "Batch item of wrong size: i=" + std::to_string(i) + ": act_size=" +
         std::to_string(h_decomp_sizes[i]) + " exp_size=" +
         std::to_string(h_input_sizes[i]));
@@ -669,7 +737,7 @@ run_benchmark_template(
     // only verify last iteration
     if (iter + 1 == count && !compressed_inputs) {
       std::vector<void*> h_input_ptrs(batch_size);
-      CUDA_CHECK(cudaMemcpy(h_input_ptrs.data(), input_data.ptrs(),
+      CUDA_CHECK(cudaMemcpy(h_input_ptrs.data(), input_data->ptrs(),
           sizeof(void*)*batch_size, cudaMemcpyDeviceToHost));
       for (size_t ix_chunk = 0; ix_chunk < batch_size; ++ix_chunk) {
         std::vector<uint8_t> exp_data(h_input_sizes[ix_chunk]);
@@ -687,7 +755,7 @@ run_benchmark_template(
       }
     }
 
-    if(compressed_inputs && file_output){
+    if(compressed_inputs && !output_decompressed_filename.empty()) {
       total_bytes = 0;
       for (size_t ix = 0 ; ix < batch_size; ++ix) {
         total_bytes += h_decomp_sizes[ix];
@@ -697,21 +765,21 @@ run_benchmark_template(
       for (int ix_chunk = 0; ix_chunk < batch_size; ++ix_chunk) {
         CUDA_CHECK(cudaMemcpy(&uncomp_data[ix_offset], h_output_ptrs[ix_chunk],
         h_decomp_sizes[ix_chunk], cudaMemcpyDeviceToHost));
-        if(single_output_buffer){
-          std::ofstream outfile{output_filename.c_str() + std::to_string(ix_chunk), outfile.binary};
+        if(!single_output_buffer) {
+          std::ofstream outfile{output_decompressed_filename.c_str() + std::string(".") + std::to_string(ix_chunk), outfile.binary};
           outfile.write(reinterpret_cast<char*>(&uncomp_data[ix_offset]), h_decomp_sizes[ix_chunk]);
           outfile.close();
         }
         ix_offset += h_decomp_sizes[ix_chunk];
       }
-      if(!single_output_buffer){
-        std::ofstream outfile{output_filename.c_str(), outfile.binary};
+      if(single_output_buffer) {
+        std::ofstream outfile{output_decompressed_filename.c_str(), outfile.binary};
         outfile.write(reinterpret_cast<char*>(uncomp_data.data()), total_bytes);
         outfile.close();
       }
     }
 
-    if(!single_output_buffer){
+    if(!single_output_buffer) {
       CUDA_CHECK(cudaFree(d_output_ptrs));
       for (size_t i = 0; i < batch_size; ++i) {
         CUDA_CHECK(cudaFree(h_output_ptrs[i]));
@@ -722,8 +790,8 @@ run_benchmark_template(
 
     // count everything from our iteration
     compressed_size += comp_bytes;
-    comp_time += compress_ms * 1.0e-3;
-    decomp_time += decompress_ms * 1.0e-3;
+    comp_time_s += compress_ms * 1.0e-3;
+    decomp_time_s += decompress_ms * 1.0e-3;
   }
   CUDA_CHECK(cudaStreamDestroy(stream));
   CUDA_CHECK(cudaEventDestroy(start));
@@ -731,26 +799,27 @@ run_benchmark_template(
 
   // average iterations
   compressed_size /= count;
-  comp_time /= count;
-  decomp_time /= count;
+  comp_time_s /= count;
+  decomp_time_s /= count;
 
   if (!warmup) {
     const double comp_ratio = (double)total_bytes / compressed_size;
     const double compression_throughput_gbs = (double)total_bytes / (1.0e9 *
-        comp_time);
+        comp_time_s);
     const double decompression_throughput_gbs = (double)total_bytes / (1.0e9 *
-        decomp_time);
+        decomp_time_s);
 
     if (!csv_output) {
       std::cout << "----------" << std::endl;
       std::cout << "files: " << num_files << std::endl;
       std::cout << "uncompressed (B): " << total_bytes << std::endl;
-      std::cout << "comp_size: " << compressed_size 
+      std::cout << "comp_size: " << compressed_size
                 << ", compressed ratio: " << std::fixed << std::setprecision(4)
                 << comp_ratio << std::endl;
       std::cout << "compression throughput (GB/s): " << compression_throughput_gbs << std::endl;
       std::cout << "decompression throughput (GB/s): " << decompression_throughput_gbs << std::endl;
     } else {
+      const std::string separator = use_tabs ? "\t" : ",";
       // header
       std::cout << "Files";
       std::cout << separator << "Duplicate data";
@@ -771,7 +840,7 @@ run_benchmark_template(
       std::cout << separator << (total_bytes * 1e-6); // MB
       std::cout << separator << data.size();
       std::cout << separator << ((1e-3*total_bytes) / data.size()); // KB
-      std::cout << separator << (1e-3*chunk_size); // KB
+      std::cout << separator << (1e-3*max_input_chunk_size); // KB
       std::cout << separator << total_bytes;
       std::cout << separator << compressed_size;
       std::cout << separator << std::fixed << std::setprecision(2)
@@ -792,7 +861,9 @@ void run_benchmark(
     const size_t duplicate_count,
     const size_t num_files,
     const bool compressed_inputs,
-    const bool single_output_buffer);
+    const bool single_output_buffer,
+    const std::string& output_compressed_filename,
+    const std::string& output_decompressed_filename);
 
 struct args_type {
   int gpu;
@@ -809,10 +880,11 @@ struct args_type {
   size_t duplicate_count;
   bool csv_output;
   bool use_tabs;
-  bool has_page_sizes;
   size_t chunk_size;
   bool compressed_inputs;
   bool single_output_buffer;
+  std::string output_compressed_filename;
+  std::string output_decompressed_filename;
 };
 
 struct parameter_type {
@@ -867,7 +939,6 @@ args_type parse_args(int argc, char ** argv) {
   args.duplicate_count = 0;
   args.csv_output = false;
   args.use_tabs = false;
-  args.has_page_sizes = false;
   args.chunk_size = 65536;
   args.compressed_inputs = false;
   args.single_output_buffer = false;
@@ -885,21 +956,21 @@ args_type parse_args(int argc, char ** argv) {
         "length becomes a multiple of the given argument (in bytes). Only applicable to "
         "data without page sizes.",
         std::to_string(args.multiple_of)},
-    {"x", "duplicate_data", "Clone uncompressed chunks multiple times.",
+    {"x", "duplicate_data", "Clone uncompressed chunks multiple times (scale factor, 1x means no duplication).",
         std::to_string(args.duplicate_count)},
     {"c", "csv_output", "Output in column/csv format.",
         bool_to_string(args.csv_output)},
     {"e", "tab_separator", "Use tabs instead of commas when "
         "'--csv_output' is specificed.",
         bool_to_string(args.use_tabs)},
-    {"s", "file_with_page_sizes", "File(s) contain pages, each prefixed "
-        "with int64 size.", bool_to_string(args.has_page_sizes)},
     {"p", "chunk_size", "Chunk size when splitting uncompressed data.",
         std::to_string(args.chunk_size)},
     {"compressed", "compressed_inputs", "The input dataset is compressed.",
         std::to_string(args.compressed_inputs)},
-    {"single", "single_output_buffer", "There is only one tight output buffer.",
+    {"single", "single_output_buffer", "There is only one tight output buffer during decompression.",
         std::to_string(args.single_output_buffer)},
+    {"oc", "output_compressed_file", "Output compressed basename", ""},
+    {"o", "output_decompressed_file", "Output decompressed filename", ""}
   };
 
   char** argv_end = argv + argc;
@@ -957,10 +1028,6 @@ args_type parse_args(int argc, char ** argv) {
           std::string on(*(argv++));
           args.use_tabs = parse_bool(on);
           break;
-        } else if (param.long_flag == "file_with_page_sizes") {
-          std::string on(*(argv++));
-          args.has_page_sizes = parse_bool(on);
-          break;
         } else if (param.long_flag == "chunk_size") {
           args.chunk_size = size_t(std::stoull(*(argv++)));
           break;
@@ -971,6 +1038,12 @@ args_type parse_args(int argc, char ** argv) {
         } else if (param.long_flag == "single_output_buffer") {
           std::string on(*(argv++));
           args.single_output_buffer = parse_bool(on);
+          break;
+        } else if (param.long_flag == "output_compressed_file") {
+          args.output_compressed_filename = *(argv++);
+          break;
+        } else if (param.long_flag == "output_decompressed_file") {
+          args.output_decompressed_filename = *(argv++);
           break;
         } else {
           std::cerr << "INTERNAL ERROR: Unhandled paramter '" << arg << "'." << std::endl;
@@ -993,11 +1066,6 @@ args_type parse_args(int argc, char ** argv) {
     std::exit(1);
   }
 
-  if(args.multiple_of > 1 && args.has_page_sizes) {
-    std::cerr << "ERROR: If the input files contain page sizes, the argument 'multiple_of' is not permitted." << std::endl;
-    std::exit(1);
-  }
-
   return args;
 }
 
@@ -1007,19 +1075,22 @@ int main(int argc, char** argv)
 
   CUDA_CHECK(cudaSetDevice(args.gpu));
 
-  auto data = multi_file(args.filenames, args.chunk_size, args.has_page_sizes, args.multiple_of,
+  auto data = multi_file(args.filenames, !args.compressed_inputs, args.chunk_size, args.multiple_of,
       args.duplicate_count);
 
   // one warmup to allow cuda to initialize
   run_benchmark(data, true, args.warmup_count, false, false,
-      args.duplicate_count, args.filenames.size(), args.compressed_inputs, args.single_output_buffer);
+      args.duplicate_count, args.filenames.size(), args.compressed_inputs, args.single_output_buffer,
+      args.output_compressed_filename,
+      args.output_decompressed_filename);
 
   // second run to report times
   run_benchmark(data, false, args.iteration_count, args.csv_output,
-      args.use_tabs, args.duplicate_count, args.filenames.size(), args.compressed_inputs, args.single_output_buffer);
+      args.use_tabs, args.duplicate_count, args.filenames.size(), args.compressed_inputs, args.single_output_buffer,
+      args.output_compressed_filename,
+      args.output_decompressed_filename);
 
   return 0;
 }
 
 #endif
-
