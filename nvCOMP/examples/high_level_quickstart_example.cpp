@@ -49,8 +49,10 @@ void decomp_compressed_with_manager_factory_example(uint8_t* device_input_ptrs, 
   // then it will be deallocated in destructor of the manager, which require cuda stream to exists
   // and this is why we introduce the scope in each of the following examples.
 
-  const int chunk_size = 1 << 16;
+  const size_t chunk_size = 1 << 16;
   nvcompType_t data_type = NVCOMP_TYPE_CHAR;
+
+  static_assert(chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize, "Chunk size must be less than the constant specified in the nvCOMP library");
 
   nvcompBatchedLZ4Opts_t format_opts{data_type};
   LZ4Manager nvcomp_manager{chunk_size, format_opts, stream};
@@ -90,26 +92,27 @@ void decomp_compressed_with_manager_factory_example(uint8_t* device_input_ptrs, 
  *  1) construct an nvcompManager
  *  2) compress the input data
  *  3) decompress the input data
- */ 
+ */
 void comp_decomp_with_single_manager(uint8_t* device_input_ptrs, const size_t input_buffer_len)
 {
   cudaStream_t stream;
   CUDA_CHECK(cudaStreamCreate(&stream));
 
-  const int chunk_size = 1 << 16;
+  const size_t chunk_size = 1 << 16;
   nvcompType_t data_type = NVCOMP_TYPE_CHAR;
 
-  nvcompBatchedLZ4Opts_t format_opts{data_type};
+  static_assert(chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize, "Chunk size must be less than the constant specified in the nvCOMP library");
 
   // We are introducing a scope, so that nvcomp_manager is destructed
   // before we destroy the stream.
   {
+    nvcompBatchedLZ4Opts_t format_opts{data_type};
     LZ4Manager nvcomp_manager{chunk_size, format_opts, stream};
     CompressionConfig comp_config = nvcomp_manager.configure_compression(input_buffer_len);
 
     uint8_t* comp_buffer;
     CUDA_CHECK(cudaMalloc(&comp_buffer, comp_config.max_compressed_buffer_size));
-    
+
     nvcomp_manager.compress(device_input_ptrs, comp_buffer, comp_config);
 
     DecompressionConfig decomp_config = nvcomp_manager.configure_decompression(comp_buffer);
@@ -130,20 +133,20 @@ void comp_decomp_with_single_manager(uint8_t* device_input_ptrs, const size_t in
 /**
  * Additionally, we can use the same manager to execute multiple streamed compressions / decompressions
  * In this example we configure the multiple decompressions by inspecting the compressed buffers
- */  
+ */
 void multi_comp_decomp_example(const std::vector<uint8_t*>& device_input_ptrs, std::vector<size_t>& input_buffer_lengths)
 {
   size_t num_buffers = input_buffer_lengths.size();
-  
+
   using namespace std;
 
   cudaStream_t stream;
   CUDA_CHECK(cudaStreamCreate(&stream));
 
-  const int chunk_size = 1 << 16;
+  const size_t chunk_size = 1 << 16;
   nvcompType_t data_type = NVCOMP_TYPE_CHAR;
 
-  nvcompBatchedLZ4Opts_t format_opts{data_type};
+  static_assert(chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize, "Chunk size must be less than the constant specified in the nvCOMP library");
 
   // Are asynchronous memory (de)allocations supported?
   bool use_async_mem_ops = false;
@@ -152,6 +155,11 @@ void multi_comp_decomp_example(const std::vector<uint8_t*>& device_input_ptrs, s
     CUDA_CHECK(cudaGetDevice(&device_id));
     int attribute_res_val;
     cudaError_t result = cudaDeviceGetAttribute(&attribute_res_val, cudaDevAttrMemoryPoolsSupported, device_id);
+    if (result == cudaErrorInvalidValue) {
+      cudaGetLastError(); // reset the cuda error (if any)
+    } else {
+      CUDA_CHECK(result);
+    }
     if(result == cudaSuccess && attribute_res_val == 1) {
       use_async_mem_ops = true;
     }
@@ -160,6 +168,7 @@ void multi_comp_decomp_example(const std::vector<uint8_t*>& device_input_ptrs, s
   // We are introducing a scope, so that nvcomp_manager is destructed
   // before we destroy the stream.
   {
+    nvcompBatchedLZ4Opts_t format_opts{data_type};
     LZ4Manager nvcomp_manager{chunk_size, format_opts, stream};
 
     size_t offset = 8;
@@ -226,14 +235,17 @@ void multi_comp_decomp_example_comp_config(const std::vector<uint8_t*>& device_i
   // We are introducing a scope, so that nvcomp_manager is destructed
   // before we destroy the stream.
   {
-    const int chunk_size = 1 << 16;
+    const size_t chunk_size = 1 << 16;
     nvcompType_t data_type = NVCOMP_TYPE_CHAR;
-    nvcompBatchedLZ4Opts_t format_opts{data_type};
-    std::vector<CompressionConfig> comp_configs;
 
+    static_assert(chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize, "Chunk size must be less than the constant specified in the nvCOMP library");
+
+    nvcompBatchedLZ4Opts_t format_opts{data_type};
     LZ4Manager nvcomp_manager{chunk_size, format_opts, stream};
 
     size_t num_buffers = input_buffer_lengths.size();
+
+    std::vector<CompressionConfig> comp_configs;
     comp_configs.reserve(num_buffers);
 
     std::vector<uint8_t*> comp_result_buffers(num_buffers);
@@ -278,10 +290,12 @@ void multi_comp_decomp_batched(const std::vector<uint8_t*>& device_input_ptrs, s
   // We are introducing a scope, so that nvcomp_manager is destructed
   // before we destroy the stream.
   {
-    const int chunk_size = 1 << 16;
+    const size_t chunk_size = 1 << 16;
     nvcompType_t data_type = NVCOMP_TYPE_CHAR;
-    nvcompBatchedLZ4Opts_t format_opts{data_type};
 
+    static_assert(chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize, "Chunk size must be less than the constant specified in the nvCOMP library");
+
+    nvcompBatchedLZ4Opts_t format_opts{data_type};
     LZ4Manager nvcomp_manager{chunk_size, format_opts, stream};
 
     size_t num_buffers = input_buffer_lengths.size();
@@ -335,16 +349,23 @@ void multi_comp_decomp_raw(const std::vector<uint8_t*>& device_input_ptrs, std::
   // We are introducing a scope, so that nvcomp_manager is destructed
   // before we destroy the stream.
   {
-    const int chunk_size = 1 << 16;
+    const size_t chunk_size = 1 << 16;
     nvcompType_t data_type = NVCOMP_TYPE_CHAR;
-    nvcompBatchedLZ4Opts_t format_opts{data_type};
 
-    // Chunk_size is ignored when we use BitstreamKind::RAW
+    nvcompBatchedLZ4Opts_t format_opts{data_type};
+    // Chunk_size is ignored when we use BitstreamKind::RAW, since data is compressed as is.
+    // However, the input data itself still needs to satisfy the maximum chunk size limitations.
     LZ4Manager nvcomp_manager{chunk_size, format_opts, stream, NoComputeNoVerify, BitstreamKind::RAW};
 
     size_t num_buffers = input_buffer_lengths.size();
 
     // Configure compression looks exactly the same as with default BitstreamKind.
+    // Verify that the individual buffers still lie within the max compression size limitations.
+    for (size_t input_buffer_length : input_buffer_lengths) {
+      if(input_buffer_length > nvcompLZ4CompressionMaxAllowedChunkSize) {
+        throw std::runtime_error("Individual buffer lengths cannot exceed the maximum allowed chunk size for compression.\n");
+      }
+    }
     auto comp_configs = nvcomp_manager.configure_compression(input_buffer_lengths);
 
     // Allocate buffer for compressed data
@@ -390,8 +411,10 @@ void comp_decomp_with_single_manager_with_checksums(uint8_t* device_input_ptrs, 
   cudaStream_t stream;
   CUDA_CHECK(cudaStreamCreate(&stream));
 
-  const int chunk_size = 1 << 16;
+  const size_t chunk_size = 1 << 16;
   nvcompType_t data_type = NVCOMP_TYPE_CHAR;
+
+  static_assert(chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize, "Chunk size must be less than the constant specified in the nvCOMP library");
 
   /* 
    * There are 5 possible modes for checksum processing as
@@ -474,8 +497,10 @@ void decomp_compressed_with_manager_factory_with_checksums(
   cudaStream_t stream;
   CUDA_CHECK(cudaStreamCreate(&stream));
 
-  const int chunk_size = 1 << 16;
+  const size_t chunk_size = 1 << 16;
   nvcompType_t data_type = NVCOMP_TYPE_CHAR;
+
+  static_assert(chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize, "Chunk size must be less than the constant specified in the nvCOMP library");
 
   // We are introducing a scope, so that nvcomp_manager is destructed
   // before we destroy the stream.
@@ -592,7 +617,7 @@ int main()
   {
     // With BitstreamKind::RAW, the manager doesn't split the input data into smaller chunks like manager with
     // default BitstreamKind (NVCOMP_NATIVE) do. We need to provide already chunked data to have efficient
-    // compression and decompression. 
+    // compression and decompression.
     // For more details see multi_comp_decomp_raw function descriptions or docs.
 
     const size_t num_buffers = 100;

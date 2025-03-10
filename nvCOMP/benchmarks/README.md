@@ -76,7 +76,6 @@ This folder contains benchmarks demonstrating the performance (and usage) of the
 
     ```
     benchmark_zstd_chunked {-f|--input_file} <input_file>
-                           [{-o|--output-file} <compressed file output>]
     ```
 
 * [High-level interface benchmark](benchmark_hlif.cpp)
@@ -96,23 +95,44 @@ This folder contains benchmarks demonstrating the performance (and usage) of the
 Most of the benchmark executables also support:
 
 ```
-{-g|--gpu} <gpu_num>                             GPU device ordinal to use for benchmarking
-{-w|--warmup_count} <num_iterations>             The number of warmup (unrecorded) iterations to perform
-{-i|--iteration_count} <num_iterations>          The number of recorded iterations to perform
-{-m|--multiple_of} <num_bytes>                   The number of bytes the input is padded to, such that its overall length
-                                                 becomes a multiple of the given argument (in bytes). Only applicable to
-                                                 data without page sizes.
-{-x|--duplicate_data} <num_copies>               The number of copies to make of the input data before compressing
-{-c|--csv_output} {false|true}                   When true, the output is in comma-separated values (CSV) format
-{-e|--tab_separator} {false|true}                When true and --csv_output is true, tabs are used to separate values,
-                                                 instead of commas
-{-s|--file_with_page_sizes} {false|true}         When true, the input file must contain pages, each prefixed with int64 size
-{-p|--chunk_size} <num_bytes>                    Chunk size when splitting uncompressed data
-{-compressed|--compressed_inputs} {false|trues}  The input dataset is compressed
-{-?|--help}                                      Show help text for the benchmark
+{-g|--gpu} <gpu_num>                                 GPU device ordinal to use for benchmarking
+{-w|--warmup_count} <num_iterations>                 The number of warmup (unrecorded) iterations to perform
+{-i|--iteration_count} <num_iterations>              The number of recorded iterations to perform
+{-m|--multiple_of} <num_bytes>                       The number of bytes the input is padded to, such that its overall length
+                                                     becomes a multiple of the given argument (in bytes). Only applicable to
+                                                     data without page sizes.
+{-x|--duplicate_data} <num_copies>                   The number of copies to make of the input data before compressing
+{-c|--csv_output} {false|true}                       When true, the output is in comma-separated values (CSV) format
+{-e|--tab_separator} {false|true}                    When true and --csv_output is true, tabs are used to separate values,
+                                                     instead of commas
+{-p|--chunk_size} <num_bytes>                        Chunk size when splitting uncompressed data
+{-oc|--output_compressed_file} <output_file>         Path for the resulting compressed data chunks
+{-o|--output_decompressed_file} <output_file>        Path for the resulting decompressed data (chunks)
+{-single|--single_output_buffer} {false|true}        Use a single buffer for decompressing data
+{-compressed|--compressed_inputs} {false|true}       The input dataset is compressed
+{-?|--help}                                          Show help text for the benchmark
 ```
 
-For compressors that accept a data type option, input data for which all of the input matches that type will usually compress better than arbitrary data. The sizes of the types are 1 byte for `char/uchar/bits`, 2 bytes for `short/ushort`, 4 bytes for `int/uint`, 8 bytes for `longlong/ulonglong`. Input files whose sizes aren't multiples of the data type size are unsupported.
+For compressors that accept a data type option (`--type`), input data for which all of the input matches that type will usually compress better than arbitrary data. The sizes of the types are 1 byte for `char/uchar/bits`, 2 bytes for `short/ushort`, 4 bytes for `int/uint`, and 8 bytes for `longlong/ulonglong`. Input files whose sizes aren't multiples of the data type size are unsupported. However, one can apply a padding to the input data via `--multiple_of` to make sure that the overall input size becomes an integer multiple of the data type size.
+
+You can perform a round-trip compression and decompression while saving the nvCOMP output via the following commands:
+```sh
+# Perform the compression
+# It will save the compressed chunks separately
+./benchmark_zstd_chunked -f <input data> \
+                         --output_compressed_file out.dump
+
+# Perform the decompression
+# Note: If we want to recover the original file, it is important to feed the
+#       executable with chunks in the correct order.
+./benchmark_zstd_chunked -f $(ls -v out.dump*) \
+                         -compressed true \
+                         -single true \
+                         --output_decompressed_file replicated.dump
+
+# Perform a verification against the original input
+diff <input data> replicated.dump
+```
 
 If you would like to use standard benchmark datasets, there are two described here, "TPC-H" and "Mortgage", both of which are in the form of text tables that will first need to have a column extracted and converted to binary data, using the `text_to_binary.py` script.
 
@@ -172,5 +192,5 @@ cmake .. -DCMAKE_PREFIX_PATH=<nvCOMP sysroot path> \
          -DCMAKE_BUILD_TYPE=Release
 
 # Run the actual build
-cmake --build . --parallel 14
+cmake --build . --config Release --parallel 14
 ```

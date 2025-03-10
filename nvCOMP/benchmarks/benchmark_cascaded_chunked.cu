@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2020-2024 NVIDIA CORPORATION & AFFILIATES.
+ * SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES.
  * All rights reserved. SPDX-License-Identifier: LicenseRef-NvidiaProprietary
  *
  * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
@@ -67,7 +67,8 @@ static bool handleCommandLineArgument(
   return false;
 }
 
-static bool isCascadedInputValid(const std::vector<std::vector<char>>& data)
+static bool isCascadedInputValid(const std::vector<std::vector<char>>& data,
+                                 bool compressed_inputs)
 {
   // Find the type size, to check that all chunk sizes are a multiple of it.
   size_t typeSize = 1;
@@ -97,13 +98,15 @@ static bool isCascadedInputValid(const std::vector<std::vector<char>>& data)
     return false;
   }
 
-  for (const auto& chunk : data) {
-    if ((chunk.size() % typeSize) != 0) {
-      std::cerr << "ERROR: Input data must have a length and chunk size that "
-                   "are a multiple of "
-                << typeSize << ", the size of the specified data type."
-                << std::endl;
-      return false;
+  if(!compressed_inputs) {
+    for (const auto& chunk : data) {
+      if ((chunk.size() % typeSize) != 0) {
+        std::cerr << "ERROR: Input data must have a length and chunk size that "
+                    "are a multiple of "
+                  << typeSize << ", the size of the specified data type."
+                  << std::endl;
+        return false;
+      }
     }
   }
   return true;
@@ -118,15 +121,19 @@ void run_benchmark(
     const size_t duplicate_count,
     const size_t num_files,
     const bool compressed_inputs,
-    const bool single_output_buffer)
+    const bool single_output_buffer,
+    const std::string& output_compressed_filename,
+    const std::string& output_decompressed_filename)
 {
   run_benchmark_template(
       nvcompBatchedCascadedCompressGetTempSize,
       nvcompBatchedCascadedCompressGetMaxOutputChunkSize,
       nvcompBatchedCascadedCompressAsync,
+      nvcompBatchedCascadedCompressGetRequiredAlignments,
       nvcompBatchedCascadedDecompressGetTempSize,
       nvcompBatchedCascadedDecompressAsync,
       nvcompBatchedCascadedGetDecompressSizeAsync,
+      nvcompBatchedCascadedDecompressRequiredAlignments,
       isCascadedInputValid,
       nvcompBatchedCascadedTestOpts,
       data,
@@ -137,5 +144,7 @@ void run_benchmark(
       duplicate_count,
       num_files,
       compressed_inputs,
-      single_output_buffer);
+      single_output_buffer,
+      output_compressed_filename,
+      output_decompressed_filename);
 }

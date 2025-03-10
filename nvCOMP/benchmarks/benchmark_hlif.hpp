@@ -82,7 +82,7 @@ void run_benchmark(
         d_in_data,
         d_comp_out,
         compress_config);
-    cudaStreamSynchronize(stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
 
 #ifdef NVTX_ENABLED
     nvtxRangePop();
@@ -183,11 +183,11 @@ void run_benchmark(
       "Decompressed result incorrect size.");
 
   std::vector<T> res(input_element_count);
-  cudaMemcpy(
+  CUDA_CHECK(cudaMemcpy(
       res.data(),
       decomp_out_ptr,
       input_element_count * sizeof(T),
-      cudaMemcpyDeviceToHost);
+      cudaMemcpyDeviceToHost));
   
   CUDA_CHECK(cudaFree(decomp_out_ptr));
   
@@ -198,7 +198,7 @@ void run_benchmark(
   for (size_t i = 0; i < data.size(); i++)
     std::cout << reinterpret_cast<T*>(decomp_out_ptr)[i] << " ";
   std::cout << std::endl;
-#endif
+#endif // VERBOSE > 1
   benchmark_assert(res == data, "Decompressed data does not match input.");
 }
 

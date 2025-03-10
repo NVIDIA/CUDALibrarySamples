@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES.
+ * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES.
  * All rights reserved. SPDX-License-Identifier: LicenseRef-NvidiaProprietary
  *
  * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
@@ -10,11 +10,10 @@
  * its affiliates is strictly prohibited.
 */
 
+#include "zstd.h"
+#include "nvcomp/zstd.h"
 #include "BatchData.h"
 
-#include "lz4.h"
-#include "lz4hc.h"
-#include "nvcomp/lz4.h"
 
 BatchDataCPU GetBatchDataCPU(const BatchData& batch_data, bool copy_data)
 {
@@ -27,7 +26,6 @@ BatchDataCPU GetBatchDataCPU(const BatchData& batch_data, bool copy_data)
   return batch_data_cpu;
 }
 
-// Benchmark performance from the binary data file fname
 static void run_example(const std::vector<std::vector<char>>& data,
                         size_t warmup_iteration_count, size_t total_iteration_count)
 {
@@ -36,27 +34,28 @@ static void run_example(const std::vector<std::vector<char>>& data,
     throw std::runtime_error("ERROR: the total iteration count must be greater than the warmup iteration count");
   }
 
-  size_t total_bytes = 0;
-  for (const std::vector<char>& part : data) {
-    total_bytes += part.size();
-  }
+  size_t total_bytes =
+    std::accumulate(data.begin(), data.end(), size_t(0), [](const size_t& a, const std::vector<char>& part) {
+        return a + part.size();
+  });
 
   std::cout << "----------" << std::endl;
   std::cout << "files: " << data.size() << std::endl;
   std::cout << "uncompressed (B): " << total_bytes << std::endl;
 
   const size_t chunk_size = 1 << 16;
-  static_assert(chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize, "Chunk size must be less than the constant specified in the nvCOMP library");
+  static_assert(chunk_size <= ZSTD_BLOCKSIZE_MAX, "Chunk size must be less than the constant specified in the Zstandard library");
+  static_assert(chunk_size <= nvcompZstdCompressionMaxAllowedChunkSize, "Chunk size must be less than the constant specified in the nvCOMP library");
 
-  auto nvcompBatchedLZ4Opts = nvcompBatchedLZ4DefaultOpts;
+  auto nvcompBatchedZstdOpts = nvcompBatchedZstdDefaultOpts;
 
   // Query compression alignment requirements
   nvcompAlignmentRequirements_t compression_alignment_reqs;
-  nvcompStatus_t status = nvcompBatchedLZ4CompressGetRequiredAlignments(
-      nvcompBatchedLZ4Opts,
+  nvcompStatus_t status = nvcompBatchedZstdCompressGetRequiredAlignments(
+      nvcompBatchedZstdOpts,
       &compression_alignment_reqs);
   if (status != nvcompSuccess) {
-    throw std::runtime_error("ERROR: nvcompBatchedLZ4CompressGetRequiredAlignments() not successful");
+    throw std::runtime_error("ERROR: nvcompBatchedZstdCompressGetRequiredAlignments() not successful");
   }
 
   // Build up GPU data
@@ -65,23 +64,23 @@ static void run_example(const std::vector<std::vector<char>>& data,
 
   // Compress on the GPU using batched API
   size_t comp_temp_bytes;
-  status = nvcompBatchedLZ4CompressGetTempSize(
+  status = nvcompBatchedZstdCompressGetTempSize(
       chunk_count,
       chunk_size,
-      nvcompBatchedLZ4Opts,
+      nvcompBatchedZstdOpts,
       &comp_temp_bytes);
   if (status != nvcompSuccess) {
-    throw std::runtime_error("ERROR: nvcompBatchedLZ4CompressGetTempSize() not successful");
+    throw std::runtime_error("ERROR: nvcompBatchedZstdCompressGetTempSize() not successful");
   }
 
   void* d_comp_temp;
   CUDA_CHECK(cudaMalloc(&d_comp_temp, comp_temp_bytes));
 
   size_t max_out_bytes;
-  status = nvcompBatchedLZ4CompressGetMaxOutputChunkSize(
-      chunk_size, nvcompBatchedLZ4Opts, &max_out_bytes);
+  status = nvcompBatchedZstdCompressGetMaxOutputChunkSize(
+      chunk_size, nvcompBatchedZstdOpts, &max_out_bytes);
   if (status != nvcompSuccess) {
-    throw std::runtime_error("ERROR: nvcompBatchedLZ4CompressGetMaxOutputChunkSize() not successful");
+    throw std::runtime_error("ERROR: nvcompBatchedZstdCompressGetMaxOutputChunkSize() not successful");
   }
 
   BatchData compressed_data(max_out_bytes, chunk_count, compression_alignment_reqs.output);
@@ -94,7 +93,7 @@ static void run_example(const std::vector<std::vector<char>>& data,
   CUDA_CHECK(cudaEventCreate(&end));
 
   auto perform_compression = [&]() {
-    if (nvcompBatchedLZ4CompressAsync(
+    if (nvcompBatchedZstdCompressAsync(
           input_data.ptrs(),
           input_data.sizes(),
           chunk_size,
@@ -103,9 +102,9 @@ static void run_example(const std::vector<std::vector<char>>& data,
           comp_temp_bytes,
           compressed_data.ptrs(),
           compressed_data.sizes(),
-          nvcompBatchedLZ4Opts,
+          nvcompBatchedZstdOpts,
           stream) != nvcompSuccess) {
-      throw std::runtime_error("nvcompBatchedLZ4CompressAsync() failed.");
+      throw std::runtime_error("nvcompBatchedZstdCompressAsync() failed.");
     }
   };
 
@@ -134,10 +133,7 @@ static void run_example(const std::vector<std::vector<char>>& data,
       chunk_count * sizeof(*compressed_data.sizes()),
       cudaMemcpyDeviceToHost));
 
-  size_t comp_bytes = 0;
-  for (const size_t s : compressed_sizes_host) {
-    comp_bytes += s;
-  }
+  size_t comp_bytes = std::accumulate(compressed_sizes_host.begin(), compressed_sizes_host.end(), size_t(0));
 
   std::cout << "comp_size: " << comp_bytes
             << ", compressed ratio: " << std::fixed << std::setprecision(2)
@@ -151,15 +147,15 @@ static void run_example(const std::vector<std::vector<char>>& data,
 
   // loop over chunks on the CPU, decompressing each one
   for (size_t i = 0; i < chunk_count; ++i) {
-    const int size = LZ4_decompress_safe(
-        static_cast<const char*>(compressed_data_cpu.ptrs()[i]),
-        static_cast<char*>(decompressed_data_cpu.ptrs()[i]),
-        static_cast<int>(compressed_data_cpu.sizes()[i]),
-        static_cast<int>(decompressed_data_cpu.sizes()[i]));
-    if (size == 0) {
+    size_t size = ZSTD_decompress(decompressed_data_cpu.ptrs()[i],
+                                  decompressed_data_cpu.sizes()[i],
+                                  compressed_data_cpu.ptrs()[i],
+                                  compressed_data_cpu.sizes()[i]);
+    if (ZSTD_isError(size)) {
       throw std::runtime_error(
-          "LZ4 CPU failed to decompress chunk " + std::to_string(i) + ".");
+          "Zstandard CPU failed to decompress chunk " + std::to_string(i) + ". Error code: " + std::to_string(size) + ", Message: " + ZSTD_getErrorName(size));
     }
+    decompressed_data_cpu.sizes()[i] = size;
   }
   // Validate decompressed data against input
   if (!(decompressed_data_cpu == input_data)) {

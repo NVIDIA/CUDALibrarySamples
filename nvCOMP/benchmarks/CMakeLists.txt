@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES.
 # All rights reserved. SPDX-License-Identifier: LicenseRef-NvidiaProprietary
 #
 # NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
@@ -18,10 +18,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   option(BUILD_STATIC "Use the static build of nvCOMP" OFF)
 
   # Compilation settings
-  set(CMAKE_CXX_STANDARD 11)
-  set(CMAKE_CUDA_STANDARD 11)
-  set(CMAKE_CXX_EXTENSIONS OFF)
   set(NVCOMP_NAMESPACE "nvcomp::")
+  set(GPU_ARCHS "70;75;80;86;89;90;100;120")
   add_compile_definitions("THRUST_CUB_WRAPPED_NAMESPACE=nvcomp")
   if (BUILD_STATIC)
     add_compile_definitions("NVCOMP_STATIC_DEFINE")
@@ -35,31 +33,19 @@ else()
   set(NVCOMP_NAMESPACE "")
 endif()
 
+# Making the compilation consistent between standalone and library build modes
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CUDA_STANDARD 11)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
 if (BUILD_STATIC)
   set(NVCOMP_LIBRARY_NAME "${NVCOMP_NAMESPACE}nvcomp_static")
 else()
   set(NVCOMP_LIBRARY_NAME "${NVCOMP_NAMESPACE}nvcomp")
 endif()
 
-# Applicable GPU architectures
-set(GPU_ARCHS "60;70-real")
-if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER "9")
-  set(GPU_ARCHS ${GPU_ARCHS} "75-real")
-endif()
-if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "11")
-  set(GPU_ARCHS ${GPU_ARCHS} "80")
-endif()
-if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "11.1")
-  set(GPU_ARCHS ${GPU_ARCHS} "86")
-endif()
-if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "11.8")
-  set(GPU_ARCHS ${GPU_ARCHS} "89")
-endif()
-if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "12.0")
-  set(GPU_ARCHS ${GPU_ARCHS} "90")
-endif()
-
 file(GLOB BENCHMARK_SOURCES *.cpp *.cu)
+set(CMAKE_BUILD_RPATH_USE_ORIGIN TRUE)
 
 foreach(BENCHMARK_SOURCE ${BENCHMARK_SOURCES})
   # cut off suffixes
@@ -68,11 +54,11 @@ foreach(BENCHMARK_SOURCE ${BENCHMARK_SOURCES})
   get_filename_component(BARE_NAME ${BENCHMARK_NAME} NAME)
   add_executable(${BARE_NAME} ${BENCHMARK_SOURCE})
   set_property(TARGET ${BARE_NAME} PROPERTY CUDA_ARCHITECTURES ${GPU_ARCHS})
-  target_link_libraries(${BARE_NAME} PRIVATE ${NVCOMP_LIBRARY_NAME} CUDA::cudart_static CUDA::cuda_driver)
+  target_link_libraries(${BARE_NAME} PRIVATE ${NVCOMP_LIBRARY_NAME} CUDA::cudart_static)
 
   target_include_directories(${BARE_NAME} PRIVATE
       "$<BUILD_INTERFACE:${nvcomp_SOURCE_DIR}/include>")
-  set_property(TARGET ${BARE_NAME} PROPERTY INSTALL_RPATH "\$ORIGIN/../lib")
+
   install(TARGETS ${BARE_NAME}
     RUNTIME DESTINATION bin
     COMPONENT tests 

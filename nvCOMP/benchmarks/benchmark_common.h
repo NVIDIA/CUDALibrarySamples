@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2020-2024 NVIDIA CORPORATION & AFFILIATES.
+ * SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES.
  * All rights reserved. SPDX-License-Identifier: LicenseRef-NvidiaProprietary
  *
  * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
@@ -19,12 +19,10 @@
 #include "nvcomp.hpp"
 #include "nvcomp/cascaded.h"
 
-#if defined(_WIN32)
-#undef max
-#undef min
-#endif
-
+#include <cassert>
 #include <chrono>
+#include <cstdio>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <limits>
@@ -140,6 +138,7 @@ inline bool startsWith(const std::string input, const std::string subStr)
 void benchmark_assert(const bool pass, const std::string& msg)
 {
   if (!pass) {
+    printf("unhandled exception in benchmark, msg %s\n", msg.c_str());
     throw std::runtime_error("ERROR: " + msg);
   }
 }
@@ -163,71 +162,56 @@ gen_data(const int max_byte, const size_t size, std::mt19937& rng)
   return data;
 }
 
-// Load dataset from binary file into an array of type T
+// Load dataset from binary file into a vector of type T.
 template <typename T>
-std::vector<T> load_dataset_from_binary(char* fname, size_t* input_element_count)
+std::vector<T> load_dataset_from_binary(const char* fname, size_t* input_element_count)
 {
-  FILE* fileptr = fopen(fname, "rb");
+  try {
+    assert(fname != nullptr);
+    std::ifstream file;
 
-  if (fileptr == NULL) {
-    printf("Binary input file not found.\n");
-    exit(1);
+    // Make stream errors throw std::ios_base::failure.
+    file.exceptions(std::ios::badbit | std::ios::failbit);
+    
+    file.open(fname, std::ios::binary);
+
+    // find length of file
+    file.seekg(0, std::ios::end);
+    const auto filelen = std::streamoff(file.tellg());
+    assert(filelen >= 0);
+    file.seekg(0, std::ios::beg);
+
+    const std::size_t max_input_element_count = [&]() {
+      auto miec = filelen / sizeof(T);
+      assert(miec < std::numeric_limits<std::size_t>::max());
+      return std::size_t(miec);
+    }();
+
+    // If input_element_count is already set and is less than the number of elements in
+    // the file, use it, otherwise load the whole file.
+    if (*input_element_count == 0 || *input_element_count > max_input_element_count) {
+      *input_element_count = max_input_element_count;
+    }
+
+    const std::streamsize num_bytes = [&]() {
+      // We know the result fits in std::streamoff because it is
+      // less or equal to filelen.
+      auto nb = std::streamoff(*input_element_count) * std::streamoff(sizeof(T));
+      assert(nb < std::numeric_limits<std::streamsize>::max());
+      return std::streamsize(nb);
+    }();
+
+    // Construct buffer and read binary file into it.
+    std::vector<T> buffer(*input_element_count);
+    file.read(reinterpret_cast<char *>(buffer.data()), num_bytes);
+    return buffer;
   }
-
-  // find length of file
-  fseek(fileptr, 0, SEEK_END);
-  size_t filelen = ftell(fileptr);
-  rewind(fileptr);
-
-  // If input_element_count is already set, use it, otherwise load the whole file
-  if (*input_element_count == 0 || filelen / sizeof(T) < *input_element_count) {
-    *input_element_count = filelen / sizeof(T);
+  catch (const std::ios_base::failure& e) {
+    std::cerr << "Error processing binary input file " << fname << ": " << e.what() << std::endl;
+    std::exit(1);
+    // Dummy return statement to quell compiler warnings.
+    return {};
   }
-
-  const size_t numElements = *input_element_count;
-
-  std::vector<T> buffer(numElements);
-
-  // Read binary file in to buffer
-  const size_t numRead = fread(buffer.data(), sizeof(T), numElements, fileptr);
-  if (numRead != numElements) {
-    throw std::runtime_error(
-        "Failed to read file: " + std::string(fname) + " read "
-        + std::to_string(numRead) + "/"
-        + std::to_string(*input_element_count * sizeof(T)) + " elements.");
-  }
-
-  fclose(fileptr);
-  return buffer;
-}
-
-// Load dataset from binary file into an array of type T
-template <typename T>
-std::vector<T> load_dataset_from_txt(char* fname, size_t* input_element_count)
-{
-
-  std::vector<T> buffer;
-  FILE* fileptr;
-
-  fileptr = fopen(fname, "rb");
-
-  if (fileptr == NULL) {
-    printf("Text input file not found.\n");
-    exit(1);
-  }
-
-  size_t i = 0;
-  constexpr size_t MAX_LINE_LEN = 100;
-  char line[MAX_LINE_LEN];
-  while (fgets(line, MAX_LINE_LEN, fileptr) && i < *input_element_count) {
-    //    std::stringstream row(line);
-    buffer.push_back((T)std::stof(line));
-    i++;
-  }
-
-  fclose(fileptr);
-
-  return buffer;
 }
 
 } // namespace nvcomp
