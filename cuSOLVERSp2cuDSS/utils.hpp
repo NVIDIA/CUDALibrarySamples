@@ -345,8 +345,8 @@ int coo_to_csr(const ordinal_type m,
       ap[icnt++] = jcnt;
     
     if (aij == prev) {
-      aj[jcnt] = aij._j;
-      ax[jcnt] += aij._x;
+      aj[jcnt-1] = aij._j;
+      ax[jcnt-1] += aij._x;
     } else {
       aj[jcnt] = aij._j;
       ax[jcnt++] = aij._x;
