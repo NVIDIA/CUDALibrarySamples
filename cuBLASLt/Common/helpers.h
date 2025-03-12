@@ -112,15 +112,14 @@ struct TestBench {
 
     TestBench(int m, int n, int k,
             ComputeType alpha = ComputeType{0.0f}, ComputeType beta = ComputeType{0.0f},
-            size_t workspaceSize = 1024 * 1024 * 4, int N = 1, bool ptrArrayBatch = false,
+            size_t workspaceSize = 1024 * 1024 * 4, int N = 1, bool ptrArrayBatch = false, bool forceOutOfPlace = false,
             ScaleType Ascale = ScaleType{2.0f}, ScaleType Bscale = ScaleType{0.5f},
             ScaleType Cscale = ScaleType{1.0f}, DScaleType Dscale = DScaleType{1.0f},
             cublasLtMatmulMatrixScale_t AScaleMode = CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
             cublasLtMatmulMatrixScale_t BScaleMode = CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
             cublasLtMatmulMatrixScale_t CScaleMode = CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
             cublasLtMatmulMatrixScale_t DScaleMode = CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
-            cublasLtMatmulMatrixScale_t DOutScaleMode = CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
-            bool forceOutOfPlace = false) :
+            cublasLtMatmulMatrixScale_t DOutScaleMode = CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F) :
         outOfPlace(forceOutOfPlace || !std::is_same<InTypeC, OutType>::value),
         m(m), n(n), k(k), N(N), alpha(alpha), beta(beta), workspaceSize(workspaceSize), Ahost(sizeofElements<InTypeAB>(m * k * N)), Bhost(sizeofElements<InTypeAB>(n * k * N)),
         Chost(sizeofElements<InTypeC>(m * n * N)), Dhost(outOfPlace ? sizeofElements<OutType>(m * n * N) : 0), biasHost(sizeofElements<OutType>(m * N)),
