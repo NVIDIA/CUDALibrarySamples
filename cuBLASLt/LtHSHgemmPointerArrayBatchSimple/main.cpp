@@ -35,7 +35,7 @@
 #include "helpers.h"
 
 int main() {
-    TestBench<__half, __half, float> props(4, 4, 4, 2.0f, 0.0f, 4 * 1024 * 1024 * 2, 2, true);
+    TestBench<__half, __half, float> props(4, 4, 4, 2.0f, 0.0f, 4 * 1024 * 1024 * 2, 2, true, true);
 
     props.run([&props] {
         LtHSHgemmPointerArrayBatchSimple(props.ltHandle,
