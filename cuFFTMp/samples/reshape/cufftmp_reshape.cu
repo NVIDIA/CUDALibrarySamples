@@ -84,6 +84,7 @@ int main(int argc, char** argv) {
 
     cufftReshapeHandle handle;
     CUFFT_CHECK(cufftMpCreateReshape(&handle));
+    CUFFT_CHECK(cufftMpAttachReshapeComm(handle, CUFFT_COMM_MPI, &comm));
 
     cudaStream_t stream;
     CUDA_CHECK(cudaStreamCreate(&stream));
@@ -91,9 +92,9 @@ int main(int argc, char** argv) {
     Box3D &in_box  = (rank == 0 ? in_box_0  : in_box_1);
     Box3D &out_box = (rank == 0 ? out_box_0 : out_box_1);
     CUFFT_CHECK(cufftMpMakeReshape(handle, sizeof(int), 3,
-        in_box.lower,   in_box.upper, in_box.strides,
-        out_box.lower,  out_box.upper, out_box.strides,
-        &comm, CUFFT_COMM_MPI));
+        in_box.lower,   in_box.upper,
+        out_box.lower,  out_box.upper,
+        in_box.strides, out_box.strides));
 
     size_t workspace;
     CUFFT_CHECK(cufftMpGetReshapeSize(handle, &workspace));
