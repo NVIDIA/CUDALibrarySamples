@@ -46,7 +46,7 @@
 # Users Notice.
 CUDA_TOOLKIT := $(shell dirname $$(command -v nvcc))/..
 INC          := -I$(CUDA_TOOLKIT)/include
-LIBS         := --lcusparse
+LIBS         := -lcusparse
 
 all: graph_capture_example
 
