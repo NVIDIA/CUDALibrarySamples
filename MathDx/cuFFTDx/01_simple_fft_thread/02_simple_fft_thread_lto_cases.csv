@@ -1,0 +1,2 @@
+exec_op,size,type,direction,precision
+Thread,8,fft_type::c2c,fft_direction::forward,double
