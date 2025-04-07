@@ -35,6 +35,8 @@
 /// transa, transb assumed N; alpha, beta are host pointers, tensor ops allowed, alpha assumed 1, beta assumed 0,
 /// stream assumed 0
 void LtIgemmTensor(cublasLtHandle_t ltHandle,
+                   cublasOperation_t transa,
+                   cublasOperation_t transb,
                    int m,
                    int n,
                    int k,

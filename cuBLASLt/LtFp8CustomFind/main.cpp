@@ -33,12 +33,12 @@
 #include "helpers.h"
 
 int main() {
-    TestBench<__nv_fp8_e4m3, __nv_fp8_e4m3, float, float, float, __nv_fp8_e4m3> props(1024, 512, 4096, 2.0f, 0.0f, 1024 * 1024 * 16);
+    TestBench<__nv_fp8_e4m3, __nv_fp8_e4m3, float, float, float, __nv_fp8_e4m3> props(CUBLAS_OP_T, CUBLAS_OP_N, 1024, 512, 4096, 2.0f, 0.0f, 1024 * 1024 * 16);
 
     props.run([&props] {
         LtMatmulCustomFind(props.ltHandle,
-                        CUBLAS_OP_T,
-                        CUBLAS_OP_N,
+                        props.transa,
+                        props.transb,
                         props.m,
                         props.n,
                         props.k,
@@ -46,17 +46,17 @@ int main() {
                         &props.alpha,
                         CUDA_R_8F_E4M3,
                         props.Adev,
-                        props.k,
+                        props.lda,
                         CUDA_R_8F_E4M3,
                         props.Bdev,
-                        props.k,
+                        props.ldb,
                         &props.beta,
                         CUDA_R_16BF,
                         props.Cdev,
-                        props.m,
+                        props.ldc,
                         CUDA_R_8F_E4M3,
                         props.Ddev,
-                        props.m,
+                        props.ldd,
                         props.workspace,
                         props.workspaceSize);
     });

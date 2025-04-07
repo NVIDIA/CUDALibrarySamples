@@ -36,6 +36,8 @@
 /// attribute matmul is not using cublas handle's configuration of math mode, here tensor ops are implicitly allowed; to
 /// change this configure appropriate attribute in the preference handle
 void LtMxfp8Matmul(cublasLtHandle_t ltHandle,
+                 cublasOperation_t transa,
+                 cublasOperation_t transb,
                  int m,
                  int n,
                  int k,

@@ -30,25 +30,25 @@
 #include "helpers.h"
 
 int main() {
-    TestBench<__half, __half, float> props(4, 4, 4, 2.0f, 0.0f, 4 * 1024 * 1024 * 2, 2);
+    TestBench<__half, __half, float> props(CUBLAS_OP_N, CUBLAS_OP_N, 4, 4, 4, 2.0f, 0.0f, 4 * 1024 * 1024 * 2, 2);
 
     props.run([&props] {
         LtHSHgemmStridedBatchSimple(props.ltHandle,
-                                    CUBLAS_OP_N,
-                                    CUBLAS_OP_N,
+                                    props.transa,
+                                    props.transb,
                                     props.m,
                                     props.n,
                                     props.k,
                                     &props.alpha,
                                     props.Adev,
-                                    props.m,
+                                    props.lda,
                                     props.m * props.k,
                                     props.Bdev,
-                                    props.k,
+                                    props.ldb,
                                     props.k * props.n,
                                     &props.beta,
                                     props.Cdev,
-                                    props.m,
+                                    props.ldc,
                                     props.m * props.n,
                                     props.N,
                                     props.workspace,

@@ -38,6 +38,8 @@
 /// attribute matmul is not using cublas handle's configuration of math mode, here tensor ops are implicitly allowed; to
 /// change this configure appropriate attribute in the preference handle
 void LtNvfp4Matmul(cublasLtHandle_t ltHandle,
+                 cublasOperation_t transa,
+                 cublasOperation_t transb,
                  int m,
                  int n,
                  int k,
@@ -66,9 +68,6 @@ void LtNvfp4Matmul(cublasLtHandle_t ltHandle,
     cublasLtMatmulDesc_t operationDesc = NULL;
     cublasLtMatrixLayout_t Adesc = NULL, Bdesc = NULL, Cdesc = NULL, Ddesc = NULL;
     cublasLtMatmulPreference_t preference = NULL;
-
-    cublasOperation_t transa = CUBLAS_OP_T;
-    cublasOperation_t transb = CUBLAS_OP_N;
 
     int returnedResults                             = 0;
     cublasLtMatmulHeuristicResult_t heuristicResult = {};

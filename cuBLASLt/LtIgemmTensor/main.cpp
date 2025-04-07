@@ -30,19 +30,22 @@
 #include "helpers.h"
 
 int main() {
-    TestBench<int8_t, int32_t, float> props(4, 4, 4);
+    // tensor op igemm kernels only support NT gemm
+    TestBench<int8_t, int32_t, float> props(CUBLAS_OP_N, CUBLAS_OP_T, 4, 4, 4);
 
     props.run([&props] {
         LtIgemmTensor(props.ltHandle,
+                    props.transa,
+                    props.transb,
                     props.m,
                     props.n,
                     props.k,
                     props.Adev,
-                    props.m,
+                    props.lda,
                     props.Bdev,
-                    props.k,
+                    props.ldb,
                     props.Cdev,
-                    props.m);
+                    props.ldc);
     });
 
     return 0;

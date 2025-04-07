@@ -30,23 +30,23 @@
 #include "helpers.h"
 
 int main() {
-    TestBench<double> props(4, 4, 20000, 2.0f, 0.0f, 4 * 1024 * 1024);
+    TestBench<double> props(CUBLAS_OP_T, CUBLAS_OP_N, 4, 4, 20000, 2.0f, 0.0f, 4 * 1024 * 1024);
 
     props.run([&props] {
         LtDgemmPresetAlgo(props.ltHandle,
-                CUBLAS_OP_N,
-                CUBLAS_OP_N,
+                props.transa,
+                props.transb,
                 props.m,
                 props.n,
                 props.k,
                 &props.alpha,
                 props.Adev,
-                props.m,
+                props.lda,
                 props.Bdev,
-                props.k,
+                props.ldb,
                 &props.beta,
                 props.Cdev,
-                props.m,
+                props.ldc,
                 props.workspace,
                 props.workspaceSize,
                 props.stream);
