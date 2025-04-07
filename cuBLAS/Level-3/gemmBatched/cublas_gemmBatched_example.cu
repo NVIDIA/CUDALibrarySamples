@@ -78,7 +78,7 @@ int main(int argc, char *argv[]) {
      *       | 7.0 | 8.0 | 11.0 | 12.0 |
      */
 
-    const std::vector<std::vector<data_type>> A_array = {{1.0 ,3.0, 2.0, 4.0},
+    const std::vector<std::vector<data_type>> A_array = {{1.0, 3.0, 2.0, 4.0},
                                                          {5.0, 7.0, 6.0, 8.0}};
     const std::vector<std::vector<data_type>> B_array = {{5.0, 7.0, 6.0, 8.0},
                                                          {9.0, 11.0, 10.0, 12.0}};
