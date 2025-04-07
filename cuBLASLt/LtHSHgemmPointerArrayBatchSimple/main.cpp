@@ -30,25 +30,25 @@
 #include "helpers.h"
 
 int main() {
-    TestBench<__half, __half, float> props(4, 4, 4, 2.0f, 0.0f, 4 * 1024 * 1024 * 2, 2, true, true);
+    TestBench<__half, __half, float> props(CUBLAS_OP_N, CUBLAS_OP_N, 4, 4, 4, 2.0f, 0.0f, 4 * 1024 * 1024 * 2, 2, true, true);
 
     props.run([&props] {
         LtHSHgemmPointerArrayBatchSimple(props.ltHandle,
-                                    CUBLAS_OP_N,
-                                    CUBLAS_OP_N,
+                                    props.transa,
+                                    props.transb,
                                     props.m,
                                     props.n,
                                     props.k,
                                     &props.alpha,
                                     props.APtrArrayDev,
-                                    props.m,
+                                    props.lda,
                                     props.BPtrArrayDev,
-                                    props.k,
+                                    props.ldb,
                                     &props.beta,
                                     props.CPtrArrayDev,
-                                    props.m,
+                                    props.ldc,
                                     props.DPtrArrayDev,
-                                    props.m,
+                                    props.ldd,
                                     props.N,
                                     props.workspace,
                                     props.workspaceSize);

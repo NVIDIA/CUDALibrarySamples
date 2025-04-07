@@ -40,6 +40,8 @@
 /// stream assumed 0
 /// outputs can be either single or half precision, half precision is used in this example
 void LtPlanarCgemm(cublasLtHandle_t ltHandle,
+                   cublasOperation_t transa,
+                   cublasOperation_t transb,
                    int m,
                    int n,
                    int k,
@@ -62,14 +64,16 @@ void LtPlanarCgemm(cublasLtHandle_t ltHandle,
     int64_t CplaneOffset = (C_imag - C_real) * sizeof(C_real[0]);
 
     checkCublasStatus(cublasLtMatmulDescCreate(&matmulDesc, CUBLAS_COMPUTE_32F, CUDA_C_32F));
+    checkCublasStatus(cublasLtMatmulDescSetAttribute(matmulDesc, CUBLASLT_MATMUL_DESC_TRANSA, &transa, sizeof(transa)));
+    checkCublasStatus(cublasLtMatmulDescSetAttribute(matmulDesc, CUBLASLT_MATMUL_DESC_TRANSB, &transb, sizeof(transb)));
 
     // ---------------------------------------------------------------------------------------------
     // create descriptors for planar complex matrices
 
-    checkCublasStatus(cublasLtMatrixLayoutCreate(&Adesc, CUDA_C_16F, m, k, lda));
+    checkCublasStatus(cublasLtMatrixLayoutCreate(&Adesc, CUDA_C_16F, transa == CUBLAS_OP_N ? m : k, transa == CUBLAS_OP_N ? k : m, lda));
     checkCublasStatus(cublasLtMatrixLayoutSetAttribute(Adesc, CUBLASLT_MATRIX_LAYOUT_PLANE_OFFSET, &AplaneOffset, sizeof(AplaneOffset)));
 
-    checkCublasStatus(cublasLtMatrixLayoutCreate(&Bdesc, CUDA_C_16F, k, n, ldb));
+    checkCublasStatus(cublasLtMatrixLayoutCreate(&Bdesc, CUDA_C_16F, transb == CUBLAS_OP_N ? k : n, transb == CUBLAS_OP_N ? n : k, ldb));
     checkCublasStatus(cublasLtMatrixLayoutSetAttribute(Bdesc, CUBLASLT_MATRIX_LAYOUT_PLANE_OFFSET, &BplaneOffset, sizeof(BplaneOffset)));
 
     checkCublasStatus(cublasLtMatrixLayoutCreate(&Cdesc, CUDA_C_16F, m, n, ldc));
@@ -89,7 +93,7 @@ void LtPlanarCgemm(cublasLtHandle_t ltHandle,
                                      C_real,
                                      Cdesc,
                                      C_real,
-                                      Cdesc,
+                                     Cdesc,
                                      NULL,
                                      NULL,
                                      0,

@@ -110,16 +110,16 @@ template <typename InTypeAB, typename OutType = InTypeAB, typename ComputeType =
 struct TestBench {
     using SampleRunner = std::function<void()>;
 
-    TestBench(int m, int n, int k,
+    TestBench(cublasOperation_t transa, cublasOperation_t transb, int m, int n, int k,
             ComputeType alpha = ComputeType{1.0f}, ComputeType beta = ComputeType{0.0f},
             size_t workspaceSize = 1024 * 1024 * 4, int N = 1,
               bool ptrArrayBatch = false, bool forceOutOfPlace = false) :
-        TestBench(m, n, k, alpha, beta, workspaceSize, N, ScaleType{2.0f}, ScaleType{0.5f}, ScaleType{1.0f}, DScaleType{1.0f},
+        TestBench(transa, transb, m, n, k, alpha, beta, workspaceSize, N, ScaleType{2.0f}, ScaleType{0.5f}, ScaleType{1.0f}, DScaleType{1.0f},
                   CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
                   CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
                   ptrArrayBatch, forceOutOfPlace) {}
 
-    TestBench(int m, int n, int k,
+    TestBench(cublasOperation_t transa, cublasOperation_t transb, int m, int n, int k,
             ComputeType alpha, ComputeType beta,
             size_t workspaceSize, int N,
             cublasLtMatmulMatrixScale_t AScaleMode,
@@ -127,20 +127,20 @@ struct TestBench {
             cublasLtMatmulMatrixScale_t CScaleMode,
             cublasLtMatmulMatrixScale_t DScaleMode,
             cublasLtMatmulMatrixScale_t DOutScaleMode):
-        TestBench(m, n, k, alpha, beta, workspaceSize, N, ScaleType{2.0f}, ScaleType{0.5f}, ScaleType{1.0f}, DScaleType{1.0f},
+        TestBench(transa, transb, m, n, k, alpha, beta, workspaceSize, N, ScaleType{2.0f}, ScaleType{0.5f}, ScaleType{1.0f}, DScaleType{1.0f},
                   AScaleMode, BScaleMode, CScaleMode, DScaleMode, DOutScaleMode, false, false) {}
 
-    TestBench(int m, int n, int k,
+    TestBench(cublasOperation_t transa, cublasOperation_t transb, int m, int n, int k,
             ComputeType alpha, ComputeType beta, size_t workspaceSize, int N,
             ScaleType Ascale, ScaleType Bscale,
             ScaleType Cscale, DScaleType Dscale,
             bool ptrArrayBatch = false, bool forceOutOfPlace = false) :
-        TestBench(m, n, k, alpha, beta, workspaceSize, N, Ascale, Bscale, Cscale, Dscale,
+        TestBench(transa, transb, m, n, k, alpha, beta, workspaceSize, N, Ascale, Bscale, Cscale, Dscale,
                   CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
                   CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
                   ptrArrayBatch, forceOutOfPlace) {}
 
-    TestBench(int m, int n, int k,
+    TestBench(cublasOperation_t transa, cublasOperation_t transb, int m, int n, int k,
             ComputeType alpha, ComputeType beta, size_t workspaceSize, int N,
             ScaleType Ascale, ScaleType Bscale,
             ScaleType Cscale, DScaleType Dscale,
@@ -151,7 +151,8 @@ struct TestBench {
             cublasLtMatmulMatrixScale_t DOutScaleMode,
             bool ptrArrayBatch = false, bool forceOutOfPlace = false) :
         outOfPlace(forceOutOfPlace || !std::is_same<InTypeC, OutType>::value),
-        m(m), n(n), k(k), N(N), alpha(alpha), beta(beta), workspaceSize(workspaceSize), Ahost(sizeofElements<InTypeAB>(m * k * N)), Bhost(sizeofElements<InTypeAB>(n * k * N)),
+        transa(transa), transb(transb), m(m), n(n), k(k), N(N), lda(transa != CUBLAS_OP_N ? k : m), ldb(transb != CUBLAS_OP_N ? n : k), ldc(m), ldd(m),
+        alpha(alpha), beta(beta), workspaceSize(workspaceSize), Ahost(sizeofElements<InTypeAB>(m * k * N)), Bhost(sizeofElements<InTypeAB>(n * k * N)),
         Chost(sizeofElements<InTypeC>(m * n * N)), Dhost(outOfPlace ? sizeofElements<OutType>(m * n * N) : 0), biasHost(sizeofElements<OutType>(m * N)),
         APtrArrayHost(ptrArrayBatch ? N : 0), BPtrArrayHost(ptrArrayBatch ? N : 0), CPtrArrayHost(ptrArrayBatch ? N : 0), DPtrArrayHost(ptrArrayBatch && outOfPlace ? N : 0),
         AScaleMode(AScaleMode), BScaleMode(BScaleMode), CScaleMode(CScaleMode), DScaleMode(DScaleMode), DOutScaleMode(DOutScaleMode),
@@ -302,7 +303,9 @@ struct TestBench {
 
     bool outOfPlace;
     bool ptrArrayBatch;
+    cublasOperation_t transa, transb;
     int m, n, k, N;
+    int lda, ldb, ldc, ldd;
     ComputeType alpha, beta;
 
     cudaStream_t stream;

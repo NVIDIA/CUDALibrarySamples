@@ -47,25 +47,25 @@ void printAlgo(const cublasLtMatmulAlgo_t& algo) {
 }
 
 int main() {
-    TestBench<float> props(1024, 1024, 1024, 2.0f, 0.0f, 1024 * 1024 * 4);
+    TestBench<float> props(CUBLAS_OP_N, CUBLAS_OP_N, 1024, 1024, 1024, 2.0f, 0.0f, 1024 * 1024 * 4);
 
     cublasLtMatmulAlgo_t algo;
 
     props.run([&props, &algo] {
         LtSgemmSimpleAutoTuning(props.ltHandle,
-                                CUBLAS_OP_N,
-                                CUBLAS_OP_N,
+                                props.transa,
+                                props.transb,
                                 props.m,
                                 props.n,
                                 props.k,
                                 &props.alpha,
                                 props.Adev,
-                                props.m,
+                                props.lda,
                                 props.Bdev,
-                                props.k,
+                                props.ldb,
                                 &props.beta,
                                 props.Cdev,
-                                props.m,
+                                props.ldc,
                                 props.workspace,
                                 props.workspaceSize,
                                 algo);
