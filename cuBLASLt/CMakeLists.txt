@@ -14,6 +14,7 @@ project(cublasLtSamples)
 
 add_subdirectory(LtSgemm)
 add_subdirectory(LtFp8Matmul)
+add_subdirectory(LtBlk128x128Fp8Matmul)
 add_subdirectory(LtMxfp8Matmul)
 add_subdirectory(LtNvfp4Matmul)
 add_subdirectory(LtDgemmPresetAlgo)
