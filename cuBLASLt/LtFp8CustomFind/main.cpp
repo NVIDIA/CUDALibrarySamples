@@ -26,16 +26,14 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <vector>
-
-#include <cuda_runtime_api.h>
-#include <cublasLt.h>
+#include <cuda_bf16.h>
+#include <cuda_fp8.h>
 
 #include "LtMatmulCustomFind.h"
 #include "helpers.h"
 
 int main() {
-    TestBench<float> props(1024, 512, 4096, 2.0f, 0.0f, 1024 * 1024 * 16);
+    TestBench<__nv_fp8_e4m3, __nv_fp8_e4m3, float, float, float, __nv_fp8_e4m3> props(1024, 512, 4096, 2.0f, 0.0f, 1024 * 1024 * 16);
 
     props.run([&props] {
         LtMatmulCustomFind(props.ltHandle,

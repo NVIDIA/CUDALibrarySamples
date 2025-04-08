@@ -26,18 +26,15 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <vector>
-
-#include <cuda_runtime_api.h>
 #include <cuda_fp4.h>
-#include <cublasLt.h>
+#include <cuda_bf16.h>
 
 #include "sample_cublasLt_LtNvfp4Matmul.h"
 #include "helpers.h"
 
 int main() {
     TestBench<__nv_fp4_e2m1, __nv_fp4_e2m1, float, __nv_fp8_e4m3, float, __nv_bfloat16> props(
-        64, 128, 256, 2.0f, 1.0f, 32ULL * 1024 * 1024, 1, false, false, __nv_fp8_e4m3{2.0f}, __nv_fp8_e4m3{0.5f}, __nv_fp8_e4m3{1.0f}, float{1.0f},
+        64, 128, 256, 2.0f, 1.0f, 32ULL * 1024 * 1024, 1,
         CUBLASLT_MATMUL_MATRIX_SCALE_VEC16_UE4M3, CUBLASLT_MATMUL_MATRIX_SCALE_VEC16_UE4M3, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_VEC16_UE4M3);
 
     props.run([&props] {

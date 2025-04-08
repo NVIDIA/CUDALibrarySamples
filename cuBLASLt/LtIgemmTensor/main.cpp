@@ -26,11 +26,6 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <vector>
-
-#include <cuda_runtime_api.h>
-#include <cublasLt.h>
-
 #include "sample_cublasLt_LtIgemmTensor.h"
 #include "helpers.h"
 

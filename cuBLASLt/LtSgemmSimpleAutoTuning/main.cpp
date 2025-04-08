@@ -27,9 +27,6 @@
  */
 
 #include <cstdio>
-#include <vector>
-
-#include <cuda_runtime_api.h>
 #include <cublasLt.h>
 
 #include "sample_cublasLt_LtSgemmSimpleAutoTuning.h"
