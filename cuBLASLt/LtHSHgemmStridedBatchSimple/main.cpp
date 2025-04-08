@@ -1,8 +1,3 @@
-#include <vector>
-
-#include <cuda_runtime_api.h>
-#include <cublasLt.h>
-
 /*
  * Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
  *

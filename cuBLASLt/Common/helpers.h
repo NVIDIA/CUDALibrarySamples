@@ -40,12 +40,12 @@
 
 
 static size_t roundoff(size_t  x, size_t granul) {
-  return granul * ((x + (granul - 1)) / granul);
+    return granul * ((x + (granul - 1)) / granul);
 }
 
 template <typename T>
 static T ceildiv(T x, size_t divisor) {
-  return (x + (divisor - 1)) / divisor;
+    return (x + (divisor - 1)) / divisor;
 }
 
 template <typename T>
@@ -62,12 +62,12 @@ struct StorageType<__nv_fp4_e2m1> {
 
 template <typename T>
 constexpr size_t sizeofElements(size_t N) {
-  return ceildiv(N, StorageType<T>::packing);
+    return ceildiv(N, StorageType<T>::packing);
 }
 
 template <typename T>
 constexpr size_t sizeofBytes(size_t N) {
-  return sizeofElements<T>(N) * sizeof(StorageType<T>::type);
+    return sizeofElements<T>(N) * sizeof(StorageType<T>::type);
 }
 
 inline void checkCudaStatus(cudaError_t status) {
@@ -111,19 +111,50 @@ struct TestBench {
     using SampleRunner = std::function<void()>;
 
     TestBench(int m, int n, int k,
-            ComputeType alpha = ComputeType{0.0f}, ComputeType beta = ComputeType{0.0f},
-            size_t workspaceSize = 1024 * 1024 * 4, int N = 1, bool ptrArrayBatch = false, bool forceOutOfPlace = false,
-            ScaleType Ascale = ScaleType{2.0f}, ScaleType Bscale = ScaleType{0.5f},
-            ScaleType Cscale = ScaleType{1.0f}, DScaleType Dscale = DScaleType{1.0f},
-            cublasLtMatmulMatrixScale_t AScaleMode = CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
-            cublasLtMatmulMatrixScale_t BScaleMode = CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
-            cublasLtMatmulMatrixScale_t CScaleMode = CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
-            cublasLtMatmulMatrixScale_t DScaleMode = CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
-            cublasLtMatmulMatrixScale_t DOutScaleMode = CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F) :
+            ComputeType alpha = ComputeType{1.0f}, ComputeType beta = ComputeType{0.0f},
+            size_t workspaceSize = 1024 * 1024 * 4, int N = 1,
+              bool ptrArrayBatch = false, bool forceOutOfPlace = false) :
+        TestBench(m, n, k, alpha, beta, workspaceSize, N, ScaleType{2.0f}, ScaleType{0.5f}, ScaleType{1.0f}, DScaleType{1.0f},
+                  CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
+                  CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
+                  ptrArrayBatch, forceOutOfPlace) {}
+
+    TestBench(int m, int n, int k,
+            ComputeType alpha, ComputeType beta,
+            size_t workspaceSize, int N,
+            cublasLtMatmulMatrixScale_t AScaleMode,
+            cublasLtMatmulMatrixScale_t BScaleMode,
+            cublasLtMatmulMatrixScale_t CScaleMode,
+            cublasLtMatmulMatrixScale_t DScaleMode,
+            cublasLtMatmulMatrixScale_t DOutScaleMode):
+        TestBench(m, n, k, alpha, beta, workspaceSize, N, ScaleType{2.0f}, ScaleType{0.5f}, ScaleType{1.0f}, DScaleType{1.0f},
+                  AScaleMode, BScaleMode, CScaleMode, DScaleMode, DOutScaleMode, false, false) {}
+
+    TestBench(int m, int n, int k,
+            ComputeType alpha, ComputeType beta, size_t workspaceSize, int N,
+            ScaleType Ascale, ScaleType Bscale,
+            ScaleType Cscale, DScaleType Dscale,
+            bool ptrArrayBatch = false, bool forceOutOfPlace = false) :
+        TestBench(m, n, k, alpha, beta, workspaceSize, N, Ascale, Bscale, Cscale, Dscale,
+                  CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
+                  CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
+                  ptrArrayBatch, forceOutOfPlace) {}
+
+    TestBench(int m, int n, int k,
+            ComputeType alpha, ComputeType beta, size_t workspaceSize, int N,
+            ScaleType Ascale, ScaleType Bscale,
+            ScaleType Cscale, DScaleType Dscale,
+            cublasLtMatmulMatrixScale_t AScaleMode,
+            cublasLtMatmulMatrixScale_t BScaleMode,
+            cublasLtMatmulMatrixScale_t CScaleMode,
+            cublasLtMatmulMatrixScale_t DScaleMode,
+            cublasLtMatmulMatrixScale_t DOutScaleMode,
+            bool ptrArrayBatch = false, bool forceOutOfPlace = false) :
         outOfPlace(forceOutOfPlace || !std::is_same<InTypeC, OutType>::value),
         m(m), n(n), k(k), N(N), alpha(alpha), beta(beta), workspaceSize(workspaceSize), Ahost(sizeofElements<InTypeAB>(m * k * N)), Bhost(sizeofElements<InTypeAB>(n * k * N)),
         Chost(sizeofElements<InTypeC>(m * n * N)), Dhost(outOfPlace ? sizeofElements<OutType>(m * n * N) : 0), biasHost(sizeofElements<OutType>(m * N)),
-        APtrArrayHost(N), BPtrArrayHost(N), CPtrArrayHost(N), DPtrArrayHost(N), AScaleMode(AScaleMode), BScaleMode(BScaleMode), CScaleMode(CScaleMode), DScaleMode(DScaleMode), DOutScaleMode(DOutScaleMode),
+        APtrArrayHost(ptrArrayBatch ? N : 0), BPtrArrayHost(ptrArrayBatch ? N : 0), CPtrArrayHost(ptrArrayBatch ? N : 0), DPtrArrayHost(ptrArrayBatch && outOfPlace ? N : 0),
+        AScaleMode(AScaleMode), BScaleMode(BScaleMode), CScaleMode(CScaleMode), DScaleMode(DScaleMode), DOutScaleMode(DOutScaleMode),
         AscaleHost(getScaleTensorSize(m, k, AScaleMode)), BscaleHost(getScaleTensorSize(k, n, BScaleMode)), CscaleHost(getScaleTensorSize(m, n, CScaleMode)), DOutscaleHost(getScaleTensorSize(m, n, DOutScaleMode)),
         DscaleHost(getScaleTensorSize(m, n, DScaleMode)), ptrArrayBatch(ptrArrayBatch) {
 
