@@ -85,11 +85,11 @@ inline void checkCublasStatus(cublasStatus_t status) {
 }
 
 // Block scales used for mxfp8 and nvfp8 require a special layout: https://docs.nvidia.com/cuda/cublas/index.html#d-block-scaling-factors-layout for more details.
-inline size_t getScaleTensorSize(int rows, int cols, cublasLtMatmulMatrixScale_t ScaleMode) {
-    if (ScaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F) return 1;
+inline size_t getScaleTensorSize(int inner, int outer, cublasLtMatmulMatrixScale_t scaleMode) {
+    if (scaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F) return 1;
 
-    if (ScaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_VEC32_UE8M0 || ScaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_VEC16_UE4M3) {
-        static const size_t S_VSCALE = ScaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_VEC32_UE8M0 ? 32 : 16;
+    if (scaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_VEC32_UE8M0 || scaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_VEC16_UE4M3) {
+        static const size_t S_VSCALE = scaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_VEC32_UE8M0 ? 32 : 16;
         static const size_t S_BLOCK_COLS = 32;
         static const size_t S_BLOCK_ROWS = 4;
         static const size_t S_BLOCK_INNER = 4;
@@ -97,13 +97,30 @@ inline size_t getScaleTensorSize(int rows, int cols, cublasLtMatmulMatrixScale_t
         static const size_t BLOCK_ROWS = S_BLOCK_INNER * S_VSCALE;
         static const size_t BLOCK_COLS = S_BLOCK_COLS * S_BLOCK_ROWS;
 
-        size_t s_rows = roundoff(size_t(rows), BLOCK_ROWS) / S_VSCALE;
-        size_t s_cols = roundoff(size_t(cols), BLOCK_COLS);
+        size_t s_rows = roundoff(size_t(inner), BLOCK_ROWS) / S_VSCALE;
+        size_t s_cols = roundoff(size_t(outer), BLOCK_COLS);
 
         return s_rows * s_cols;
     }
 
+    if (scaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_OUTER_VEC_32F) {
+        return outer;
+    }
+
+    if (scaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_VEC128_32F) {
+        return ceildiv(inner, 128) * outer;
+    }
+
+    if (scaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_BLK128x128_32F) {
+        return roundoff(ceildiv(inner, 128), 4) * ceildiv(outer, 128);
+    }
+
     return 0;
+}
+
+template <typename T>
+static bool isNarrowPrecision() {
+    return std::is_same<T, __nv_fp8_e4m3>::value || std::is_same<T, __nv_fp8_e5m2>::value || std::is_same<T, __nv_fp4_e2m1>::value;
 }
 
 template <typename InTypeAB, typename OutType = InTypeAB, typename ComputeType = OutType, typename ScaleType = ComputeType, typename DScaleType = ScaleType, typename InTypeC = OutType>
@@ -155,9 +172,21 @@ struct TestBench {
         alpha(alpha), beta(beta), workspaceSize(workspaceSize), Ahost(sizeofElements<InTypeAB>(m * k * N)), Bhost(sizeofElements<InTypeAB>(n * k * N)),
         Chost(sizeofElements<InTypeC>(m * n * N)), Dhost(outOfPlace ? sizeofElements<OutType>(m * n * N) : 0), biasHost(sizeofElements<OutType>(m * N)),
         APtrArrayHost(ptrArrayBatch ? N : 0), BPtrArrayHost(ptrArrayBatch ? N : 0), CPtrArrayHost(ptrArrayBatch ? N : 0), DPtrArrayHost(ptrArrayBatch && outOfPlace ? N : 0),
-        AScaleMode(AScaleMode), BScaleMode(BScaleMode), CScaleMode(CScaleMode), DScaleMode(DScaleMode), DOutScaleMode(DOutScaleMode),
-        AscaleHost(getScaleTensorSize(m, k, AScaleMode)), BscaleHost(getScaleTensorSize(k, n, BScaleMode)), CscaleHost(getScaleTensorSize(m, n, CScaleMode)), DOutscaleHost(getScaleTensorSize(m, n, DOutScaleMode)),
-        DscaleHost(getScaleTensorSize(m, n, DScaleMode)), ptrArrayBatch(ptrArrayBatch) {
+        AScaleMode(AScaleMode), BScaleMode(BScaleMode), CScaleMode(CScaleMode), DScaleMode(DScaleMode), DOutScaleMode(DOutScaleMode), ptrArrayBatch(ptrArrayBatch) {
+
+        if (isNarrowPrecision<InTypeAB>()) {
+            AscaleHost.resize(getScaleTensorSize(transa != CUBLAS_OP_N ? k : m, transa != CUBLAS_OP_N ? m : k, AScaleMode));
+            BscaleHost.resize(getScaleTensorSize(transb != CUBLAS_OP_N ? n : k, transb != CUBLAS_OP_N ? k : n, BScaleMode));
+        }
+
+        if (isNarrowPrecision<InTypeC>()) {
+            CscaleHost.resize(getScaleTensorSize(m, n, CScaleMode));
+        }
+
+        if (isNarrowPrecision<OutType>()) {
+            DOutscaleHost.resize(getScaleTensorSize(m, n, DOutScaleMode));
+            DscaleHost.resize(getScaleTensorSize(m, n, DScaleMode));
+        }
 
         checkCublasStatus(cublasLtCreate(&ltHandle));
 
