@@ -2,7 +2,7 @@
 
 ## Description
 
-This code demonstrates a usage of cuBLAS `GemmEx` function to matrix-matrix product
+This code demonstrates a usage of cuBLAS `GemmEx` function to compute a matrix-matrix product
 
 ```
 A = | 1.0 | 2.0 |
