@@ -36,6 +36,8 @@
 /// stream assumed 0
 /// outputs can be either single or half precision, half precision is used in this example
 void LtPlanarCgemm(cublasLtHandle_t ltHandle,
+                   cublasOperation_t transa,
+                   cublasOperation_t transb,
                    int m,
                    int n,
                    int k,

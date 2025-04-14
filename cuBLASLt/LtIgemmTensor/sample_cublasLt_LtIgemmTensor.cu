@@ -44,6 +44,8 @@ int roundoff(int v, int d) {
 /// transa, transb assumed N; alpha, beta are host pointers, tensor ops allowed, alpha assumed 1, beta assumed 0,
 /// stream assumed 0
 void LtIgemmTensor(cublasLtHandle_t ltHandle,
+                   cublasOperation_t transa,
+                   cublasOperation_t transb,
                    int m,
                    int n,
                    int k,
@@ -79,7 +81,8 @@ void LtIgemmTensor(cublasLtHandle_t ltHandle,
 
     checkCublasStatus(cublasLtMatmulDescCreate(&matmulDesc, CUBLAS_COMPUTE_32I, CUDA_R_32I));
     // tensor op igemm kernels only support NT gemm
-    checkCublasStatus(cublasLtMatmulDescSetAttribute(matmulDesc, CUBLASLT_MATMUL_DESC_TRANSB, &opTranspose, sizeof(opTranspose)));
+    checkCublasStatus(cublasLtMatmulDescSetAttribute(matmulDesc, CUBLASLT_MATMUL_DESC_TRANSA, &transa, sizeof(transa)));
+    checkCublasStatus(cublasLtMatmulDescSetAttribute(matmulDesc, CUBLASLT_MATMUL_DESC_TRANSB, &transb, sizeof(transb)));
 
     // ---------------------------------------------------------------------------------------------
     // create descriptors for original matrices

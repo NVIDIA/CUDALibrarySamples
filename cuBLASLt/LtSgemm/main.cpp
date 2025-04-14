@@ -26,32 +26,27 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <vector>
-
-#include <cuda_runtime_api.h>
-#include <cublasLt.h>
-
 #include "sample_cublasLt_LtSgemm.h"
 #include "helpers.h"
 
 int main() {
-    TestBench<float> props(4, 4, 4, 2.0f, 0.0f);
+    TestBench<float> props(CUBLAS_OP_N, CUBLAS_OP_N, 4, 4, 4, 2.0f, 0.0f);
 
     props.run([&props] {
         LtSgemm(props.ltHandle,
-                CUBLAS_OP_N,
-                CUBLAS_OP_N,
+                props.transa,
+                props.transb,
                 props.m,
                 props.n,
                 props.k,
                 &props.alpha,
                 props.Adev,
-                props.m,
+                props.lda,
                 props.Bdev,
-                props.k,
+                props.ldb,
                 &props.beta,
                 props.Cdev,
-                props.m,
+                props.ldc,
                 props.workspace,
                 props.workspaceSize);
     });

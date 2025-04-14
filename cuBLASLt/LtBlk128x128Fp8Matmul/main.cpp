@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,30 +26,42 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "sample_cublasLt_LtDgemmPresetAlgo.h"
+#include <cuda_runtime_api.h>
+#include <cuda_fp8.h>
+#include <cublasLt.h>
+
+#include "sample_cublasLt_LtBlk128x128Fp8Matmul.h"
 #include "helpers.h"
 
 int main() {
-    TestBench<double> props(CUBLAS_OP_T, CUBLAS_OP_N, 4, 4, 20000, 2.0f, 0.0f, 4 * 1024 * 1024);
+    TestBench<__nv_fp8_e4m3, __nv_bfloat16, float, float, float, __nv_bfloat16> props(
+        CUBLAS_OP_T, CUBLAS_OP_N,
+        64, 128, 256, 2.0f, 1.0f, 32ULL * 1024 * 1024, 1,
+        CUBLASLT_MATMUL_MATRIX_SCALE_VEC128_32F, CUBLASLT_MATMUL_MATRIX_SCALE_BLK128x128_32F, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F);
 
     props.run([&props] {
-        LtDgemmPresetAlgo(props.ltHandle,
-                props.transa,
-                props.transb,
-                props.m,
-                props.n,
-                props.k,
-                &props.alpha,
-                props.Adev,
-                props.lda,
-                props.Bdev,
-                props.ldb,
-                &props.beta,
-                props.Cdev,
-                props.ldc,
-                props.workspace,
-                props.workspaceSize,
-                props.stream);
+        LtBlk128x128Fp8Matmul(props.ltHandle,
+                    props.transa,
+                    props.transb,
+                    props.m,
+                    props.n,
+                    props.k,
+                    &props.alpha,
+                    props.AscaleDev,
+                    props.Adev,
+                    props.lda,
+                    props.BscaleDev,
+                    props.Bdev,
+                    props.ldb,
+                    &props.beta,
+                    props.Cdev,
+                    props.ldc,
+                    props.Ddev,
+                    props.ldd,
+                    props.workspace,
+                    props.workspaceSize,
+                    props.AScaleMode,
+                    props.BScaleMode);
     });
 
     return 0;
