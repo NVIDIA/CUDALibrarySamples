@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.18.0)
+cmake_minimum_required(VERSION 3.26.0)
 
 # cuFFTDx Examples project
 project(cufftdx_examples LANGUAGES CXX CUDA)
@@ -26,18 +26,22 @@ if(NOT TARGET cufftdx)
     if(USE_MATHDX_PACKAGE)
         message(STATUS "Using mathDx package to find cuFFTDx")
         # Find mathDx and cuFFTDx (mathDx's component)
-        # Default path: "/opt/nvidia/mathdx/25.01", path to mathDx can be passed cmake in mathdx_ROOT variable
+        # Default path: "/opt/nvidia/mathdx/25.01.1", path to mathDx can be passed cmake in mathdx_ROOT variable
         find_package(mathdx REQUIRED COMPONENTS cufftdx CONFIG
             PATHS
                 "${PROJECT_SOURCE_DIR}/../.." # example/cufftdx
                 "${PROJECT_SOURCE_DIR}/../../.." # include/cufftdx/example
-                "/opt/nvidia/mathdx/25.01"
+                "/opt/nvidia/mathdx/25.01.1"
         )
     elseif(USE_CUFFTDX_PACKAGE)
         message(STATUS "Using cuFFTDx package to find cuFFTDx")
         # Find cuFFTDx
-        # Default path: "/opt/nvidia/mathdx/25.01/", path to cuFFTDx can be passed cmake in cufftdx_ROOT variable
-        find_package(cufftdx REQUIRED CONFIG PATHS "/opt/nvidia/mathdx/25.01/" "${PROJECT_SOURCE_DIR}/../../")
+        # Default path: "/opt/nvidia/mathdx/25.01.1/", path to cuFFTDx can be passed cmake in cufftdx_ROOT variable
+        find_package(cufftdx REQUIRED CONFIG
+            PATHS
+                "/opt/nvidia/mathdx/25.01.1/"
+                "${PROJECT_SOURCE_DIR}/../../"
+        )
     else()
         message(FATAL_ERROR "No cuFFTDx package found")
     endif()
@@ -138,6 +142,33 @@ function(add_cufftdx_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
         PROPERTIES
             LABELS "CUFFTDX_EXAMPLE"
     )
+    # LTO example
+    string(FIND ${EXAMPLE_NAME} "lto" LTO_EXAMPLE)
+    if(${LTO_EXAMPLE} GREATER -1)
+        include(lto_helper/lto_helper.cmake)
+        # Get directory of test sources file
+        get_filename_component(EXAMPLE_FILE_DIR ${EXAMPLE_MAIN_SOURCE} REALPATH)
+        get_filename_component(EXAMPLE_FILE_DIR ${EXAMPLE_FILE_DIR} DIRECTORY)
+        # Generate and link LTO blobs
+        run_cufft_lto_helper(
+            ${CMAKE_CURRENT_SOURCE_DIR}/lto_helper/
+            ${CMAKE_CURRENT_BINARY_DIR}/lto_helper/
+            ${EXAMPLE_TARGET}
+            ${EXAMPLE_FILE_DIR}/${EXAMPLE_TARGET}_cases.csv
+            "${CUFFTDX_CUDA_ARCHITECTURES}"
+            TRUE # Force regenerate blobs
+        )
+        if(NOT CUFFT_LTO_HELPER_RESULT)
+            message(FATAL_ERROR "run_cufft_lto_helper encountered errors for target ${LTO_EXAMPLE}.")
+        endif()
+        target_link_options(${EXAMPLE_TARGET} PUBLIC $<DEVICE_LINK:$<TARGET_OBJECTS:${EXAMPLE_TARGET}_lto_lib>>)
+        target_include_directories(${EXAMPLE_TARGET} PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/lto_helper) # Include LTO database file
+        set_target_properties(${EXAMPLE_TARGET}
+            PROPERTIES
+                CUDA_SEPARABLE_COMPILATION ON
+                INTERPROCEDURAL_OPTIMIZATION ON
+        )
+    endif()
     if(CUFFTDX_SANTIZERS_BUILD)
         # See https://github.com/google/sanitizers/issues/629 for why
         set_tests_properties(${EXAMPLE_NAME} PROPERTIES ENVIRONMENT "ASAN_OPTIONS=protect_shadow_gap=0")
@@ -227,11 +258,38 @@ function(add_cufftdx_nvrtc_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
         PROPERTIES
             LABELS "CUFFTDX_EXAMPLE"
     )
+    # LTO example
+    string(FIND ${EXAMPLE_NAME} "lto" LTO_EXAMPLE)
+    if(${LTO_EXAMPLE} GREATER -1)
+        find_package(cufft 11.5.0 EXACT REQUIRED CONFIG
+            PATHS
+                "${PROJECT_SOURCE_DIR}/../../../cufft"
+                "/opt/cufft"
+        )
+        target_compile_definitions(${EXAMPLE_TARGET} PRIVATE CUFFTDX_ENABLE_CUFFT_DEPENDENCY) # To include cufftdx::utils::get_database_and_ltoir helper function
+        target_link_libraries(${EXAMPLE_TARGET}
+            PRIVATE
+                cufft::cufft_static
+                CUDA::nvJitLink
+        )
+    endif()
     if(CUFFTDX_SANTIZERS_BUILD)
         # See https://github.com/google/sanitizers/issues/629 for why
         set_tests_properties(${EXAMPLE_NAME} PROPERTIES ENVIRONMENT "ASAN_OPTIONS=protect_shadow_gap=0")
     endif()
     add_dependencies(${GROUP_TARGET} ${EXAMPLE_TARGET})
+endfunction()
+
+# ###############################################################
+# add_standalone_example
+# ###############################################################
+function(add_standalone_example EXAMPLE_DIR EXAMPLE_TARGET)
+    add_subdirectory(${EXAMPLE_DIR})
+    add_test(NAME "${EXAMPLE_TARGET}" COMMAND ${EXAMPLE_TARGET})
+    set_tests_properties("${EXAMPLE_TARGET}"
+        PROPERTIES
+            LABELS "CUFFTDX_EXAMPLE"
+    )
 endfunction()
 
 # Enable testing only for selected architectures
@@ -243,8 +301,6 @@ foreach(CUDA_ARCH ${CUFFTDX_CUDA_ARCHITECTURES})
     add_compile_definitions(CUFFTDX_EXAMPLE_ENABLE_SM_${ARCH})
 endforeach()
 
-
-
 # ###############################################################
 # cuFFTDx Examples
 # ###############################################################
@@ -254,37 +310,62 @@ add_custom_target(cufftdx_examples)
 # CUFFTDX_EXAMPLES_CUFFT_CALLBACK
 option(CUFFTDX_EXAMPLES_CUFFT_CALLBACK "Build cuFFTDx convolution_performance example with cuFFT callback" OFF)
 
-add_cufftdx_example(cufftdx_examples "cuFFTDx.example.introduction_example" introduction_example.cu)
-add_cufftdx_example(cufftdx_examples "cuFFTDx.example.simple_fft_thread" simple_fft_thread.cu)
-add_cufftdx_example(cufftdx_examples "cuFFTDx.example.simple_fft_thread_fp16" simple_fft_thread_fp16.cu)
-add_cufftdx_example(cufftdx_examples "cuFFTDx.example.simple_fft_block" simple_fft_block.cu)
-add_cufftdx_example(cufftdx_examples "cuFFTDx.example.simple_fft_block_half2" simple_fft_block_half2.cu)
-add_cufftdx_example(cufftdx_examples "cuFFTDx.example.simple_fft_block_fp16" simple_fft_block_fp16.cu)
-add_cufftdx_example(cufftdx_examples "cuFFTDx.example.simple_fft_block_r2c" simple_fft_block_r2c.cu)
-add_cufftdx_example(cufftdx_examples "cuFFTDx.example.simple_fft_block_r2c_fp16" simple_fft_block_r2c_fp16.cu)
-add_cufftdx_example(cufftdx_examples "cuFFTDx.example.simple_fft_block_c2r" simple_fft_block_c2r.cu)
-add_cufftdx_example(cufftdx_examples "cuFFTDx.example.simple_fft_block_c2r_fp16" simple_fft_block_c2r_fp16.cu)
-add_cufftdx_example(cufftdx_examples "cuFFTDx.example.simple_fft_block_shared" simple_fft_block_shared.cu)
-add_cufftdx_example(cufftdx_examples "cuFFTDx.example.simple_fft_block_std_complex" simple_fft_block_std_complex.cu)
-add_cufftdx_example(cufftdx_examples "cuFFTDx.example.simple_fft_block_cub_io" simple_fft_block_cub_io.cu)
-add_cufftdx_example(cufftdx_examples "cuFFTDx.example.convolution" convolution.cu)
-add_cufftdx_example(cufftdx_examples "cuFFTDx.example.convolution_r2c_c2r" convolution_r2c_c2r.cu)
-add_cufft_and_cufftdx_example(cufftdx_examples "cuFFTDx.example.convolution_3d" conv_3d/convolution_3d.cu)
-add_cufft_and_cufftdx_example(cufftdx_examples "cuFFTDx.example.convolution_3d_c2r" conv_3d/convolution_3d_c2r.cu)
-add_cufft_and_cufftdx_example(cufftdx_examples "cuFFTDx.example.convolution_3d_r2c" conv_3d/convolution_3d_r2c.cu)
-add_cufft_and_cufftdx_example(cufftdx_examples "cuFFTDx.example.convolution_3d_padded" conv_3d/convolution_3d_padded.cu)
-add_cufft_and_cufftdx_example(cufftdx_examples "cuFFTDx.example.convolution_3d_padded_r2c" conv_3d/convolution_3d_padded_r2c.cu)
-add_cufftdx_example(cufftdx_examples "cuFFTDx.example.block_fft_performance" block_fft_performance.cu)
-add_cufftdx_example(cufftdx_examples "cuFFTDx.example.block_fft_performance_many" block_fft_performance_many.cu)
-add_cufft_and_cufftdx_example(cufftdx_examples "cuFFTDx.example.convolution_padded" convolution_padded.cu)
-add_cufft_and_cufftdx_example(cufftdx_examples "cuFFTDx.example.convolution_performance" convolution_performance.cu)
-add_cufftdx_nvrtc_example(cufftdx_examples "cuFFTDx.example.nvrtc_fft_thread" nvrtc_fft_thread.cu)
-add_cufftdx_nvrtc_example(cufftdx_examples "cuFFTDx.example.nvrtc_fft_block" nvrtc_fft_block.cu)
-add_cufft_and_cufftdx_example(cufftdx_examples "cuFFTDx.example.mixed_precision_fft_1d" mixed_precision_fft_1d.cu)
-add_cufft_and_cufftdx_example(cufftdx_examples "cuFFTDx.example.mixed_precision_fft_2d" mixed_precision_fft_2d.cu)
-add_cufft_and_cufftdx_example(cufftdx_examples "cuFFTDx.example.fft_3d_cube_single_block" fft_3d_cube_single_block.cu)
-add_cufft_and_cufftdx_example(cufftdx_examples "cuFFTDx.example.fft_3d_box_single_block" fft_3d_box_single_block.cu)
-add_cufft_and_cufftdx_example(cufftdx_examples "cuFFTDx.example.fft_2d" fft_2d.cu)
-add_cufft_and_cufftdx_example(cufftdx_examples "cuFFTDx.example.fft_3d" fft_3d.cu)
-add_cufft_and_cufftdx_example(cufftdx_examples "cuFFTDx.example.fft_2d_single_kernel" fft_2d_single_kernel.cu)
-add_cufft_and_cufftdx_example(cufftdx_examples "cuFFTDx.example.fft_2d_r2c_c2r" fft_2d_r2c_c2r.cu)
+# CUFFTDX_EXAMPLES_LTO
+# cuFFTDx LTO examples are currently supported on EA (cuFFTDx 1.4.0) ahead of productization
+if((cufftdx_FOUND AND (cufftdx_VERSION VERSION_EQUAL 1.4.0)) OR
+   ((NOT CUFFTDX_TEST_RELEASED_PACKAGE) AND (CUFFTDX_PROJECT_VERSION VERSION_EQUAL 1.4.0)))
+    option(CUFFTDX_EXAMPLES_LTO "Build cuFFTDx LTO examples" ON)
+else()
+    option(CUFFTDX_EXAMPLES_LTO "Build cuFFTDx LTO examples" OFF)
+endif()
+
+# CTK requirement for cuFFTDx LTO examples
+if(CUFFTDX_EXAMPLES_LTO AND NOT ${CUDAToolkit_VERSION} VERSION_GREATER_EQUAL "12.8.0")
+    message(FATAL_ERROR "cuFFTDx LTO examples (version ${cufftdx_VERSION}) requires CUDAToolkit version 12.8 and above.")
+endif()
+
+add_cufftdx_example(cufftdx_examples "cuFFTDx.example.introduction_example" 00_introduction_example/00_introduction_example.cu)
+add_cufftdx_example(cufftdx_examples "cuFFTDx.example.simple_fft_thread" 01_simple_fft_thread/00_simple_fft_thread.cu)
+add_cufftdx_example(cufftdx_examples "cuFFTDx.example.simple_fft_thread_fp16" 01_simple_fft_thread/01_simple_fft_thread_fp16.cu)
+add_cufftdx_example(cufftdx_examples "cuFFTDx.example.simple_fft_block" 02_simple_fft_block/00_simple_fft_block.cu)
+add_cufftdx_example(cufftdx_examples "cuFFTDx.example.simple_fft_block_shared" 02_simple_fft_block/01_simple_fft_block_shared.cu)
+add_cufftdx_example(cufftdx_examples "cuFFTDx.example.simple_fft_block_std_complex" 02_simple_fft_block/02_simple_fft_block_std_complex.cu)
+add_cufftdx_example(cufftdx_examples "cuFFTDx.example.simple_fft_block_half2" 02_simple_fft_block/03_simple_fft_block_half2.cu)
+add_cufftdx_example(cufftdx_examples "cuFFTDx.example.simple_fft_block_fp16" 02_simple_fft_block/04_simple_fft_block_fp16.cu)
+add_cufftdx_example(cufftdx_examples "cuFFTDx.example.simple_fft_block_c2r" 02_simple_fft_block/05_simple_fft_block_c2r.cu)
+add_cufftdx_example(cufftdx_examples "cuFFTDx.example.simple_fft_block_r2c" 02_simple_fft_block/06_simple_fft_block_r2c.cu)
+add_cufftdx_example(cufftdx_examples "cuFFTDx.example.simple_fft_block_c2r_fp16" 02_simple_fft_block/07_simple_fft_block_c2r_fp16.cu)
+add_cufftdx_example(cufftdx_examples "cuFFTDx.example.simple_fft_block_r2c_fp16" 02_simple_fft_block/08_simple_fft_block_r2c_fp16.cu)
+add_cufftdx_example(cufftdx_examples "cuFFTDx.example.simple_fft_block_cub_io" 02_simple_fft_block/09_simple_fft_block_cub_io.cu)
+add_cufftdx_example(cufftdx_examples "cuFFTDx.example.block_fft_performance" 03_block_fft_performance/00_block_fft_performance.cu)
+add_cufftdx_example(cufftdx_examples "cuFFTDx.example.block_fft_performance_many" 03_block_fft_performance/01_block_fft_performance_many.cu)
+add_cufftdx_nvrtc_example(cufftdx_examples "cuFFTDx.example.nvrtc_fft_thread" 04_nvrtc_fft/00_nvrtc_fft_thread.cu)
+add_cufftdx_nvrtc_example(cufftdx_examples "cuFFTDx.example.nvrtc_fft_block" 04_nvrtc_fft/01_nvrtc_fft_block.cu)
+add_cufft_and_cufftdx_example(cufftdx_examples "cuFFTDx.example.fft_2d" 05_fft_Xd/00_fft_2d.cu)
+add_cufft_and_cufftdx_example(cufftdx_examples "cuFFTDx.example.fft_2d_single_kernel" 05_fft_Xd/01_fft_2d_single_kernel.cu)
+add_cufft_and_cufftdx_example(cufftdx_examples "cuFFTDx.example.fft_2d_r2c_c2r" 05_fft_Xd/02_fft_2d_r2c_c2r.cu)
+add_cufft_and_cufftdx_example(cufftdx_examples "cuFFTDx.example.fft_3d" 05_fft_Xd/03_fft_3d.cu)
+add_cufft_and_cufftdx_example(cufftdx_examples "cuFFTDx.example.fft_3d_box_single_block" 05_fft_Xd/04_fft_3d_box_single_block.cu)
+add_cufft_and_cufftdx_example(cufftdx_examples "cuFFTDx.example.fft_3d_cube_single_block" 05_fft_Xd/05_fft_3d_cube_single_block.cu)
+add_cufftdx_example(cufftdx_examples "cuFFTDx.example.convolution" 06_convolution/00_convolution.cu)
+add_cufft_and_cufftdx_example(cufftdx_examples "cuFFTDx.example.convolution_padded" 06_convolution/01_convolution_padded.cu)
+add_cufft_and_cufftdx_example(cufftdx_examples "cuFFTDx.example.convolution_performance" 06_convolution/02_convolution_performance.cu)
+add_cufftdx_example(cufftdx_examples "cuFFTDx.example.convolution_r2c_c2r" 06_convolution/03_convolution_r2c_c2r.cu)
+add_cufft_and_cufftdx_example(cufftdx_examples "cuFFTDx.example.convolution_3d" 07_convolution_3d/00_convolution_3d.cu)
+add_cufft_and_cufftdx_example(cufftdx_examples "cuFFTDx.example.convolution_3d_c2r" 07_convolution_3d/01_convolution_3d_c2r.cu)
+add_cufft_and_cufftdx_example(cufftdx_examples "cuFFTDx.example.convolution_3d_r2c" 07_convolution_3d/02_convolution_3d_r2c.cu)
+add_cufft_and_cufftdx_example(cufftdx_examples "cuFFTDx.example.convolution_3d_padded" 07_convolution_3d/03_convolution_3d_padded.cu)
+add_cufft_and_cufftdx_example(cufftdx_examples "cuFFTDx.example.convolution_3d_padded_r2c" 07_convolution_3d/04_convolution_3d_padded_r2c.cu)
+add_cufft_and_cufftdx_example(cufftdx_examples "cuFFTDx.example.mixed_precision_fft_1d" 08_mixed_precision/00_mixed_precision_fft_1d.cu)
+add_cufft_and_cufftdx_example(cufftdx_examples "cuFFTDx.example.mixed_precision_fft_2d" 08_mixed_precision/01_mixed_precision_fft_2d.cu)
+if(CUFFTDX_EXAMPLES_LTO)
+    add_cufftdx_example(cufftdx_examples "cuFFTDx.example.simple_fft_thread_lto" 01_simple_fft_thread/02_simple_fft_thread_lto.cu)
+    add_cufftdx_example(cufftdx_examples "cuFFTDx.example.simple_fft_block_c2r_lto" 02_simple_fft_block/10_simple_fft_block_c2r_lto.cu)
+    add_cufftdx_example(cufftdx_examples "cuFFTDx.example.block_fft_lto_ptx_performance" 03_block_fft_performance/02_block_fft_lto_ptx_performance.cu)
+    add_standalone_example(09_introduction_lto_example 00_introduction_lto_example)
+    add_standalone_example(10_cufft_device_api_example 00_cufft_device_api_example)
+    if (NOT CMAKE_CROSSCOMPILING)
+        add_cufftdx_nvrtc_example(cufftdx_examples "cuFFTDx.example.nvrtc_fft_thread_lto" 04_nvrtc_fft/02_nvrtc_fft_thread_lto.cu)
+        add_cufftdx_nvrtc_example(cufftdx_examples "cuFFTDx.example.nvrtc_fft_block_lto" 04_nvrtc_fft/03_nvrtc_fft_block_lto.cu)
+    endif()
+endif()
