@@ -32,7 +32,7 @@ pip install torch opencv-python numpy pandas tabulate
 
 Ensure your `LD_LIBRARY_PATH` includes the directory with `libnpp_plus_if.so`:
 ```bash
-export LD_LIBRARY_PATH=/path/to/libnppif:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/path/to/libnpp_plus_if:$LD_LIBRARY_PATH
 ```
 
 ### 3. Run the Example
@@ -51,9 +51,11 @@ This script will:
 ---
 ## ✅ Images Input and Output
 Input Image
+
 ![Teapot_Resize_800x600](/NPP+/cannyEdgeDetectorPython/Teapot.jpg)
 
 Canny Edge detected
+
 ![out_npp_800x600](/NPP+/cannyEdgeDetectorPython/Teapot_resolutions/out_npp_800x600.png)
 
 ---
