@@ -51,10 +51,10 @@ This script will:
 ---
 ## ✅ Images Input and Output
 Input Image
-![Teapot_Resize_800x600](/NPP+/Teapot_resolutions/Teapot_Resize_800x600.png)
+![Teapot_Resize_800x600](/NPP+/cannyEdgeDetectorPython/Teapot.jpg)
 
 Canny Edge detected
-![out_npp_800x600](/NPP+/Teapot_resolutions/out_npp_800x600.pngg)
+![out_npp_800x600](/NPP+/cannyEdgeDetectorPython/Teapot_resolutions/out_npp_800x600.pngg)
 
 ---
 ## 💡 Tips for PyTorch Users
