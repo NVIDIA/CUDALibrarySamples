@@ -54,7 +54,7 @@ Input Image
 ![Teapot_Resize_800x600](/NPP+/cannyEdgeDetectorPython/Teapot.jpg)
 
 Canny Edge detected
-![out_npp_800x600](/NPP+/cannyEdgeDetectorPython/Teapot_resolutions/out_npp_800x600.pngg)
+![out_npp_800x600](/NPP+/cannyEdgeDetectorPython/Teapot_resolutions/out_npp_800x600.png)
 
 ---
 ## 💡 Tips for PyTorch Users
