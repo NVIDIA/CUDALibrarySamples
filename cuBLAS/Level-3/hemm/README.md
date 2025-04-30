@@ -30,7 +30,7 @@ ppc64le
 arm64-sbsa
 
 ## CUDA APIs involved
-- [cublas\<t>hemm API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-hemm)
+- [cublas\<t>hemm API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-t-hemm)
 
 # Building (make)
 

@@ -35,8 +35,8 @@ ppc64le
 arm64-sbsa
 
 ## CUDA APIs involved
-- [cublas\<t>dot  API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-dot)
-- [cublas\<t>dotc  API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-dot)
+- [cublas\<t>dot  API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-t-dot)
+- [cublas\<t>dotc  API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-t-dot)
 
 # Building (make)
 

@@ -32,7 +32,7 @@ ppc64le
 arm64-sbsa
 
 ## CUDA APIs involved
-- [cublasCherkEx API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-cherkEx)
+- [cublasCherkEx API](https://docs.nvidia.com/cuda/cublas/index.html#cublascherkex)
 
 # Building (make)
 

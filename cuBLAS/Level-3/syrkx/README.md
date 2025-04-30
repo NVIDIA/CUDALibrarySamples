@@ -30,7 +30,7 @@ ppc64le
 arm64-sbsa
 
 ## CUDA APIs involved
-- [cublas\<t>syrkx API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-syrkx)
+- [cublas\<t>syrkx API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-t-syrkx)
 
 # Building (make)
 
