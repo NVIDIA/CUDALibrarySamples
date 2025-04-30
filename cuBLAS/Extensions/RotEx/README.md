@@ -29,7 +29,7 @@ ppc64le
 arm64-sbsa
 
 ## CUDA APIs involved
-- [cublasRotEx API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-rotEx)
+- [cublasRotEx API](https://docs.nvidia.com/cuda/cublas/index.html#cublasrotex)
 
 # Building (make)
 

@@ -32,7 +32,7 @@ ppc64le
 arm64-sbsa
 
 ## CUDA APIs involved
-- [cublasGemmEx API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-GemmEx)
+- [cublasGemmEx API](https://docs.nvidia.com/cuda/cublas/index.html#cublasgemmex)
 
 # Building (make)
 

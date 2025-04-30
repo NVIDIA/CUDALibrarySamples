@@ -42,7 +42,7 @@ ppc64le
 arm64-sbsa
 
 ## CUDA APIs involved
-- [cublasGemmGroupedBatchedEx API](https://docs.nvidia.com/cuda/cublas/#cublasgemmgroupedbatchedex)
+- [cublasGemmGroupedBatchedEx API](https://docs.nvidia.com/cuda/cublas/index.html#cublasgemmgroupedbatchedex)
 
 # Building (make)
 

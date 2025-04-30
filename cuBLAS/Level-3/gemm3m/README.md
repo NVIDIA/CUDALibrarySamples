@@ -30,7 +30,7 @@ ppc64le
 arm64-sbsa
 
 ## CUDA APIs involved
-- [cublas\<t>gemm3m API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-gemm3m)
+- [cublas\<t>gemm3m API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-t-gemm3m)
 
 # Building (make)
 
