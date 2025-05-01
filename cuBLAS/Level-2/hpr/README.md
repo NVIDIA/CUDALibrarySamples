@@ -29,7 +29,7 @@ ppc64le
 arm64-sbsa
 
 ## CUDA APIs involved
-- [cublas\<t>hpr API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-hpr)
+- [cublas\<t>hpr API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-t-hpr)
 
 # Building (make)
 

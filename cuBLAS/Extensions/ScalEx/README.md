@@ -28,7 +28,7 @@ ppc64le
 arm64-sbsa
 
 ## CUDA APIs involved
-- [cublasScalEx API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-scalEx)
+- [cublasScalEx API](https://docs.nvidia.com/cuda/cublas/index.html#cublasscalex)
 
 # Building (make)
 

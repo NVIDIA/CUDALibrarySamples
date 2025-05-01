@@ -28,7 +28,7 @@ ppc64le
 arm64-sbsa
 
 ## CUDA APIs involved
-- [cublasNrm2Ex API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-nrm2Ex)
+- [cublasNrm2Ex API](https://docs.nvidia.com/cuda/cublas/index.html#cublasnrm2ex)
 
 # Building (make)
 

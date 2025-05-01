@@ -29,7 +29,7 @@ ppc64le
 arm64-sbsa
 
 ## CUDA APIs involved
-- [cublasCsyrkEx API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-csyrkEx)
+- [cublasCsyrkEx API](https://docs.nvidia.com/cuda/cublas/index.html#cublascsyrkex)
 
 # Building (make)
 

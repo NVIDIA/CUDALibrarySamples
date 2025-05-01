@@ -29,7 +29,7 @@ ppc64le
 arm64-sbsa
 
 ## CUDA APIs involved
-- [cublasAxpyEx API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-axpyEx)
+- [cublasAxpyEx API](https://docs.nvidia.com/cuda/cublas/index.html#cublasaxpyex)
 
 # Building (make)
 

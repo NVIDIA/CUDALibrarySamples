@@ -32,7 +32,7 @@ ppc64le
 arm64-sbsa
 
 ## CUDA APIs involved
-- [cublas\<t>gemmBatched API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-gemmbatched)
+- [cublas\<t>gemmBatched API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-t-gemmbatched)
 
 # Building (make)
 

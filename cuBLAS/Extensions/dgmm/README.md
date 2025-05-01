@@ -29,7 +29,7 @@ ppc64le
 arm64-sbsa
 
 ## CUDA APIs involved
-- [cublas\<t>dgmm() API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-dgmm)
+- [cublas\<t>dgmm() API](https://docs.nvidia.com/cuda/cublas/index.html#cublas-t-dgmm)
 
 # Building (make)
 
