@@ -26,38 +26,38 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <vector>
-
-#include <cuda_runtime_api.h>
+#include <cuda_bf16.h>
 #include <cuda_fp8.h>
-#include <cublasLt.h>
 
 #include "sample_cublasLt_LtFp8Matmul.h"
 #include "helpers.h"
 
 int main() {
     float beta = cublasLtGetVersion() >= 12 * 10000 ? 1.0 : 0.0; // can be non-zero starting from 12.0
-    TestBench<__nv_fp8_e4m3, __nv_fp8_e4m3, float, float, float, __nv_bfloat16> props(64, 128, 256, 2.0f, beta, 32ULL * 1024 * 1024);
+    TestBench<__nv_fp8_e4m3, __nv_fp8_e4m3, float, float, float, __nv_bfloat16> props(
+        CUBLAS_OP_T, CUBLAS_OP_N, 64, 128, 256, 2.0f, beta, 32ULL * 1024 * 1024);
 
     props.run([&props] {
         LtFp8Matmul(props.ltHandle,
+                    props.transa,
+                    props.transb,
                     props.m,
                     props.n,
                     props.k,
                     &props.alpha,
                     props.AscaleDev,
                     props.Adev,
-                    props.k,
+                    props.lda,
                     props.BscaleDev,
                     props.Bdev,
-                    props.k,
+                    props.ldb,
                     &props.beta,
                     props.CscaleDev,
                     props.Cdev,
-                    props.m,
+                    props.ldc,
                     props.DscaleDev,
                     props.Ddev,
-                    props.m,
+                    props.ldd,
                     props.DamaxDev,
                     props.workspace,
                     props.workspaceSize);

@@ -29,7 +29,7 @@
 #include <cublasLt.h>
 
 #include "helpers.h"
-#include "sample_cublasLt_LtMxfp8Matmul.h"
+#include "sample_cublasLt_LtBlk128x128Fp8Matmul.h"
 
 /// Sample wrapper executing mxfp8 matmul with cublasLtMatmul, with addition of per-tensor scaling, and
 /// the workspace to support split-K algorithms.
@@ -37,32 +37,28 @@
 /// pointer mode is for alpha and beta is always host, to change it configure the appropriate matmul descriptor
 /// attribute matmul is not using cublas handle's configuration of math mode, here tensor ops are implicitly allowed; to
 /// change this configure appropriate attribute in the preference handle
-void LtMxfp8Matmul(cublasLtHandle_t ltHandle,
+void LtBlk128x128Fp8Matmul(cublasLtHandle_t ltHandle,
                  cublasOperation_t transa,
                  cublasOperation_t transb,
                  int m,
                  int n,
                  int k,
                  const float *alpha, /* host pointer */
-                 const __nv_fp8_e8m0 *a_scale, /* device pointer */
+                 const float *a_scale, /* device pointer */
                  const __nv_fp8_e4m3 *A,
                  int lda,
-                 const __nv_fp8_e8m0 *b_scale, /* device pointer */
+                 const float *b_scale, /* device pointer */
                  const __nv_fp8_e4m3 *B,
                  int ldb,
                  const float *beta, /* host pointer */
-                 const __nv_fp8_e8m0 *c_scale, /* device pointer */
                  __nv_bfloat16 *C,
                  int ldc,
-                 __nv_fp8_e4m3 *D,
+                 __nv_bfloat16 *D,
                  int ldd,
-                 __nv_fp8_e8m0 *d_out_scale, /* device pointer */
                  void *workspace,
                  size_t workspaceSize,
                  cublasLtMatmulMatrixScale_t AScaleMode,
-                 cublasLtMatmulMatrixScale_t BScaleMode,
-                 cublasLtMatmulMatrixScale_t CScaleMode,
-                 cublasLtMatmulMatrixScale_t DOutScaleMode) {
+                 cublasLtMatmulMatrixScale_t BScaleMode) {
     cublasLtMatmulDesc_t operationDesc = NULL;
     cublasLtMatrixLayout_t Adesc = NULL, Bdesc = NULL, Cdesc = NULL, Ddesc = NULL;
     cublasLtMatmulPreference_t preference = NULL;
@@ -80,19 +76,17 @@ void LtMxfp8Matmul(cublasLtHandle_t ltHandle,
     // set block scaling mode
     checkCublasStatus(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_A_SCALE_MODE, &AScaleMode, sizeof(AScaleMode)));
     checkCublasStatus(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_B_SCALE_MODE, &BScaleMode, sizeof(BScaleMode)));
-    checkCublasStatus(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_D_OUT_SCALE_MODE, &DOutScaleMode, sizeof(DOutScaleMode)));
 
     // set scaling factors
     checkCublasStatus(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_A_SCALE_POINTER, &a_scale, sizeof(a_scale)));
     checkCublasStatus(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_B_SCALE_POINTER, &b_scale, sizeof(b_scale)));
-    checkCublasStatus(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_D_OUT_SCALE_POINTER, &d_out_scale, sizeof(d_out_scale)));
 
     // create matrix descriptors, we are good with the details here so no need to set any extra attributes
     // table of supported type combinations can be found in the documentation: https://docs.nvidia.com/cuda/cublas/index.html#cublasltmatmul
     checkCublasStatus(cublasLtMatrixLayoutCreate(&Adesc, CUDA_R_8F_E4M3, transa == CUBLAS_OP_N ? m : k, transa == CUBLAS_OP_N ? k : m, lda));
     checkCublasStatus(cublasLtMatrixLayoutCreate(&Bdesc, CUDA_R_8F_E4M3, transb == CUBLAS_OP_N ? k : n, transb == CUBLAS_OP_N ? n : k, ldb));
     checkCublasStatus(cublasLtMatrixLayoutCreate(&Cdesc, CUDA_R_16BF, m, n, ldc));
-    checkCublasStatus(cublasLtMatrixLayoutCreate(&Ddesc, CUDA_R_8F_E4M3, m, n, ldd));
+    checkCublasStatus(cublasLtMatrixLayoutCreate(&Ddesc, CUDA_R_16BF, m, n, ldd));
 
     // create preference handle; here we could use extra attributes to disable tensor ops or to make sure algo selected
     // will work with badly aligned A, B, C; here for simplicity we just assume A,B,C are always well aligned (e.g.

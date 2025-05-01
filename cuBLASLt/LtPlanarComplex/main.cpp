@@ -26,34 +26,33 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <vector>
-
-#include <cuda_runtime_api.h>
-#include <cublasLt.h>
+#include <cuComplex.h>
 
 #include "sample_cublasLt_LtPlanarComplex.h"
 #include "helpers.h"
 
 int main() {
-    TestBench<__half, __half, cuComplex> props(16, 16, 16, {1.0f, 0}, {0.0f, 0}, 0, 2);
+    TestBench<__half, __half, cuComplex, __half> props(CUBLAS_OP_N, CUBLAS_OP_N, 16, 16, 16, {1.0f, 0}, {0.0f, 0}, 0, 2);
 
     // planar layout is ordered with imaginary first, to prove that this is arbitrary
 
     // real and imaginary pointers are arbitrary. pointers are converted to pointer(64bit)+offset(int64_t) (negative here) in the example function
     props.run([&props] {
         LtPlanarCgemm(props.ltHandle,
+                props.transa,
+                props.transb,
                 props.m,
                 props.n,
                 props.k,
                 props.Adev+props.m*props.k, // see comment above, real part follows after imaginary in this example; 
                 props.Adev,
-                props.m,
+                props.lda,
                 props.Bdev+props.n*props.k,
                 props.Bdev,
-                props.k,
+                props.ldb,
                 props.Cdev+props.n*props.k,
                 props.Cdev,
-                props.m);
+                props.ldc);
     });
 
     return 0;

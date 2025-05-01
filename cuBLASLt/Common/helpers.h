@@ -40,12 +40,12 @@
 
 
 static size_t roundoff(size_t  x, size_t granul) {
-  return granul * ((x + (granul - 1)) / granul);
+    return granul * ((x + (granul - 1)) / granul);
 }
 
 template <typename T>
 static T ceildiv(T x, size_t divisor) {
-  return (x + (divisor - 1)) / divisor;
+    return (x + (divisor - 1)) / divisor;
 }
 
 template <typename T>
@@ -62,12 +62,12 @@ struct StorageType<__nv_fp4_e2m1> {
 
 template <typename T>
 constexpr size_t sizeofElements(size_t N) {
-  return ceildiv(N, StorageType<T>::packing);
+    return ceildiv(N, StorageType<T>::packing);
 }
 
 template <typename T>
 constexpr size_t sizeofBytes(size_t N) {
-  return sizeofElements<T>(N) * sizeof(StorageType<T>::type);
+    return sizeofElements<T>(N) * sizeof(StorageType<T>::type);
 }
 
 inline void checkCudaStatus(cudaError_t status) {
@@ -85,11 +85,11 @@ inline void checkCublasStatus(cublasStatus_t status) {
 }
 
 // Block scales used for mxfp8 and nvfp8 require a special layout: https://docs.nvidia.com/cuda/cublas/index.html#d-block-scaling-factors-layout for more details.
-inline size_t getScaleTensorSize(int rows, int cols, cublasLtMatmulMatrixScale_t ScaleMode) {
-    if (ScaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F) return 1;
+inline size_t getScaleTensorSize(int inner, int outer, cublasLtMatmulMatrixScale_t scaleMode) {
+    if (scaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F) return 1;
 
-    if (ScaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_VEC32_UE8M0 || ScaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_VEC16_UE4M3) {
-        static const size_t S_VSCALE = ScaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_VEC32_UE8M0 ? 32 : 16;
+    if (scaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_VEC32_UE8M0 || scaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_VEC16_UE4M3) {
+        static const size_t S_VSCALE = scaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_VEC32_UE8M0 ? 32 : 16;
         static const size_t S_BLOCK_COLS = 32;
         static const size_t S_BLOCK_ROWS = 4;
         static const size_t S_BLOCK_INNER = 4;
@@ -97,48 +97,125 @@ inline size_t getScaleTensorSize(int rows, int cols, cublasLtMatmulMatrixScale_t
         static const size_t BLOCK_ROWS = S_BLOCK_INNER * S_VSCALE;
         static const size_t BLOCK_COLS = S_BLOCK_COLS * S_BLOCK_ROWS;
 
-        size_t s_rows = roundoff(size_t(rows), BLOCK_ROWS) / S_VSCALE;
-        size_t s_cols = roundoff(size_t(cols), BLOCK_COLS);
+        size_t s_rows = roundoff(size_t(inner), BLOCK_ROWS) / S_VSCALE;
+        size_t s_cols = roundoff(size_t(outer), BLOCK_COLS);
 
         return s_rows * s_cols;
     }
 
+    if (scaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_OUTER_VEC_32F) {
+        return outer;
+    }
+
+    if (scaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_VEC128_32F) {
+        return ceildiv(inner, 128) * outer;
+    }
+
+    if (scaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_BLK128x128_32F) {
+        return roundoff(ceildiv(inner, 128), 4) * ceildiv(outer, 128);
+    }
+
     return 0;
+}
+
+template <typename T>
+static bool isNarrowPrecision() {
+    return std::is_same<T, __nv_fp8_e4m3>::value || std::is_same<T, __nv_fp8_e5m2>::value || std::is_same<T, __nv_fp4_e2m1>::value;
 }
 
 template <typename InTypeAB, typename OutType = InTypeAB, typename ComputeType = OutType, typename ScaleType = ComputeType, typename DScaleType = ScaleType, typename InTypeC = OutType>
 struct TestBench {
     using SampleRunner = std::function<void()>;
 
-    TestBench(int m, int n, int k,
-            ComputeType alpha = ComputeType{0.0f}, ComputeType beta = ComputeType{0.0f},
+    TestBench(cublasOperation_t transa, cublasOperation_t transb, int m, int n, int k,
+            ComputeType alpha = ComputeType{1.0f}, ComputeType beta = ComputeType{0.0f},
             size_t workspaceSize = 1024 * 1024 * 4, int N = 1,
-            ScaleType Ascale = ScaleType{2.0f}, ScaleType Bscale = ScaleType{0.5f},
-            ScaleType Cscale = ScaleType{1.0f}, DScaleType Dscale = DScaleType{1.0f},
-            cublasLtMatmulMatrixScale_t AScaleMode = CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
-            cublasLtMatmulMatrixScale_t BScaleMode = CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
-            cublasLtMatmulMatrixScale_t CScaleMode = CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
-            cublasLtMatmulMatrixScale_t DScaleMode = CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
-            cublasLtMatmulMatrixScale_t DOutScaleMode = CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
-            bool forceOutOfPlace = false) :
+              bool ptrArrayBatch = false, bool forceOutOfPlace = false) :
+        TestBench(transa, transb, m, n, k, alpha, beta, workspaceSize, N, ScaleType{2.0f}, ScaleType{0.5f}, ScaleType{1.0f}, DScaleType{1.0f},
+                  CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
+                  CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
+                  ptrArrayBatch, forceOutOfPlace) {}
+
+    TestBench(cublasOperation_t transa, cublasOperation_t transb, int m, int n, int k,
+            ComputeType alpha, ComputeType beta,
+            size_t workspaceSize, int N,
+            cublasLtMatmulMatrixScale_t AScaleMode,
+            cublasLtMatmulMatrixScale_t BScaleMode,
+            cublasLtMatmulMatrixScale_t CScaleMode,
+            cublasLtMatmulMatrixScale_t DScaleMode,
+            cublasLtMatmulMatrixScale_t DOutScaleMode):
+        TestBench(transa, transb, m, n, k, alpha, beta, workspaceSize, N, ScaleType{2.0f}, ScaleType{0.5f}, ScaleType{1.0f}, DScaleType{1.0f},
+                  AScaleMode, BScaleMode, CScaleMode, DScaleMode, DOutScaleMode, false, false) {}
+
+    TestBench(cublasOperation_t transa, cublasOperation_t transb, int m, int n, int k,
+            ComputeType alpha, ComputeType beta, size_t workspaceSize, int N,
+            ScaleType Ascale, ScaleType Bscale,
+            ScaleType Cscale, DScaleType Dscale,
+            bool ptrArrayBatch = false, bool forceOutOfPlace = false) :
+        TestBench(transa, transb, m, n, k, alpha, beta, workspaceSize, N, Ascale, Bscale, Cscale, Dscale,
+                  CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
+                  CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
+                  ptrArrayBatch, forceOutOfPlace) {}
+
+    TestBench(cublasOperation_t transa, cublasOperation_t transb, int m, int n, int k,
+            ComputeType alpha, ComputeType beta, size_t workspaceSize, int N,
+            ScaleType Ascale, ScaleType Bscale,
+            ScaleType Cscale, DScaleType Dscale,
+            cublasLtMatmulMatrixScale_t AScaleMode,
+            cublasLtMatmulMatrixScale_t BScaleMode,
+            cublasLtMatmulMatrixScale_t CScaleMode,
+            cublasLtMatmulMatrixScale_t DScaleMode,
+            cublasLtMatmulMatrixScale_t DOutScaleMode,
+            bool ptrArrayBatch = false, bool forceOutOfPlace = false) :
         outOfPlace(forceOutOfPlace || !std::is_same<InTypeC, OutType>::value),
-        m(m), n(n), k(k), N(N), alpha(alpha), beta(beta), workspaceSize(workspaceSize), Ahost(sizeofElements<InTypeAB>(m * k * N)), Bhost(sizeofElements<InTypeAB>(n * k * N)),
+        transa(transa), transb(transb), m(m), n(n), k(k), N(N), lda(transa != CUBLAS_OP_N ? k : m), ldb(transb != CUBLAS_OP_N ? n : k), ldc(m), ldd(m),
+        alpha(alpha), beta(beta), workspaceSize(workspaceSize), Ahost(sizeofElements<InTypeAB>(m * k * N)), Bhost(sizeofElements<InTypeAB>(n * k * N)),
         Chost(sizeofElements<InTypeC>(m * n * N)), Dhost(outOfPlace ? sizeofElements<OutType>(m * n * N) : 0), biasHost(sizeofElements<OutType>(m * N)),
-        AScaleMode(AScaleMode), BScaleMode(BScaleMode), CScaleMode(CScaleMode), DScaleMode(DScaleMode), DOutScaleMode(DOutScaleMode),
-        AscaleHost(getScaleTensorSize(m, k, AScaleMode)), BscaleHost(getScaleTensorSize(k, n, BScaleMode)), CscaleHost(getScaleTensorSize(m, n, CScaleMode)), DOutscaleHost(getScaleTensorSize(m, n, DOutScaleMode)),
-        DscaleHost(getScaleTensorSize(m, n, DScaleMode)) {
+        APtrArrayHost(ptrArrayBatch ? N : 0), BPtrArrayHost(ptrArrayBatch ? N : 0), CPtrArrayHost(ptrArrayBatch ? N : 0), DPtrArrayHost(ptrArrayBatch && outOfPlace ? N : 0),
+        AScaleMode(AScaleMode), BScaleMode(BScaleMode), CScaleMode(CScaleMode), DScaleMode(DScaleMode), DOutScaleMode(DOutScaleMode), ptrArrayBatch(ptrArrayBatch) {
+
+        if (isNarrowPrecision<InTypeAB>()) {
+            AscaleHost.resize(getScaleTensorSize(transa != CUBLAS_OP_N ? k : m, transa != CUBLAS_OP_N ? m : k, AScaleMode));
+            BscaleHost.resize(getScaleTensorSize(transb != CUBLAS_OP_N ? n : k, transb != CUBLAS_OP_N ? k : n, BScaleMode));
+        }
+
+        if (isNarrowPrecision<InTypeC>()) {
+            CscaleHost.resize(getScaleTensorSize(m, n, CScaleMode));
+        }
+
+        if (isNarrowPrecision<OutType>()) {
+            DOutscaleHost.resize(getScaleTensorSize(m, n, DOutScaleMode));
+            DscaleHost.resize(getScaleTensorSize(m, n, DScaleMode));
+        }
 
         checkCublasStatus(cublasLtCreate(&ltHandle));
 
         checkCudaStatus(cudaStreamCreate(&stream));
 
-        checkCudaStatus(cudaMalloc(reinterpret_cast<void **>(&Adev), Ahost.size() * sizeof(Ahost[0])));
-        checkCudaStatus(cudaMalloc(reinterpret_cast<void **>(&Bdev), Bhost.size() * sizeof(Bhost[0])));
-        checkCudaStatus(cudaMalloc(reinterpret_cast<void **>(&Cdev), Chost.size() * sizeof(Chost[0])));
-        if (outOfPlace)
-            checkCudaStatus(cudaMalloc(reinterpret_cast<void **>(&Ddev), Dhost.size() * sizeof(Dhost[0])));
-        else
-            Ddev = reinterpret_cast<decltype(Ddev)>(Cdev);
+        if (ptrArrayBatch) {
+            checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&APtrArrayDev), N * sizeof(void*)));
+            checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&BPtrArrayDev), N * sizeof(void*)));
+            checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&CPtrArrayDev), N * sizeof(void*)));
+            if (outOfPlace)
+                checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&DPtrArrayDev), N * sizeof(void*)));
+            else
+                DPtrArrayDev = reinterpret_cast<decltype(DPtrArrayDev)>(CPtrArrayDev);
+            for (int i = 0; i < N; ++i) {
+                checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&APtrArrayHost[i]), Ahost.size() * sizeof(Ahost[0]) / N));
+                checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&BPtrArrayHost[i]), Bhost.size() * sizeof(Bhost[0]) / N));
+                checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&CPtrArrayHost[i]), Chost.size() * sizeof(Chost[0]) / N));
+                if (outOfPlace)
+                    checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&DPtrArrayHost[i]), Dhost.size() * sizeof(Dhost[0]) / N));
+            }
+        } else {
+            checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&Adev), Ahost.size() * sizeof(Ahost[0])));
+            checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&Bdev), Bhost.size() * sizeof(Bhost[0])));
+            checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&Cdev), Chost.size() * sizeof(Chost[0])));
+            if (outOfPlace)
+                checkCudaStatus(cudaMalloc(reinterpret_cast<void **>(&Ddev), Dhost.size() * sizeof(Dhost[0])));
+            else
+                Ddev = reinterpret_cast<decltype(Ddev)>(Cdev);
+        }
         checkCudaStatus(cudaMalloc(reinterpret_cast<void **>(&biasDev), biasHost.size() * sizeof(biasHost[0])));
         checkCudaStatus(cudaMalloc(reinterpret_cast<void **>(&workspace), workspaceSize));
 
@@ -155,11 +232,25 @@ struct TestBench {
 
     ~TestBench() {
         checkCublasStatus(cublasLtDestroy(ltHandle));
-        checkCudaStatus(cudaFree(Adev));
-        checkCudaStatus(cudaFree(Bdev));
-        checkCudaStatus(cudaFree(Cdev));
-        if (outOfPlace) checkCudaStatus(cudaFree(Ddev));
-        checkCudaStatus(cudaFree(biasDev));
+
+        if (ptrArrayBatch) {
+            for (int i = 0; i < N; ++i) {
+                checkCudaStatus(cudaFree(APtrArrayHost[i]));
+                checkCudaStatus(cudaFree(BPtrArrayHost[i]));
+                checkCudaStatus(cudaFree(CPtrArrayHost[i]));
+                if (outOfPlace) checkCudaStatus(cudaFree(DPtrArrayHost[i]));
+            }
+            checkCudaStatus(cudaFree(APtrArrayDev));
+            checkCudaStatus(cudaFree(BPtrArrayDev));
+            checkCudaStatus(cudaFree(CPtrArrayDev));
+            if (outOfPlace) checkCudaStatus(cudaFree(DPtrArrayDev));
+        } else {
+            checkCudaStatus(cudaFree(Bdev));
+            checkCudaStatus(cudaFree(Adev));
+            checkCudaStatus(cudaFree(Cdev));
+            if (outOfPlace) checkCudaStatus(cudaFree(Ddev));
+            checkCudaStatus(cudaFree(biasDev));
+        }
         checkCudaStatus(cudaFree(workspace));
         checkCudaStatus(cudaFree(AscaleDev));
         checkCudaStatus(cudaFree(BscaleDev));
@@ -185,8 +276,21 @@ struct TestBench {
     }
 
     void copyDataToDevice() {
-        checkCudaStatus(cudaMemcpyAsync(Adev, Ahost.data(), Ahost.size() * sizeof(Ahost[0]), cudaMemcpyHostToDevice, stream));
-        checkCudaStatus(cudaMemcpyAsync(Bdev, Bhost.data(), Bhost.size() * sizeof(Bhost[0]), cudaMemcpyHostToDevice, stream));
+        if (ptrArrayBatch) {
+            checkCudaStatus(cudaMemcpyAsync(APtrArrayDev, APtrArrayHost.data(), N * sizeof(APtrArrayHost[0]), cudaMemcpyHostToDevice, stream));
+            checkCudaStatus(cudaMemcpyAsync(BPtrArrayDev, BPtrArrayHost.data(), N * sizeof(BPtrArrayHost[0]), cudaMemcpyHostToDevice, stream));
+            checkCudaStatus(cudaMemcpyAsync(CPtrArrayDev, CPtrArrayHost.data(), N * sizeof(CPtrArrayHost[0]), cudaMemcpyHostToDevice, stream));
+            if (outOfPlace) checkCudaStatus(cudaMemcpyAsync(DPtrArrayDev, DPtrArrayHost.data(), N * sizeof(DPtrArrayHost[0]), cudaMemcpyHostToDevice, stream));
+
+            for (int i = 0; i < N; ++i) {
+                checkCudaStatus(cudaMemcpyAsync(APtrArrayHost[i], &Ahost[i * m * n], Ahost.size() / N * sizeof(Ahost[0]), cudaMemcpyHostToDevice, stream));
+                checkCudaStatus(cudaMemcpyAsync(BPtrArrayHost[i], &Bhost[i * m * n], Bhost.size() / N * sizeof(Bhost[0]), cudaMemcpyHostToDevice, stream));
+            }
+        } else {
+            checkCudaStatus(cudaMemcpyAsync(Adev, Ahost.data(), Ahost.size() * sizeof(Ahost[0]), cudaMemcpyHostToDevice, stream));
+            checkCudaStatus(cudaMemcpyAsync(Bdev, Bhost.data(), Bhost.size() * sizeof(Bhost[0]), cudaMemcpyHostToDevice, stream));
+        }
+
         checkCudaStatus(cudaMemcpyAsync(biasDev, biasHost.data(), biasHost.size() * sizeof(biasHost[0]), cudaMemcpyHostToDevice, stream));
         checkCudaStatus(cudaMemcpyAsync(AscaleDev, AscaleHost.data(), AscaleHost.size() * sizeof(AscaleHost[0]), cudaMemcpyHostToDevice, stream));
         checkCudaStatus(cudaMemcpyAsync(BscaleDev, BscaleHost.data(), BscaleHost.size() * sizeof(BscaleHost[0]), cudaMemcpyHostToDevice, stream));
@@ -196,10 +300,20 @@ struct TestBench {
     }
 
     void copyDataFromDevice() {
-        if (outOfPlace)
-            checkCudaStatus(cudaMemcpyAsync(Dhost.data(), Ddev, Dhost.size() * sizeof(Dhost[0]), cudaMemcpyDeviceToHost, stream));
-        else
-            checkCudaStatus(cudaMemcpyAsync(Chost.data(), Cdev, Chost.size() * sizeof(Chost[0]), cudaMemcpyDeviceToHost, stream));
+        if (ptrArrayBatch) {
+            for (int i = 0; i < N; ++i) {
+                if (outOfPlace)
+                    checkCudaStatus(cudaMemcpyAsync(&Dhost[i * m * n], DPtrArrayHost[i], Dhost.size() / N * sizeof(Dhost[0]), cudaMemcpyDeviceToHost, stream));
+                else
+                    checkCudaStatus(cudaMemcpyAsync(&Chost[i * m * n], CPtrArrayHost[i], Chost.size() / N * sizeof(Chost[0]), cudaMemcpyDeviceToHost, stream));
+            }
+        } else {
+            if (outOfPlace)
+                checkCudaStatus(cudaMemcpyAsync(Dhost.data(), Ddev, Dhost.size() * sizeof(Dhost[0]), cudaMemcpyDeviceToHost, stream));
+            else
+                checkCudaStatus(cudaMemcpyAsync(Chost.data(), Cdev, Chost.size() * sizeof(Chost[0]), cudaMemcpyDeviceToHost, stream));
+        }
+
         checkCudaStatus(cudaMemcpyAsync(DOutscaleHost.data(), DOutscaleDev, DOutscaleHost.size() * sizeof(DOutscaleHost[0]), cudaMemcpyDeviceToHost, stream));
     }
 
@@ -217,7 +331,10 @@ struct TestBench {
     }
 
     bool outOfPlace;
+    bool ptrArrayBatch;
+    cublasOperation_t transa, transb;
     int m, n, k, N;
+    int lda, ldb, ldc, ldd;
     ComputeType alpha, beta;
 
     cudaStream_t stream;
@@ -233,6 +350,14 @@ struct TestBench {
     typename StorageType<InTypeAB>::type *Adev, *Bdev;
     typename StorageType<InTypeC>::type *Cdev;
     typename StorageType<OutType>::type *Ddev, *biasDev;
+
+    std::vector<typename StorageType<InTypeAB>::type *> APtrArrayHost, BPtrArrayHost;
+    std::vector<typename StorageType<InTypeC>::type *> CPtrArrayHost;
+    std::vector<typename StorageType<OutType>::type *> DPtrArrayHost;
+
+    typename StorageType<InTypeAB>::type **APtrArrayDev, **BPtrArrayDev;
+    typename StorageType<InTypeC>::type **CPtrArrayDev;
+    typename StorageType<OutType>::type **DPtrArrayDev;
 
     cublasLtMatmulMatrixScale_t AScaleMode, BScaleMode, CScaleMode, DScaleMode, DOutScaleMode;
 

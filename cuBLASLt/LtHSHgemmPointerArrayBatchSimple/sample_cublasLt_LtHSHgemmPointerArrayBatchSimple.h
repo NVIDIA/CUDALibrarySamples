@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,31 +26,29 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "sample_cublasLt_LtDgemmPresetAlgo.h"
-#include "helpers.h"
+#include <cublasLt.h>
 
-int main() {
-    TestBench<double> props(CUBLAS_OP_T, CUBLAS_OP_N, 4, 4, 20000, 2.0f, 0.0f, 4 * 1024 * 1024);
-
-    props.run([&props] {
-        LtDgemmPresetAlgo(props.ltHandle,
-                props.transa,
-                props.transb,
-                props.m,
-                props.n,
-                props.k,
-                &props.alpha,
-                props.Adev,
-                props.lda,
-                props.Bdev,
-                props.ldb,
-                &props.beta,
-                props.Cdev,
-                props.ldc,
-                props.workspace,
-                props.workspaceSize,
-                props.stream);
-    });
-
-    return 0;
-}
+/// Sample wrapper executing mixed precision gemm with cublasLtMatmul, nearly a drop-in replacement for cublasGemmEx,
+/// with addition of the workspace to support split-K algorithms
+///
+/// pointer mode is always host, to change it configure the appropriate matmul descriptor attribute
+/// matmul is not using cublas handle's configuration of math mode, here tensor ops are implicitly allowed
+void LtHSHgemmPointerArrayBatchSimple(cublasLtHandle_t ltHandle,
+                                 cublasOperation_t transa,
+                                 cublasOperation_t transb,
+                                 int m,
+                                 int n,
+                                 int k,
+                                 const float *alpha, /* host pointer */
+                                 const __half *const *A,
+                                 int lda,
+                                 const __half *const *B,
+                                 int ldb,
+                                 const float *beta, /* host pointer */
+                                 const __half *const *C,
+                                 int ldc,
+                                 __half *const *D,
+                                 int ldd,
+                                 int batchCount,
+                                 void *workspace,
+                                 size_t workspaceSize);
