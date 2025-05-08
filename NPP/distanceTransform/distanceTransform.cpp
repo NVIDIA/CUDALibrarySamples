@@ -44,6 +44,26 @@
 * software must include, in the user documentation and internal 
 * comments to the code, the above Disclaimer and U.S. Government End 
 * Users Notice. 
+*
+*
+* This sample loads raw grayscale images, computes truncated and true
+* distance transforms (along with Voronoi diagrams), and writes the
+* results back to disk. The example leverages NPP APIs and CUDA streams
+* for efficient GPU computation.
+*
+* Usage:
+*   - Place input .raw images in the "images" folder
+*   - Run the executable
+*   - View output raw files in the same directory
+*
+* Requirements:
+*   - NVIDIA GPU with CUDA support
+*   - CUDA Toolkit (tested with >=11.x)
+*   - NPP Library
+*
+* Example images:
+*   - Dolphin1_313x317_8u.raw
+*   - TestImage3_diamond_64x64_8u.raw
 */
 
 #include <stdio.h>
