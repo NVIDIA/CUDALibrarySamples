@@ -5,12 +5,13 @@
 This code demonstrates Batched Image connected region Label Markers and Compression utility using NPP library.
 
 ## Key Concepts
-
-Image connected region Label Markers and Compression 
+- Connected region labeling 
+- Label marker compression 
+- Batched image processing using GPU acceleration
 
 ## Supported SM Architectures
 
-[SM 5.0 ](https://developer.nvidia.com/cuda-gpus)  [SM 5.2 ](https://developer.nvidia.com/cuda-gpus)  [SM 6.0 ](https://developer.nvidia.com/cuda-gpus)  [SM 6.1 ](https://developer.nvidia.com/cuda-gpus)  [SM 7.0 ](https://developer.nvidia.com/cuda-gpus)  [SM 7.2 ](https://developer.nvidia.com/cuda-gpus)  [SM 7.5 ](https://developer.nvidia.com/cuda-gpus)  [SM 8.0 ](https://developer.nvidia.com/cuda-gpus)
+[SM 7.0 ](https://developer.nvidia.com/cuda-gpus)  [SM 7.2 ](https://developer.nvidia.com/cuda-gpus)  [SM 7.5 ](https://developer.nvidia.com/cuda-gpus)  [SM 8.0 ](https://developer.nvidia.com/cuda-gpus)
 
 ## Supported OSes
 
@@ -31,7 +32,7 @@ x86_64
 
 # Prerequisites
 - A Linux/Windows system with recent NVIDIA drivers.
-- Install the [CUDA 11.0 toolkit](https://developer.nvidia.com/cuda-downloads).
+- Install the [CUDA 12.0 toolkit](https://developer.nvidia.com/cuda-downloads).
 
 ## Build command on Linux
 ```
@@ -65,27 +66,26 @@ $  ./batchedLabelMarkersAndCompression -b 5
 
 ./batchedLabelMarkersAndCompression 
 
-NPP Library Version 11.0.0
-
-CUDA Driver  Version: 11.0
-
-CUDA Runtime Version: 11.0
+NPP Library Version 12.4.0
+CUDA Driver  Version: 12.9
+CUDA Runtime Version: 12.9
 
 Input file load succeeded.
-Lena_CompressedMarkerLabelsUF_8Way_512x512_32u succeeded, compressed label count is 497.
-
+Lena_CompressedMarkerLabelsUF_8Way_512x512_32u succeeded, compressed label count is 572.
 Input file load succeeded.
-CT_Skull_CompressedMarkerLabelsUF_8Way_512x512_32u succeeded, compressed label count is 343.
-
+CT_Skull_CompressedMarkerLabelsUF_8Way_512x512_32u succeeded, compressed label count is 435.
 Input file load succeeded.
-PCB_METAL_CompressedMarkerLabelsUF_8Way_509x335_32u succeeded, compressed label count is 3680.
-
+PCB_METAL_CompressedMarkerLabelsUF_8Way_509x335_32u succeeded, compressed label count is 3733.
 Input file load succeeded.
-PCB2_CompressedMarkerLabelsUF_8Way_1024x683_32u succeeded, compressed label count is 1081.
-
+PCB2_CompressedMarkerLabelsUF_8Way_1024x683_32u succeeded, compressed label count is 1271.
 Input file load succeeded.
-PCB_CompressedMarkerLabelsUF_8Way_1280x720_32u succeeded, compressed label count is 1085.
+PCB_CompressedMarkerLabelsUF_8Way_1280x720_32u succeeded, compressed label count is 1468.
 
+
+Lena_CompressedMarkerLabelsUFBatch_8Way_512x512_32u succeeded, compressed label count is 555.
+CT_Skull_CompressedMarkerLabelsUFBatch_8Way_512x512_32u succeeded, compressed label count is 413.
+PCB_METAL_CompressedMarkerLabelsUFBatch_8Way_509x335_32u succeeded, compressed label count is 3732.
+PCB2_CompressedMarkerLabelsUFBatch_8Way_1024x683_32u succeeded, compressed label count is 1222.
+PCB_CompressedMarkerLabelsUFBatch_8Way_1280x720_32u succeeded, compressed label count is 1454.
 
 ```
-

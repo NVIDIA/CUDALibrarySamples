@@ -67,8 +67,6 @@
 //
 //        Performance of ALL NPP image batch functions is limited by the maximum ROI height in the list of images.
 
-// Batched label compression support is only available on NPP versions > 11.0, comment out if using NPP 11.0
-//#define CUDA11U1
 
 #define NUMBER_OF_IMAGES 5
 
@@ -149,13 +147,11 @@ const std::string & LabelMarkersBatchOutputFile2 = Path + std::string("PCB_METAL
 const std::string & LabelMarkersBatchOutputFile3 = Path + std::string("PCB2_LabelMarkersUFBatch_8Way_1024x683_32u.raw");
 const std::string & LabelMarkersBatchOutputFile4 = Path + std::string("PCB_LabelMarkersUFBatch_8Way_1280x720_32u.raw");
 
-#ifdef CUDA11U1
 const std::string & CompressedMarkerLabelsBatchOutputFile0 = Path + std::string("Lena_CompressedMarkerLabelsUFBatch_8Way_512x512_32u.raw");
 const std::string & CompressedMarkerLabelsBatchOutputFile1 = Path + std::string("CT_skull_CompressedMarkerLabelsUFBatch_8Way_512x512_32u.raw");
 const std::string & CompressedMarkerLabelsBatchOutputFile2 = Path + std::string("PCB_METAL_CompressedMarkerLabelsUFBatch_8Way_509x335_32u.raw");
 const std::string & CompressedMarkerLabelsBatchOutputFile3 = Path + std::string("PCB2_CompressedMarkerLabelsUFBatch_8Way_1024x683_32u.raw");
 const std::string & CompressedMarkerLabelsBatchOutputFile4 = Path + std::string("PCB_CompressedMarkerLabelsUFBatch_8Way_1280x720_32u.raw");
-#endif
 
 int 
 loadRaw8BitImage(Npp8u * pImage, int nWidth, int nHeight, int nImage)
@@ -372,7 +368,7 @@ int main(int argc, const char *argv[])
                                                          oSizeROI[nImage],
                                                          nppiNormInf,
                                                          pUFGenerateLabelsScratchBufferDev[nImage],
-                                                         nppStreamCtx);
+                                                         nppStreamCtx); 
 
             if (nppStatus != NPP_SUCCESS)  
             {
@@ -432,9 +428,9 @@ int main(int argc, const char *argv[])
 
             nCompressedLabelCount = 0;
 
-            nppStatus = nppiCompressMarkerLabelsUF_32u_C1IR(pUFLabelDev[nImage], oSizeROI[nImage].width * sizeof(Npp32u), oSizeROI[nImage], 
+            nppStatus = nppiCompressMarkerLabelsUF_32u_C1IR_Ctx(pUFLabelDev[nImage], oSizeROI[nImage].width * sizeof(Npp32u), oSizeROI[nImage], 
                                                             oSizeROI[nImage].width * oSizeROI[nImage].height, &nCompressedLabelCount, 
-                                                            pUFCompressedLabelsScratchBufferDev[nImage]);
+                                                            pUFCompressedLabelsScratchBufferDev[nImage], nppStreamCtx);
 
             if (nppStatus != NPP_SUCCESS)  
             {
@@ -605,7 +601,6 @@ int main(int argc, const char *argv[])
         fclose(bmpFile);
     }
 
-#ifdef CUDA11U1
 
     // Now allocate scratch buffer memory for batched label compression
     cudaError = cudaMalloc ((void**)&pUFBatchSrcDstScratchBufferListDev, NUMBER_OF_IMAGES * sizeof(NppiBufferDescriptor));
@@ -725,12 +720,10 @@ int main(int argc, const char *argv[])
             printf("PCB_CompressedMarkerLabelsUFBatch_8Way_1280x720_32u succeeded, compressed label count is %d.\n", pUFBatchPerImageCompressedCountListHost[nImage]);
     }
 
-#endif // CUDA11U1
 
     tearDown();
 
     return 0;
 }
-
 
 

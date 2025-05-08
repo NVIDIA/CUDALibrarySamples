@@ -1,87 +1,111 @@
-# Image euclidean distance transform (EDT) using NPP
+# 🧮 Image Euclidean Distance Transform (EDT) using NVIDIA NPP
 
-## Description
+This repository demonstrates how to use the **NVIDIA Performance Primitives (NPP)** library to compute Euclidean distance transforms and Voronoi diagrams on grayscale images using the GPU.
 
-This code demonstrates Image euclidean distance transform (EDT) using NPP library.
+---
 
-## Key Concepts
+## 📌 Overview
 
-Image segmentation  
+This example loads raw `.raw` grayscale images, performs the following operations using NPP:
 
-## Supported SM Architectures
+- Truncated Euclidean Distance Transform (EDT)
+- True (floating-point) Distance Transform
+- Voronoi Diagram Generation
 
-  [SM 7.0 ](https://developer.nvidia.com/cuda-gpus)  [SM 7.2 ](https://developer.nvidia.com/cuda-gpus)  [SM 7.5 ](https://developer.nvidia.com/cuda-gpus)  [SM 8.0 ](https://developer.nvidia.com/cuda-gpus)
+The results are saved as output raw files, and CUDA streams are used for efficient execution.
 
-## Supported OSes
+---
 
-Linux Windows
+## 🚀 Features
 
-## Supported CPU Architecture
+- GPU-accelerated distance transform using `nppiDistanceTransformPBA_*` functions
+- Support for multiple output types: `16u`, `32f`, `16s`
+- Batch processing and stream-based execution
+- Demonstrates use of `NppStreamContext`
 
-x86_64
+---
 
-## CUDA APIs involved
-[NPP](https://docs.nvidia.com/cuda/npp/index.html)
+## 📷 Example Output
 
+### Input Image  
+`Dolphin1_313x317_8u.raw`  
+![Input Image](/NPP/distanceTransform/dolphin1_Input_319x319_8u.jpg)
 
-# Architecture
-- Image Euclidean Distance Transfrom (EDT).
+### Distance Transform  
+`DistanceTransformTrue_Dolphin1_319x319_16u.raw`  
+![Distance Transform](/NPP/distanceTransform/DistanceTransformTrue_Dolphin1_319x319_16u.jpg)
 
-# Building (make)
+---
 
-# Prerequisites
-- A Linux/Windows system with recent NVIDIA drivers.
-- Install the [CUDA 11.2 toolkit](https://developer.nvidia.com/cuda-downloads).
+## 🧠 Key Concepts
 
-## Build command on Linux
-```
+- GPU Image Processing
+- Distance Transform
+- Voronoi Diagrams
+- CUDA Streams
+- Raw Image Format Handling
+
+---
+
+## 💻 Supported Platforms
+
+| Category            | Support                                 |
+|---------------------|------------------------------------------|
+| GPU Architectures   | SM 7.5, SM 8.0 and Above                 |
+| OS                  | Linux, Windows                           |
+| CPU Architecture    | x86_64                                   |
+| CUDA Toolkit        | Requires CUDA 11.2+                      |
+
+---
+
+## 🛠️ Build Instructions
+
+### Linux
+```bash
 $ mkdir build
 $ cd build
 $ cmake ..
 $ make
 ```
 
-## Build command on Windows
-```
+### Windows
+```bash
 $ mkdir build
 $ cd build
 $ cmake -DCMAKE_GENERATOR_PLATFORM=x64 ..
-$ Open distanceTransform.sln project in Visual Studio 15 2017 and build
+# Open distanceTransform.sln in Visual Studio and build
 ```
 
+---
 
-# Usage
-./distanceTransform -h
-```
-Usage: ./distanceTransform 
-Parameters: 
-	number-of-images	:	Use 2 number of images
+## ▶️ Run Instructions
 
+```bash
+./distanceTransform
 ```
-Example:
-```
-```
-$  ./distanceTransform 
 
-./distanceTransform 
-
-NPP Library Version 11.3.2
-CUDA Driver  Version: 11.2
-CUDA Runtime Version: 11.2
+Expected Output:
+```
+NPP Library Version 12.4.0
+CUDA Driver  Version: 12.9
+CUDA Runtime Version: 12.9
 
 Input file load succeeded.
 Input file load succeeded.
 Done!
 
-
-
-Input Image
-![dolphin1_Input_319x319_8u](/NPP/distanceTransform/dolphin1_Input_319x319_8u.jpg)
-
-Distance Transform Image
-![DistanceTransformTrue_Dolphin1_319x319_16u](/NPP/distanceTransform/DistanceTransformTrue_Dolphin1_319x319_16u.jpg)
-
-
-
 ```
 
+---
+
+## 📦 Dependencies
+
+- [NPP Library](https://docs.nvidia.com/cuda/npp/index.html)
+- CUDA Toolkit ≥ 11.x
+- CMake
+
+---
+
+## 🧾 License
+
+This sample is released under the NVIDIA Software License Agreement. Refer to the `LICENSE` file for more details.
