@@ -1,41 +1,75 @@
-# Nvidia Performance Primitives (NPP) Library API examples
+# NVIDIA Performance Primitives (NPP) Library API Examples
 
-## Description
+## Overview
 
-This folder demonstrates NPP library API usage.
+This repository showcases example applications that utilize the NVIDIA Performance Primitives (NPP) library for high-performance image processing on NVIDIA GPUs.
 
 ## Key Concepts
 
-Image processing performance primitives from NPP Library
+- GPU-accelerated image processing
+- Connected region labeling
+- Watershed segmentation
+- Contour detection
+- Distance transform
 
-## Examples
+## Examples Included
+
+- [Batched Label Markers and Compression](batchedLabelMarkersAndCompression/)  
+  Demonstrates how to perform connected region labeling and compress marker labels across a batch of images.
+
+- [Watershed Segmentation](watershedSegmentation/)  
+  Applies the watershed segmentation algorithm for image segmentation using NPP utilities.
+
+- [Euclidean Distance Transform](distanceTransform/)  
+  Computes the Euclidean distance transform for binary images.
+
+- [Find Contour](findContour/)  
+  Extracts contours from labeled image regions using NPP primitives.
+
+## Latest Developments in NPP (12.4.0.0)
+
+### Deprecations
+
+- **Non-CTX APIs** are deprecated and will be removed in **CUDA Toolkit 13.0**.  
+- The `nppGetStreamContext()` API will be deprecated starting with CUDA Toolkit 13.0. Developers should migrate to **application-managed stream contexts** as described in the [NPP Documentation – General Conventions](https://docs.nvidia.com/cuda/npp/introduction.html#general-conventions).
+
+### Resolved Issues
+
+- `nppiTranspose` now supports larger dimensions.  
+- Fixed a distance calculation bug in `nppiDistanceTransformPBA_8u16u_C1R_Ctx`.  
+- Improved performance of `nppiResizeSqrPixel` and `nppiCrossCorrelation`.  
+- `nppiYUVToRGB_8u_C3R` now supports block-linear formatted input.  
+- Fixed output pitch issue in `nppiFilterGaussAdvanced`.  
+
+## Platform Support
+
+- **Operating Systems**: Linux, Windows  
+- **CPU Architectures**: x86_64  
+- **Required Toolkit**: [CUDA 12.0 or newer](https://developer.nvidia.com/cuda-downloads)
+
+## CUDA API Reference
+
+- [NPP Library Documentation](https://docs.nvidia.com/cuda/npp/index.html)
+
+## Application-Managed Context and Stream Handling in NPP
+
+The `NppStreamContext` structure was introduced in NPP version 10.1, corresponding to CUDA Toolkit 10.1 (released in early 2019). 
+This marked the beginning of support for application-managed stream contexts, allowing developers to explicitly manage CUDA streams for more flexible and concurrent GPU workloads. 
+
+Use of the NppStreamContext structure is strongly recommended in place of the deprecated nppGetStreamContext() API, which is scheduled for removal in CUDA Toolkit 13.0 to support application-managed stream and context control.
 
 
-[Image region connected label marker and compression ](batchedLabelMarkersAndCompression/)
+### Example: Using Application-Managed Context
 
-[Image segmentation using watershed algorithm ](watershedSegmentation/)
+```cpp
+NppStreamContext nppCtx;
+nppCtx.hStream = myCudaStream; // Application-managed stream
+nppCtx.nCudaDeviceId = myDeviceId;
+nppCtx.nMultiProcessorCount = myMPCount;
+// Set other fields as needed based on cudaDeviceProp
 
-[Image Euclidean Distance Transform ](distanceTransform/)
+// Use in API call
+nppiFilterGauss_8u_C1R_Ctx(..., nppCtx);
+```
 
-[Find Contour Sample ](findContour/)
-
-## Supported SM Architectures
-
-[SM 3.0 ](https://developer.nvidia.com/cuda-gpus)  [SM 3.5 ](https://developer.nvidia.com/cuda-gpus)  [SM 3.7 ](https://developer.nvidia.com/cuda-gpus)  [SM 5.0 ](https://developer.nvidia.com/cuda-gpus)  [SM 5.2 ](https://developer.nvidia.com/cuda-gpus)  [SM 6.0 ](https://developer.nvidia.com/cuda-gpus)  [SM 6.1 ](https://developer.nvidia.com/cuda-gpus)  [SM 7.0 ](https://developer.nvidia.com/cuda-gpus)  [SM 7.2 ](https://developer.nvidia.com/cuda-gpus)  [SM 7.5 ](https://developer.nvidia.com/cuda-gpus) [SM 8.0 ](https://developer.nvidia.com/cuda-gpus)
-
-## Supported OSes
-
-Linux Windows
-
-## Supported CPU Architecture
-
-x86_64
-
-## CUDA APIs involved
-[NPP](https://docs.nvidia.com/cuda/npp/index.html)
-
-
-# Prerequisites
-- A Linux system with recent NVIDIA drivers.
-- Install the [CUDA 11.2 toolkit](https://developer.nvidia.com/cuda-downloads).
-
+For the most up-to-date details, refer to the official [NPP Documentation – Application-managed Context](https://docs.nvidia.com/cuda/npp/index.html#application-managed-context).

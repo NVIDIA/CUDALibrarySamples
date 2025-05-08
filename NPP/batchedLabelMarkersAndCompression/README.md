@@ -5,8 +5,9 @@
 This code demonstrates Batched Image connected region Label Markers and Compression utility using NPP library.
 
 ## Key Concepts
-
-Image connected region Label Markers and Compression 
+- Connected region labeling  
+- Label marker compression  
+- Batched image processing using GPU acceleration
 
 ## Supported SM Architectures
 

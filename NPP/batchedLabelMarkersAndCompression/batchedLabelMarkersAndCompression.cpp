@@ -67,8 +67,6 @@
 //
 //        Performance of ALL NPP image batch functions is limited by the maximum ROI height in the list of images.
 
-// Batched label compression support is only available on NPP versions > 11.0, comment out if using NPP 11.0
-//#define CUDA11U1
 
 #define NUMBER_OF_IMAGES 5
 
@@ -130,6 +128,15 @@ const std::string & InputFile1 = Path + std::string("CT_skull_512x512_8u.raw");
 const std::string & InputFile2 = Path + std::string("PCB_METAL_509x335_8u.raw");
 const std::string & InputFile3 = Path + std::string("PCB2_1024x683_8u.raw");
 const std::string & InputFile4 = Path + std::string("PCB_1280x720_8u.raw");
+const std::string base_path = "../images/";
+const std::string input_files[] = {
+    "Lena_512x512_8u_Gray.raw",
+    "CT_skull_512x512_8u_Gray.raw",
+    "Rocks_512x512_8u_Gray.raw",
+    "coins_500x383_8u_Gray.raw",
+    "coins_overlay_500x569_8u_Gray.raw"
+};
+
 
 const std::string & LabelMarkersOutputFile0 = Path + std::string("Lena_LabelMarkersUF_8Way_512x512_32u.raw");
 const std::string & LabelMarkersOutputFile1 = Path + std::string("CT_skull_LabelMarkersUF_8Way_512x512_32u.raw");
@@ -149,13 +156,11 @@ const std::string & LabelMarkersBatchOutputFile2 = Path + std::string("PCB_METAL
 const std::string & LabelMarkersBatchOutputFile3 = Path + std::string("PCB2_LabelMarkersUFBatch_8Way_1024x683_32u.raw");
 const std::string & LabelMarkersBatchOutputFile4 = Path + std::string("PCB_LabelMarkersUFBatch_8Way_1280x720_32u.raw");
 
-#ifdef CUDA11U1
 const std::string & CompressedMarkerLabelsBatchOutputFile0 = Path + std::string("Lena_CompressedMarkerLabelsUFBatch_8Way_512x512_32u.raw");
 const std::string & CompressedMarkerLabelsBatchOutputFile1 = Path + std::string("CT_skull_CompressedMarkerLabelsUFBatch_8Way_512x512_32u.raw");
 const std::string & CompressedMarkerLabelsBatchOutputFile2 = Path + std::string("PCB_METAL_CompressedMarkerLabelsUFBatch_8Way_509x335_32u.raw");
 const std::string & CompressedMarkerLabelsBatchOutputFile3 = Path + std::string("PCB2_CompressedMarkerLabelsUFBatch_8Way_1024x683_32u.raw");
 const std::string & CompressedMarkerLabelsBatchOutputFile4 = Path + std::string("PCB_CompressedMarkerLabelsUFBatch_8Way_1280x720_32u.raw");
-#endif
 
 int 
 loadRaw8BitImage(Npp8u * pImage, int nWidth, int nHeight, int nImage)
@@ -605,7 +610,6 @@ int main(int argc, const char *argv[])
         fclose(bmpFile);
     }
 
-#ifdef CUDA11U1
 
     // Now allocate scratch buffer memory for batched label compression
     cudaError = cudaMalloc ((void**)&pUFBatchSrcDstScratchBufferListDev, NUMBER_OF_IMAGES * sizeof(NppiBufferDescriptor));
@@ -725,7 +729,6 @@ int main(int argc, const char *argv[])
             printf("PCB_CompressedMarkerLabelsUFBatch_8Way_1280x720_32u succeeded, compressed label count is %d.\n", pUFBatchPerImageCompressedCountListHost[nImage]);
     }
 
-#endif // CUDA11U1
 
     tearDown();
 

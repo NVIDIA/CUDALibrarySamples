@@ -1,71 +1,62 @@
-# Image watershed segmentation using NPP
+# Watershed Image Segmentation with NPP
 
-## Description
+## Overview
 
-This code demonstrates Image segmentation using watershed algorithm utility using NPP library.
-Segments a grayscale image using the watershed segmentation technique described in "Efficient 2D and 3D Watershed on Graphics Processing Unit: Block-Asynchronous Approaches Based on Cellular Automata" by Pablo Quesada-Barriuso and others.
+This project demonstrates grayscale image segmentation using the watershed algorithm implemented through NVIDIA’s NPP library. The technique is based on the GPU-accelerated approach detailed in the paper:
+
+> "Efficient 2D and 3D Watershed on Graphics Processing Unit: Block-Asynchronous Approaches Based on Cellular Automata" by Pablo Quesada-Barriuso et al.
 
 ## Key Concepts
+- Image Segmentation
+- Watershed Transform
+- NPP (NVIDIA Performance Primitives)
 
-Image segmentation  
+## Supported Platforms
+- **Operating System:** Linux or Windows
+- **CPU Architecture:** x86_64
+- **GPU Support:** [CUDA-enabled GPUs (SM 7.0, 7.2, 7.5, 8.0, and above)](https://developer.nvidia.com/cuda-gpus)
+- **Toolkit:** [CUDA Toolkit 11.5 or later](https://developer.nvidia.com/cuda-downloads)
+- **Libraries:** NPP, CMake, and CUDA Runtime
 
-## Supported SM Architectures
+---
 
- [SM 5.0 ](https://developer.nvidia.com/cuda-gpus)  [SM 5.2 ](https://developer.nvidia.com/cuda-gpus)  [SM 6.0 ](https://developer.nvidia.com/cuda-gpus)  [SM 6.1 ](https://developer.nvidia.com/cuda-gpus)  [SM 7.0 ](https://developer.nvidia.com/cuda-gpus)  [SM 7.2 ](https://developer.nvidia.com/cuda-gpus)  [SM 7.5 ](https://developer.nvidia.com/cuda-gpus)  [SM 8.0 ](https://developer.nvidia.com/cuda-gpus)
+## Build Instructions
 
-## Supported OSes
-
-Linux Windows
-
-## Supported CPU Architecture
-
-x86_64
-
-## CUDA APIs involved
-[NPP](https://docs.nvidia.com/cuda/npp/index.html)
-
-
-# Architecture
-- Image segmentation using watershed.
-
-# Building (make)
-
-# Prerequisites
-- A Linux/Windows system with recent NVIDIA drivers.
-- Install the [CUDA 11.0 toolkit](https://developer.nvidia.com/cuda-downloads).
-
-## Build command on Linux
-```
+### Linux
+```bash
 $ mkdir build
 $ cd build
 $ cmake ..
 $ make
 ```
 
-## Build command on Windows
-```
+### Windows
+```bash
 $ mkdir build
 $ cd build
 $ cmake -DCMAKE_GENERATOR_PLATFORM=x64 ..
-$ Open watershedSegmentation.sln project in Visual Studio 15 2017 and build
+# Open the generated `watershedSegmentation.sln` in Visual Studio 2017 and build the solution
 ```
 
+---
 
-# Usage
-./watershedSegmentation -h
+## Usage
+```bash
+./watershedSegmentation [-b number-of-batch]
 ```
-Usage: ./watershedSegmentation [-b number-of-batch]
-Parameters: 
-	number-of-batch	:	Use number of batch to process [default 3]
 
-```
-Example:
-```
-```
-$  ./watershedSegmentation -b 3
+### Parameters
+- `-b <number>`: Number of images to process in a batch (default is 3).
 
-./watershedSegmentation 
+### Example
+```bash
+./watershedSegmentation -b 3
+```
 
+---
+
+## Output Log
+```text
 NPP Library Version 11.0.0
 CUDA Driver  Version: 11.0
 CUDA Runtime Version: 11.0
@@ -87,7 +78,10 @@ Rocks_Segments_8Way_512x512_8u succeeded.
 Rocks_CompressedSegmentLabels_8Way_512x512_32u succeeded.
 Rocks_SegmentBoundaries_8Way_512x512_8u succeeded.
 Rocks_SegmentsWithContrastingBoundaries_8Way_512x512_8u succeeded.
-
-
 ```
 
+---
+
+## Credits
+- Sample provided by NVIDIA Corporation.
+- Based on academic work cited above.
