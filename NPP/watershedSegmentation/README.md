@@ -57,27 +57,12 @@ $ cmake -DCMAKE_GENERATOR_PLATFORM=x64 ..
 
 ## Output Log
 ```text
-NPP Library Version 11.0.0
-CUDA Driver  Version: 11.0
-CUDA Runtime Version: 11.0
+Processed Lena_512x512_8u_Gray.raw
+Processed CT_skull_512x512_8u_Gray.raw
+Processed Rocks_512x512_8u_Gray.raw
+Processed coins_500x383_8u_Gray.raw
+Processed coins_overlay_500x569_8u_Gray.raw
 
-Input file load succeeded.
-Lena_Segments_8Way_512x512_8u succeeded.
-Lena_CompressedSegmentLabels_8Way_512x512_32u succeeded.
-Lena_SegmentBoundaries_8Way_512x512_8u succeeded.
-Lena_SegmentsWithContrastingBoundaries_8Way_512x512_8u succeeded.
-
-Input file load succeeded.
-CT_Skull_Segments_8Way_512x512_8u succeeded.
-CT_Skull_CompressedSegmentLabels_8Way_512x512_32u succeeded.
-CT_Skull_SegmentBoundaries_8Way_512x512_8u succeeded.
-CT_Skull_SegmentsWithContrastingBoundaries_8Way_512x512_8u succeeded.
-
-Input file load succeeded.
-Rocks_Segments_8Way_512x512_8u succeeded.
-Rocks_CompressedSegmentLabels_8Way_512x512_32u succeeded.
-Rocks_SegmentBoundaries_8Way_512x512_8u succeeded.
-Rocks_SegmentsWithContrastingBoundaries_8Way_512x512_8u succeeded.
 ```
 
 ---

@@ -86,13 +86,14 @@ $ cmake -DCMAKE_GENERATOR_PLATFORM=x64 ..
 
 Expected Output:
 ```
-NPP Library Version 11.3.2
-CUDA Driver  Version: 11.2
-CUDA Runtime Version: 11.2
+NPP Library Version 12.4.0
+CUDA Driver  Version: 12.9
+CUDA Runtime Version: 12.9
 
 Input file load succeeded.
 Input file load succeeded.
 Done!
+
 ```
 
 ---
