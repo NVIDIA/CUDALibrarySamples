@@ -64,12 +64,11 @@ Use of the NppStreamContext structure is strongly recommended in place of the de
 ```cpp
 NppStreamContext nppCtx;
 nppCtx.hStream = myCudaStream; // Application-managed stream
-nppCtx.nCudaDeviceId = myDeviceId;
-nppCtx.nMultiProcessorCount = myMPCount;
+
 // Set other fields as needed based on cudaDeviceProp
 
 // Use in API call
-nppiFilterGauss_8u_C1R_Ctx(..., nppCtx);
+nppiFilterGauss_8u_C1R_Ctx(..., nppCtx); 
 ```
 
 For the most up-to-date details, refer to the official [NPP Documentation – Application-managed Context](https://docs.nvidia.com/cuda/npp/index.html#application-managed-context).

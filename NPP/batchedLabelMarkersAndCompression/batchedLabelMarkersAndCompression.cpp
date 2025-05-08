@@ -128,15 +128,6 @@ const std::string & InputFile1 = Path + std::string("CT_skull_512x512_8u.raw");
 const std::string & InputFile2 = Path + std::string("PCB_METAL_509x335_8u.raw");
 const std::string & InputFile3 = Path + std::string("PCB2_1024x683_8u.raw");
 const std::string & InputFile4 = Path + std::string("PCB_1280x720_8u.raw");
-const std::string base_path = "../images/";
-const std::string input_files[] = {
-    "Lena_512x512_8u_Gray.raw",
-    "CT_skull_512x512_8u_Gray.raw",
-    "Rocks_512x512_8u_Gray.raw",
-    "coins_500x383_8u_Gray.raw",
-    "coins_overlay_500x569_8u_Gray.raw"
-};
-
 
 const std::string & LabelMarkersOutputFile0 = Path + std::string("Lena_LabelMarkersUF_8Way_512x512_32u.raw");
 const std::string & LabelMarkersOutputFile1 = Path + std::string("CT_skull_LabelMarkersUF_8Way_512x512_32u.raw");
@@ -377,7 +368,7 @@ int main(int argc, const char *argv[])
                                                          oSizeROI[nImage],
                                                          nppiNormInf,
                                                          pUFGenerateLabelsScratchBufferDev[nImage],
-                                                         nppStreamCtx);
+                                                         nppStreamCtx); 
 
             if (nppStatus != NPP_SUCCESS)  
             {
@@ -437,9 +428,9 @@ int main(int argc, const char *argv[])
 
             nCompressedLabelCount = 0;
 
-            nppStatus = nppiCompressMarkerLabelsUF_32u_C1IR(pUFLabelDev[nImage], oSizeROI[nImage].width * sizeof(Npp32u), oSizeROI[nImage], 
+            nppStatus = nppiCompressMarkerLabelsUF_32u_C1IR_Ctx(pUFLabelDev[nImage], oSizeROI[nImage].width * sizeof(Npp32u), oSizeROI[nImage], 
                                                             oSizeROI[nImage].width * oSizeROI[nImage].height, &nCompressedLabelCount, 
-                                                            pUFCompressedLabelsScratchBufferDev[nImage]);
+                                                            pUFCompressedLabelsScratchBufferDev[nImage], nppStreamCtx);
 
             if (nppStatus != NPP_SUCCESS)  
             {
@@ -734,6 +725,5 @@ int main(int argc, const char *argv[])
 
     return 0;
 }
-
 
 
