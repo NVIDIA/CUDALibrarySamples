@@ -30,7 +30,7 @@ This repository showcases example applications that utilize the NVIDIA Performan
 
 ### Deprecations
 
-- **Non-CTX APIs** are deprecated and will be removed in **CUDA Toolkit 13.0**.  
+- **Non-CTX APIs** are deprecating and will be removed in **CUDA Toolkit 13.0**.  
 - The `nppGetStreamContext()` API will be deprecated starting with CUDA Toolkit 13.0. Developers should migrate to **application-managed stream contexts** as described in the [NPP Documentation – General Conventions](https://docs.nvidia.com/cuda/npp/introduction.html#general-conventions).
 
 ### Resolved Issues
