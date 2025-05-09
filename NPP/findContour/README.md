@@ -172,7 +172,7 @@ Done. Compressed Labels: 274
 - Format: 8-bit unsigned grayscale
 - Dimensions: 2048 x 1024
 
-![Input Image](/NPP/findContour/CircuitBoard_2048x1024_8u.jpgg)
+![Input Image](/NPP/findContour/CircuitBoard_2048x1024_8u.jpg)
 
 ---
 
