@@ -23,7 +23,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
   # Compilation settings
   set(NVCOMP_NAMESPACE "nvcomp::")
-  set(GPU_ARCHS "70;75;80;86;89;90;100;120")
+  set(GPU_ARCHS "70;75;80;86;89;90")
+  if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "12.8")
+    set(GPU_ARCHS ${GPU_ARCHS} "100" "120")
+  endif()
   add_compile_definitions("THRUST_CUB_WRAPPED_NAMESPACE=nvcomp")
   if (BUILD_STATIC)
     add_compile_definitions("NVCOMP_STATIC_DEFINE")
