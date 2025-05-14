@@ -113,6 +113,7 @@ int main (int argc, char *argv[]) {
     if (argc < 2) 
     {
         fprintf(stderr, "Usage: %s <matrix_filename> <vector_filename (optional)> \n", argv[0]);
+        printf("use matrix.mtx and rhs.mtx for a reference execution\n")
         return EXIT_FAILURE;
     }
 
