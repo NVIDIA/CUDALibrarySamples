@@ -1,0 +1,8 @@
+%%MatrixMarket matrix coordinate real general
+% 5x5 matrix with 8 non-zero entries in coordinate format
+5 1 5
+1 1 7.0
+2 1 12.0
+3 1 25.0
+4 1 4.0
+5 1 13.0
