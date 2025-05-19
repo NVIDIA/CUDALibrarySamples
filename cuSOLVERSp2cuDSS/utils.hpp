@@ -323,18 +323,22 @@ int coo_to_csr(const ordinal_type m,
                std::vector<coo_t<value_type>> &mm,
                std::vector<ordinal_type> &ap,
                std::vector<ordinal_type> &aj,
-               std::vector<value_type> &ax) {
+               std::vector<value_type> &ax,
+               bool useZeroBasedIndexing = true) {
   ap.resize(m+1);
   aj.resize(nnz);
   ax.resize(nnz);
 
   using ijx_type = coo_t<value_type>;
 
+  // Adjust indexing depending on zero-based or one-based indexing.
+  int offset = useZeroBasedIndexing ? 0 : 1;
+
   ordinal_type icnt = 0;
   ordinal_type jcnt = 0;
   ijx_type prev = mm[0];
   
-  ap[icnt++] = 0;
+  ap[icnt++] = offset;
   aj[jcnt] = prev._j;
   ax[jcnt++] = prev._x;
   
@@ -342,7 +346,7 @@ int coo_to_csr(const ordinal_type m,
     const ijx_type aij = (*it);
     
     if (aij._i != prev._i)
-      ap[icnt++] = jcnt;
+      ap[icnt++] = jcnt + offset;
     
     if (aij == prev) {
       aj[jcnt-1] = aij._j;
@@ -353,7 +357,7 @@ int coo_to_csr(const ordinal_type m,
     }
     prev = aij;
   }
-  ap[icnt++] = jcnt;
+  ap[icnt++] = jcnt + offset;
 
   return 0;
 }
@@ -367,13 +371,19 @@ int csr_to_coo(const ordinal_type m,
                std::vector<coo_t<value_type>> &mm) {
   mm.resize(nnz);
 
+  // Adjust indexing depending on zero-based or one-based indexing.
+  int offset = 0;
+  if (ap.size() > 0) {
+    offset = (ap[0] == 0) ? 0 : 1;
+  }
+
   using ijx_type = coo_t<value_type>;  
   for (ordinal_type i=0,cnt=0;i<m;++i) {
     const ordinal_type kbeg = ap[i], kend = ap[i+1];
     for (ordinal_type k=kbeg;k<kend;++k) {
-      const ordinal_type j = aj[k];
-      const value_type x = ax[k];
-      mm[cnt++] = ijx_type(i, j, x);
+      const ordinal_type j = aj[k-offset]-offset;
+      const value_type x = ax[k-offset];
+      mm[cnt++] = ijx_type(i + offset, j + offset, x);
     }
   }
   
@@ -529,6 +539,15 @@ int read_matrixmarket(std::string filename,
     }                                                                   \
   } while (0)
 
+// cublas API error checking
+#define CUBLAS_CHECK(err)                                                                          \
+    do {                                                                                           \
+        cublasStatus_t err_ = (err);                                                               \
+        if (err_ != CUBLAS_STATUS_SUCCESS) {                                                       \
+            printf("cublas error %d at %s:%d\n", err_, __FILE__, __LINE__);                        \
+            throw std::runtime_error("cublas error");                                              \
+        }                                                                                          \
+    } while (0)
 
 ///
 /// Unified X interface to cusolver APIs
