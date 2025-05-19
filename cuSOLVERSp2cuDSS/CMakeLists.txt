@@ -1,5 +1,5 @@
 #
-# Copyright 2023-2024 NVIDIA Corporation.  All rights reserved.
+# Copyright 2023-2025 NVIDIA Corporation.  All rights reserved.
 #
 # NOTICE TO LICENSEE:
 #
@@ -111,4 +111,11 @@ build_driver()
 #
 set(CUSOLVER_ETI_VALUE_TYPES double)
 set(CUSOLVER_DRIVERS cuSolverRf2cuDSS) 
+build_driver()
+
+#
+# csreigvsi (only double)
+#
+set(CUSOLVER_ETI_VALUE_TYPES double)
+set(CUSOLVER_DRIVERS csreigvsi2cuDSS)
 build_driver()

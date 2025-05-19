@@ -3,20 +3,20 @@
 ## Description
 
 cuSOLVERSp/Rf are deprecated and will be removed in a future major release.
-To continue using the sparse direct methods provided from these packages,
-please use [cuDSS](https://developer.nvidia.com/cudss) library instead
-for better performance and support. Code samples in this directory demonstrate the
+To continue using the sparse direct methods provided by these packages,
+please use the [cuDSS](https://developer.nvidia.com/cudss) library instead
+for better performance and support. The code samples in this directory demonstrate the
 transition procedure from cuSOLVERSp/Rf to cuDSS. 
 
-Note: while the cuDSS team plans to extend the coverage, it is not planned to cover
-the 100% of functionalities provided from cuSolverSp/Rf.
+Note: While the cuDSS team plans to extend the coverage, it is not planned to support
+100% of the functionality provided by cuSolverSp/Rf.
 
-Reference:
+References:
 * [cuSOLVER Documentation](https://docs.nvidia.com/cuda/cusolver/index.html)
 * [cuDSS Documentation](https://docs.nvidia.com/cuda/cudss/index.html)
 * [cuDSS Examples](https://github.com/NVIDIA/CUDALibrarySamples/tree/master/cuDSS)
 
-# Deprecated cuSOLVERSp/Rf APIs and its transition to cuDSS
+# Deprecated cuSOLVERSp/Rf APIs and their transition to cuDSS
 
 A brief summary of deprecated APIs and its transition to cuDSS are illustrated in the below.
 For more detailed and complete transition of the APIs, we recommend to check the example
@@ -60,9 +60,16 @@ codes `cuSolverSp2cuDSS.hpp` and `cuSolverRf2cuDSS.hpp`.
 +-----------------+-------------------------------------------+---------------------------------------------------------+
 ```
 
-# Building examples
+# Deprecated cuSOLVERSp APIs without direct replacement in cuDSS
 
-This example is compatible to cuDSS 0.3.0 and CUDA Toolkit 12.x and higher.
+The eigenproblem solver `cusolverSp[S,D,C,Z]csreigvsi` does not have a direct counterpart in cuDSS.
+The examples demonstrate how to implement this functionality using cuDSS and auxiliary routines.
+
+**Remark:** Since the eigenvectors are not unique, `csreigvsi` and its reimplementation using cuDSS may compute different results.
+
+# Building the examples
+
+These examples are compatible with cuDSS 0.5.0 and CUDA Toolkit 12.x or higher.
 Download and install the packages from
 
 * [developer.nvidia.com/cuda-downloads](https://developer.nvidia.com/cuda-downloads)
@@ -86,17 +93,18 @@ Configure and build the examples using cmake.
     $ make
 ```
 
-# Running examples
+# Running the examples
 
-After successful sample build, it generates the executables in your build directory.
+After successfully building the samples, the following executables have been generated in your build directory.
 
-* `cuSolverRf2cuDSS_<float,double,scomplex,dcomplex>`: sparse Cholesky factorization using cuSOLVERSp and cuDSS.
+* `cuSolverSp2cuDSS_<float,double,scomplex,dcomplex>`: sparse Cholesky factorization using cuSOLVERSp and cuDSS.
 * `cuSolverRf2cuDSS_double`: sparse LU factorization and refactorization using cuSOLVERSp/Rf and cuDSS.
+* `csreigvsi2cuDSS_double`: computes an eigenvalue and corresponding eigenvector using inverse iteration.
 
 The usage of each sample code can be listed with a `--help` command line argument.
-An example usage is shown in the below.
+An example usage is shown below.
 
-```{verbatime}
+```sh
     $ ./cuSolverSp2cuDSS_double -h
     usage: ./cuSolverSp2cuDSS_double --solver <cudss;cusolver> --file <filename> --timer --verbose 
       --solver : select a linear solver; cudss, cusolver
@@ -161,3 +169,22 @@ Outputs from cuSolverRf2cuDSS:
     -- |A| = 35.9739, |Ax-b| = 2.67377e-15, |Ax-b|/|A| = 7.43253e-17
  ```
  
+Outputs from csreigvsi2cuDSS_double:
+
+```
+   $ ./csreigvsi2cuDSS_double
+   Compute eigenpair with cusolverSp
+   computed eigenvalue mu=-4.76524 and eigenvector x
+   -- vector: x [4]
+      -0.143035
+      0.412317
+      -0.559572
+      0.704567
+   Compute eigenpair with cuDSS
+   computed eigenvalue mu=-4.76524 and eigenvector x
+   -- vector: x [4]
+      -0.143035
+      0.412317
+      -0.559572
+      0.704567
+```
