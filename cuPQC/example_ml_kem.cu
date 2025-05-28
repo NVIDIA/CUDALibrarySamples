@@ -54,7 +54,7 @@ __global__ void decaps_kernel(uint8_t* shared_secrets, const uint8_t* ciphertext
     MLKEM512Decaps().execute(shared_secret, ciphertext, secret_key, work, smem_ptr);
 }
 
-void ml_kem_keygen(std::vector<uint8_t> public_keys, std::vector<uint8_t> secret_keys, const unsigned int batch)
+void ml_kem_keygen(std::vector<uint8_t>& public_keys, std::vector<uint8_t>& secret_keys, const unsigned int batch)
 {
     /*
      * Set up for utilizing cuPQCDx ML-KEM Keygen.
