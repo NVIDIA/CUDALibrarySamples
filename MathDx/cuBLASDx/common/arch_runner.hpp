@@ -112,6 +112,11 @@ StatusType arch_runner(unsigned cuda_device_arch, Functor example_functor, Args&
             }
             break;
         }
+        default: {
+            printf("Examples not configured to support SM %u.  Use the CUBLASDX_CUDA_ARCHITECTURES CMake variable to configure the SM support.\n",
+                   cuda_device_arch);
+            return 1;
+        }
     }
 
     // We cannot check invoke_result_t because that
