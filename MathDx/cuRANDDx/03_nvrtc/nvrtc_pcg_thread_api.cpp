@@ -15,7 +15,7 @@
 #include <cuda_runtime_api.h>
 
 #include "nvrtc_helper.hpp" 
-#include "common.hpp"
+#include "../common.hpp"
 
 const char* generate_kernel = R"kernel(
 #include <curanddx.hpp>

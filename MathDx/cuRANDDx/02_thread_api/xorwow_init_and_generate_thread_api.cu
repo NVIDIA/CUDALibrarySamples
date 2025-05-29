@@ -10,7 +10,7 @@
 #include <vector>
 
 #include <curanddx.hpp>
-#include "common.hpp"
+#include "../common.hpp"
 
 // This example demonstrates how to launch two kernels, one for initializing the states, one for generating normally distribute 
 // random numbers with Box-Muller method, using XORWOW generator. 

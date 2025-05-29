@@ -16,7 +16,7 @@
 #endif
 
 #include <curanddx.hpp>
-#include "common.hpp"
+#include "../common.hpp"
 
 // This example demonstrates how to use cuRANDDx thread-level operator to generate:
 // (1) a sequence of uniformly-distributed FP64 numbers,
