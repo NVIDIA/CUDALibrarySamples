@@ -11,7 +11,7 @@
 #include <cassert>
 
 #include <curanddx.hpp>
-#include "common.hpp"
+#include "../common.hpp"
 
 // This example demonstrates how to use quasi-random generator scrambled sobol64 and cuRANDDx thread-level operator
 // to generate a sequence of random numbers and compare with the results generated using cuRAND host API

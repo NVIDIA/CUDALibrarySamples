@@ -10,7 +10,7 @@
 #include <vector>
 
 #include <curanddx.hpp>
-#include "common.hpp"
+#include "../common.hpp"
 
 #ifdef CURANDDX_EXAMPLE_NVPL_RAND_AVAILABLE
 #    include <nvpl_rand.h>

@@ -10,7 +10,7 @@
 #include <vector>
 
 #include <curanddx.hpp>
-#include "common.hpp"
+#include "../common.hpp"
 
 // This example demonstrates how to use cuRANDDx thread-level operator to generate a sequence of random numbers
 // using Philox generator with user-defined round number (default 10). 
