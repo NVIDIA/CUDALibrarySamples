@@ -22,7 +22,7 @@ This folder demonstrates cuSolverDx APIs usage.
 
 ```
 mkdir build && cd build
-cmake -DCUSOLVERDX_CUDA_ARCHITECTURES=80-real -Dmathdx_ROOT=<path_of_mathdx>/nvidia-mathdx-25.01.0/nvidia/mathdx/25.01 ../example/cusolverdx
+cmake -DCUSOLVERDX_CUDA_ARCHITECTURES=80-real -Dmathdx_ROOT=<path_of_mathdx>/nvidia-mathdx-25.06.0/nvidia/mathdx/25.06 ../example/cusolverdx
 make
 // Run
 ctest
@@ -34,10 +34,16 @@ For the detailed descriptions of the examples please visit [Examples](https://do
 
 |              Group           |            Example                |                                  Description                                                      |
 |------------------------------|-----------------------------------|---------------------------------------------------------------------------------------------------|
-| Introduction Examples        | posv_batched                      | Introduction example                                                                              |
-| Cholesky Examples            | simple_potrf                      | Cholesky factorization                                                                            |
+| Introduction Examples        | posv_batched                      | Introduction example with Cholesky factorization and solve                                        |
+| Cholesky Examples            | potrf                             | Cholesky    factorization                                                                         |
 |                              | potrf_runtime_ld                  | Cholesky factorization with runtime leading dimensions                                            |
 | LU Examples                  | getrf_wo_pivot                    | LU factorization without pivoting                                                                 |
-|                              | gesv_batched_wo_pivot             | Solves a batched linear systems with multiple right hand sides after performing LU factorization  |
+|                              | getrf_partial_pivot               | LU factorization with partial pivoting                                                            |
+|                              | gesv_batched_wo_pivot             | Solves batched linear systems without pivoting                                                    |
+|                              | gesv_batched_partial_pivot        | Solves batched linear systems with partial pivoting                                               |
+| QR and Least Squares         | geqrf_batched                     | QR factorization for batched matrices                                                             |
+|                              | gels_batched                      | Solves batched least squares problems                                                             |
 | NVRTC Examples               | nvrtc_potrs                       | Using cuSolverDx with NVTRC runtime compilation and nvJitLink runtime linking                     |
-| Advanced Examples            | blocked_potrf                     | Cholesky factorization using blocked algorithm for matrices too large to fit in the shared memory |
+| Performance Examples         | geqrf_batched_performance         | Performance analysis of batched QR factorization                                                  |
+| Advanced Examples            | blocked_potrf                     | Cholesky factorization using blocked algorithm for large matrices                                 |
+|                              | reg_least_squares                 | Regularized least squares solver                                                                  |
