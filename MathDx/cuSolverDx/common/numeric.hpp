@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <complex>
 #include <random>
+#include <type_traits>
 
 #ifndef CUSOLVERDX_EXAMPLE_NVRTC
 #    include <cuda/std/complex>
@@ -50,7 +51,7 @@ namespace common {
 
     template<typename T>
     constexpr bool is_complex() {
-        return detail::is_complex_helper<T>::value;
+        return detail::is_complex_helper<std::remove_cv_t<T>>::value;
     }
 
     template<typename T, typename Enable = void>

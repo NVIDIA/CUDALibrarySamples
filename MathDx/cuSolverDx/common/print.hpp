@@ -17,69 +17,48 @@
 
 namespace common {
 
-    // print_matrix m x n in column major, where m is nrows (fast) and n is ncols(slow)
     template<typename T>
-    void print_matrix(const int& m, const int& n, const T* A, const int& lda);
-
-    template<>
-    void print_matrix(const int& m, const int& n, const float* A, const int& lda) {
-        for (int i = 0; i < m; i++) {
-            for (int j = 0; j < n; j++) {
-                std::printf("%0.2f ", A[j * lda + i]);
+    void print_matrix(const unsigned int M, const unsigned int N, bool is_col_major, const T* A, const unsigned int lda, const int nbatches = 1) {
+        if (is_col_major) {
+            if constexpr (!is_complex<T>()) {
+                for (int i = 0; i < M; i++) {
+                    for (int j = 0; j < N * nbatches; j++) {
+                        std::printf("%0.2f ", A[j * lda + i]);
+                    }
+                    printf("\n");
+                }
+            } else {
+                for (int i = 0; i < M; i++) {
+                    for (int j = 0; j < N * nbatches; j++) {
+                        std::printf("%0.2f + %0.2fj ", A[j * lda + i].x, A[j * lda + i].y);
+                    }
+                    printf("\n");
+                }
             }
-            std::printf("\n");
+        } else { // row major
+            if constexpr (!is_complex<T>()) {
+                for (int i = 0; i < M; i++) {
+                    for (int j = 0; j < N * nbatches; j++) {
+                        std::printf("%0.2f ", A[i * lda + j]);
+                    }
+                    printf("\n");
+                }
+            } else {
+                for (int i = 0; i < M; i++) {
+                    for (int j = 0; j < N * nbatches; j++) {
+                        std::printf("%0.2f + %0.2fj ", A[i * lda + j].x, A[i * lda + j].y);
+                    }
+                    printf("\n");
+                }
+            }
         }
     }
 
-    template<>
-    void print_matrix(const int& m, const int& n, const double* A, const int& lda) {
-        for (int i = 0; i < m; i++) {
-            for (int j = 0; j < n; j++) {
-                std::printf("%0.2f ", A[j * lda + i]);
-            }
-            std::printf("\n");
-        }
+    template<typename T, const unsigned int M, const unsigned int N, const unsigned int LDA = M, bool is_col_major = true>
+    void print_matrix(const T* A, const int nbatches = 1) {
+        print_matrix(M, N, is_col_major, A, LDA, nbatches);
     }
 
-    template<>
-    void print_matrix(const int& m, const int& n, const cuComplex* A, const int& lda) {
-        for (int i = 0; i < m; i++) {
-            for (int j = 0; j < n; j++) {
-                std::printf("%0.2f + %0.2fj ", A[j * lda + i].x, A[j * lda + i].y);
-            }
-            std::printf("\n");
-        }
-    }
-
-    template<>
-    void print_matrix(const int& m, const int& n, const cusolverdx::complex<float>* A, const int& lda) {
-        for (int i = 0; i < m; i++) {
-            for (int j = 0; j < n; j++) {
-                std::printf("%0.2f + %0.2fj ", A[j * lda + i].x, A[j * lda + i].y);
-            }
-            std::printf("\n");
-        }
-    }
-
-    template<>
-    void print_matrix(const int& m, const int& n, const cuDoubleComplex* A, const int& lda) {
-        for (int i = 0; i < m; i++) {
-            for (int j = 0; j < n; j++) {
-                std::printf("%0.2f + %0.2fj ", A[j * lda + i].x, A[j * lda + i].y);
-            }
-            std::printf("\n");
-        }
-    }
-
-    template<>
-    void print_matrix(const int& m, const int& n, const cusolverdx::complex<double>* A, const int& lda) {
-        for (int i = 0; i < m; i++) {
-            for (int j = 0; j < n; j++) {
-                std::printf("%0.2f + %0.2fj ", A[j * lda + i].x, A[j * lda + i].y);
-            }
-            std::printf("\n");
-        }
-    }
 
     __forceinline__ __device__ bool block0() {
         return (blockIdx.x + blockIdx.y * gridDim.x + blockIdx.z * gridDim.x * gridDim.y) == 0;
@@ -89,7 +68,7 @@ namespace common {
         return (threadIdx.x + threadIdx.y * blockDim.x + threadIdx.z * blockDim.x * blockDim.y) == 0;
     }
 
-    std::string type_string(cusolverdx::type t) {
+    inline std::string type_string(cusolverdx::type t) {
         return (t == cusolverdx::type::real) ? "real" : "complex";
     }
 

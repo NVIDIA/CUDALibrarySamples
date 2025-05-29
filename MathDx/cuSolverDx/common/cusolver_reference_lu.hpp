@@ -1,10 +1,8 @@
 #ifndef CUSOLVERDX_EXAMPLE_CUSOLVERDX_COMMON_CUSOLVER_REFERENCE_LU_HPP
 #define CUSOLVERDX_EXAMPLE_CUSOLVERDX_COMMON_CUSOLVER_REFERENCE_LU_HPP
 
-#include <cassert>
-
 namespace common {
-    template<typename T, typename cuda_data_type>
+    template<typename T, typename cuda_data_type, bool do_solver = false>
     bool reference_cusolver_lu(std::vector<T>&    A,
                                std::vector<T>&    B,
                                int*               info,
@@ -16,12 +14,12 @@ namespace common {
                                bool               is_col_major_a = true,
                                bool               is_col_major_b = true,
                                bool               is_trans_a     = false,
-                               bool               do_solver      = false,
                                int64_t*           ipiv           = nullptr,
                                const unsigned int actual_batches = 0) {
 
         const unsigned int a_size = A.size() / padded_batches;
         const unsigned int lda    = a_size / n;
+        const unsigned int mn = min(m, n);
 
         [[maybe_unused]] const unsigned int b_size = B.size() / padded_batches;
         [[maybe_unused]] const unsigned int ldb    = b_size / nrhs; // ldb if b is column major
@@ -39,15 +37,13 @@ namespace common {
 
         // if row major, transpose the input A
         if (!is_col_major_a) {
-            transpose_matrix<T>(A, lda, m, batches); // fast, second fast, batch
-            // printf("after transpose A = \n");
-            // common::print_matrix(m, m * batches, A.data(), lda);
+            transpose_matrix<T>(A, lda, n, batches); // fast, second_fast, batch -> after transpose, swap fast and second_fast
         }
         if (!is_col_major_b && do_solver && nrhs > 1) {
-            transpose_matrix<T>(B, ldb, nrhs, batches); // fast, second fast, batch
+            transpose_matrix<T>(B, ldb, nrhs, batches); // fast, second_fast, batch -> after transpose, swap fast and second_fast
         }
 
-        cublasOperation_t trans = (is_trans_a) ? (common::is_complex<T>() ? CUBLAS_OP_C : CUBLAS_OP_T) : CUBLAS_OP_N;
+        [[maybe_unused]] cublasOperation_t trans = (is_trans_a) ? (common::is_complex<T>() ? CUBLAS_OP_C : CUBLAS_OP_T) : CUBLAS_OP_N;
 
         // d_info
         int* d_info = nullptr;
@@ -61,7 +57,7 @@ namespace common {
         CUDA_CHECK_AND_EXIT(cudaStreamSynchronize(stream));
 
         [[maybe_unused]] T* d_B = nullptr;
-        if (do_solver) {
+        if constexpr (do_solver) {
             CUDA_CHECK_AND_EXIT(cudaMalloc(reinterpret_cast<void**>(&d_B), sizeof(T) * b_size));
             CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(d_B, B.data(), sizeof(T) * b_size, cudaMemcpyHostToDevice, stream));
             CUDA_CHECK_AND_EXIT(cudaStreamSynchronize(stream));
@@ -69,7 +65,7 @@ namespace common {
 
         int64_t* d_ipiv_64 = nullptr;
         if (is_pivot) {
-            CUDA_CHECK_AND_EXIT(cudaMalloc(reinterpret_cast<void**>(&d_ipiv_64), sizeof(int64_t) * min(m, n)));
+            CUDA_CHECK_AND_EXIT(cudaMalloc(reinterpret_cast<void**>(&d_ipiv_64), sizeof(int64_t) * mn));
         }
 
         size_t            workspaceInBytesOnDevice = 0;       /* size of workspace */
@@ -119,7 +115,7 @@ namespace common {
             CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(&(A[a_size * batch]), d_A, sizeof(T) * a_size, cudaMemcpyDeviceToHost, stream));
             CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(&info[batch], d_info, sizeof(int), cudaMemcpyDeviceToHost, stream));
             if (is_pivot) {
-                CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(ipiv, d_ipiv_64, sizeof(int64_t) * min(m, n), cudaMemcpyDeviceToHost, stream));
+                CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(&ipiv[batch * mn], d_ipiv_64, sizeof(int64_t) * mn, cudaMemcpyDeviceToHost, stream));
             }
 
             CUDA_CHECK_AND_EXIT(cudaStreamSynchronize(stream));
@@ -130,7 +126,7 @@ namespace common {
                 return false;
             }
 
-            if (do_solver) {
+            if constexpr (do_solver) {
                 if (batch > 0) {
                     CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(d_B, &B[b_size * batch], sizeof(T) * b_size, cudaMemcpyHostToDevice, stream));
                     CUDA_CHECK_AND_EXIT(cudaStreamSynchronize(stream));
@@ -150,15 +146,13 @@ namespace common {
         if (is_pivot) {
             CUDA_CHECK_AND_EXIT(cudaFree(d_ipiv_64));
         }
-        if (do_solver) {
+        if constexpr (do_solver) {
             CUDA_CHECK_AND_EXIT(cudaFree(d_B));
         }
 
         // if row major, transpose the result A
         if (!is_col_major_a) {
-            transpose_matrix<T>(A, m, lda, batches); // fast, second fast, batch
-            // printf("after transpose A = \n");
-            // common::print_matrix(m, m * batches, A.data(), lda);
+            transpose_matrix<T>(A, n, lda, batches); // fast, second fast, batch
         }
         if (!is_col_major_b && do_solver && nrhs > 1) {
             transpose_matrix<T>(B, nrhs, ldb, batches); // fast, second fast, batch

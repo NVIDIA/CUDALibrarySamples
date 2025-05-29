@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.18)
 
-# cuSOLVERDx project
-project(cusolverdx_examples VERSION 0.1.0 LANGUAGES CXX CUDA)
+# cuSOLVERDx examples project
+project(cusolverdx_examples VERSION 0.2.0 LANGUAGES CXX CUDA)
 
 # PROJECT_IS_TOP_LEVEL is available since 3.21
 if(CMAKE_VERSION VERSION_LESS 3.21)
@@ -16,9 +16,6 @@ endif()
 if(PROJECT_IS_TOP_LEVEL)
     # Enable running examples with CTest
     enable_testing()
-
-    set(DX_PROJECT_CMAKE_VAR_PREFIX "CUSOLVERDX")
-    set(DX_PROJECT_FULL_NAME "cuSOLVERDx")
 
     # ******************************************
     # cuSOLVERDx Install Dirs
@@ -115,49 +112,12 @@ endif()
 # ******************************************
 # Tests as standalone project to enable testing release package
 # ******************************************
-if(PROJECT_IS_TOP_LEVEL OR CUSOLVERDX_TEST_PACKAGE)
-    # Project options
-    message(CHECK_START "Example: Looking for mathDx package")
-    find_package(mathdx QUIET COMPONENTS cusolverdx cublasdx CONFIG
+if(PROJECT_IS_TOP_LEVEL)
+    find_package(mathdx REQUIRED COMPONENTS cusolverdx cublasdx CONFIG
         PATHS
             "${PROJECT_SOURCE_DIR}/../.." # example/cusolverdx
-            "${PROJECT_SOURCE_DIR}/../../.." # include/cusolverdx/example
-            "/opt/nvidia/mathdx/25.01"
+            "/opt/nvidia/mathdx/25.06"
     )
-
-    if(mathdx_FOUND)
-        message(CHECK_PASS "found, dependencies resolved")
-    else()
-        message(CHECK_FAIL "failed, looking separately")
-        message(CHECK_START "Example: Looking for cusolverdx")
-        find_package(cusolverdx REQUIRED CONFIG HINTS ${cusolverdx_DIR}
-            PATHS
-                "${cusolverdx_ROOT}"
-                "/opt/nvidia/mathdx/25.01/include/cusolverdx"
-                "${PROJECT_SOURCE_DIR}/../../cusolverdx"
-        )
-        message(CHECK_PASS "found, dependencies resolved")
-    endif()
-endif()
-
-# cuBLASDx
-if(NOT mathdx_FOUND)
-    if(USE_MATHDX_PACKAGE)
-        find_package(mathdx REQUIRED COMPONENTS cublasdx CONFIG
-            PATHS
-                "${PROJECT_SOURCE_DIR}/../.." # example/cublasdx
-                "${PROJECT_SOURCE_DIR}/../../.." # include/cublasdx/example
-                "opt/nvidia/mathdx/25.01"
-        )
-    else()
-        # Setup cuSolverDx+cuBLASDx examples
-        find_package(cublasdx CONFIG HINTS ${cublasdx_DIR} PATHS "/opt/nvidia/mathdx/25.01")
-    endif()
-endif()
-if(cublasdx_FOUND)
-    message(STATUS "Examples: cuBLASDx found (${cublasdx_INCLUDE_DIRS}), cuBLASDx+cuSolverDx examples enabled")
-else()
-    message(STATUS "Examples: cuBLASDx NOT found, cuBLASDx+cuSolverDx examples disabled")
 endif()
 
 # CUDA Toolkit
@@ -168,9 +128,11 @@ foreach(CUDA_ARCH ${CUSOLVERDX_CUDA_ARCHITECTURES})
     # Extract SM from SM-real/SM-virtual
     string(REPLACE "-" ";" CUDA_ARCH_LIST ${CUDA_ARCH})
     list(GET CUDA_ARCH_LIST 0 ARCH)
-    if(${ARCH} STREQUAL "90a")
-        set(ARCH 90)
-    endif()
+    # Remove "a"
+    string(REPLACE "a" "" ARCH "${ARCH}")
+    # Remove "f"
+    string(REPLACE "f" "" ARCH "${ARCH}")
+
     add_compile_definitions(CUSOLVERDX_EXAMPLE_ENABLE_SM_${ARCH})
 endforeach()
 
@@ -184,17 +146,57 @@ function(install_example EXAMPLE_TARGET)
     )
 endfunction()
 
+
+# ###############################################################
+# link_lto_library_workaround
+# ###############################################################
+# Workaround for LTO support in CMAKE <3.25
+function(link_lto_library_workaround EXAMPLE_TARGET LTO_LIBRARY LTO_FATBIN_FILE CUDA_ARCHITECTURES)
+    if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
+        target_link_options(${EXAMPLE_TARGET}
+            PRIVATE
+                $<DEVICE_LINK:-dlto>
+                # No need to add linking option to link against fatbin with
+                # target_link_options() since mathdx::cusolverdx_fatbin already does that
+                # $<DEVICE_LINK:${LTO_FATBIN_FILE}>
+        )
+    else()
+        target_link_options(${EXAMPLE_TARGET}
+            PRIVATE
+                $<DEVICE_LINK:-dlto>
+                $<DEVICE_LINK:$<TARGET_FILE:${LTO_LIBRARY}>>
+        )
+    endif()
+    target_compile_options(${EXAMPLE_TARGET}
+        PRIVATE
+            "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-rdc=true>"
+    )
+    foreach(CUDA_ARCH ${CUDA_ARCHITECTURES})
+        # Extract SM from SM-real/SM-virtual
+        string(REPLACE "-" ";" CUDA_ARCH_LIST ${CUDA_ARCH})
+        list(GET CUDA_ARCH_LIST 0 ARCH)
+        if(${ARCH} STREQUAL "90a")
+            set(ARCH 90)
+        endif()
+        target_compile_options(${EXAMPLE_TARGET}
+            PRIVATE
+                "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--generate-code arch=compute_${ARCH},code=lto_${ARCH}>"
+        )
+    endforeach()
+endfunction()
+
 # ##############################################################
 # Common example objects
 # #############################################################
 set(common_example_objects_sources common/error_checking.cpp)
 set_source_files_properties("${common_example_objects_sources}" PROPERTIES LANGUAGE CUDA)
 add_library(common_example_objects STATIC "${common_example_objects_sources}")
-target_link_libraries(common_example_objects
-    PRIVATE
-        $<IF:$<TARGET_EXISTS:mathdx::cusolverdx>,mathdx::cusolverdx,cusolverdx::cusolverdx>
-)
-
+# Use .fatbin library for CTK 12.8+
+if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
+    target_link_libraries(common_example_objects PRIVATE mathdx::cusolverdx_fatbin)
+else()
+    target_link_libraries(common_example_objects PRIVATE mathdx::cusolverdx)
+endif()
 target_compile_definitions(common_example_objects PRIVATE CUSOLVERDX_TEST_NO_GTEST)
 set_target_properties(common_example_objects
     PROPERTIES
@@ -209,10 +211,15 @@ function(add_cublasdx_cusolverdx_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURC
     get_filename_component(EXAMPLE_TARGET ${EXAMPLE_MAIN_SOURCE} NAME_WE)
     set_source_files_properties(${EXAMPLE_SOURCES} PROPERTIES LANGUAGE CUDA)
     add_executable(${EXAMPLE_TARGET} ${EXAMPLE_SOURCES})
+    # Use .fatbin library for CTK 12.8+
+    if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
+        target_link_libraries(${EXAMPLE_TARGET} PRIVATE mathdx::cusolverdx_fatbin)
+    else()
+        target_link_libraries(${EXAMPLE_TARGET} PRIVATE mathdx::cusolverdx)
+    endif()
     target_link_libraries(${EXAMPLE_TARGET}
         PRIVATE
-            $<IF:$<TARGET_EXISTS:mathdx::cusolverdx>,mathdx::cusolverdx,cusolverdx::cusolverdx>
-            $<IF:$<TARGET_EXISTS:mathdx::cublasdx>,mathdx::cublasdx,cublasdx::cublasdx>
+            mathdx::cublasdx
             CUDA::cusolver
             common_example_objects
     )
@@ -229,29 +236,9 @@ function(add_cublasdx_cusolverdx_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURC
             # Required to support std::tuple in device code
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--expt-relaxed-constexpr>"
     )
+    # Workaround for LTO support in CMAKE <3.25
     if(CMAKE_VERSION VERSION_LESS 3.25)
-        # Workaround for LTO support in CMAKE <3.25
-        target_link_options(${EXAMPLE_TARGET}
-            PRIVATE
-                $<DEVICE_LINK:-dlto>
-                $<DEVICE_LINK:$<TARGET_FILE:$<IF:$<TARGET_EXISTS:mathdx::cusolverdx>,mathdx::cusolverdx,cusolverdx::cusolverdx>>>
-        )
-        target_compile_options(${EXAMPLE_TARGET}
-            PRIVATE
-                "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-rdc=true>"
-        )
-        foreach(CUDA_ARCH ${CUSOLVERDX_CUDA_ARCHITECTURES})
-            # Extract SM from SM-real/SM-virtual
-            string(REPLACE "-" ";" CUDA_ARCH_LIST ${CUDA_ARCH})
-            list(GET CUDA_ARCH_LIST 0 ARCH)
-            if(${ARCH} STREQUAL "90a")
-                set(ARCH 90)
-            endif()
-            target_compile_options(${EXAMPLE_TARGET}
-                PRIVATE
-                    "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--generate-code arch=compute_${ARCH},code=lto_${ARCH}>"
-            )
-        endforeach()
+        link_lto_library_workaround(${EXAMPLE_TARGET} mathdx::cusolverdx "${cusolverdx_FATBIN}" "${CUSOLVERDX_CUDA_ARCHITECTURES}")
     endif()
     set_tests_properties(${EXAMPLE_NAME}
         PROPERTIES
@@ -274,9 +261,14 @@ function(add_cusolverdx_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
             INTERPROCEDURAL_OPTIMIZATION ON # This is basically "$<DEVICE_LINK:-dlto>" but it requires CMake 3.25+
             CUDA_ARCHITECTURES "${CUSOLVERDX_CUDA_ARCHITECTURES}"
     )
+    # Use .fatbin library for CTK 12.8+
+    if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
+        target_link_libraries(${EXAMPLE_TARGET} PRIVATE mathdx::cusolverdx_fatbin)
+    else()
+        target_link_libraries(${EXAMPLE_TARGET} PRIVATE mathdx::cusolverdx)
+    endif()
     target_link_libraries(${EXAMPLE_TARGET}
         PRIVATE
-            $<IF:$<TARGET_EXISTS:mathdx::cusolverdx>,mathdx::cusolverdx,cusolverdx::cusolverdx>
             CUDA::cusolver
             common_example_objects
     )
@@ -285,29 +277,9 @@ function(add_cusolverdx_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
         PRIVATE
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xfatbin -compress-all>"
     )
+    # Workaround for LTO support in CMAKE <3.25
     if(CMAKE_VERSION VERSION_LESS 3.25)
-        # Workaround for LTO support in CMAKE <3.25
-        target_link_options(${EXAMPLE_TARGET}
-            PRIVATE
-                $<DEVICE_LINK:-dlto>
-                $<DEVICE_LINK:$<TARGET_FILE:$<IF:$<TARGET_EXISTS:mathdx::cusolverdx>,mathdx::cusolverdx,cusolverdx::cusolverdx>>>
-        )
-        target_compile_options(${EXAMPLE_TARGET}
-            PRIVATE
-                "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-rdc=true>"
-        )
-        foreach(CUDA_ARCH ${CUSOLVERDX_CUDA_ARCHITECTURES})
-            # Extract SM from SM-real/SM-virtual
-            string(REPLACE "-" ";" CUDA_ARCH_LIST ${CUDA_ARCH})
-            list(GET CUDA_ARCH_LIST 0 ARCH)
-            if(${ARCH} STREQUAL "90a")
-                set(ARCH 90)
-            endif()
-            target_compile_options(${EXAMPLE_TARGET}
-                PRIVATE
-                    "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--generate-code arch=compute_${ARCH},code=lto_${ARCH}>"
-            )
-        endforeach()
+        link_lto_library_workaround(${EXAMPLE_TARGET} mathdx::cusolverdx "${cusolverdx_FATBIN}" "${CUSOLVERDX_CUDA_ARCHITECTURES}")
     endif()
     set_tests_properties(${EXAMPLE_NAME}
         PROPERTIES
@@ -337,7 +309,7 @@ function(add_cusolverdx_nvrtc_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
             CUTLASS_INCLUDE_DIR="${cusolverdx_cutlass_INCLUDE_DIR}"
             COMMONDX_INCLUDE_DIR="${cusolverdx_commondx_INCLUDE_DIR}"
             CUSOLVERDX_INCLUDE_DIRS="${cusolverdx_INCLUDE_DIRS}"
-            CUSOLVERDX_LIBRARY="$<TARGET_FILE:$<IF:$<TARGET_EXISTS:mathdx::cusolverdx>,mathdx::cusolverdx,cusolverdx::cusolverdx>>"
+            CUSOLVERDX_LIBRARY="$<TARGET_FILE:mathdx::cusolverdx>"
     )
     # Use fatbin for CTK < 12.1 Update 1 (bug workaround), and for arm/aarch64 (.a file is x86-64 library)
     if((NOT CMAKE_SYSTEM_PROCESSOR MATCHES "(x86)|(X86)|(amd64)|(AMD64)") OR (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12.1.105))
@@ -365,25 +337,31 @@ endfunction()
 add_custom_target(cusolverdx_examples)
 
 # cuSOLVERDx NVRTC examples
-add_cusolverdx_nvrtc_example(cusolverdx_examples "cusolverdx.example.nvrtc_potrs" nvrtc_potrs.cpp)
+add_cusolverdx_nvrtc_example(cusolverdx_examples "cusolverdx.example.nvrtc_potrs" 04_NVRTC/nvrtc_potrs.cpp)
 
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86)|(X86)|(amd64)|(AMD64)")
+# Compiling tests with NVCC is supported on AARCH64 only with CUDA 12.8+
+# This is because since CUDA 12.8 NVCC can link against fatbin libraries
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86)|(X86)|(amd64)|(AMD64)" OR (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8))
     # cuSOLVERDx introduction examples
-    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.simple_potrf" simple_potrf.cu)
-    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.potrf_runtime_ld" potrf_runtime_ld.cu)
-    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.posv_batched" posv_batched.cu)
-    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.getrf_wo_pivot" getrf_wo_pivot.cu)
-    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.gesv_batched_wo_pivot" gesv_batched_wo_pivot.cu)
-
+    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.posv_batched" 00_Introduction/posv_batched.cu)
+    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.potrf" 01_Cholesky/potrf.cu)
+    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.potrf_runtime_ld" 01_Cholesky/potrf_runtime_ld.cu)
+    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.getrf_wo_pivot" 02_LU/getrf_wo_pivot.cu)
+    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.gesv_batched_wo_pivot" 02_LU/gesv_batched_wo_pivot.cu)
+    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.getrf_partial_pivot" 02_LU/getrf_partial_pivot.cu)
+    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.gesv_batched_partial_pivot" 02_LU/gesv_batched_partial_pivot.cu)
+    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.geqrf_batched" 03_QR_GELS/geqrf_batched.cu)
+    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.gels_batched" 03_QR_GELS/gels_batched.cu)
+    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.geqrf_batched_performance" 05_Performance/geqrf_batched_performance.cu)
     # cuBLASDx/cuSolverDx examples
     if(cublasdx_FOUND)
         message(STATUS "cuBLASDx was found, examples requiring cuBLASDx enabled")
     else()
         message(STATUS "cuBLASDx was not found, examples requiring cuBLASDx disabled")
     endif()
-
     if(cublasdx_FOUND)
         # Example for handling larger matrices directly out of global memory
-        add_cublasdx_cusolverdx_example(cusolverdx_examples "cusolverdx.example.blocked_potrf" blocked_potrf.cu)
+        add_cublasdx_cusolverdx_example(cusolverdx_examples "cusolverdx.example.blocked_potrf" 06_Advanced/blocked_potrf.cu)
+        add_cublasdx_cusolverdx_example(cusolverdx_examples "cusolverdx.example.reg_least_squares" 06_Advanced/reg_least_squares.cu)
     endif()
 endif()

@@ -6,35 +6,43 @@
 // distribution of this software and related documentation without an express
 // license agreement from NVIDIA CORPORATION is strictly prohibited.
 
-#include <iostream>
-
+#define CUSOLVERDX_IGNORE_NVBUG_5288270_ASSERT
 #include <cusolverdx.hpp>
-#include "common.hpp"
+
+#include "../common/common.hpp"
+#include "../common/cudart.hpp"
+#include "../common/error_checking.hpp"
+#include "../common/random.hpp"
+#include "../common/example_sm_runner.hpp"
+#include "../common/device_io.hpp"
+#include "../common/cusolver_reference_lu.hpp"
+
 
 // This example demonstrates how to use cuSolverDx API to solve a batched linear systems with multiple right hand side after performing LU
 // factorization (without pivoting) of the batched general matrix A.  The results are compared with the reference values obtained with cuSolver host API.
 
 template<class Solver, unsigned int BatchesPerBlock, typename DataType = typename Solver::a_data_type>
-__global__ void kernel(DataType* A, unsigned int lda, DataType* B, unsigned int ldb, typename Solver::status_type* info, const unsigned int batches) {
+__global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(DataType* A, unsigned int lda_gmem, DataType* B, unsigned int ldb_gmem, typename Solver::status_type* info, const unsigned int batches) {
 
-    constexpr auto m    = Solver::m_size;
-    constexpr auto n    = Solver::n_size;
-    constexpr auto nrhs = Solver::nrhs;
+    constexpr auto m = Solver::m_size;
+    constexpr auto n = Solver::n_size;
+    constexpr auto k = Solver::k_size;
 
-    const auto lda_gmem              = cusolverdx::arrangement_of_v_a<Solver> == cusolverdx::col_major ? m : n;
-    const auto ldb_gmem              = cusolverdx::arrangement_of_v_b<Solver> == cusolverdx::col_major ? n : nrhs;
-    const auto one_batch_size_a_gmem = (cusolverdx::arrangement_of_v_b<Solver> == cusolverdx::col_major) ? lda * n: m * lda;
-    const auto one_batch_size_b_gmem = (cusolverdx::arrangement_of_v_b<Solver> == cusolverdx::col_major) ? ldb * nrhs : n * ldb;
+    const auto one_batch_size_a_gmem = (cusolverdx::arrangement_of_v_a<Solver> == cusolverdx::col_major) ? lda_gmem * n : m * lda_gmem;
+    const auto one_batch_size_b_gmem = (cusolverdx::arrangement_of_v_b<Solver> == cusolverdx::col_major) ? ldb_gmem * k : n * ldb_gmem;
 
     constexpr auto lda_smem              = Solver::lda;
     constexpr auto ldb_smem              = Solver::ldb;
     constexpr auto one_batch_size_a_smem = (cusolverdx::arrangement_of_v_a<Solver> == cusolverdx::col_major) ? lda_smem * n : m * lda_smem;
-    constexpr auto one_batch_size_b_smem = (cusolverdx::arrangement_of_v_b<Solver> == cusolverdx::col_major) ? ldb_smem * nrhs : n * ldb_smem;
+    constexpr auto one_batch_size_b_smem = (cusolverdx::arrangement_of_v_b<Solver> == cusolverdx::col_major) ? ldb_smem * k : n * ldb_smem;
 
-    extern __shared__ unsigned char __align__(sizeof(DataType)) shared_mem[];
-
-    DataType* As = reinterpret_cast<DataType*>(shared_mem);
-    DataType* Bs = As + one_batch_size_a_smem * BatchesPerBlock;
+    extern __shared__ __align__(16) unsigned char shared_mem[];
+    // Slice shared memory into pointers
+    auto [As, Bs] = cusolverdx::shared_memory::slice<DataType, DataType>(
+        shared_mem,
+        alignof(DataType), one_batch_size_a_smem * BatchesPerBlock,
+        alignof(DataType)  // the size (number of elements) may be omitted for the last pointer
+    );
 
     const auto batch_idx = blockIdx.x * BatchesPerBlock;
     if (batch_idx >= batches)
@@ -43,23 +51,28 @@ __global__ void kernel(DataType* A, unsigned int lda, DataType* B, unsigned int 
     auto Ag = A + size_t(one_batch_size_a_gmem) * batch_idx;
     auto Bg = B + size_t(one_batch_size_b_gmem) * batch_idx;
 
-    // Load data from global memory to registers
-    common::io<Solver, BatchesPerBlock>::load(Ag, lda_gmem, As, lda_smem);
-    common::io<Solver, BatchesPerBlock>::load_rhs(Bg, ldb_gmem, Bs, ldb_smem);
+    // Load data from global memory to shared memory
+    common::io<Solver, BatchesPerBlock>::load_a(Ag, lda_gmem, As, lda_smem);
+    common::io<Solver, BatchesPerBlock>::load_b(Bg, ldb_gmem, Bs, ldb_smem);
 
     Solver().execute(As, lda_smem, Bs, ldb_smem, &info[batch_idx]);
 
-    // store
-    common::io<Solver, BatchesPerBlock>::store(As, lda_smem, Ag, lda_gmem);
-    common::io<Solver, BatchesPerBlock>::store_rhs(Bs, ldb_smem, Bg, ldb_gmem);
+    // Store results back to global memory
+    common::io<Solver, BatchesPerBlock>::store_a(As, lda_smem, Ag, lda_gmem);
+    common::io<Solver, BatchesPerBlock>::store_b(Bs, ldb_smem, Bg, ldb_gmem);
 }
 
 template<int Arch>
 int gesv_batched_wo_pivot() {
 
     using namespace cusolverdx;
-    using Base   = decltype(Size<5, 5, 4>() + Precision<float>() + Type<type::real>() + Function<gesv_no_pivot>() + Arrangement<arrangement::col_major, col_major>() + LeadingDimension<5, 7>() +
-                          SM<Arch>() + Block());
+#if __CUDACC_VER_MAJOR__ >= 12 and __CUDACC_VER_MINOR__ >= 6
+    using Base = decltype(Size<5, 5, 4>() + Precision<float>() + Type<type::complex>() + Function<gesv_no_pivot>() + Arrangement<arrangement::row_major, col_major>() + LeadingDimension<5, 7>() +
+                          SM<Arch>() + Block() + TransposeMode<conj_trans>());
+#else
+    using Base      = decltype(Size<5, 5, 4>() + Precision<float>() + Type<type::real>() + Function<gesv_no_pivot>() + Arrangement<arrangement::row_major, col_major>() + LeadingDimension<5, 7>() +
+                          SM<Arch>() + Block() + TransposeMode<trans>());
+#endif
     using Solver = decltype(Base() + BatchesPerBlock<Base::suggested_batches_per_block>() + BlockDim<65, 1, 1>());
 
     constexpr unsigned bpb = Solver::batches_per_block;
@@ -71,16 +84,16 @@ int gesv_batched_wo_pivot() {
     using data_type      = typename example::a_data_type_t<Solver>;
     using cuda_data_type = typename example::a_cuda_data_type_t<Solver>;
 #else
-    using data_type      = typename Solver::a_data_type;
+    using data_type = typename Solver::a_data_type;
     using cuda_data_type = typename Solver::a_cuda_data_type;
 #endif
     constexpr auto m            = Solver::m_size;
     constexpr auto n            = Solver::n_size;
-    constexpr auto nrhs         = Solver::nrhs;
+    constexpr auto k            = Solver::k_size;
     const auto     lda          = arrangement_of_v_a<Solver> == col_major ? m : n;
-    const auto     ldb          = arrangement_of_v_b<Solver> == col_major ? n : nrhs;
+    const auto     ldb          = arrangement_of_v_b<Solver> == col_major ? n : k;
     const auto     input_size_a = m * n;
-    const auto     input_size_b = n * nrhs;
+    const auto     input_size_b = n * k;
 
     const auto batches        = 14;
     const auto padded_batches = (batches + bpb - 1) / bpb * bpb;
@@ -93,19 +106,13 @@ int gesv_batched_wo_pivot() {
     std::vector<data_type> L(input_size_a * padded_batches);
 
     std::vector<data_type> B(input_size_b * padded_batches);
-    common::fillup_random_matrix<data_type>(arrangement_of_v_b<Solver> == col_major, n, nrhs, B.data(), ldb, false, false, -1, 1, batches);
+    common::fillup_random_matrix<data_type>(arrangement_of_v_b<Solver> == col_major, n, k, B.data(), ldb, false, false, -1, 1, batches);
     std::vector<data_type> X(input_size_b * padded_batches);
 
     std::vector<int> info(padded_batches, 0);
     data_type*       d_A    = nullptr; /* device copy of A */
     data_type*       d_B    = nullptr; /* device copy of A */
     int*             d_info = nullptr; /* error info */
-
-    // printf("A = \n");
-    // common::print_matrix(m, n * batches, A.data(), lda);
-    // const unsigned int b_dim_fast = (arrangement_of_v_b<Solver> == col_major) ? n : nrhs;
-    // printf("B = \n");
-    // common::print_matrix(b_dim_fast, B.size() / b_dim_fast, B.data(), ldb);
 
     CUDA_CHECK_AND_EXIT(cudaMalloc(reinterpret_cast<void**>(&d_A), sizeof(data_type) * A.size()));
     CUDA_CHECK_AND_EXIT(cudaMalloc(reinterpret_cast<void**>(&d_B), sizeof(data_type) * B.size()));
@@ -135,37 +142,23 @@ int gesv_batched_wo_pivot() {
         }
         return -1;
     }
-    // printf("=====\n");
-    // printf(" after cuSolverDx\n");
-    // printf("L = \n");
-    // common::print_matrix(m, n * batches, L.data(), lda);
-    // printf("X = \n");
-    // common::print_matrix(b_dim_fast, X.size() / b_dim_fast, X.data(), ldb);
 
     //=========================
     // cuSolver reference
     //=========================
-    common::reference_cusolver_lu<data_type, cuda_data_type>(A,
-                                                             B,
-                                                             info.data(),
-                                                             m,
-                                                             n,
-                                                             nrhs,
-                                                             padded_batches,
-                                                             false,
-                                                             (arrangement_of_v_a<Solver> == arrangement::col_major),
-                                                             (arrangement_of_v_b<Solver> == arrangement::col_major),
-                                                             false,
-                                                             true,
-                                                             nullptr,
-                                                             batches);
-
-    // printf("=====\n");
-    // printf(" after cuSolver API\n");
-    // printf("A = \n");
-    // common::print_matrix(m, n * batches, A.data(), lda);
-    // printf("B = \n");
-    // common::print_matrix(b_dim_fast, X.size() / b_dim_fast, B.data(), ldb);
+    common::reference_cusolver_lu<data_type, cuda_data_type, true>(A,
+                                                                   B,
+                                                                   info.data(),
+                                                                   m,
+                                                                   n,
+                                                                   k,
+                                                                   padded_batches,
+                                                                   false,
+                                                                   (arrangement_of_v_a<Solver> == arrangement::col_major),
+                                                                   (arrangement_of_v_b<Solver> == arrangement::col_major),
+                                                                   (transpose_mode_of_v<Solver> == trans || transpose_mode_of_v<Solver> == conj_trans),
+                                                                   nullptr,
+                                                                   batches);
 
     /* free resources */
     CUDA_CHECK_AND_EXIT(cudaFree(d_A));

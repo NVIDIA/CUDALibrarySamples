@@ -6,12 +6,17 @@
 // distribution of this software and related documentation without an express
 // license agreement from NVIDIA CORPORATION is strictly prohibited.
 
-#include <iostream>
-#include <type_traits>
-
 #include <cublasdx.hpp>
 #include <cusolverdx.hpp>
-#include "common.hpp"
+
+#include "../common/common.hpp"
+#include "../common/cudart.hpp"
+#include "../common/error_checking.hpp"
+#include "../common/random.hpp"
+#include "../common/example_sm_runner.hpp"
+#include "../common/device_io.hpp"
+#include "../common/measure.hpp"
+#include "../common/cusolver_reference_cholesky.hpp"
 
 // This is a basic implementation of Cholesky factorization using a single CTA with matrices too large for cuSolverDx's shared memory API.
 // The code uses an out-of-core style, left-looking formulation so that it never needs more than 4 blocks in shared memory at a given point.
@@ -93,7 +98,7 @@ __device__ T* tile(T* A, unsigned lda, unsigned i, unsigned j) {
 }
 
 template<unsigned N, unsigned NB, cusolverdx::arrangement Arrange, unsigned NT, class T>
-__global__ void potrf_kernel(T* A, unsigned lda, int* info) {
+__global__ __launch_bounds__(NT) void potrf_kernel(T* A, unsigned lda, int* info) {
     // Assumes A is stored in the upper triangle
 
     static_assert(N % NB == 0, "Code currently assumes that N is exactly divisible by the block size");
@@ -101,15 +106,20 @@ __global__ void potrf_kernel(T* A, unsigned lda, int* info) {
 
     // Get batch
     A    += blockIdx.x * N * lda;
-    info += blockIdx.x * N;
+    info += blockIdx.x;
 
     constexpr unsigned lds = NB;
 
-    __shared__ T sA[NB*lds];
-    __shared__ T sB[NB*lds];
-    __shared__ T sC[NB*lds];
-    __shared__ T sD[NB*lds];
-    __shared__ int sinfo;
+    extern __shared__ __align__(16) unsigned char shared_mem[];
+    // Slice shared memory into pointers
+    auto [sA, sB, sC, sD, sinfo] = cusolverdx::shared_memory::slice<T, T, T, T, int>(
+        shared_mem,
+        alignof(T), NB*lds,
+        alignof(T), NB*lds,
+        alignof(T), NB*lds,
+        alignof(T), NB*lds,
+        alignof(int) // the size (number of elements) may be omitted for the last pointer
+    );
 
     #ifdef __CUDA_ARCH__
         constexpr unsigned Arch = __CUDA_ARCH__;
@@ -121,11 +131,11 @@ __global__ void potrf_kernel(T* A, unsigned lda, int* info) {
                            cusolverdx::Precision<T>() + cusolverdx::Type<cusolverdx::type::real>() + cusolverdx::Arrangement<Arrange>() +
                            cusolverdx::Block() + cusolverdx::BlockDim<NT>() + cusolverdx::SM<Arch>());
     // TRSM is temporarily being exported from cuSolverDx instead of the cuBLASDx
-    // Arrangement is flipped to handle transposition
-    constexpr auto trans_arrange = (Arrange == cusolverdx::arrangement::col_major) ? cusolverdx::arrangement::row_major : cusolverdx::arrangement::col_major;
     using TRSM = decltype(cusolverdx::Function<cusolverdx::function::trsm>() + cusolverdx::Size<NB, NB, NB>() +
                           cusolverdx::Precision<T>() + cusolverdx::Type<cusolverdx::type::real>() +
-                          cusolverdx::Arrangement<trans_arrange, Arrange>() + cusolverdx::FillMode<cusolverdx::fill_mode::lower>() +
+                          cusolverdx::Side<cusolverdx::side::left>() + cusolverdx::Diag<cusolverdx::diag::non_unit>() +
+                          cusolverdx::TransposeMode<cusolverdx::transpose::transposed>() +
+                          cusolverdx::Arrangement<Arrange, Arrange>() + cusolverdx::FillMode<cusolverdx::fill_mode::upper>() +
                           cusolverdx::Block() + cusolverdx::BlockDim<NT>() + cusolverdx::SM<Arch>());
     // Have to use Arrangement to set transposition, to work around cuBLASDx's lack of support for using TransposeMode with a row-major C
     using GEMM_Arrange = std::conditional_t<Arrange == cusolverdx::col_major,
@@ -149,33 +159,37 @@ __global__ void potrf_kernel(T* A, unsigned lda, int* info) {
         // Schur-complements previous steps
         for (int i = 0; i < k; ++i) {
             auto Aik = tile<NB, Arrange>(A, lda, i, k);
-            common::io<POTRF>::load(Aik, lda, sC, lds);
+            cusolverdx::copy_2d<NT, NB, NB, Arrange, 1>(Aik, lda, sC, lds);
+            __syncthreads();
             GEMM().execute(T(-1.0), sC, sC, T(1.0), sA);
             __syncthreads();
         }
         // Factor block
-        POTRF().execute(sA, lds, &sinfo);
+        POTRF().execute(sA, lds, sinfo);
         store_diagonal_block<NB, Arrange, NT>(sA, lds, Akk, lda);
-        if (threadIdx.x == 0 && rinfo == 0 && sinfo != 0) {
-            rinfo = sinfo + k*NB;
+        if (threadIdx.x == 0 && rinfo == 0 && *sinfo != 0) {
+            rinfo = *sinfo + k*NB;
         }
 
         // Panel
         for (int j = k+1; j < n_tiles; ++j) {
             auto Akj = tile<NB, Arrange>(A, lda, k, j);
-            common::io<POTRF>::load(Akj, lda, sB, lds);
+            cusolverdx::copy_2d<NT, NB, NB, Arrange, 1>(Akj, lda, sB, lds);
+            __syncthreads();
 
             for (int i = 0; i < k; ++i) {
                 auto Aik = tile<NB, Arrange>(A, lda, i, k);
                 auto Aij = tile<NB, Arrange>(A, lda, i, j);
-                common::io<POTRF>::load(Aik, lda, sC, lds);
-                common::io<POTRF>::load(Aij, lda, sD, lds);
+                cusolverdx::copy_2d<NT, NB, NB, Arrange, 1>(Aik, lda, sC, lds);
+                cusolverdx::copy_2d<NT, NB, NB, Arrange, 1>(Aij, lda, sD, lds);
+                __syncthreads();
                 GEMM().execute(T(-1.0), sC, sD, T(1.0), sB);
                 __syncthreads();
             }
 
             TRSM().execute(sA, lds, sB, lds);
-            common::io<POTRF>::store(sB, lds, Akj, lda);
+            __syncthreads();
+            cusolverdx::copy_2d<NT, NB, NB, Arrange, 1>(sB, lds, Akj, lda);
             __syncthreads();
         }
     }
@@ -192,10 +206,12 @@ int blocked_potrf() {
     using data_type = double;
 
     constexpr unsigned N       = 512;                   // The matrix size
+    constexpr auto     Arrange = cusolverdx::row_major; // Whether the matrix is column-major or row-major
+    const     unsigned batches = 400;
+
+    // Optimal parameters vary with hardware, N, batches, etc.
     constexpr unsigned NB      = 32;                    // The blocking size to use
     constexpr unsigned NT      = 128;                   // The number of threads to use per thread block
-    constexpr auto     Arrange = cusolverdx::row_major; // Whether the matrices are column-major or row-major
-    const     unsigned batches = 200;
 
     constexpr auto lda        = N;       // this is the leading dimension in global memory for A
     constexpr auto input_size = lda * N; // input global memory size for A
@@ -205,10 +221,6 @@ int blocked_potrf() {
 
     std::vector<data_type> A(input_size * batches);
     common::fillup_random_diagonal_dominant_matrix<data_type>(Arrange == cusolverdx::col_major, N, N, A.data(), lda, false, -2, 2, batches); // input A is not symmetric
-
-    //printf("A = \n");
-    //common::print_matrix(N, N*batches, A.data(), lda);
-    //printf("=====\n");
 
     std::vector<data_type> L(input_size * batches);
     std::vector<int>       info(batches);
@@ -237,7 +249,7 @@ int blocked_potrf() {
     double gb_s                   = input_size * sizeof(data_type) * 2 / seconds_per_giga_batch;
     double gflops                 = common::get_flops_potrf<data_type>(N) / seconds_per_giga_batch;
 
-    common::print_perf("Blocked dx potrf", batches, N, N, 1, gflops, gb_s, ms);
+    common::print_perf("Blocked dx potrf", batches, N, N, 1, gflops, gb_s, ms, NT);
 
     CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(L.data(), d_A, sizeof(data_type) * A.size(), cudaMemcpyDeviceToHost, stream));
     CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(info.data(), d_info, sizeof(int) * info.size(), cudaMemcpyDeviceToHost, stream));
@@ -250,23 +262,19 @@ int blocked_potrf() {
             exit(1);
         }
     }
-    //printf("L = \n");
-    //common::print_matrix(N, N*batches, L.data(), lda);
 
     //=========================
     // cuSolver reference
     //=========================
     std::vector<data_type> B;  // dummy B
-    common::reference_cusolver_cholesky<data_type, data_type, true>(
-        A, B, info.data(), N, 1, batches, false, Arrange == cusolverdx::col_major, false, false, batches); // is_lower?, is_column major a? is_column major b, do_solve?
-    //printf("L ref = \n");
-    //common::print_matrix(N, N*batches, A.data(), lda);
+    common::reference_cusolver_cholesky<data_type, data_type, false, true>( // do_solver is false, check_potrf_perf is true
+        A, B, info.data(), N, 1, batches, false, Arrange == cusolverdx::col_major, false, batches); // is_lower?, is_column major a? is_column major b?
 
     //=========================
     // Compare results
     //=========================
     const auto total_relative_error = common::check_error<data_type, data_type>(L.data(), A.data(), A.size());
-    std::cout << "Solver: relative error of A between cuSolverDx and cuSolver results: " << total_relative_error << std::endl;
+    std::cout << "Relative forward error of A between cuSolverDx and cuSolver results: " << total_relative_error << std::endl;
 
     /* free resources */
     CUDA_CHECK_AND_EXIT(cudaFree(d_A));
