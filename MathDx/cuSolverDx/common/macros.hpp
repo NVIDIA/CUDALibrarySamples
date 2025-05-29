@@ -23,4 +23,15 @@
         }
 #endif // CUSOLVER_CHECK
 
+#ifndef CUBLAS_CHECK_AND_EXIT
+#    define CUBLAS_CHECK_AND_EXIT(error)                                              \
+        {                                                                               \
+            auto status = static_cast<cublasStatus_t>(error);                         \
+            if (status != CUBLAS_STATUS_SUCCESS) {                                    \
+                std::cout << status << " " << __FILE__ << ":" << __LINE__ << std::endl; \
+                std::exit(status);                                                      \
+            }                                                                           \
+        }
+#endif // CUSOLVER_CHECK
+
 #endif // CUSOLVERDX_EXAMPLE_COMMON_MACROS_HPP

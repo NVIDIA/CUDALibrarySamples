@@ -6,21 +6,28 @@
 // distribution of this software and related documentation without an express
 // license agreement from NVIDIA CORPORATION is strictly prohibited.
 
-#include <iostream>
-
 #include <cusolverdx.hpp>
-#include "common.hpp"
 
-// This example demonstrates how to use cuSolverDx API to solve a batched linear systems with multiple right hand side 
-// after performing Cholesky factorization of the batched symmetric, positive-definite matrix A.  
-// The results are compared with the reference values obtained with cuSolver host API. 
+#include "../common/common.hpp"
+#include "../common/cudart.hpp"
+#include "../common/error_checking.hpp"
+#include "../common/random.hpp"
+#include "../common/example_sm_runner.hpp"
+#include "../common/device_io.hpp"
+#include "../common/measure.hpp"
+#include "../common/print.hpp"
+#include "../common/cusolver_reference_cholesky.hpp"
+
+// This example demonstrates how to use cuSolverDx API to solve a batched linear systems with multiple right hand side
+// after performing Cholesky factorization of the batched symmetric, positive-definite matrix A.
+// The results are compared with the reference values obtained with cuSolver host API.
 
 template<class POSV, unsigned int BatchesPerBlock, class DataType = typename POSV::a_data_type>
-__global__ void potrf_kernel(DataType* A, const unsigned int lda_gmem, DataType* B, const unsigned int ldb_gmem, typename POSV::status_type* info, const unsigned int batches) {
+__global__ __launch_bounds__(POSV::max_threads_per_block) void posv_kernel(DataType* A, const unsigned int lda_gmem, DataType* B, const unsigned int ldb_gmem, typename POSV::status_type* info, const unsigned int batches) {
 
     using namespace cusolverdx;
     constexpr auto m                     = POSV::m_size;
-    constexpr auto nrhs                  = POSV::nrhs;
+    constexpr auto nrhs                  = POSV::k_size;
     const auto     one_batch_size_a_gmem = lda_gmem * m;
     const auto     one_batch_size_b_gmem = (arrangement_of_v_b<POSV> == arrangement::col_major) ? ldb_gmem * nrhs : m * ldb_gmem;
 
@@ -29,7 +36,7 @@ __global__ void potrf_kernel(DataType* A, const unsigned int lda_gmem, DataType*
     constexpr auto one_batch_size_a_smem = lda_smem * m;
     constexpr auto one_batch_size_b_smem = (arrangement_of_v_b<POSV> == arrangement::col_major) ? ldb_smem * nrhs : m * ldb_smem;
 
-    extern __shared__ __align__(16) char shared_mem[];
+    extern __shared__ __align__(sizeof(DataType)) char shared_mem[];
 
     DataType* As = reinterpret_cast<DataType*>(shared_mem);
     DataType* Bs = As + one_batch_size_a_smem * BatchesPerBlock;
@@ -41,23 +48,24 @@ __global__ void potrf_kernel(DataType* A, const unsigned int lda_gmem, DataType*
     auto Ag = A + size_t(one_batch_size_a_gmem) * batch_idx;
     auto Bg = B + size_t(one_batch_size_b_gmem) * batch_idx;
 
-    // Load data from global memory to registers
-    common::io<POSV, BatchesPerBlock>::load(Ag, lda_gmem, As, lda_smem);
-    common::io<POSV, BatchesPerBlock>::load_rhs(Bg, ldb_gmem, Bs, ldb_smem);
+    // Load data from global memory to shared memory
+    common::io<POSV, BatchesPerBlock>::load_a(Ag, lda_gmem, As, lda_smem);
+    common::io<POSV, BatchesPerBlock>::load_b(Bg, ldb_gmem, Bs, ldb_smem);
 
     POSV().execute(As, lda_smem, Bs, &info[batch_idx]);
 
-    // store
-    common::io<POSV, BatchesPerBlock>::store(As, lda_smem, Ag, lda_gmem);
-    common::io<POSV, BatchesPerBlock>::store_rhs(Bs, ldb_smem, Bg, ldb_gmem);
+    // Store results back to global memory
+    common::io<POSV, BatchesPerBlock>::store_a(As, lda_smem, Ag, lda_gmem);
+    common::io<POSV, BatchesPerBlock>::store_b(Bs, ldb_smem, Bg, ldb_gmem);
 }
 
 template<int Arch>
 int simple_posv_batched() {
 
     using namespace cusolverdx;
-    using Base = decltype(Size<12, 12, 2>() + Precision<double>() + Type<type::real>() + FillMode<fill_mode::lower>() + Arrangement<col_major, col_major>() + Block() + Function<posv>() + SM<Arch>());
-    using POSV = decltype(Base() + BatchesPerBlock<Base::suggested_batches_per_block>() + BlockDim<96, 1, 1>());
+
+    using POSV = decltype(Size<32 /* = m */, 32 /* = n */, 1 /* = k */>() + Precision<double>() + Type<type::complex>() + Function<function::posv>() + FillMode<lower>() +
+                          Arrangement<col_major /* A, X, and B */>() + SM<Arch>() + Block());
 
     constexpr unsigned bpb = POSV::batches_per_block;
     std::cout << "Using Suggested Batches per block = " << bpb << std::endl;
@@ -73,14 +81,17 @@ int simple_posv_batched() {
 #endif
     constexpr auto m    = POSV::m_size;
     constexpr auto n    = POSV::n_size;
-    constexpr auto nrhs = POSV::nrhs;
-    static_assert(m == n, "potrf is for Hermitian positive-definite matrix matrix only");
+    constexpr auto nrhs = POSV::k_size;
+    static_assert(m == n, "posv is for Hermitian positive-definite matrix matrix only");
     constexpr auto lda_smem = POSV::lda;
     constexpr auto ldb_smem = POSV::ldb;
 
+    constexpr bool is_col_maj_a = arrangement_of_v_a<POSV> == arrangement::col_major;
+    constexpr bool is_col_maj_b = arrangement_of_v_b<POSV> == arrangement::col_major;
+
     // no padding for global memory
     constexpr auto lda = m;
-    constexpr auto ldb = (arrangement_of_v_b<POSV> == col_major) ? m : nrhs;
+    constexpr auto ldb = is_col_maj_b ? m : nrhs;
 
     printf("Size m = %d, n = %d, nrhs = %d\n", m, n, nrhs);
     std::cout << "Using leading dimension LDA = " << lda_smem << ", LDB = " << ldb_smem << std::endl;
@@ -119,14 +130,6 @@ int simple_posv_batched() {
     data_type*       d_B    = nullptr; /* device copy of B */
     int*             d_info = nullptr; /* error info */
 
-    // DO not delete
-    const unsigned int b_dim_fast = (arrangement_of_v_b<POSV> == col_major) ? n : nrhs;
-    // printf("A = \n");
-    // common::print_matrix(m, m * batches, A.data(), lda);
-    // printf("=====\n");
-    // printf("B = \n");
-    // common::print_matrix(b_dim_fast, B.size() / b_dim_fast, B.data(), ldb);
-    // printf("=====\n");
 
     CUDA_CHECK_AND_EXIT(cudaMalloc(reinterpret_cast<void**>(&d_A), sizeof(data_type) * A.size()));
     CUDA_CHECK_AND_EXIT(cudaMalloc(reinterpret_cast<void**>(&d_B), sizeof(data_type) * B.size()));
@@ -138,7 +141,7 @@ int simple_posv_batched() {
     // Increase max dynamic shared memory for the kernel if needed.
     const auto sm_size = POSV::shared_memory_size;
 
-    const auto kernel = potrf_kernel<POSV, POSV::batches_per_block>;
+    const auto kernel = posv_kernel<POSV, POSV::batches_per_block>;
     CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, sm_size));
 
     //Invokes kernel
@@ -159,40 +162,39 @@ int simple_posv_batched() {
         }
         return -1;
     }
-    // DO not delete
-    // printf("after cuSolverDx execute\n");
-    // printf("L = \n");
-    // common::print_matrix(m, m * batches, L.data(), lda);
-    // printf("=====\n");
-    // printf("X = \n");
-    // common::print_matrix(b_dim_fast, X.size() / b_dim_fast, X.data(), ldb);
+
+    // Uncomment below to print the results after cuSolverDx execute
+    //printf("after cuSolverDx execute\n");
+    //printf("L = \n");
+    //common::print_matrix<data_type, m, n, lda, is_col_maj_a>(L.data(), padded_batches);
+    //printf("=====\n");
+    //printf("X = \n");
+    // common::print_matrix<data_type, n, nrhs, ldb, is_col_maj_b>(X.data(), padded_batches);
     // printf("=====\n");
 
     //=======================================================
     // cuSolver reference with potrfBatched and portsBatched
     //=======================================================
-    common::reference_cusolver_cholesky<data_type, cuda_data_type>(A,
-                                                                   B,
-                                                                   info.data(),
-                                                                   m,
-                                                                   nrhs,
-                                                                   padded_batches,
-                                                                   (fill_mode_of_v<POSV> == fill_mode::lower),           /* is_lower? */
-                                                                   (arrangement_of_v_a<POSV> == arrangement::col_major), /* is_column_major_a */
-                                                                   (arrangement_of_v_b<POSV> == arrangement::col_major), /* is_column_major_b */
-                                                                   true,                                                 // do_solve?
-                                                                   batches);
+    common::reference_cusolver_cholesky<data_type, cuda_data_type, true>(A,
+                                                                         B,
+                                                                         info.data(),
+                                                                         m,
+                                                                         nrhs,
+                                                                         padded_batches,
+                                                                         (fill_mode_of_v<POSV> == fill_mode::lower),           /* is_lower? */
+                                                                         is_col_maj_a,
+                                                                         is_col_maj_b,
+                                                                         batches);
 
-    // check results
     auto total_relative_error = common::check_error<data_type, data_type>(L.data(), A.data(), batches * one_batch_size_A);
     printf("BATCHED POSV: relative error of A between cuSolverDx and cuSolver results: = %e\n", total_relative_error);
 
-    // DO not delete
+    // Uncomment below to print the results after cuSolver reference execute
     // printf("after cuSolver API execute\n");
     // printf("A = \n");
-    // common::print_matrix(m, m * batches, A.data(), lda);
+    // common::print_matrix<data_type, m, n, lda, is_col_maj_a>(A.data(), padded_batches);
     // printf("B = \n");
-    // common::print_matrix(b_dim_fast, B.size() / b_dim_fast, B.data(), ldb);
+    // common::print_matrix<data_type, n, nrhs, ldb, is_col_maj_b>(B.data(), padded_batches);
     // printf("=====\n");
 
     total_relative_error = common::check_error<data_type, data_type>(X.data(), B.data(), batches * one_batch_size_B);

@@ -20,7 +20,7 @@
 #include <cuComplex.h>
 
 #include "nvrtc_helper.hpp" // defines CUSOLVERDX_EXAMPLE_NVRTC
-#include "common/random.hpp"
+#include "../common/random.hpp"
 
 // This example demonstrates how to use cuSolverDx functions with NVRTC to runtime compile a kernel into LTO IR. 
 // Then nvJitLInk is used to link the generated LTO IR with cuSolverDx's LTO library, conduct optimization on the linked LTO IR, 
@@ -34,7 +34,7 @@ using namespace cusolverdx;
 // CUSOLVERDX Operators with inputs
 
 using Base =
-        decltype(Size<M_SIZE, M_SIZE>() + Precision<double>() + Type<type::complex>() + Block() +
+        decltype(Size<M_SIZE, M_SIZE>() + FillMode<lower>() + Precision<double>() + Type<type::complex>() + Block() +
                  LeadingDimension<SOLVER_LDA>() + SM<SOLVER_SM>() + BatchesPerBlock<1>());
 using POTRF = decltype(Base() + Function<potrf>());
 using POTRS = decltype(Base() + Function<potrs>());

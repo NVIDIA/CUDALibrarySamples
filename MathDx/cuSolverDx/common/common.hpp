@@ -4,23 +4,12 @@
 #include <type_traits>
 #include <vector>
 #include <random>
+#include <iostream>
 
 #ifndef CUSOLVERDX_EXAMPLE_NVRTC
 #    include <cuda/std/complex>
 #    include <cusolverdx.hpp>
 #endif
-
-#include "common/macros.hpp"
-#include "common/cudart.hpp"
-#include "common/error_checking.hpp"
-#include "common/measure.hpp"
-#include "common/numeric.hpp"
-#include "common/random.hpp"
-#include "common/example_sm_runner.hpp"
-#include "common/device_io.hpp"
-#include "common/print.hpp"
-#include "common/cusolver_reference_cholesky.hpp"
-#include "common/cusolver_reference_lu.hpp"
 
 // the nvcc bug in CUDA 12.2-12.4, fixed in 12.5
 #ifdef __NVCC__
