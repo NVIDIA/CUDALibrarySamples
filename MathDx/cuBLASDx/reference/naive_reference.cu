@@ -62,22 +62,20 @@ namespace example {
         }
     }
 
-
     template<typename ValueType>
-    void reference_gemm_naive_device(const unsigned int                 m,
-                                     const unsigned int                 n,
-                                     const unsigned int                 k,
-                                     const ValueType                    alpha,
-                                     example::device_vector<ValueType>& A,
-                                     const unsigned int                 lda,
-                                     cublasdx::arrangement              arr_a,
-                                     example::device_vector<ValueType>& B,
-                                     const unsigned int                 ldb,
-                                     cublasdx::arrangement              arr_b,
-                                     const ValueType                    beta,
-                                     example::device_vector<ValueType>& C,
-                                     const unsigned int                 ldc,
-                                     cublasdx::arrangement              arr_c) {
+    void reference_gemm_naive_device(unsigned_tuple           const& gemm_shape,
+                                     arr_tuple                const& gemm_arr,
+                                     unsigned_tuple           const& gemm_ld,
+                                     ValueType                const& alpha,
+                                     device_vector<ValueType> const& A,
+                                     device_vector<ValueType> const& B,
+                                     ValueType                const& beta,
+                                     device_vector<ValueType>      & C) {
+        // Unpack arguments
+        auto [m, n, k] = gemm_shape;
+        auto [lda, ldb, ldc] = gemm_ld;
+        auto [arr_a, arr_b, arr_c] = gemm_arr;
+
         auto make_tensor = [](auto ptr, auto sx, auto sy, auto ld, bool col_major) {
             return cute::make_tensor(ptr,
                     cute::make_layout(cute::make_shape(sx, sy),
@@ -97,40 +95,28 @@ namespace example {
         CUDA_CHECK_AND_EXIT(cudaPeekAtLastError());
     }
 
-    #define REFERENCE_FOR_TYPE(Prec)                                                                   \
-        template                                                                                       \
-        void reference_gemm_naive_device<Prec>                                                         \
-                                        (const unsigned int                 m,                         \
-                                         const unsigned int                 n,                         \
-                                         const unsigned int                 k,                         \
-                                         const Prec                         alpha,                     \
-                                         example::device_vector<Prec, void>& A,                         \
-                                         const unsigned int                 lda,                       \
-                                         cublasdx::arrangement              arr_a,                     \
-                                         example::device_vector<Prec, void>& B,                         \
-                                         const unsigned int                 ldb,                       \
-                                         cublasdx::arrangement              arr_b,                     \
-                                         const Prec                         beta,                      \
-                                         example::device_vector<Prec, void>& C,                         \
-                                         const unsigned int                 ldc,                       \
-                                         cublasdx::arrangement              arr_c);                    \
-                                                                                                       \
-        template                                                                                       \
-        void reference_gemm_naive_device<cublasdx::complex<Prec>>                                      \
-                                        (const unsigned int                 m,                         \
-                                         const unsigned int                 n,                         \
-                                         const unsigned int                 k,                         \
-                                         const cublasdx::complex<Prec>      alpha,                     \
-                                         example::device_vector<cublasdx::complex<Prec>, void>& A,           \
-                                         const unsigned int                 lda,                       \
-                                         cublasdx::arrangement              arr_a,                     \
-                                         example::device_vector<cublasdx::complex<Prec>, void>& B,           \
-                                         const unsigned int                 ldb,                       \
-                                         cublasdx::arrangement              arr_b,                     \
-                                         const cublasdx::complex<Prec>      beta,                      \
-                                         example::device_vector<cublasdx::complex<Prec>, void>& C,           \
-                                         const unsigned int                 ldc,                       \
-                                         cublasdx::arrangement              arr_c);
+    #define REFERENCE_FOR_TYPE(Prec)                                                                     \
+        template                                                                                         \
+        void reference_gemm_naive_device<Prec>                                                           \
+                                        (unsigned_tuple           const& gemm_shape,                     \
+                                         arr_tuple                const& gemm_arr,                       \
+                                         unsigned_tuple           const& gemm_ld,                        \
+                                         Prec                     const& alpha,                          \
+                                         device_vector<Prec>      const& A,                              \
+                                         device_vector<Prec>      const& B,                              \
+                                         Prec                     const& beta,                           \
+                                         device_vector<Prec>           & C);                             \
+                                                                                                         \
+        template                                                                                         \
+        void reference_gemm_naive_device<cublasdx::complex<Prec>>                                        \
+                                        (unsigned_tuple                              const& gemm_shape,  \
+                                         arr_tuple                                   const& gemm_arr,    \
+                                         unsigned_tuple                              const& gemm_ld,     \
+                                         cublasdx::complex<Prec>                     const& alpha,       \
+                                         device_vector<cublasdx::complex<Prec>>      const& A,           \
+                                         device_vector<cublasdx::complex<Prec>>      const& B,           \
+                                         cublasdx::complex<Prec>                     const& beta,        \
+                                         device_vector<cublasdx::complex<Prec>>           & C);
 
     REFERENCE_FOR_TYPE(double)
     REFERENCE_FOR_TYPE(int64_t)
