@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.18.0)
 
 # cuBLASDx Examples project
-project(cublasdx_examples VERSION 0.3.1 LANGUAGES CXX CUDA)
+project(cublasdx_examples VERSION 0.4.0 LANGUAGES CXX CUDA)
 
 # PROJECT_IS_TOP_LEVEL is available since 3.21
 if(CMAKE_VERSION VERSION_LESS 3.21)
@@ -14,6 +14,8 @@ if(CMAKE_VERSION VERSION_LESS 3.21)
 endif()
 
 if(PROJECT_IS_TOP_LEVEL)
+    enable_testing()
+
     if(NOT MSVC)
         set(CUBLASDX_CUDA_CXX_FLAGS "${CUBLASDX_CUDA_CXX_FLAGS} -Wall -Wextra")
         set(CUBLASDX_CUDA_CXX_FLAGS "${CUBLASDX_CUDA_CXX_FLAGS} -fno-strict-aliasing")
@@ -90,64 +92,14 @@ if(PROJECT_IS_TOP_LEVEL)
     message(STATUS "Targeted cuBLASDx CUDA Architectures: ${CUBLASDX_CUDA_ARCHITECTURES}")
 endif()
 
-# ******************************************
-# Tests as standalone project to enable testing release package
-# ******************************************
 if(PROJECT_IS_TOP_LEVEL OR CUBLASDX_TEST_PACKAGE)
-    enable_testing()
-
-    # Project options
-    option(USE_MATHDX_PACKAGE "Use mathDx package to find cuBLASDx" ON)
-    option(USE_CUBLASDX_PACKAGE "Use cuBLASDx package to find cuBLASDx" OFF)
-
-    if(DEFINED cublasdx_ROOT OR DEFINED ENV{cublasdx_ROOT})
-        SET(USE_CUBLASDX_PACKAGE ON CACHE BOOL "Use cuBLASDx package to find cuBLASDx" FORCE)
-        SET(USE_MATHDX_PACKAGE OFF CACHE BOOL "Use mathDx package to find cuBLASDx" FORCE)
-    endif()
-
-    if(DEFINED mathdx_ROOT OR DEFINED ENV{mathdx_ROOT})
-        SET(USE_CUBLASDX_PACKAGE OFF CACHE BOOL "Use cuBLASDx package to find cuBLASDx" FORCE)
-        SET(USE_MATHDX_PACKAGE ON CACHE BOOL "Use mathDx package to find cuBLASDx" FORCE)
-    endif()
-
-    if(USE_MATHDX_PACKAGE)
-        message(STATUS "Example: Using mathDx package to find cuBLASDx")
-        set(cufftdx_SEPARATE_TWIDDLES_CUDA_ARCHITECTURES "${CUBLASDX_CUDA_ARCHITECTURES}")
-        find_package(mathdx REQUIRED COMPONENTS cublasdx cufftdx CONFIG
-            PATHS
-                "${PROJECT_SOURCE_DIR}/../.." # example/cublasdx
-                "${PROJECT_SOURCE_DIR}/../../.." # include/cublasdx/example
-                "/opt/nvidia/mathdx/25.01"
-        )
-    elseif(USE_CUBLASDX_PACKAGE)
-        message(STATUS "Example: Using cuBLASDx package to find cuBLASDx")
-        find_package(cublasdx REQUIRED CONFIG HINTS ${cublasdx_DIR}
-            PATHS
-                "/opt/nvidia/mathdx/25.01/include/cublasdx"
-                "${PROJECT_SOURCE_DIR}/../../cublasdx"
-        )
-    else()
-        message(FATAL_ERROR "Example: No cuBLASDx package found")
-    endif()
-endif()
-
-# cuFFTDx
-if(USE_MATHDX_PACKAGE)
-    set(cufftdx_SEPARATE_TWIDDLES_CUDA_ARCHITECTURES "${CUBLASDX_CUDA_ARCHITECTURES}")
-    find_package(mathdx REQUIRED COMPONENTS cufftdx CONFIG
+    find_package(mathdx REQUIRED CONFIG
         PATHS
             "${PROJECT_SOURCE_DIR}/../.." # example/cublasdx
-            "${PROJECT_SOURCE_DIR}/../../.." # include/cublasdx/example
-            "/opt/nvidia/mathdx/25.01"
+            "/opt/nvidia/mathdx/25.06"
     )
-else()
-    find_package(cufftdx CONFIG HINTS ${cufftdx_DIR} PATHS "/opt/cufftdx")
 endif()
-if(cufftdx_FOUND)
-    message(STATUS "Examples: cuFFTDx found (${cufftdx_INCLUDE_DIRS}), cuFFTDx+cuBLASDx examples enabled")
-else()
-    message(STATUS "Examples: cuFFTDx NOT found, cuFFTDx+cuBLASDx examples disabled")
-endif()
+
 
 # CUDA Toolkit
 find_package(CUDAToolkit REQUIRED)
@@ -157,9 +109,11 @@ foreach(CUDA_ARCH ${CUBLASDX_CUDA_ARCHITECTURES})
     # Extract SM from SM-real/SM-virtual
     string(REPLACE "-" ";" CUDA_ARCH_LIST ${CUDA_ARCH})
     list(GET CUDA_ARCH_LIST 0 ARCH)
-    if(${ARCH} STREQUAL "90a")
-        set(ARCH 90)
-    endif()
+    # Remove "a"
+    string(REPLACE "a" "" ARCH "${ARCH}")
+    # Remove "f"
+    string(REPLACE "f" "" ARCH "${ARCH}")
+
     add_compile_definitions(CUBLASDX_EXAMPLE_ENABLE_SM_${ARCH})
 endforeach()
 
@@ -167,13 +121,10 @@ endforeach()
 # Common correctness checking objects
 # ###############################################################
 if (NOT TARGET common_correctness_objects)
-    set(common_correctness_objects_sources check_error.cu reference/naive_reference.cu)
+    set(common_correctness_objects_sources reference/check_error.cu reference/naive_reference.cu)
     set_source_files_properties("${common_correctness_objects_sources}" PROPERTIES LANGUAGE CUDA)
     add_library(common_correctness_objects STATIC "${common_correctness_objects_sources}")
-    target_link_libraries(common_correctness_objects
-        PRIVATE
-            $<IF:$<TARGET_EXISTS:mathdx::cublasdx>,mathdx::cublasdx,cublasdx::cublasdx>
-    )
+    target_link_libraries(common_correctness_objects PRIVATE mathdx::cublasdx)
     set_target_properties(common_correctness_objects
         PROPERTIES
             CUDA_ARCHITECTURES "${CUBLASDX_CUDA_ARCHITECTURES}"
@@ -183,20 +134,38 @@ endif()
 # ###############################################################
 # add_cufftdx_cublasdx_example
 # ###############################################################
-function(add_cufftdx_cublasdx_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
+function(add_cufftdx_cublasdx_example GROUP_TARGET EXAMPLE_SOURCES)
     list(GET EXAMPLE_SOURCES 0 EXAMPLE_MAIN_SOURCE)
-    get_filename_component(EXAMPLE_TARGET ${EXAMPLE_MAIN_SOURCE} NAME_WE)
+
+    # Get the absolute path and filename
+    get_filename_component(EXAMPLE_FILENAME "${EXAMPLE_MAIN_SOURCE}" NAME_WE)
+    get_filename_component(EXAMPLE_DIR "${EXAMPLE_MAIN_SOURCE}" DIRECTORY)
+     # Compose target name: dir_filename
+    set(EXAMPLE_TARGET "${EXAMPLE_DIR}_${EXAMPLE_FILENAME}")
+
+    set(EXAMPLE_NAME "cuBLASDx.example.${EXAMPLE_DIR}.${EXAMPLE_FILENAME}")
+
+     # Compose output directory: <build_dir>/<subdir>
+    set(EXAMPLE_DIR "${CMAKE_CURRENT_BINARY_DIR}/${EXAMPLE_DIR}")
+
     set_source_files_properties(${EXAMPLE_SOURCES} PROPERTIES LANGUAGE CUDA)
     add_executable(${EXAMPLE_TARGET} ${EXAMPLE_SOURCES})
     target_link_libraries(${EXAMPLE_TARGET}
         PRIVATE
-            $<IF:$<TARGET_EXISTS:mathdx::cublasdx>,mathdx::cublasdx,cublasdx::cublasdx>
+            mathdx::cublasdx
             CUDA::cublas
             cufftdx::cufftdx
             CUDA::cufft
             common_correctness_objects
     )
     add_test(NAME ${EXAMPLE_NAME} COMMAND ${EXAMPLE_TARGET})
+
+    # Set the output directory and executable name
+    set_target_properties(${EXAMPLE_TARGET} PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${EXAMPLE_DIR}"
+        OUTPUT_NAME "${EXAMPLE_FILENAME}"
+    )
+
     set_target_properties(${EXAMPLE_TARGET}
         PROPERTIES
             CUDA_ARCHITECTURES "${CUBLASDX_CUDA_ARCHITECTURES}"
@@ -217,18 +186,36 @@ endfunction()
 # ###############################################################
 # add_cublasdx_example
 # ###############################################################
-function(add_cublasdx_example2 GROUP_TARGET EXAMPLE_NAME ENABLE_RELAXED_CONSTEXPR EXAMPLE_SOURCES)
+function(add_cublasdx_example2 GROUP_TARGET ENABLE_RELAXED_CONSTEXPR EXAMPLE_SOURCES)
     list(GET EXAMPLE_SOURCES 0 EXAMPLE_MAIN_SOURCE)
-    get_filename_component(EXAMPLE_TARGET ${EXAMPLE_MAIN_SOURCE} NAME_WE)
+
+    # Get the absolute path and filename
+    get_filename_component(EXAMPLE_FILENAME "${EXAMPLE_MAIN_SOURCE}" NAME_WE)
+    get_filename_component(EXAMPLE_DIR "${EXAMPLE_MAIN_SOURCE}" DIRECTORY)
+     # Compose target name: dir_filename
+    set(EXAMPLE_TARGET "${EXAMPLE_DIR}_${EXAMPLE_FILENAME}")
+
+    set(EXAMPLE_NAME "cuBLASDx.example.${EXAMPLE_DIR}.${EXAMPLE_FILENAME}")
+
+     # Compose output directory: <build_dir>/<subdir>
+    set(EXAMPLE_DIR "${CMAKE_CURRENT_BINARY_DIR}/${EXAMPLE_DIR}")
+
     set_source_files_properties(${EXAMPLE_SOURCES} PROPERTIES LANGUAGE CUDA)
     add_executable(${EXAMPLE_TARGET} ${EXAMPLE_SOURCES})
     target_link_libraries(${EXAMPLE_TARGET}
         PRIVATE
-            $<IF:$<TARGET_EXISTS:mathdx::cublasdx>,mathdx::cublasdx,cublasdx::cublasdx>
+            mathdx::cublasdx
             CUDA::cublas
             common_correctness_objects
     )
     add_test(NAME ${EXAMPLE_NAME} COMMAND ${EXAMPLE_TARGET})
+
+    # Set the output directory and executable name
+    set_target_properties(${EXAMPLE_TARGET} PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${EXAMPLE_DIR}"
+        OUTPUT_NAME "${EXAMPLE_FILENAME}"
+    )
+
     set_target_properties(${EXAMPLE_TARGET}
         PROPERTIES
             CUDA_ARCHITECTURES "${CUBLASDX_CUDA_ARCHITECTURES}"
@@ -246,16 +233,26 @@ function(add_cublasdx_example2 GROUP_TARGET EXAMPLE_NAME ENABLE_RELAXED_CONSTEXP
     add_dependencies(${GROUP_TARGET} ${EXAMPLE_TARGET})
 endfunction()
 
-function(add_cublasdx_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
-    add_cublasdx_example2("${GROUP_TARGET}" "${EXAMPLE_NAME}" True "${EXAMPLE_SOURCES}")
+function(add_cublasdx_example GROUP_TARGET EXAMPLE_SOURCES)
+    add_cublasdx_example2("${GROUP_TARGET}" True "${EXAMPLE_SOURCES}")
 endfunction()
 
 # ###############################################################
 # add_cublasdx_nvrtc_example
 # ###############################################################
-function(add_cublasdx_nvrtc_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
+function(add_cublasdx_nvrtc_example GROUP_TARGET EXAMPLE_SOURCES)
     list(GET EXAMPLE_SOURCES 0 EXAMPLE_MAIN_SOURCE)
-    get_filename_component(EXAMPLE_TARGET ${EXAMPLE_MAIN_SOURCE} NAME_WE)
+
+    # Get the absolute path and filename
+    get_filename_component(EXAMPLE_FILENAME "${EXAMPLE_MAIN_SOURCE}" NAME_WE)
+    get_filename_component(EXAMPLE_DIR "${EXAMPLE_MAIN_SOURCE}" DIRECTORY)
+    # Compose target name: dir_filename
+    set(EXAMPLE_TARGET "${EXAMPLE_DIR}_${EXAMPLE_FILENAME}")
+    
+    set(EXAMPLE_NAME "cuBLASDx.example.${EXAMPLE_DIR}.${EXAMPLE_FILENAME}")
+     # Compose output directory: <build_dir>/<subdir>
+    set(EXAMPLE_DIR "${CMAKE_CURRENT_BINARY_DIR}/${EXAMPLE_DIR}")
+
     add_executable(${EXAMPLE_TARGET} ${EXAMPLE_SOURCES})
     target_link_libraries(${EXAMPLE_TARGET}
         PRIVATE
@@ -280,6 +277,13 @@ function(add_cublasdx_nvrtc_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
                 LABELS "EXAMPLE"
         )
     endif()
+
+    # Set the output directory and executable name
+    set_target_properties(${EXAMPLE_TARGET} PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${EXAMPLE_DIR}"
+        OUTPUT_NAME "${EXAMPLE_FILENAME}"
+    )
+    
     set_target_properties(${EXAMPLE_TARGET}
         PROPERTIES
             CUDA_ARCHITECTURES "${CUBLASDX_CUDA_ARCHITECTURES}"
@@ -298,45 +302,44 @@ endfunction()
 add_custom_target(cublasdx_examples)
 
 # cuBLASDx NVRTC examples
-add_cublasdx_nvrtc_example(cublasdx_examples "cuBLASDx.example.nvrtc_gemm" nvrtc_gemm.cpp)
+add_cublasdx_nvrtc_example(cublasdx_examples 15_gemm_nvrtc/nvrtc_gemm.cpp)
 
 # cuBLASDx introduction examples
-add_cublasdx_example(cublasdx_examples "cuBLASDx.example.introduction_example" introduction_example.cu)
+add_cublasdx_example(cublasdx_examples 01_gemm_introduction/introduction_example.cu)
 
 # cuBLASDx simple examples
-add_cublasdx_example(cublasdx_examples "cuBLASDx.example.simple_gemm_mixed_precision" simple_gemm_mixed_precision.cu)
-add_cublasdx_example(cublasdx_examples "cuBLASDx.example.simple_gemm_fp32" simple_gemm_fp32.cu)
-add_cublasdx_example(cublasdx_examples "cuBLASDx.example.simple_gemm_int8_int8_int32" simple_gemm_int8_int8_int32.cu)
-add_cublasdx_example(cublasdx_examples "cuBLASDx.example.simple_gemm_fp32_decoupled" simple_gemm_fp32_decoupled.cu)
-add_cublasdx_example(cublasdx_examples "cuBLASDx.example.simple_gemm_cfp16" simple_gemm_cfp16.cu)
-add_cublasdx_example(cublasdx_examples "cuBLASDx.example.simple_gemm_fp8" simple_gemm_fp8.cu)
-add_cublasdx_example(cublasdx_examples "cuBLASDx.example.simple_gemm_std_complex_fp32" simple_gemm_std_complex_fp32.cu)
-add_cublasdx_example(cublasdx_examples "cuBLASDx.example.simple_gemm_leading_dimensions" simple_gemm_leading_dimensions.cu)
-add_cublasdx_example(cublasdx_examples "cuBLASDx.example.simple_gemm_custom_layout" simple_gemm_custom_layout.cu)
-add_cublasdx_example(cublasdx_examples "cuBLASDx.example.simple_gemm_transform" simple_gemm_transform.cu)
-add_cublasdx_example(cublasdx_examples "cuBLASDx.example.simple_gemm_aat" simple_gemm_aat.cu)
-add_cublasdx_example(cublasdx_examples "cuBLASDx.example.device_gemm_performance" device_gemm_performance.cu)
+add_cublasdx_example(cublasdx_examples 02_gemm_precisions/simple_gemm_mixed_precision.cu)
+add_cublasdx_example(cublasdx_examples 02_gemm_precisions/simple_gemm_fp32.cu)
+add_cublasdx_example(cublasdx_examples 02_gemm_precisions/simple_gemm_int8_int8_int32.cu)
+add_cublasdx_example(cublasdx_examples 08_gemm_decoupled_io_and_compute/simple_gemm_fp32_decoupled.cu)
+add_cublasdx_example(cublasdx_examples 03_gemm_complex/simple_gemm_cfp16.cu)
+add_cublasdx_example(cublasdx_examples 02_gemm_precisions/simple_gemm_fp8.cu)
+add_cublasdx_example(cublasdx_examples 03_gemm_complex/simple_gemm_std_complex_fp32.cu)
+add_cublasdx_example(cublasdx_examples 06_gemm_leading_dimension/simple_gemm_leading_dimensions.cu)
+add_cublasdx_example(cublasdx_examples 09_gemm_custom_layout/simple_gemm_custom_layout.cu)
+add_cublasdx_example(cublasdx_examples 07_gemm_transform/simple_gemm_transform.cu)
+add_cublasdx_example(cublasdx_examples 09_gemm_custom_layout/simple_gemm_aat.cu)
+add_cublasdx_example(cublasdx_examples 11_gemm_device_performance/device_gemm_performance.cu)
+add_cublasdx_example(cublasdx_examples 12_gemm_device_partial_sums/gemm_device_partial_sums.cu)
 
 # cuBLASDx advanced examples
-add_cublasdx_example(cublasdx_examples "cuBLASDx.example.gemm_fusion" gemm_fusion.cu)
-add_cublasdx_example(cublasdx_examples "cuBLASDx.example.blockdim_gemm_fp16" blockdim_gemm_fp16.cu)
-add_cublasdx_example(cublasdx_examples "cuBLASDx.example.batched_gemm_fp64" batched_gemm_fp64.cu)
+add_cublasdx_example(cublasdx_examples 14_gemm_fused/gemm_fusion.cu)
+add_cublasdx_example(cublasdx_examples 04_gemm_blockdim/blockdim_gemm_fp16.cu)
+add_cublasdx_example(cublasdx_examples 05_gemm_batched/batched_gemm_fp64.cu)
 
 # cuBLASDx performance examples
 # Examples which measure performance are enabled only for CUDA >=11.8.0 because of an NVCC bug
 if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11.8.0)
-    add_cublasdx_example(cublasdx_examples "cuBLASDx.example.single_gemm_performance" single_gemm_performance.cu)
-    add_cublasdx_example(cublasdx_examples "cuBLASDx.example.fused_gemm_performance" fused_gemm_performance.cu)
-    add_cublasdx_example(cublasdx_examples "cuBLASDx.example.scaled_dot_product_attention" scaled_dot_prod_attn.cu)
-    add_cublasdx_example(cublasdx_examples "cuBLASDx.example.scaled_dot_product_attention_batched" scaled_dot_prod_attn_batched.cu)
+    add_cublasdx_example(cublasdx_examples 10_gemm_block_performance/single_gemm_performance.cu)
+    add_cublasdx_example(cublasdx_examples 14_gemm_fused/fused_gemm_performance.cu)
 endif()
 
 # cuBLASDx/cuFFTDx examples
 if(cufftdx_FOUND)
     # Examples which measure performance are enabled only for CUDA >=11.8.0 because of an NVCC bug
     if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11.8.0)
-        add_cufftdx_cublasdx_example(cublasdx_examples "cuBLASDx.example.gemm_fft" gemm_fft.cu)
-        add_cufftdx_cublasdx_example(cublasdx_examples "cuBLASDx.example.gemm_fft_fp16" gemm_fft_fp16.cu)
-        add_cufftdx_cublasdx_example(cublasdx_examples "cuBLASDx.example.gemm_fft_performance" gemm_fft_performance.cu)
+        add_cufftdx_cublasdx_example(cublasdx_examples 13_gemm_fft/gemm_fft.cu)
+        add_cufftdx_cublasdx_example(cublasdx_examples 13_gemm_fft/gemm_fft_fp16.cu)
+        add_cufftdx_cublasdx_example(cublasdx_examples 13_gemm_fft/gemm_fft_performance.cu)
     endif()
 endif()
