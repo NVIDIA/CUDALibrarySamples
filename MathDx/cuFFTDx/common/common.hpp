@@ -208,8 +208,11 @@ namespace example {
 #if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_90)
             case 900: Functor<900>()(); return 0;
 #endif
+        default: {
+            printf("Examples not configured to support SM %u.  Use the CUFFTDX_CUDA_ARCHITECTURES CMake variable to configure the SM support.\n",
+                       cuda_device_arch);
+            return 1;
         }
-        return 1;
     }
 
     constexpr unsigned int closest_power_of_2(unsigned int v) {
