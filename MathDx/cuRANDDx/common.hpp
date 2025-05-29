@@ -133,16 +133,12 @@ namespace example {
 #ifdef CURANDDX_EXAMPLE_ENABLE_SM_121
             case 1210: return Functor<1210>()();
 #endif
-#ifdef CURANDDX_EXAMPLE_ENABLE_SM_121
             default: {
-                if (cuda_device_arch > 1210) {
-                    return Functor<1210>()();
-                }
+                printf("Examples not configured to support SM %u.  Use the CURANDDX_CUDA_ARCHITECTURES CMake variable to configure the SM support.\n",
+                       cuda_device_arch);
+                // Fail
+                return 1;
             }
-#endif
         }
-        return 1;
     }
 } // namespace example
-
-#endif

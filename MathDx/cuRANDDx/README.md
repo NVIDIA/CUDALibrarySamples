@@ -22,7 +22,7 @@ This folder demonstrates cuRANDDx APIs usage.
 
 ```
 mkdir build && cd build
-cmake -DCURANDDX_CUDA_ARCHITECTURES=80-real -Dmathdx_ROOT=<path_of_mathdx>/nvidia-mathdx-25.01.0/nvidia/mathdx/25.01 ../example/cuRANDDx
+cmake -DCURANDDX_CUDA_ARCHITECTURES=80-real -Dmathdx_ROOT=<path_of_mathdx>/nvidia-mathdx-25.06.0/nvidia/mathdx/25.06 ../example/cuRANDDx
 make
 // Run
 ctest
@@ -32,11 +32,11 @@ ctest
 
 For the detailed descriptions of the examples please visit [Examples](https://docs.nvidia.com/cuda/curanddx/index.html) section of the cuRANDDx documentation.
 
-|            Example                |                                  Description                                                      |
-|-----------------------------------|---------------------------------------------------------------------------------------------------|
-| Introduction Example              | Introduction example (Philox RNG)                                                                 |
-| PCG Generator Example             | Generate sequence of 32-bit random values using PCG generator                                     |
-| Separate Initialization Kernel    | Initialize RNG states in a separate kernel                                                        |
-| Skipping Values                   | Example of using skip methods                                                                     |
-| Quasirandom Generator             | Example of using Sobol quasirandom generator                                                      |
-| NVRTC Example                     | Using cuRANDDx with NVRTC                                                                         |
+|              Group           |            Example                |                                  Description                                                      |
+|------------------------------|-----------------------------------|---------------------------------------------------------------------------------------------------|
+| Introduction Examples        | philox_thread_api                 | Introduction example with Philox random number generator                                          |
+| Thread API Examples          | xorwow_init_and_generate_thread_api | XORWOW random number generator with initialization and generation                               |
+|                              | sobol_thread_api                  | Sobol quasi-random number generator                                                               |
+|                              | pcg_thread_api                    | PCG random number generator                                                                       |
+|                              | mrg_two_distributions_thread_api  | Multiple random number distributions using MRG32k3a generator                                     |
+| NVRTC Examples               | nvrtc_pcg_thread_api              | Using cuRANDDx with NVTRC runtime compilation and nvJitLink runtime linking                       |
