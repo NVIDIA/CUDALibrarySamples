@@ -61,4 +61,5 @@ set_target_properties(10_cufft_device_api_example_cufft_device_api_example
         CUDA_ARCHITECTURES "${CUFFTDX_CUDA_ARCHITECTURES}"
         CUDA_SEPARABLE_COMPILATION ON
         INTERPROCEDURAL_OPTIMIZATION ON
+        OUTPUT_NAME "cufft_device_api_example"
 )
