@@ -134,7 +134,7 @@ namespace example {
             case 1210: return Functor<1210>()();
 #endif
             default: {
-                printf("Examples not configured to support SM %u.  Use the CURANDDX_CUDA_ARCHITECTURES CMake variable to configure the SM support.\n",
+                printf("Examples not configured to support SM %u. Use the CURANDDX_CUDA_ARCHITECTURES CMake variable to configure the SM support.\n",
                        cuda_device_arch);
                 // Fail
                 return 1;

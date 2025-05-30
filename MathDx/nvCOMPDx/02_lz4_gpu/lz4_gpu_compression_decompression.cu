@@ -292,7 +292,7 @@ int main(int argc, char* argv[])
     while (i < argc) {
       const char* current_argv = argv[i++];
       if (strcmp(current_argv, "-f") == 0) {
-        // parse until next `-` argument
+        // Parse until next `-` argument
         while (i < argc && argv[i][0] != '-') {
           file_names.emplace_back(argv[i++]);
         }
