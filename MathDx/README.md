@@ -1,6 +1,6 @@
 # MathDx Library - API Examples
 
-This folder includes examples for cuFFTDx, cuBLASDx, cuSolverDx and cuRANDDx libraries available in MathDx [package](https://developer.nvidia.com/mathdx) package. The examples are also shipped in the package.
+This folder includes examples for cuFFTDx, cuBLASDx, cuSolverDx, cuRANDDx, and nvCOMPDx libraries available in the MathDx [package](https://developer.nvidia.com/mathdx) package. The examples are also shipped in the package.
 
 ## [cuBLASDx](cuBLASDx)
 
@@ -130,3 +130,21 @@ This folder includes examples for cuFFTDx, cuBLASDx, cuSolverDx and cuRANDDx lib
 |                              | pcg_thread_api                      | PCG random number generator                                                                     |
 |                              | mrg_two_distributions_thread_api    | Multiple random number distributions using MRG32k3a generator                                   |
 | NVRTC Examples               | nvrtc_pcg_thread_api                | Using cuRANDDx with NVTRC runtime compilation and nvJitLink runtime linkin g                    |
+
+
+## [nvCOMPDx](nvCOMPDx)
+
+* [nvCOMPDx download page](https://developer.nvidia.com/nvcompdx-downloads)
+* [nvCOMPDx API documentation](https://docs.nvidia.com/cuda/nvcompdx/index.html)
+
+#### Examples
+
+|              Group           |            Example                      |                                  Description                                                |
+|------------------------------|-----------------------------------------|---------------------------------------------------------------------------------------------|
+| Introduction Examples        | lz4_gpu_compression_introduction        | Introductory example showcasing GPU LZ4 compression                                         |
+| LZ4 GPU                      | lz4_gpu_compression_decompression       | Warp-level GPU LZ4 compression and decompression                                            |
+| LZ4 GPU and CPU              | lz4_cpu_compression_gpu_decompression   | CPU compression with Warp-level GPU LZ4 decompression                                       |
+|                              | lz4_gpu_compression_cpu_decompression   | Warp-level GPU LZ4 compression with CPU decompression                                       |
+| ANS GPU                      | ans_gpu_compression_decompression       | Block-level GPU ANS compression and decompression                                           |
+|                              | ans_gpu_decompression_reduction         | Fused block-level GPU ANS decompression followed by block-wide reduction                    |
+| NVRTC Examples               | lz4_cpu_compression_nvrtc_decompression | CPU compression, Warp-level GPU NVTRC + nvJitLink LZ4 decompression                         |
