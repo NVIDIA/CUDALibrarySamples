@@ -207,19 +207,19 @@ namespace example {
 #if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_90)
             case 900: Functor<900>()(); return 0;
 #endif
-#if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_100)
+#if (!defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_100)) && (CUFFTDX_VERSION > 10400)
             case 1000: Functor<1000>()(); return 0;
 #endif
-#if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_101)
+#if (!defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_101)) && (CUFFTDX_VERSION > 10400)
             case 1010: Functor<1010>()(); return 0;
 #endif
-#if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_103)
+#if (!defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_103)) && (CUFFTDX_VERSION > 10400)
             case 1030: Functor<1030>()(); return 0;
 #endif
-#if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_120)
+#if (!defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_120)) && (CUFFTDX_VERSION > 10400)
             case 1200: Functor<1200>()(); return 0;
 #endif
-#if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_121)
+#if (!defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_121)) && (CUFFTDX_VERSION > 10400)
             case 1210: Functor<1210>()(); return 0;
 #endif
         }
