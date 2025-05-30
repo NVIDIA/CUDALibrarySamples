@@ -7,7 +7,6 @@
 #include <chrono>
 #include <random>
 #include <algorithm>
-#include <iostream>
 
 #include <cuda_runtime_api.h>
 #include <cufft.h>
@@ -208,11 +207,23 @@ namespace example {
 #if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_90)
             case 900: Functor<900>()(); return 0;
 #endif
-        default: {
-            printf("Examples not configured to support SM %u. Use the CUFFTDX_CUDA_ARCHITECTURES CMake variable to configure the SM support.\n",
-                       cuda_device_arch);
-            return 1;
+#if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_100)
+            case 1000: Functor<1000>()(); return 0;
+#endif
+#if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_101)
+            case 1010: Functor<1010>()(); return 0;
+#endif
+#if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_103)
+            case 1030: Functor<1030>()(); return 0;
+#endif
+#if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_120)
+            case 1200: Functor<1200>()(); return 0;
+#endif
+#if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_121)
+            case 1210: Functor<1210>()(); return 0;
+#endif
         }
+        return 1;
     }
 
     constexpr unsigned int closest_power_of_2(unsigned int v) {

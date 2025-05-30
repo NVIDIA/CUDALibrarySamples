@@ -3,7 +3,7 @@
 
 #include <cuda_runtime_api.h>
 #include <cufftdx.hpp>
-#include "10_simple_fft_block_c2r_lto_artifacts/lto_database.hpp.inc" // cuFFT-dumped LTOIR database header file
+#include "02_simple_fft_block_simple_fft_block_c2r_lto_artifacts/lto_database.hpp.inc" // cuFFT-dumped LTOIR database header file
 
 #include "../common/block_io.hpp"
 #include "../common/common.hpp"

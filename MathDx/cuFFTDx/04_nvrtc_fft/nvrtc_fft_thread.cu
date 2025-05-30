@@ -106,11 +106,18 @@ int main(int, char**) {
     NVRTC_SAFE_CALL(nvrtcDestroyProgram(&program));
 
     // Load the generated PTX and get a handle to the thread_fft_kernel
+    CUdevice   cuDevice;
     CUcontext  context;
     CUmodule   module;
     CUfunction kernel;
-    CUDA_CHECK_AND_EXIT(cudaFree(0));               // Initialize CUDA context
-    CU_CHECK_AND_EXIT(cuCtxGetCurrent(&context)); // Get current context
+    CU_CHECK_AND_EXIT(cuInit(0));
+    CU_CHECK_AND_EXIT(cuDeviceGet(&cuDevice, current_device));
+    #if CUDA_VERSION >= 12090
+    CUctxCreateParams params;
+    CU_CHECK_AND_EXIT(cuCtxCreate_v4(&context, &params, 0, cuDevice));
+    #else
+    CU_CHECK_AND_EXIT(cuCtxCreate(&context, 0, cuDevice));
+    #endif
     CU_CHECK_AND_EXIT(cuModuleLoadDataEx(&module, ptx.get(), 0, 0, 0));
     CU_CHECK_AND_EXIT(cuModuleGetFunction(&kernel, module, "thread_fft_kernel"));
 

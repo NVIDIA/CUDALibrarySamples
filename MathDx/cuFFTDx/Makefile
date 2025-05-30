@@ -25,8 +25,8 @@ NVRTC_SRCS=$(filter-out ${NVRTC_LTO_SRCS}, $(wildcard **/[0-9]*_nvrtc_*.cu))
 NVRTC_TARGETS=$(foreach src,$(NVRTC_SRCS),$(patsubst %.cu,%,$(basename $(src))))
 
 # Standalone sources and targets
-STANDALONE_SRCS=09_introduction_lto_example/00_introduction_lto_example.cu \
-                10_cufft_device_api_example/00_cufft_device_api_example.cu
+STANDALONE_SRCS=09_introduction_lto_example/introduction_lto_example.cu \
+                10_cufft_device_api_example/cufft_device_api_example.cu
 STANDALONE_TARGETS=$(foreach src,$(STANDALONE_SRCS),$(patsubst %.cu,%,$(basename $(src))))
 
 # LTO sources and targets
