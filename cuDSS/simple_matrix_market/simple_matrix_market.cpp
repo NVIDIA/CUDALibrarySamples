@@ -46,71 +46,78 @@
  * comments to the code, the above Disclaimer and U.S. Government End
  * Users Notice.
  */
-#include <stdio.h>
-#include <stdlib.h>
-#include <math.h>
-#include <assert.h>
-#include <cuda_runtime.h>
 
-#include "cudss.h"
-
-/*
-    This example demonstrates basic usage of cuDSS APIs for solving
-    a system of linear algebraic equations with a sparse matrix:
-                                Ax = b,
-    where:
-        A is the sparse input matrix,
-        b is the (dense) right-hand side vector (or a matrix),
-        x is the (dense) solution vector (or a matrix).
-*/
-
-#define CUDSS_EXAMPLE_FREE \
-    do { \
-        free(csr_offsets_h); \
-        free(csr_columns_h); \
-        free(csr_values_h); \
-        free(x_values_h); \
-        free(b_values_h); \
-        cudaFree(csr_offsets_d); \
-        cudaFree(csr_columns_d); \
-        cudaFree(csr_values_d); \
-        cudaFree(x_values_d); \
-        cudaFree(b_values_d); \
-    } while(0);
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <math.h>
+ #include <assert.h>
+ #include <cuda_runtime.h>
+ 
+ #include "cudss.h"
+ #include "matrix_market_reader.h"
+ /*
+     This example demonstrates basic usage of cuDSS APIs for solving
+     a system of linear algebraic equations with a sparse matrix:
+                                 Ax = b,
+     where:
+         A is the sparse input matrix,
+         b is the (dense) right-hand side vector (or a matrix),
+         x is the (dense) solution vector (or a matrix).
+ */
+ 
+ #define CUDSS_EXAMPLE_FREE \
+ do { \
+     free(csr_offsets_h); \
+     free(csr_columns_h); \
+     free(csr_values_h); \
+     free(x_values_h); \
+     free(b_values_h); \
+     cudaFree(csr_offsets_d); \
+     cudaFree(csr_columns_d); \
+     cudaFree(csr_values_d); \
+     cudaFree(x_values_d); \
+     cudaFree(b_values_d); \
+ } while(0);
 
 #define CUDA_CALL_AND_CHECK(call, msg) \
-    do { \
-        cuda_error = call; \
-        if (cuda_error != cudaSuccess) { \
-            printf("Example FAILED: CUDA API returned error = %d, details: " #msg "\n", cuda_error); \
-            CUDSS_EXAMPLE_FREE; \
-            return -1; \
-        } \
-    } while(0);
+ do { \
+     cuda_error = call; \
+     if (cuda_error != cudaSuccess) { \
+         printf("Example FAILED: CUDA API returned error = %d, details: " #msg "\n", cuda_error); \
+         CUDSS_EXAMPLE_FREE; \
+         return -1; \
+     } \
+ } while(0);
 
 
 #define CUDSS_CALL_AND_CHECK(call, status, msg) \
-    do { \
-        status = call; \
-        if (status != CUDSS_STATUS_SUCCESS) { \
-            printf("Example FAILED: CUDSS call ended unsuccessfully with status = %d, details: " #msg "\n", status); \
-            CUDSS_EXAMPLE_FREE; \
-            return -2; \
-        } \
-    } while(0);
+ do { \
+     status = call; \
+     if (status != CUDSS_STATUS_SUCCESS) { \
+         printf("Example FAILED: CUDSS call ended unsuccessfully with status = %d, details: " #msg "\n", status); \
+         CUDSS_EXAMPLE_FREE; \
+         return -2; \
+     } \
+ } while(0);
 
 
 int main (int argc, char *argv[]) {
-    printf("---------------------------------------------------------\n");
-    printf("cuDSS example: solving a real linear 5x5 system\n"
-           "with a symmetric positive-definite matrix \n");
-    printf("---------------------------------------------------------\n");
+
     cudaError_t cuda_error = cudaSuccess;
     cudssStatus_t status = CUDSS_STATUS_SUCCESS;
-
-    int n = 5;
-    int nnz = 8;
+ 
+    int n;
+    int nnz ;
     int nrhs = 1;
+
+    if (argc < 2) 
+    {
+        fprintf(stderr, "Usage: %s <matrix_filename> <vector_filename (optional)> \n", argv[0]);
+        printf("use matrix.mtx and rhs.mtx for a reference execution\n")
+        return EXIT_FAILURE;
+    }
+
+    const char* filename = argv[1];
 
     int *csr_offsets_h = NULL;
     int *csr_columns_h = NULL;
@@ -122,53 +129,35 @@ int main (int argc, char *argv[]) {
     double *csr_values_d = NULL;
     double *x_values_d = NULL, *b_values_d = NULL;
 
-    /* Allocate host memory for the sparse input matrix A,
-       right-hand side b and solution x*/
+    /* Read input matrix from file and allocate host memory accordingly */
+    matrix_reader(filename, n, nnz, &csr_offsets_h, &csr_columns_h, &csr_values_h);
 
-    csr_offsets_h = (int*)malloc((n + 1) * sizeof(int));
-    csr_columns_h = (int*)malloc(nnz * sizeof(int));
-    csr_values_h = (double*)malloc(nnz * sizeof(double));
+    printf("---------------------------------------------------------\n");
+    printf("cuDSS example: solving a real linear %dx%d system from a file\n",n,n);
+    printf("---------------------------------------------------------\n");
+
+    /* Allocate host memory for solution x*/ 
     x_values_h = (double*)malloc(nrhs * n * sizeof(double));
-    b_values_h = (double*)malloc(nrhs * n * sizeof(double));
 
+    /* Allocate host memory for right hand side b and fill it*/ 
+    /* Read from file if rhs file is provided */
+    if (argc>2)
+    { 
+        const char* filename_vect = argv[2];
+        rhs_reader(filename_vect, n, &b_values_h);
+    }
+    else
+    {
+        std::cout<<"No rhs file provided, filling b with 1.0 \n";
+        b_values_h = (double*)malloc(nrhs * n * sizeof(double));
+        for (int i=0; i<n; i++){b_values_h[i] = 1.0;}
+    }
     if (!csr_offsets_h || ! csr_columns_h || !csr_values_h ||
         !x_values_h || !b_values_h) {
         printf("Error: host memory allocation failed\n");
         return -1;
     }
-
-    /* Initialize host memory for A and b */
-    int i = 0;
-    csr_offsets_h[i++] = 0;
-    csr_offsets_h[i++] = 2;
-    csr_offsets_h[i++] = 4;
-    csr_offsets_h[i++] = 6;
-    csr_offsets_h[i++] = 7;
-    csr_offsets_h[i++] = 8;
-
-    i = 0;
-    csr_columns_h[i++] = 0; csr_columns_h[i++] = 2;
-    csr_columns_h[i++] = 1; csr_columns_h[i++] = 2;
-    csr_columns_h[i++] = 2; csr_columns_h[i++] = 4;
-    csr_columns_h[i++] = 3;
-    csr_columns_h[i++] = 4;
-
-    i = 0;
-    csr_values_h[i++] = 4.0; csr_values_h[i++] = 1.0;
-    csr_values_h[i++] = 3.0; csr_values_h[i++] = 2.0;
-    csr_values_h[i++] = 5.0; csr_values_h[i++] = 1.0;
-    csr_values_h[i++] = 1.0;
-    csr_values_h[i++] = 2.0;
-
-    /* Note: Right-hand side b is initialized with values which correspond
-       to the exact solution vector {1, 2, 3, 4, 5} */
-    i = 0;
-    b_values_h[i++] = 7.0;
-    b_values_h[i++] = 12.0;
-    b_values_h[i++] = 25.0;
-    b_values_h[i++] = 4.0;
-    b_values_h[i++] = 13.0;
-
+     
     /* Allocate device memory for A, x and b */
     CUDA_CALL_AND_CHECK(cudaMalloc(&csr_offsets_d, (n + 1) * sizeof(int)),
                         "cudaMalloc for csr_offsets");
@@ -265,11 +254,12 @@ int main (int argc, char *argv[]) {
     /* Release the data allocated on the user side */
 
     CUDSS_EXAMPLE_FREE;
-
-    if (status == CUDSS_STATUS_SUCCESS && passed)
+    
+    if (status == CUDSS_STATUS_SUCCESS && passed) {
         printf("Example PASSED\n");
-    else
-        printf("Example FAILED\n");
-
-    return 0;
+        return 0;
+    } else {
+        printf("Example FAILED (note, this is normal if you did not use the provided 5x5 matrix and rhs file)\n");
+        return -1;
+    }
 }
