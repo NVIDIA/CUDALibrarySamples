@@ -13,15 +13,15 @@ CUFFT_HOME?=../../../cufft
 CUDA_BIN_DIR=$(shell dirname `which $(NVCC)`)
 CUDA_INCLUDE_DIR=$(CUDA_BIN_DIR)/../include
 NVCC_DEFINES=-DCUFFTDX_DISABLE_CUTLASS_DEPENDENCY
-NVRTC_DEFINES=-DCUDA_INCLUDE_DIR="\"$(CUDA_INCLUDE_DIR)\"" -DCOMMONDX_INCLUDE_DIR="\"$(COMMONDX_INCLUDE_DIR)\"" -DCUFFTDX_INCLUDE_DIRS="\"$(CUFFTDX_INCLUDE_DIR)\""
+NVRTC_DEFINES=-DCUDA_INCLUDE_DIR='"$(CUDA_INCLUDE_DIR)"' -DCOMMONDX_INCLUDE_DIR='"$(COMMONDX_INCLUDE_DIR)"' -DCUFFTDX_INCLUDE_DIRS='"$(CUFFTDX_INCLUDE_DIR)"'
 LTO_DEFINES=-DCUFFTDX_ENABLE_CUFFT_DEPENDENCY
 
 # NVRTC LTO sources and targets
-NVRTC_LTO_SRCS=$(wildcard **/[0-9]*_nvrtc_*lto*.cu)
+NVRTC_LTO_SRCS=$(wildcard **/nvrtc_*lto*.cu)
 NVRTC_LTO_TARGETS=$(foreach src,$(NVRTC_LTO_SRCS),$(patsubst %.cu,%,$(basename $(src))))
 
 # NVRTC sources and targets (excluding LTO)
-NVRTC_SRCS=$(filter-out ${NVRTC_LTO_SRCS}, $(wildcard **/[0-9]*_nvrtc_*.cu))
+NVRTC_SRCS=$(filter-out ${NVRTC_LTO_SRCS}, $(wildcard **/nvrtc_*.cu))
 NVRTC_TARGETS=$(foreach src,$(NVRTC_SRCS),$(patsubst %.cu,%,$(basename $(src))))
 
 # Standalone sources and targets
@@ -36,7 +36,6 @@ LTO_TARGETS=$(foreach src,$(LTO_SRCS),$(patsubst %.cu,%,$(basename $(src))))
 # Regular sources and targets (excluding all special cases)
 SRCS=$(filter-out ${NVRTC_SRCS} ${NVRTC_LTO_SRCS} ${LTO_SRCS} ${STANDALONE_SRCS}, $(wildcard **/*.cu))
 TARGETS=$(foreach src,$(SRCS),$(patsubst %.cu,%,$(basename $(src))))
-
 
 TARGETS_TWIDDLES=$(patsubst %.cu,%_twd,$(SRCS))
 ADDITIONAL_SRCS=../src/liblut/lut.cu
@@ -59,14 +58,14 @@ cufftdx_cufft_lto_helper: lto_helper/cufftdx_cufft_lto_helper.cpp
 	$(CXX) -o $@ $< $(CXX_FLAGS) -I$(CUFFT_HOME)/include -I$(CUDA_INCLUDE_DIR) -L$(CUFFT_HOME)/lib -L$(CUDA_BIN_DIR)/../lib64 -lcufft_static -lculibos -ldl -lpthread
 
 $(LTO_TARGETS:%=%_artifacts): %_artifacts: %_cases.csv cufftdx_cufft_lto_helper
-	mkdir -p $@
-	./cufftdx_cufft_lto_helper $@ $<
+	mkdir -p $(dir $*)$(subst /,_,$*)_artifacts
+	./cufftdx_cufft_lto_helper $(dir $*)$(subst /,_,$*)_artifacts $<
 
 $(LTO_TARGETS:%=%.o): %.o: %.cu %_artifacts
-	$(NVCC) -o $@ $< -dc $(NVCC_LTO_FLAGS) -I$(COMMONDX_INCLUDE_DIR) -I$(CUFFTDX_INCLUDE_DIR) -I$(basename $@)_artifacts/
+	$(NVCC) -o $@ $< -dc $(NVCC_LTO_FLAGS) -I$(COMMONDX_INCLUDE_DIR) -I$(CUFFTDX_INCLUDE_DIR) -I$(dir $*)$(subst /,_,$*)_artifacts/
 
 $(LTO_TARGETS:%=%_dlink.o): %_dlink.o: %.o
-	$(NVCC) -o $@ -dlink -dlto $(NVCC_FLAGS) $< $(wildcard $(basename $<)_artifacts/*.fatbin) $(wildcard $(basename $<)_artifacts/*.ltoir)
+	$(NVCC) -o $@ -dlink -dlto $(NVCC_FLAGS) $< $(wildcard $(dir $(basename $<))$(subst /,_,$(basename $<))_artifacts/*.fatbin) $(wildcard $(dir $(basename $<))$(subst /,_,$(basename $<))_artifacts/*.ltoir)
 
 $(LTO_TARGETS): %: %.o %_dlink.o
 	$(CXX) -o $@ $^ -L$(CUDA_BIN_DIR)/../lib64 -lcudart

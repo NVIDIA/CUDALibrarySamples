@@ -12,7 +12,7 @@ COMMONDX_INCLUDE_DIR?=../../../include/commondx
 CUFFT_HOME?=../../../../cufft
 CUDA_PATH?=/usr/local/cuda
 
-TARGET=00_cufft_device_api_example
+TARGET=cufft_device_api_example
 
 LTO_HELPER_TARGET=cufft_device_api_lto_helper
 LTO_HELPER_DIR=cufft_device_api_lto_helper

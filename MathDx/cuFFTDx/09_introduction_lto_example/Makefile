@@ -12,14 +12,14 @@ COMMONDX_INCLUDE_DIR?=../../../include/commondx
 CUFFT_HOME?=../../../../cufft
 CUDA_PATH?=/usr/local/cuda
 
-TARGET=00_introduction_lto_example
+TARGET=introduction_lto_example
 
 LTO_HELPER_TARGET=cufftdx_cufft_lto_helper
 LTO_HELPER_DIR=../lto_helper
 LTO_HELPER=$(LTO_HELPER_DIR)/$(LTO_HELPER_TARGET)
 LTO_ARTIFACTS_DIR=./$(TARGET)_artifacts
 
-CSV_FILE=00_introduction_lto_cases.csv
+CSV_FILE=introduction_lto_cases.csv
 
 $(LTO_HELPER) : $(LTO_HELPER).cpp
 	$(CXX) -o $@ $< $(CXX_FLAGS) -I$(CUFFT_HOME)/include -L$(CUFFT_HOME)/lib -I$(CUDA_PATH)/include -lcufft_static -L$(CUDA_PATH)/lib64 -lculibos -ldl -lpthread
