@@ -155,7 +155,12 @@ int main(int, char**) {
     CUfunction kernel;
     CU_CHECK_AND_EXIT(cuInit(0));
     CU_CHECK_AND_EXIT(cuDeviceGet(&cuDevice, current_device));
+    #if CUDA_VERSION >= 12090
+    CUctxCreateParams params;
+    CU_CHECK_AND_EXIT(cuCtxCreate_v4(&context, &params, 0, cuDevice));
+    #else
     CU_CHECK_AND_EXIT(cuCtxCreate(&context, 0, cuDevice));
+    #endif
     CU_CHECK_AND_EXIT(cuModuleLoadDataEx(&module, cubin.data(), 0, 0, 0));
     CU_CHECK_AND_EXIT(cuModuleGetFunction(&kernel, module, "test_kernel"));
 
