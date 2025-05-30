@@ -35,7 +35,7 @@ For the detailed descriptions of the examples please visit [Examples](https://do
 |              Group           |            Example                |                                  Description                                                      |
 |------------------------------|-----------------------------------|---------------------------------------------------------------------------------------------------|
 | Introduction Examples        | posv_batched                      | Introduction example with Cholesky factorization and solve                                        |
-| Cholesky Examples            | potrf                             | Cholesky    factorization                                                                         |
+| Cholesky Examples            | potrf                             | Cholesky factorization                                                                            |
 |                              | potrf_runtime_ld                  | Cholesky factorization with runtime leading dimensions                                            |
 | LU Examples                  | getrf_wo_pivot                    | LU factorization without pivoting                                                                 |
 |                              | getrf_partial_pivot               | LU factorization with partial pivoting                                                            |

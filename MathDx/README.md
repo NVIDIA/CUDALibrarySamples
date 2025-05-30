@@ -101,7 +101,7 @@ This folder includes examples for cuFFTDx, cuBLASDx, cuSolverDx and cuRANDDx lib
 |              Group           |            Example                |                                  Description                                                      |
 |------------------------------|-----------------------------------|---------------------------------------------------------------------------------------------------|
 | Introduction Examples        | posv_batched                      | Introduction example with Cholesky factorization and solve                                        |
-| Cholesky Examples            | potrf                             | Cholesky    factorization                                                                         |
+| Cholesky Examples            | potrf                             | Cholesky factorization                                                                            |
 |                              | potrf_runtime_ld                  | Cholesky factorization with runtime leading dimensions                                            |
 | LU Examples                  | getrf_wo_pivot                    | LU factorization without pivoting                                                                 |
 |                              | getrf_partial_pivot               | LU factorization with partial pivoting                                                            |
@@ -122,11 +122,11 @@ This folder includes examples for cuFFTDx, cuBLASDx, cuSolverDx and cuRANDDx lib
 
 #### Examples
 
-|              Group           |            Example                |                                  Description                                                      |
-|------------------------------|-----------------------------------|---------------------------------------------------------------------------------------------------|
-| Introduction Examples        | philox_thread_api                 | Introduction example with Philox random number generator                                          |
+|              Group           |            Example                  |                                  Description                                                    |
+|------------------------------|-------------------------------------|-------------------------------------------------------------------------------------------------|
+| Introduction Examples        | philox_thread_api                   | Introduction example with Philox random number generator                                        |
 | Thread API Examples          | xorwow_init_and_generate_thread_api | XORWOW random number generator with initialization and generation                               |
-|                              | sobol_thread_api                  | Sobol quasi-random number generator                                                               |
-|                              | pcg_thread_api                    | PCG random number generator                                                                       |
-|                              | mrg_two_distributions_thread_api  | Multiple random number distributions using MRG32k3a generator                                     |
-| NVRTC Examples               | nvrtc_pcg_thread_api              | Using cuRANDDx with NVTRC runtime compilation and nvJitLink runtime linkin g                      |
+|                              | sobol_thread_api                    | Sobol quasi-random number generator                                                             |
+|                              | pcg_thread_api                      | PCG random number generator                                                                     |
+|                              | mrg_two_distributions_thread_api    | Multiple random number distributions using MRG32k3a generator                                   |
+| NVRTC Examples               | nvrtc_pcg_thread_api                | Using cuRANDDx with NVTRC runtime compilation and nvJitLink runtime linkin g                    |
