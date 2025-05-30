@@ -4,7 +4,7 @@
 #include <cmath>
 
 #include "block_fft_performance.hpp"
-#include "02_block_fft_lto_ptx_performance_artifacts/lto_database.hpp.inc" // cuFFT-dumped LTOIR database header file
+#include "03_block_fft_performance_block_fft_lto_ptx_performance_artifacts/lto_database.hpp.inc" // cuFFT-dumped LTOIR database header file
 
 
 template<unsigned int      Arch,
