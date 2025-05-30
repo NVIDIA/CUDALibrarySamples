@@ -142,3 +142,5 @@ namespace example {
         }
     }
 } // namespace example
+
+#endif
