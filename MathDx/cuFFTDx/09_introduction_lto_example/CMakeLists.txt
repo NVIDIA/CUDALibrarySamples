@@ -64,4 +64,5 @@ set_target_properties(09_introduction_lto_example_introduction_lto_example
         CUDA_ARCHITECTURES "${CUFFTDX_CUDA_ARCHITECTURES}"
         CUDA_SEPARABLE_COMPILATION ON
         INTERPROCEDURAL_OPTIMIZATION ON
+        OUTPUT_NAME "introduction_lto_example"
 )

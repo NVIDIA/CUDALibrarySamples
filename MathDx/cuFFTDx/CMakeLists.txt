@@ -407,7 +407,7 @@ function(add_standalone_example EXAMPLE_DIR EXAMPLE_TARGET)
     set(EXAMPLE_NAME "cuFFTDx.example.${EXAMPLE_DIR}.${EXAMPLE_TARGET}")
 
     add_test(NAME "${EXAMPLE_NAME}" COMMAND ${EXAMPLE_TARGET})
-    set_tests_properties("${EXAMPLE_TARGET}"
+    set_tests_properties("${EXAMPLE_NAME}"
         PROPERTIES
             LABELS "CUFFTDX_EXAMPLE"
     )
