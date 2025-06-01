@@ -206,7 +206,7 @@ int main(int argc, char *argv[])
         reorder_alg = CUDSS_ALG_3;
         break;
     default:
-        std::cerr << "Error: Invalid algorithm (must be 0-3)." << std::endl;
+        std::cerr << "\033[38;5;196m Error: Invalid algorithm (must be 0-3).\033[0m" << std::endl;
         return EXIT_FAILURE;
     }
 
@@ -231,11 +231,11 @@ int main(int argc, char *argv[])
     }
 
     if(((reorder_alg==1)||(reorder_alg==2)) && (mtype!=CUDSS_MTYPE_GENERAL)){
-        std::cerr << "\033[38;5;208m"  // Set text color to orange (color index 208)
+        std::cerr << "\033[38;5;208m" 
           << "WARNING: Invalid algorithm, algorithms 1 and 2 are only for non sym / non hermitian matrices.\n"
           << "See cudssConfigParam_t section of https://docs.nvidia.com/cuda/cudss/types.html\n"
           << "Expect a large error."
-          << "\033[0m" << std::endl;  // Reset text color
+          << "\033[0m" << std::endl; 
     }
 
     // Parse matrix view
@@ -254,10 +254,10 @@ int main(int argc, char *argv[])
           return EXIT_FAILURE;
     }
 
-    if ((mview ==CUDSS_MVIEW_LOWER || mview==CUDSS_MVIEW_UPPER)&&(mtype==CUDSS_MTYPE_GENERAL)){
+    if ((mview != CUDSS_MVIEW_FULL)&&(mtype==CUDSS_MTYPE_GENERAL)){
         std::cerr << "\033[38;5;208m"
-          << "WARNING: you chose a lower/upper view of the matrix but you also specified that it is general (not symmetric)\n"
-          << "if your matrix file, is truly non symmetric, half of the elements will not be used, as the lower / upper part of the \n"
+          << "WARNING: you chose a lower/upper view of the matrix but you also specified that it is general (not symmetric).\n"
+          << "If your matrix file is truly non symmetric, half of the elements will not be used, as the lower / upper part of the \n"
           << "matrix will be mirrored and you will be solving for the wrong matrix. Or the reader will throw an error."
           << "\033[0m" << std::endl;
     }
