@@ -41,7 +41,7 @@ namespace example {
         inline std::vector<std::string> get_cufftdx_include_dirs() {
 #ifndef CUFFTDX_INCLUDE_DIRS
             return std::vector<std::string>();
-#endif
+#else
             std::vector<std::string> cufftdx_include_dirs_array;
 
             const auto path_handler = [&](const std::string& path_name, const std::string& entry) {
@@ -100,6 +100,7 @@ namespace example {
                 }
             }
             return cufftdx_include_dirs_array;
+#endif
         }
 
         inline unsigned get_device_architecture(int device) {
