@@ -2,90 +2,160 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <algorithm>
+
+enum MtxReaderStatus {
+    MtxReaderSuccess,
+    MtxReaderErrorFileNotFound,
+    MtxReaderErrorFileMemAllocFailed,
+    MtxReaderErrorWrongNnz,
+    MtxReaderErrorUpperViewButLowerFound,
+    MtxReaderErrorLowerViewButUpperFound,
+    MtxReaderErrorOutOfBoundRowIndex,
+    MtxReaderErrorOfBoundColIndex
+
+};
 
 template <typename _TYPE_>
 int matrix_reader(std::string filename, int& n, int& nnz, int** csr_offsets_h,
-                   int** csr_columns_h, _TYPE_** csr_values_h, cudssMatrixViewType_t mview) {
-    
-    std::ifstream file(filename);  // Open file for reading
-
+                  int** csr_columns_h, _TYPE_** csr_values_h, cudssMatrixViewType_t mview, bool verbose=true, bool verbose_err = true)
+{
+    std::ifstream file(filename);
     if (!file.is_open()) {
-        std::cerr << "\033[38;5;196m Error: Could not open file \033[0m" << filename << std::endl;
-        return EXIT_FAILURE;
+        if (verbose_err)
+            std::cerr << "\033[38;5;196m Error: Could not open file \033[0m" << filename << std::endl;
+        // ! Do a mock malloc anyway so that subsequent free does not fail !
+        *csr_offsets_h = (int*)malloc(1);
+        *csr_columns_h = (int*)malloc(1);
+        *csr_values_h = (_TYPE_*)malloc(1);
+        return  MtxReaderErrorFileNotFound;
     }
 
     std::string line;
-    int i_val = 0;
-    int i_offsets = 0;
-    int cumulative_nnz = 0;
-    int previous_line = -1;
     bool foundSize = false;
+    int declared_nnz = 0;
+    int file_line_count = 0;
 
-    bool found_lower = false;
-    bool found_upper = false;
+    //Tuple for the mtw lines
+    std::vector<std::tuple<int, int, _TYPE_>> entries;
+
+    bool found_lower = false, found_upper = false;
 
     while (std::getline(file, line)) {
+        //Skip header
         if (line.empty() || line[0] == '%') continue;
 
+        //Get metadata
         std::istringstream lineData(line);
-
         if (!foundSize) {
             int n1;
-            lineData >> n >> n1 >> nnz;
-            std::cout << "MATRIX READER: n0= " << n << ", n1= " << n1 << ", nnz= " << nnz << "\n";
-
-            *csr_offsets_h = (int*)malloc((n + 1) * sizeof(int));
-            *csr_columns_h = (int*)malloc(nnz * sizeof(int));
-            *csr_values_h = (_TYPE_*)malloc(nnz * sizeof(_TYPE_));
-
-            std::cout << "MATRIX READER: allocated host memory\n";
-
+            lineData >> n >> n1 >> declared_nnz;
+            if (verbose)
+                std::cout << "MATRIX READER: n0= " << n << ", n1= " << n1 << ", nnz= " << declared_nnz << "\n";
             foundSize = true;
+        //Get line
         } else {
             int i, j;
             _TYPE_ val;
             lineData >> i >> j >> val;
+            i -= 1; j -= 1;  // Convert from 1-based to 0-based
 
-            if (i > previous_line) {
-                (*csr_offsets_h)[i_offsets++] = cumulative_nnz;
-                previous_line = i;
-            }
+            //Append the tuple to entries (resize everytime so sub-optimal)
+            entries.emplace_back(i, j, val);
 
-            (*csr_columns_h)[i_val] =
-                j - 1;  //-1 because mtx indexing is fortran like
-            (*csr_values_h)[i_val++] = val;
-            cumulative_nnz += 1;
-
-            if (i>j)
-                found_lower = true;
-            if (i<j)
-                found_upper = true;
-
+            if (i > j) found_lower = true;
+            if (i < j) found_upper = true;
+            file_line_count+=1;
         }
     }
 
-    if ((found_lower)&&(mview == CUDSS_MVIEW_UPPER)){
-        std::cerr<<"\033[38;5;196m ERROR: mview specified is upper, but reader found an element in the lower triangular part of the matrix \033[0m"<<std::endl;
-        return EXIT_FAILURE;
+    file.close();
+    nnz = entries.size();
+
+    // Allocate memory
+    *csr_offsets_h = (int*)malloc((n + 1) * sizeof(int));
+    *csr_columns_h = (int*)malloc(nnz * sizeof(int));
+    *csr_values_h = (_TYPE_*)malloc(nnz * sizeof(_TYPE_));
+
+    if (!(*csr_offsets_h) || !(*csr_columns_h) || !(*csr_values_h)) {
+        if (verbose_err)
+            std::cerr << "\033[38;5;196m ERROR: Memory allocation failed \033[0m\n";
+        return MtxReaderErrorFileMemAllocFailed;
     }
 
-    if ((found_upper)&&(mview == CUDSS_MVIEW_LOWER)){
-        std::cerr<<"\033[38;5;196m ERROR: mview specified is lower, but reader found an element in the upper triangular part of the matrix \033[0m"<<std::endl;
-        return EXIT_FAILURE;
+    if (file_line_count != declared_nnz) {
+        if (verbose_err)
+            std::cerr << "\033[38;5;196m ERROR: more elements in the mtx file than announced in the header\033[0m\n";
+        return MtxReaderErrorWrongNnz;
     }
 
-    if(not((found_upper)&&(found_lower))&&(mview == CUDSS_MVIEW_FULL)){
-        std::cerr<<"\033[38;5;196m ERROR: mview specified is full, but reader found only lower OR upper elements \033[0m"<<std::endl;
-        return EXIT_FAILURE;   
+
+    // Sort by row, then by column, 3rd argument is the compare operator, (row then column)
+    std::sort(entries.begin(), entries.end(), [](auto& a, auto& b) {
+        if (std::get<0>(a) == std::get<0>(b))
+            return std::get<1>(a) < std::get<1>(b);
+        return std::get<0>(a) < std::get<0>(b);
+    });
+
+
+    //Some checks
+    if ((found_lower) && (mview == CUDSS_MVIEW_UPPER)) {
+        if (verbose_err)
+            std::cerr << "\033[38;5;196m ERROR: mview is upper, but lower elements found \033[0m\n";
+        return MtxReaderErrorUpperViewButLowerFound;
+    }
+    if ((found_upper) && (mview == CUDSS_MVIEW_LOWER)) {
+        if (verbose_err)
+            std::cerr << "\033[38;5;196m ERROR: mview is lower, but upper elements found \033[0m\n";
+        return MtxReaderErrorLowerViewButUpperFound;
+    }
+    if (!(found_upper && found_lower) && mview == CUDSS_MVIEW_FULL) {
+        if (verbose)
+            std::cout << "\033[38;5;208m WARNING: mview is full, but only lower or upper elements found \033[0m\n";
     }
 
-    (*csr_offsets_h)[i_offsets++] = cumulative_nnz;
-    if (cumulative_nnz != nnz) {
-        std::cerr << "\033[38;5;196m READER: Error: nnz != cumulative_nnz \033[0m" << std::endl;
-        return EXIT_FAILURE;
-    }
-    file.close();  // Optional; automatic when `file` goes out of scope
+    //Initialize with 0's
+    std::fill(*csr_offsets_h, *csr_offsets_h + (n + 1), 0);
 
+    // First pass: count entries per row
+    for (auto& [i, j, val] : entries) {
+        if (i >= n || i < 0) {
+            if (verbose_err)
+                std::cerr << "\033[38;5;196m ERROR: Invalid row index " << i << " \033[0m\n";
+            return MtxReaderErrorOutOfBoundRowIndex;
+        }
+        if (j >= n || j < 0) {
+            if (verbose_err)
+                std::cerr << "\033[38;5;196m ERROR: Invalid col index " <<j << " \033[0m\n";
+            return MtxReaderErrorOfBoundColIndex;
+        }
+        (*csr_offsets_h)[i + 1]++;
+    }
+
+    // Prefix sum for empty rows
+    for (int i = 0; i < n; ++i) {
+        (*csr_offsets_h)[i + 1] += (*csr_offsets_h)[i];
+    }
+
+    // Second pass: fill in column and value arrays
+    std::vector<int> row_fill(n, 0);
+    for (auto& [i, j, val] : entries) {
+        int offset = (*csr_offsets_h)[i] + row_fill[i];
+        (*csr_columns_h)[offset] = j;
+        (*csr_values_h)[offset] = val;
+        row_fill[i]++;
+    }
+
+    // // Detect empty rows
+    for (int i = 0; i < n; ++i) {
+        if ((*csr_offsets_h)[i] == (*csr_offsets_h)[i + 1]) {
+            if (verbose)
+                std::cout << "\033[38;5;208m Warning: Row " << i << " is empty \033[0m\n";
+        }
+    }
+
+    if (verbose)
+        std::cout << "MATRIX READER: Completed with " << nnz << " nonzeros\n";
     return 0;
 }
 
