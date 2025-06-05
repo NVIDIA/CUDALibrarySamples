@@ -62,7 +62,7 @@ set(CMAKE_CUDA_EXTENSIONS        OFF)
 option(BUILD_STATIC "Building statically linked examples" OFF)
 
 # Find cuDSS
-find_package(cudss 0.5.0 REQUIRED)
+find_package(cudss 0.6.0 REQUIRED)
 
 set_source_files_properties(${EXAMPLE_NAME}.cpp PROPERTIES LANGUAGE CUDA)
 

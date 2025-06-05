@@ -340,7 +340,7 @@ int main (int argc, char *argv[]) {
             "cudaMemcpy for x_values");
 
         for (int i = 0; i < n[j]; i++) {
-            printf("batch idx = %d x[%d] = %1.4f expected %1.4f\n",
+            printf("batch = %d x[%d] = %1.4f expected %1.4f\n",
                 j, i, x_values_h[j][i], double(i+1));
             if (fabs(x_values_h[j][i] - (i + 1)) > 2.e-15)
                 passed = 0;

@@ -1,5 +1,5 @@
 #
-# Copyright 2023-2025 NVIDIA Corporation.  All rights reserved.
+# Copyright 2025 NVIDIA Corporation.  All rights reserved.
 #
 # NOTICE TO LICENSEE:
 #
@@ -48,7 +48,7 @@
 #
 cmake_minimum_required(VERSION 3.19)
 
-set(EXAMPLE_NAME simple)
+set(EXAMPLE_NAME simple_hybrid_execute_mode)
 
 project("cuDSS_${EXAMPLE_NAME}_example"
         DESCRIPTION  "cuDSS"
@@ -72,25 +72,30 @@ target_sources(${EXAMPLE_NAME}_example
     PUBLIC ${PROJECT_SOURCE_DIR}/${EXAMPLE_NAME}.cpp
 )
 
-if (WIN32)
-    target_include_directories(${EXAMPLE_NAME}_example PUBLIC ${cudss_INCLUDE_DIR})
-    target_link_directories(${EXAMPLE_NAME}_example PUBLIC ${cudss_LIBRARY_DIR})
-endif()
-
 target_compile_options(${EXAMPLE_NAME}_example PRIVATE
     "$<$<CONFIG:Debug>:-lineinfo -g>"
     "$<$<CONFIG:RelWithDebInfo>:-lineinfo -g>"
 )
 
-target_link_libraries(${EXAMPLE_NAME}_example PUBLIC
-    cudss
+if (WIN32)
+    target_include_directories(${EXAMPLE_NAME}_example PUBLIC ${cudss_INCLUDE_DIR})
+    target_link_directories(${EXAMPLE_NAME}_example PUBLIC ${cudss_LIBRARY_DIR})
+endif()
+
+target_link_libraries(${EXAMPLE_NAME}_example
+    PUBLIC cudss
 )
 
-if(BUILD_STATIC)
+if (BUILD_STATIC)
     add_executable(${EXAMPLE_NAME}_example_static)
 
     target_sources(${EXAMPLE_NAME}_example_static
         PUBLIC ${PROJECT_SOURCE_DIR}/${EXAMPLE_NAME}.cpp
+    )
+
+    target_compile_options(${EXAMPLE_NAME}_example_static PRIVATE
+        "$<$<CONFIG:Debug>:-lineinfo -g>"
+        "$<$<CONFIG:RelWithDebInfo>:-lineinfo -g>"
     )
 
     if (WIN32)
@@ -104,5 +109,4 @@ if(BUILD_STATIC)
             cudss_static
         )
     endif()
-
 endif()

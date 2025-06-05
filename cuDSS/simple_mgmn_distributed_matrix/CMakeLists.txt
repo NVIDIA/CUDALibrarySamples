@@ -48,7 +48,7 @@
 #
 cmake_minimum_required(VERSION 3.19)
 
-set(EXAMPLE_NAME simple_mgmn_mode)
+set(EXAMPLE_NAME simple_mgmn_distributed_matrix)
 
 project("cuDSS_${EXAMPLE_NAME}_example"
         DESCRIPTION  "cuDSS"
@@ -72,26 +72,32 @@ option(BUILD_MGMN_WITH_NCCL    "Enable NCCL backend for the MGMN mode examples" 
 set(OPENMPI_PATH "$ENV{OPENMPI_PATH}" CACHE STRING "Path to the root OpenMPI directory")
 set(NCCL_PATH "$ENV{NCCL_PATH}" CACHE STRING "Path to the root NCCL directory")
 
-set(OPENMPI_INCLUDE_DIRECTORIES "${OPENMPI_PATH}/include")
-set(OPENMPI_LINK_DIRECTORIES "${OPENMPI_PATH}/lib")
-set(NCCL_INCLUDE_DIRECTORIES "${NCCL_PATH}/include")
-set(NCCL_LINK_DIRECTORIES "${NCCL_PATH}/lib")
+set(OPENMPI_INCLUDE_DIRECTORIES "${OPENMPI_PATH}/include" CACHE STRING "Path to OpenMPI headers")
+set(OPENMPI_LINK_DIRECTORIES "${OPENMPI_PATH}/lib" CACHE STRING "Path to OpenMPI libraries")
+set(NCCL_INCLUDE_DIRECTORIES "${NCCL_PATH}/include" CACHE STRING "Path to NCCL headers")
+set(NCCL_LINK_DIRECTORIES "${NCCL_PATH}/lib" CACHE STRING "Path to NCCL libraries")
 
 # Find cuDSS
 find_package(cudss 0.6.0 REQUIRED)
 
-
 if(BUILD_MGMN_WITH_OPENMPI AND
-        ((NOT OPENMPI_PATH) OR NOT IS_DIRECTORY ${OPENMPI_PATH}))
-    message(FATAL_ERROR "For building MGMN examples with OpenMPI, path to the \
-OpenMPI root directory must be set in OPENMPI_PATH" )
+        ((NOT IS_DIRECTORY ${OPENMPI_PATH}) AND
+        ((NOT IS_DIRECTORY ${OPENMPI_INCLUDE_DIRECTORIES}) OR (NOT IS_DIRECTORY ${OPENMPI_LINK_DIRECTORIES}))
+        )
+    )
+    message(FATAL_ERROR "For building MGMN examples with OpenMPI, either the path to the \
+OpenMPI root directory must be set with OPENMPI_PATH, or the path to the headers and libraries must be set \
+in OPENMPI_INCLUDE_DIRECTORIES and OPENMPI_LINK_DIRECTORIES" )
 endif()
 
 if(BUILD_MGMN_WITH_NCCL AND
-        ((NOT NCCL_PATH) OR NOT IS_DIRECTORY ${NCCL_PATH}))
-    message(FATAL_ERROR "For building MGMN examples with NCCL, path to the \
-NCCL root directory must be set in \
-NCCL_PATH" )
+        ((NOT IS_DIRECTORY ${NCCL_PATH}) AND
+        ((NOT IS_DIRECTORY ${NCCL_INCLUDE_DIRECTORIES}) OR (NOT IS_DIRECTORY ${NCCL_LINK_DIRECTORIES}))
+        )
+    )
+    message(FATAL_ERROR "For building MGMN examples with NCCL, either the path to the \
+NCCL root directory must be set with NCCL_PATH, or the path to the headers and libraries must be set \
+in NCCL_INCLUDE_DIRECTORIES and NCCL_LINK_DIRECTORIES" )
 endif()
 
 # (optional: only if samples are run with ctest)

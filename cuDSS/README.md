@@ -28,12 +28,12 @@ Note: samples are updated to work with the latest version of cuDSS available (cu
 
     Note: building MGMN mode samples require extra options for the communication backend at build and runtime, and must be run with mpirun
 
-* [Getter/setter APIs for cudssConfig, cudssData and cudssHandle objects](get_set/)
+* [Getter/setter APIs for cudssConfig, cudssData and cudssHandle objects](simple_get_set/)
 
     The sample extends the previous code to demonstrate how extra settings can be applied to solving sparse linear
     systems and how to retrieve extra information from the solver
 
-* [Device memory handler APIs for cudssDeviceMemHandler_t defined device memory pools or allocators](memory_handler/)
+* [Device memory handler APIs for cudssDeviceMemHandler_t defined device memory pools or allocators](simple_memory_handler/)
 
     The sample demonstrates how to use cuDSS device memory handler APIs (available since cudss 0.2.0) for providing user-defined device memory pools
     or allocators
@@ -43,10 +43,36 @@ Note: samples are updated to work with the latest version of cuDSS available (cu
     The sample demonstrates how to use cuDSS batch APIs (available since cudss 0.4.0) for solving a non-uniform batch of linear systems where matrices and righthand sides
     can all be different
 
-* [Hybrid execution mode](simple_hybrid_execution_mode/)
+* [Hybrid execution mode](simple_hybrid_execute_mode/)
 
-    The sample demonstrates how to use cuDSS for solving a real sparse linear system using the hybrid execution mode (available since cudss 0.5.0)
+    The sample demonstrates how to use cuDSS for solving a real sparse linear system using the hybrid execute mode (available since cudss 0.5.0)
 
 * [Multi-threaded (MT) mode](simple_multithreaded_mode/)
 
     The sample demonstrates how to use cuDSS for solving a real sparse linear system using the multithreading (MT) mode (available since cudss 0.5.0)
+
+* [Sparse matrix interactions](simple_sparse_matrix_helpers/)
+
+    The sample demonstrates how to interact with sparse matrices in cuDSS
+
+* [Dense matrix interactions](simple_dense_matrix_helpers/)
+
+    The sample demonstrates how to interact with dense matrices in cuDSS
+
+* [Batch matrix interactions](simple_batch_sparse_matrix_helpers/)
+
+    The sample demonstrates how to interact with batched systems in cuDSS (available since cudss 0.5.0)
+
+* [Batch system solving](simple_uniform_batch/)
+
+    The sample demonstrates how to use cuDSS for solving a uniform batched system (available since cudss 0.6.0)
+
+* [Extracting reordering information](simple_reordering_phase/)
+
+    The sample demonstrates how to use cuDSS to extract the reordering information it uses internally immediately after it is generated (available since cudss 0.6.0)
+
+* [Multi-gpu multi-node (MGMN) mode with a distributed matrix](simple_mgmn_distributed_matrix/)
+
+    The sample demonstrates how to use cuDSS for solving a real sparse linear system using the multi-GPU multi-node mode with a distributed system matrix.
+
+    Note: building MGMN mode samples require extra options for the communication backend at build and runtime, and must be run with mpirun

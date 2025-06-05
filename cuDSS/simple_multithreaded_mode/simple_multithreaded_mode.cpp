@@ -67,8 +67,8 @@
 int main (int argc, char *argv[]) {
     printf("---------------------------------------------------------\n");
     printf("cuDSS example: solving a real linear 5x5 system\n"
-           "with a symmetric positive-definite matrix\n");
-           "using the multithreaded (MT) mode\n");
+           "using the multithreaded (MT) mode\n"
+           "with a symmetric positive-definite matrix \n");
     printf("---------------------------------------------------------\n");
     cudaError_t cuda_error = cudaSuccess;
     cudssStatus_t status = CUDSS_STATUS_SUCCESS;

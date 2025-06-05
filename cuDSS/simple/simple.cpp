@@ -46,6 +46,7 @@
  * comments to the code, the above Disclaimer and U.S. Government End
  * Users Notice.
  */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -266,10 +267,11 @@ int main (int argc, char *argv[]) {
 
     CUDSS_EXAMPLE_FREE;
 
-    if (status == CUDSS_STATUS_SUCCESS && passed)
+    if (status == CUDSS_STATUS_SUCCESS && passed) {
         printf("Example PASSED\n");
-    else
+        return 0;
+    } else {
         printf("Example FAILED\n");
-
-    return 0;
+        return -1;
+    }
 }

@@ -21,6 +21,7 @@
 /*
     This example demonstrates usage of the host execution mode of cuDSS
     for solving a system of linear algebraic equations with a sparse matrix:
+
                                 Ax = b,
     where:
         A is the sparse input matrix,
@@ -62,8 +63,7 @@
 int main (int argc, char *argv[]) {
     printf("---------------------------------------------------------\n");
     printf("cuDSS example: solving a real linear 5x5 system\n"
-           "with a symmetric positive-definite matrix\n");
-           "using the host execution mode\n");
+           "with a symmetric positive-definite matrix \n");
     printf("---------------------------------------------------------\n");
     cudaError_t cuda_error = cudaSuccess;
     cudssStatus_t status = CUDSS_STATUS_SUCCESS;
