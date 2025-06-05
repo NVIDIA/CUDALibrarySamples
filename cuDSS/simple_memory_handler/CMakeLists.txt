@@ -48,7 +48,7 @@
 #
 cmake_minimum_required(VERSION 3.19)
 
-set(EXAMPLE_NAME simple)
+set(EXAMPLE_NAME simple_memory_handler)
 
 project("cuDSS_${EXAMPLE_NAME}_example"
         DESCRIPTION  "cuDSS"

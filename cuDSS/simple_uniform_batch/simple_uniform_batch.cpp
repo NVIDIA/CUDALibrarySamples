@@ -1,50 +1,13 @@
 /*
- * Copyright 2024-2025 NVIDIA Corporation.  All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: LicenseRef-NvidiaProprietary
  *
- * NOTICE TO LICENSEE:
- *
- * This source code and/or documentation ("Licensed Deliverables") are
- * subject to NVIDIA intellectual property rights under U.S. and
- * international Copyright laws.
- *
- * These Licensed Deliverables contained herein is PROPRIETARY and
- * CONFIDENTIAL to NVIDIA and is being provided under the terms and
- * conditions of a form of NVIDIA software license agreement by and
- * between NVIDIA and Licensee ("License Agreement") or electronically
- * accepted by Licensee.  Notwithstanding any terms or conditions to
- * the contrary in the License Agreement, reproduction or disclosure
- * of the Licensed Deliverables to any third party without the express
- * written consent of NVIDIA is prohibited.
- *
- * NOTWITHSTANDING ANY TERMS OR CONDITIONS TO THE CONTRARY IN THE
- * LICENSE AGREEMENT, NVIDIA MAKES NO REPRESENTATION ABOUT THE
- * SUITABILITY OF THESE LICENSED DELIVERABLES FOR ANY PURPOSE.  IT IS
- * PROVIDED "AS IS" WITHOUT EXPRESS OR IMPLIED WARRANTY OF ANY KIND.
- * NVIDIA DISCLAIMS ALL WARRANTIES WITH REGARD TO THESE LICENSED
- * DELIVERABLES, INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY,
- * NONINFRINGEMENT, AND FITNESS FOR A PARTICULAR PURPOSE.
- * NOTWITHSTANDING ANY TERMS OR CONDITIONS TO THE CONTRARY IN THE
- * LICENSE AGREEMENT, IN NO EVENT SHALL NVIDIA BE LIABLE FOR ANY
- * SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL DAMAGES, OR ANY
- * DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,
- * WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS
- * ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE
- * OF THESE LICENSED DELIVERABLES.
- *
- * U.S. Government End Users.  These Licensed Deliverables are a
- * "commercial item" as that term is defined at 48 C.F.R. 2.101 (OCT
- * 1995), consisting of "commercial computer software" and "commercial
- * computer software documentation" as such terms are used in 48
- * C.F.R. 12.212 (SEPT 1995) and is provided to the U.S. Government
- * only as a commercial end item.  Consistent with 48 C.F.R.12.212 and
- * 48 C.F.R. 227.7202-1 through 227.7202-4 (JUNE 1995), all
- * U.S. Government End Users acquire the Licensed Deliverables with
- * only those rights set forth herein.
- *
- * Any use of the Licensed Deliverables in individual and commercial
- * software must include, in the user documentation and internal
- * comments to the code, the above Disclaimer and U.S. Government End
- * Users Notice.
+ * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+ * property and proprietary rights in and to this material, related
+ * documentation and any modifications thereto. Any use, reproduction,
+ * disclosure or distribution of this material and related documentation
+ * without an express license agreement from NVIDIA CORPORATION or
+ * its affiliates is strictly prohibited.
  */
 
 #include <stdio.h>
@@ -56,19 +19,14 @@
 #include "cudss.h"
 
 /*
-    This example demonstrates usage of hybrid memory mode in cuDSS for solving
-    a system of linear algebraic equations with a sparse matrix:
-                                Ax = b,
+    This example demonstrates basic usage of cuDSS APIs for solving
+    two systems of linear algebraic equations with the same sparsity pattern:
+                                A1x1 = b1,
+                                A2x2 = b2
     where:
-        A is the sparse input matrix,
-        b is the (dense) right-hand side vector (or a matrix),
-        x is the (dense) solution vector (or a matrix).
-
-    Note: hybrid memory mode is intended to be used for solving systems with
-    matrices whose factors do not fit into the device memory (the mode
-    uses host memory to store the full factors + a temporary device buffer).
-    As it has a nontrivial overhead relative to the default (device) memory mode,
-    it is recommended to enable this feature only for solving large systems.
+        A1, A2 are the sparse input matrices (with the same non-zero pattern),
+        b1,b2 are dense right-hand side vectors (or a matrices),
+        x1,x2 are dense solution vectors (or a matrices).
 */
 
 #define CUDSS_EXAMPLE_FREE \
@@ -109,9 +67,8 @@
 
 int main (int argc, char *argv[]) {
     printf("---------------------------------------------------------\n");
-    printf("cuDSS example: solving a real linear 5x5 system\n"
-           "with a symmetric positive-definite matrix using \n"
-           "the hybrid memory mode.\n");
+    printf("cuDSS example: solving 2 real linear 5x5 systems\n"
+           "with symmetric positive-definite matrices (same pattern) \n");
     printf("---------------------------------------------------------\n");
     cudaError_t cuda_error = cudaSuccess;
     cudssStatus_t status = CUDSS_STATUS_SUCCESS;
@@ -119,6 +76,7 @@ int main (int argc, char *argv[]) {
     int n = 5;
     int nnz = 8;
     int nrhs = 1;
+    int ubatch_size = 2;
 
     int *csr_offsets_h = NULL;
     int *csr_columns_h = NULL;
@@ -135,9 +93,9 @@ int main (int argc, char *argv[]) {
 
     csr_offsets_h = (int*)malloc((n + 1) * sizeof(int));
     csr_columns_h = (int*)malloc(nnz * sizeof(int));
-    csr_values_h = (double*)malloc(nnz * sizeof(double));
-    x_values_h = (double*)malloc(nrhs * n * sizeof(double));
-    b_values_h = (double*)malloc(nrhs * n * sizeof(double));
+    csr_values_h = (double*)malloc(ubatch_size * nnz * sizeof(double));
+    x_values_h = (double*)malloc(ubatch_size * nrhs * n * sizeof(double));
+    b_values_h = (double*)malloc(ubatch_size * nrhs * n * sizeof(double));
 
     if (!csr_offsets_h || ! csr_columns_h || !csr_values_h ||
         !x_values_h || !b_values_h) {
@@ -161,32 +119,47 @@ int main (int argc, char *argv[]) {
     csr_columns_h[i++] = 3;
     csr_columns_h[i++] = 4;
 
+    //Fill the first matrix
     i = 0;
     csr_values_h[i++] = 4.0; csr_values_h[i++] = 1.0;
     csr_values_h[i++] = 3.0; csr_values_h[i++] = 2.0;
     csr_values_h[i++] = 5.0; csr_values_h[i++] = 1.0;
     csr_values_h[i++] = 1.0;
     csr_values_h[i++] = 2.0;
+    //Fill the second matrix
+    csr_values_h[i++] = 2.0; csr_values_h[i++] = 1.0;
+    csr_values_h[i++] = 3.0; csr_values_h[i++] = 1.0;
+    csr_values_h[i++] = 6.0; csr_values_h[i++] = 2.0;
+    csr_values_h[i++] = 4.0;
+    csr_values_h[i++] = 8.0;
 
     /* Note: Right-hand side b is initialized with values which correspond
-       to the exact solution vector {1, 2, 3, 4, 5} */
+       to the exact solution vectors {1, 2, 3, 4, 5}
+                                 and {5, 4, 3, 2, 1} */
+    //Fill the first right-hand-side
     i = 0;
     b_values_h[i++] = 7.0;
     b_values_h[i++] = 12.0;
     b_values_h[i++] = 25.0;
     b_values_h[i++] = 4.0;
     b_values_h[i++] = 13.0;
+    //Fill the second right-hand-side
+    b_values_h[i++] = 13.0;
+    b_values_h[i++] = 15.0;
+    b_values_h[i++] = 29.0;
+    b_values_h[i++] = 8.0;
+    b_values_h[i++] = 14.0;
 
     /* Allocate device memory for A, x and b */
     CUDA_CALL_AND_CHECK(cudaMalloc(&csr_offsets_d, (n + 1) * sizeof(int)),
                         "cudaMalloc for csr_offsets");
     CUDA_CALL_AND_CHECK(cudaMalloc(&csr_columns_d, nnz * sizeof(int)),
                         "cudaMalloc for csr_columns");
-    CUDA_CALL_AND_CHECK(cudaMalloc(&csr_values_d, nnz * sizeof(double)),
+    CUDA_CALL_AND_CHECK(cudaMalloc(&csr_values_d, ubatch_size * nnz * sizeof(double)),
                         "cudaMalloc for csr_values");
-    CUDA_CALL_AND_CHECK(cudaMalloc(&b_values_d, nrhs * n * sizeof(double)),
+    CUDA_CALL_AND_CHECK(cudaMalloc(&b_values_d, ubatch_size * nrhs * n * sizeof(double)),
                         "cudaMalloc for b_values");
-    CUDA_CALL_AND_CHECK(cudaMalloc(&x_values_d, nrhs * n * sizeof(double)),
+    CUDA_CALL_AND_CHECK(cudaMalloc(&x_values_d, ubatch_size * nrhs * n * sizeof(double)),
                         "cudaMalloc for x_values");
 
     /* Copy host memory to device for A and b */
@@ -194,9 +167,9 @@ int main (int argc, char *argv[]) {
                         cudaMemcpyHostToDevice), "cudaMemcpy for csr_offsets");
     CUDA_CALL_AND_CHECK(cudaMemcpy(csr_columns_d, csr_columns_h, nnz * sizeof(int),
                         cudaMemcpyHostToDevice), "cudaMemcpy for csr_columns");
-    CUDA_CALL_AND_CHECK(cudaMemcpy(csr_values_d, csr_values_h, nnz * sizeof(double),
+    CUDA_CALL_AND_CHECK(cudaMemcpy(csr_values_d, csr_values_h, ubatch_size * nnz * sizeof(double),
                         cudaMemcpyHostToDevice), "cudaMemcpy for csr_values");
-    CUDA_CALL_AND_CHECK(cudaMemcpy(b_values_d, b_values_h, nrhs * n * sizeof(double),
+    CUDA_CALL_AND_CHECK(cudaMemcpy(b_values_d, b_values_h, ubatch_size * nrhs * n * sizeof(double),
                         cudaMemcpyHostToDevice), "cudaMemcpy for b_values");
 
     /* Create a CUDA stream */
@@ -237,37 +210,14 @@ int main (int argc, char *argv[]) {
                          csr_columns_d, csr_values_d, CUDA_R_32I, CUDA_R_64F, mtype, mview,
                          base), status, "cudssMatrixCreateCsr");
 
-    /* Enable hybrid mode where factors are stored in host memory
-       Note: It must be set before the first call to ANALYSIS step.*/
-    int hybrid_mode = 1;
-    CUDSS_CALL_AND_CHECK(cudssConfigSet(solverConfig, CUDSS_CONFIG_HYBRID_MODE, &hybrid_mode,
-                         sizeof(hybrid_mode)), status, "cudssConfigSet CUDSS_CONFIG_HYBRID_MODE");
+    /* cuDSS will factorize and solve all matrices in the batch simultaneously*/
+    CUDSS_CALL_AND_CHECK(cudssConfigSet(solverConfig, CUDSS_CONFIG_UBATCH_SIZE,
+        &ubatch_size, sizeof(ubatch_size)),
+        status, "cudssConfigSet for CUDSS_CONFIG_UBATCH_SIZE");
 
     /* Symbolic factorization */
     CUDSS_CALL_AND_CHECK(cudssExecute(handle, CUDSS_PHASE_ANALYSIS, solverConfig, solverData,
                          A, x, b), status, "cudssExecute for analysis");
-
-    /* (optional) User can query the minimal amount of device memory sufficient for
-       the hybrid memory mode.
-       Note: By default, cuDSS would attempt to use all available device memory if needed */
-    size_t sizeWritten;
-    int64_t device_memory_min;
-    CUDSS_CALL_AND_CHECK(cudssDataGet(handle, solverData, CUDSS_DATA_HYBRID_DEVICE_MEMORY_MIN,
-                         &device_memory_min, sizeof(device_memory_min), &sizeWritten),
-                         status, "cudssDataGet for CUDSS_DATA_HYBRID_DEVICE_MEMORY_MIN");
-    printf("cuDSS example: minimum amount of device memory\n"
-           "for the hybrid memory mode is %ld bytes\n",
-           device_memory_min);
-
-    /* (optional) User can specify how much device memory is available for cuDSS
-       Note: By default, cuDSS would attempt to use all available device memory if needed */
-    int64_t hybrid_device_memory_limit = 40 * 1024 ; // in bytes = 40 KB
-    CUDSS_CALL_AND_CHECK(cudssConfigSet(solverConfig, CUDSS_CONFIG_HYBRID_DEVICE_MEMORY_LIMIT,
-                         &hybrid_device_memory_limit, sizeof(hybrid_device_memory_limit)),
-                         status, "cudssConfigSet for CUDSS_CONFIG_HYBRID_DEVICE_MEMORY_LIMIT");
-    printf("cuDSS example: set the upper limit on device memory\n"
-           "for the hybrid memory mode to %ld bytes\n",
-           hybrid_device_memory_limit);
 
     /* Factorization */
     CUDSS_CALL_AND_CHECK(cudssExecute(handle, CUDSS_PHASE_FACTORIZATION, solverConfig,
@@ -277,6 +227,64 @@ int main (int argc, char *argv[]) {
     CUDSS_CALL_AND_CHECK(cudssExecute(handle, CUDSS_PHASE_SOLVE, solverConfig, solverData,
                          A, x, b), status, "cudssExecute for solve");
 
+    CUDA_CALL_AND_CHECK(cudaStreamSynchronize(stream), "cudaStreamSynchronize");
+
+    /* Print the solution and compare against the exact solution */
+    CUDA_CALL_AND_CHECK(cudaMemcpy(x_values_h, x_values_d, ubatch_size * nrhs * n * sizeof(double),
+                        cudaMemcpyDeviceToHost), "cudaMemcpy for x_values");
+
+    int passed = 1;
+    printf("First solution\n");
+    for (int i = 0; i < n; i++) {
+        printf("x[%d] = %1.4f expected %1.4f\n", i, x_values_h[i], double(i+1));
+        if (fabs(x_values_h[i] - (i + 1)) > 2.e-15)
+          passed = 0;
+    }
+    printf("Second solution\n");
+    for (int i = 0; i < n; i++) {
+        printf("x[%d] = %1.4f expected %1.4f\n", i, x_values_h[1 * n * nrhs + i], double(n-i));
+        if (fabs(x_values_h[1 * n * nrhs + i] - (n - i)) > 2.e-15)
+          passed = 0;
+    }
+
+    /* Optionally ubatch_index can be set to factorize one specific matrix of the
+     * batch or use a specific factorized matrix on solve. That allows to keep
+     * in the memory multiple factorized matrices*/
+
+    /* cuDSS will factorize the matrix and keep it inside on ubatch_index position*/
+    int ubatch_index = 1;
+    CUDSS_CALL_AND_CHECK(cudssConfigSet(solverConfig, CUDSS_CONFIG_UBATCH_INDEX,
+        &ubatch_index, sizeof(ubatch_index)),
+        status, "cudssConfigSet for CUDSS_CONFIG_UBATCH_INDEX");
+
+    /* Note that since ubatch_index is set, cudss will take just one matrix
+     * as an input, so we shift pointer outside (here)*/
+    CUDSS_CALL_AND_CHECK(cudssMatrixSetValues(A, csr_values_d + ubatch_index * nnz),
+        status, "cudssMatrixSetValues for matrix A");
+    CUDSS_CALL_AND_CHECK(cudssMatrixSetValues(b, b_values_d + ubatch_index * n * nrhs),
+        status, "cudssMatrixSetValues for matrix A");
+
+    /* Factorization */
+    CUDSS_CALL_AND_CHECK(cudssExecute(handle, CUDSS_PHASE_FACTORIZATION, solverConfig,
+                         solverData, A, x, b), status, "cudssExecute for factor");
+
+    /* Solving */
+    CUDSS_CALL_AND_CHECK(cudssExecute(handle, CUDSS_PHASE_SOLVE, solverConfig, solverData,
+                         A, x, b), status, "cudssExecute for solve");
+
+    CUDA_CALL_AND_CHECK(cudaStreamSynchronize(stream), "cudaStreamSynchronize");
+
+    /* Print the solution and compare against the exact solution */
+    CUDA_CALL_AND_CHECK(cudaMemcpy(x_values_h, x_values_d, ubatch_size * nrhs * n * sizeof(double),
+                        cudaMemcpyDeviceToHost), "cudaMemcpy for x_values");
+
+    printf("Second solution (solved separately by specifying CUDSS_CONFIG_UBATCH_INDEX)\n");
+    for (int i = 0; i < n; i++) {
+        printf("x[%d] = %1.4f expected %1.4f\n",i, x_values_h[i], double(n-i));
+        if (fabs(x_values_h[i] - (n - i)) > 2.e-15)
+          passed = 0;
+    }
+
     /* Destroying opaque objects, matrix wrappers and the cuDSS library handle */
     CUDSS_CALL_AND_CHECK(cudssMatrixDestroy(A), status, "cudssMatrixDestroy for A");
     CUDSS_CALL_AND_CHECK(cudssMatrixDestroy(b), status, "cudssMatrixDestroy for b");
@@ -284,19 +292,6 @@ int main (int argc, char *argv[]) {
     CUDSS_CALL_AND_CHECK(cudssDataDestroy(handle, solverData), status, "cudssDataDestroy");
     CUDSS_CALL_AND_CHECK(cudssConfigDestroy(solverConfig), status, "cudssConfigDestroy");
     CUDSS_CALL_AND_CHECK(cudssDestroy(handle), status, "cudssHandleDestroy");
-
-    CUDA_CALL_AND_CHECK(cudaStreamSynchronize(stream), "cudaStreamSynchronize");
-
-    /* Print the solution and compare against the exact solution */
-    CUDA_CALL_AND_CHECK(cudaMemcpy(x_values_h, x_values_d, nrhs * n * sizeof(double),
-                        cudaMemcpyDeviceToHost), "cudaMemcpy for x_values");
-
-    int passed = 1;
-    for (int i = 0; i < n; i++) {
-        printf("x[%d] = %1.4f expected %1.4f\n", i, x_values_h[i], double(i+1));
-        if (fabs(x_values_h[i] - (i + 1)) > 2.e-15)
-          passed = 0;
-    }
 
     /* Release the data allocated on the user side */
 

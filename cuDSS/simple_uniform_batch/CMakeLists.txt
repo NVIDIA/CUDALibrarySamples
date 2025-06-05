@@ -48,7 +48,7 @@
 #
 cmake_minimum_required(VERSION 3.19)
 
-set(EXAMPLE_NAME memory_handler)
+set(EXAMPLE_NAME simple_uniform_batch)
 
 project("cuDSS_${EXAMPLE_NAME}_example"
         DESCRIPTION  "cuDSS"
@@ -62,7 +62,7 @@ set(CMAKE_CUDA_EXTENSIONS        OFF)
 option(BUILD_STATIC "Building statically linked examples" OFF)
 
 # Find cuDSS
-find_package(cudss 0.5.0 REQUIRED)
+find_package(cudss 0.6.0 REQUIRED)
 
 set_source_files_properties(${EXAMPLE_NAME}.cpp PROPERTIES LANGUAGE CUDA)
 
