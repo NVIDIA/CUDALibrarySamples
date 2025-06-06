@@ -2,7 +2,7 @@
 #define CUSOLVERDX_EXAMPLE_CUSOLVERDX_COMMON_CUSOLVER_REFERENCE_CHOLESKY_HPP
 
 namespace common {
-    template<typename T, typename cuda_data_type, bool check_factor_perf = false, bool check_solve_perf = false>
+    template<typename T, typename cuda_data_type, bool do_solver = false, bool check_factor_perf = false, bool check_solve_perf = false>
     bool reference_cusolver_cholesky(std::vector<T>&    A,
                                      std::vector<T>&    B,
                                      int*               info,
@@ -12,8 +12,7 @@ namespace common {
                                      bool               is_lower_fill  = true,
                                      bool               is_col_major_a = true,
                                      bool               is_col_major_b = true,
-                                     bool               do_solver      = false,
-                                     const unsigned int actual_batches        = 0) {
+                                     const unsigned int actual_batches = 0) {
 
         const unsigned int a_size = A.size() / padded_batches;
         const unsigned int lda    = a_size / m;
@@ -67,7 +66,7 @@ namespace common {
             CUDA_CHECK_AND_EXIT(cudaMalloc(reinterpret_cast<void**>(&d_Aarray), sizeof(T*) * batches));
             CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(d_Aarray, Aarray.data(), sizeof(T*) * batches, cudaMemcpyHostToDevice, stream));
 
-            if (do_solver) {
+            if constexpr (do_solver) {
                 CUDA_CHECK_AND_EXIT(cudaMalloc(reinterpret_cast<void**>(&Barray[0]), sizeof(T) * b_size * batches));
                 for (auto j = 1; j < batches; j++) {
                     Barray[j] = Barray[j - 1] + b_size;
@@ -91,9 +90,7 @@ namespace common {
                 }
                 CUDA_CHECK_AND_EXIT(cudaStreamSynchronize(str));
             };
-            [[maybe_unused]] auto execute_reset_a = [&](cudaStream_t str) {
-                CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(Aarray[0], A.data(), sizeof(T) * a_size * batches, cudaMemcpyHostToDevice, str));
-            };
+            [[maybe_unused]] auto execute_reset_a = [&](cudaStream_t str) { CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(Aarray[0], A.data(), sizeof(T) * a_size * batches, cudaMemcpyHostToDevice, str)); };
 
             [[maybe_unused]] double ms_factor, ms_solve;
 
@@ -117,15 +114,15 @@ namespace common {
                 if (is_lower_fill) {
                     // Lower fill and column major, or upper fill and row major
                     for (int j = 0; j < m; ++j) {
-                        int offset = j + j * lda;
-                        size_t size = sizeof(T) * (m-j);
+                        int    offset = j + j * lda;
+                        size_t size   = sizeof(T) * (m - j);
                         CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(A_k + offset, Aarray[k] + offset, size, cudaMemcpyDeviceToHost, stream));
                     }
                 } else {
                     // Upper fill and column major, or lower fill and row major
                     for (int j = 0; j < m; ++j) {
-                        int offset = j * lda;
-                        size_t size = sizeof(T) * (j + 1);
+                        int    offset = j * lda;
+                        size_t size   = sizeof(T) * (j + 1);
                         CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(A_k + offset, Aarray[k] + offset, size, cudaMemcpyDeviceToHost, stream));
                     }
                 }
@@ -142,7 +139,7 @@ namespace common {
                 }
             }
 
-            if (do_solver) {
+            if constexpr (do_solver) {
                 auto execute_potrs_api = [&](cudaStream_t str) {
                     constexpr bool is_complex = common::is_complex<T>();
                     constexpr bool is_float   = std::is_same_v<typename common::get_precision<T>::type, float>;
@@ -157,9 +154,7 @@ namespace common {
                     }
                     CUDA_CHECK_AND_EXIT(cudaStreamSynchronize(str));
                 };
-                [[maybe_unused]] auto execute_reset_b = [&](cudaStream_t str) {
-                    CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(Barray[0], B.data(), sizeof(T) * b_size * batches, cudaMemcpyHostToDevice, str));
-                };
+                [[maybe_unused]] auto execute_reset_b = [&](cudaStream_t str) { CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(Barray[0], B.data(), sizeof(T) * b_size * batches, cudaMemcpyHostToDevice, str)); };
 
                 if constexpr (!check_solve_perf) {
                     execute_potrs_api(stream);
@@ -195,17 +190,17 @@ namespace common {
                 double seconds_per_giga_batch = (ms_factor + ms_solve) / 1e3 / batches * 1e9;
                 double gb_s                   = (a_size + b_size) * 2 * sizeof(T) / seconds_per_giga_batch; // A and B both read and write
                 double gflops                 = (common::get_flops_potrs<T>(m, nrhs) + common::get_flops_potrf<T>(m)) / seconds_per_giga_batch;
-                common::print_perf("Ref_cuSolverDnXpotrf+XportsBatched", batches, m, m, nrhs, gflops, gb_s, ms_factor + ms_solve);
+                common::print_perf("Ref_cuSolverDnXpotrf+XportsBatched", batches, m, m, nrhs, gflops, gb_s, ms_factor + ms_solve, 0); // dummy 0 for blockDim
             } else if constexpr (check_factor_perf && !check_solve_perf) {
                 double seconds_per_giga_batch = ms_factor / 1e3 / batches * 1e9;
                 double gb_s                   = a_size * 2 * sizeof(T) / seconds_per_giga_batch; // A read and write
                 double gflops                 = common::get_flops_potrf<T>(m) / seconds_per_giga_batch;
-                common::print_perf("Ref_cuSolverDnXpotrfBatched", batches, m, m, nrhs, gflops, gb_s, ms_factor);
+                common::print_perf("Ref_cuSolverDnXpotrfBatched", batches, m, m, nrhs, gflops, gb_s, ms_factor, 0); // dummy 0 for blockDim
             } else if constexpr (!check_factor_perf && check_solve_perf) {
                 double seconds_per_giga_batch = ms_solve / 1e3 / batches * 1e9;
                 double gb_s                   = (a_size + b_size * 2) * sizeof(T) / seconds_per_giga_batch; // A read only,B read and write
                 double gflops                 = common::get_flops_potrs<T>(m, nrhs) / seconds_per_giga_batch;
-                common::print_perf("Ref_cuSolverDnXpotrsBatched", batches, m, m, nrhs, gflops, gb_s, ms_solve);
+                common::print_perf("Ref_cuSolverDnXpotrsBatched", batches, m, m, nrhs, gflops, gb_s, ms_solve, 0); // dummy 0 for blockDim
             }
 
 
@@ -224,7 +219,7 @@ namespace common {
             CUDA_CHECK_AND_EXIT(cudaStreamSynchronize(stream));
 
             [[maybe_unused]] T* d_B = nullptr;
-            if (do_solver) {
+            if constexpr (do_solver) {
                 CUDA_CHECK_AND_EXIT(cudaMalloc(reinterpret_cast<void**>(&d_B), sizeof(T) * b_size));
                 CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(d_B, &B[0], sizeof(T) * b_size, cudaMemcpyHostToDevice, stream));
                 CUDA_CHECK_AND_EXIT(cudaStreamSynchronize(stream));
@@ -285,7 +280,7 @@ namespace common {
                     return false;
                 }
 
-                if (do_solver) {
+                if constexpr (do_solver) {
                     if (batch > 0) {
                         CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(d_B, &B[b_size * batch], sizeof(T) * b_size, cudaMemcpyHostToDevice, stream));
                         CUDA_CHECK_AND_EXIT(cudaStreamSynchronize(stream));

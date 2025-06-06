@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.23.0)
 
 # cuRANDDx example project
-project(curanddx_example VERSION 0.1.0 LANGUAGES CXX CUDA)
+project(curanddx_example VERSION ${CMAKE_PROJECT_VERSION} LANGUAGES CXX CUDA)
 
 if(PROJECT_IS_TOP_LEVEL)
     if(NOT MSVC)
@@ -60,41 +60,12 @@ endif()
 # ******************************************
 # Tests as standalone project to enable testing release package
 # ******************************************
-if(PROJECT_IS_TOP_LEVEL OR CURANDDX_TEST_PACKAGE)
-    enable_testing()
-
-    # Project options
-    option(USE_MATHDX_PACKAGE "Use mathDx package to find cuRANDDx" ON)
-    option(USE_CURANDDX_PACKAGE "Use cuRANDDx package to find cuRANDDx" OFF)
-
-    if(DEFINED curanddx_ROOT OR DEFINED ENV{curanddx_ROOT})
-        SET(USE_CURANDDX_PACKAGE ON CACHE BOOL "Use cuRANDDx package to find cuRANDDx" FORCE)
-        SET(USE_MATHDX_PACKAGE OFF CACHE BOOL "Use mathDx package to find cuRANDDx" FORCE)
-    endif()
-
-    if(DEFINED mathdx_ROOT OR DEFINED ENV{mathdx_ROOT})
-        SET(USE_CURANDDX_PACKAGE OFF CACHE BOOL "Use cuRANDDx package to find cuRANDDx" FORCE)
-        SET(USE_MATHDX_PACKAGE ON CACHE BOOL "Use mathDx package to find cuRANDDx" FORCE)
-    endif()
-
-    if(USE_MATHDX_PACKAGE)
-        message(STATUS "Example: Using mathDx package to find cuRANDDx")
-        find_package(mathdx REQUIRED COMPONENTS curanddx CONFIG
-            PATHS
+if(PROJECT_IS_TOP_LEVEL)
+    find_package(mathdx REQUIRED CONFIG
+        PATHS
             "${PROJECT_SOURCE_DIR}/../.." # example/curanddx
-            "${PROJECT_SOURCE_DIR}/../../.." # include/curanddx/example
-            "/opt/nvidia/mathdx/25.01"
-        )
-    elseif(USE_CURANDDX_PACKAGE)
-        message(STATUS "Example: Using cuRANDDx package to find cuRANDDx")
-        find_package(curanddx REQUIRED CONFIG HINTS ${curanddx_DIR}
-            PATHS
-            "/opt/nvidia/mathdx/25.01/include/curanddx"
-            "${PROJECT_SOURCE_DIR}/../../curanddx"
-        )
-    else()
-        message(FATAL_ERROR "Example: No cuRANDDx package found")
-    endif()
+            "/opt/nvidia/mathdx/25.06"
+    )
 endif()
 
 # CUDA Toolkit
@@ -105,11 +76,10 @@ foreach(CUDA_ARCH ${CURANDDX_CUDA_ARCHITECTURES})
     # Extract SM from SM-real/SM-virtual
     string(REPLACE "-" ";" CUDA_ARCH_LIST ${CUDA_ARCH})
     list(GET CUDA_ARCH_LIST 0 ARCH)
-
-    if(${ARCH} STREQUAL "90a")
-        set(ARCH 90)
-    endif()
-
+    # Remove "a"
+    string(REPLACE "a" "" ARCH "${ARCH}")
+    # Remove "f"
+    string(REPLACE "f" "" ARCH "${ARCH}")
     add_compile_definitions(CURANDDX_EXAMPLE_ENABLE_SM_${ARCH})
 endforeach()
 
@@ -129,12 +99,12 @@ function(add_curanddx_example2_nvpl_rand GROUP_TARGET EXAMPLE_NAME ENABLE_RELAXE
 
     target_link_libraries(${EXAMPLE_TARGET}
         PRIVATE
-            $<IF:$<TARGET_EXISTS:mathdx::curanddx>,mathdx::curanddx,curanddx::curanddx>
+            mathdx::curanddx
             CUDA::curand
     )
     if(CURANDDX_EXAMPLE_NVPL_RAND_AVAILABLE)
         target_link_libraries(${EXAMPLE_TARGET} PRIVATE nvpl::rand_mt)
-        add_definitions(-DCURANDDX_EXAMPLE_NVPL_RAND_AVAILABLE)
+        target_compile_definitions(${EXAMPLE_TARGET} PRIVATE -DCURANDDX_EXAMPLE_NVPL_RAND_AVAILABLE)
     endif()
 
     add_test(NAME ${EXAMPLE_NAME} COMMAND ${EXAMPLE_TARGET})
@@ -171,7 +141,7 @@ function(add_curanddx_example2 GROUP_TARGET EXAMPLE_NAME ENABLE_RELAXED_CONSTEXP
 
     target_link_libraries(${EXAMPLE_TARGET}
         PRIVATE
-        $<IF:$<TARGET_EXISTS:mathdx::curanddx>,mathdx::curanddx,curanddx::curanddx>
+        mathdx::curanddx
         CUDA::curand
     )
 
@@ -208,7 +178,7 @@ function(add_curanddx_nvrtc_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
 
     target_link_libraries(${EXAMPLE_TARGET}
         PRIVATE
-            $<IF:$<TARGET_EXISTS:mathdx::curanddx>,mathdx::curanddx,curanddx::curanddx>
+            mathdx::curanddx
             CUDA::cudart
             CUDA::cuda_driver
             CUDA::nvrtc
@@ -238,16 +208,11 @@ endfunction()
 add_custom_target(curanddx_examples)
 
 # cuRANDDx examples using thread API
-add_curanddx_example_nvpl_rand(curanddx_examples "cuRANDDx.example.simple_pcg_thread_api" simple_pcg_thread_api.cu)
+add_curanddx_example_nvpl_rand(curanddx_examples "cuRANDDx.example.introduction_simple_pcg_thread_api" 02_thread_api/pcg_thread_api.cu)
 
-add_curanddx_example(curanddx_examples "cuRANDDx.example.xorwow_init_and_generate_thread_api" xorwow_init_and_generate_thread_api.cu)
-add_curanddx_example(curanddx_examples "cuRANDDx.example.philox_thread_api" philox_thread_api.cu)
-add_curanddx_example(curanddx_examples "cuRANDDx.example.sobol_thread_api" sobol_thread_api.cu)
-add_curanddx_example(curanddx_examples "cuRANDDx.example.mrg_two_distributions_thread_api" mrg_two_distributions_thread_api.cu)
+add_curanddx_example(curanddx_examples "cuRANDDx.example.philox_thread_api" 01_introduction/philox_thread_api.cu)
+add_curanddx_example(curanddx_examples "cuRANDDx.example.xorwow_init_and_generate_thread_api" 02_thread_api/xorwow_init_and_generate_thread_api.cu)
+add_curanddx_example(curanddx_examples "cuRANDDx.example.sobol_thread_api" 02_thread_api/sobol_thread_api.cu)
+add_curanddx_example(curanddx_examples "cuRANDDx.example.mrg_two_distributions_thread_api" 02_thread_api/mrg_two_distributions_thread_api.cu)
 
-add_curanddx_nvrtc_example(curanddx_examples "curRANDDX.example.nvrtc_pcg_thread_api" nvrtc_pcg_thread_api.cpp)
-
-
-# add_curanddx_example(curanddx_examples "cuRANDDx.example.simple_mtgp32_block_api" simple_mtgp32_block_api.cu)
-# add_curanddx_example(curanddx_examples "cuRANDDx.example.simple_device_api" simple_device_api.cu)
-# add_curanddx_example(curanddx_examples "cuRANDDx.example.device_api_philox_native" device_api_philox_native.cu)
+add_curanddx_nvrtc_example(curanddx_examples "cuRANDDx.example.nvrtc_pcg_thread_api" 03_nvrtc/nvrtc_pcg_thread_api.cpp)

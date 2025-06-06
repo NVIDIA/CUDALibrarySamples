@@ -1,6 +1,6 @@
 # cuBLASDx Library - API Examples
 
-All example, including more advanced onces, are shipped within [cuBLASDx package](https://developer.nvidia.com/cublasdx-downloads).
+All examples, including more advanced ones, are shipped within [cuBLASDx package](https://developer.nvidia.com/cublasdx-downloads).
 
 ## Description
 
@@ -52,11 +52,10 @@ For the detailed descriptions of the examples please visit [Examples](https://do
 | GEMM Performance      |                | single_gemm_performance        | Benchmark for single GEMM                                                      |
 |                       |                | fused_gemm_performance         | Benchmark for 2 GEMMs fused into a single kernel                               |
 |                       |                | device_gemm_performance        | Benchmark entire device GEMMs using cuBLASDx for single tile                   |
+|                       |                | gemm_device_partial_sums       | Use partial accumulations in higher precision to minimize big-K rounding error |
 | Advanced Examples     | Fusion         | fused_gemm                     | Performs 2 GEMMs in a single kernel                                            |
 |                       |                | gemm_fft                       | Perform GEMM and FFT in a single kernel                                        |
 |                       |                | gemm_fft_fp16                  | Perform GEMM and FFT in a single kernel (half-precision complex type)          |
 |                       |                | gemm_fft_performance           | Benchmark for GEMM and FFT fused into a single kernel                          |
-|                       | Deep Learning  | scaled_dot_prod_attn           | Scaled dot product attention using cuBLASDx                                    |
-|                       |                | scaled_dot_prod_attn_batched   | Multi-head attention using cuBLASDx                                            |
 |                       | Other          | batched_gemm_fp64              | Manual batching in a single CUDA block                                         |
 |                       |                | blockdim_gemm_fp16             | BLAS execution with different block dimensions                                 |

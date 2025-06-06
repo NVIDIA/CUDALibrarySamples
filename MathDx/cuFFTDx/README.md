@@ -15,7 +15,7 @@ This folder demonstrates cuFFTDx APIs usage.
 
 * [cuFFTDx/MathDx package](https://developer.nvidia.com/cufftdx-downloads)
 * [See cuFFTDx requirements](https://docs.nvidia.com/cuda/cufftdx/requirements_func.html)
-* CMake 3.18 or newer
+* CMake 3.26 or newer
 * Linux system with installed NVIDIA drivers
 * NVIDIA GPU of Volta (SM70) or newer architecture
 
@@ -51,144 +51,144 @@ For the detailed descriptions of the examples please visit [Examples](https://do
     <tbody>
         <tr>
             <td colspan="2">00_introduction_example</td>
-            <td>00_introduction_example</td>
+            <td>introduction_example</td>
             <td>cuFFTDx API introduction</td>
         </tr>
         <tr>
             <td rowspan="11">Simple FFT Examples</td>
             <td rowspan="2">01_simple_fft_thread</td>
-            <td>01_simple_fft_thread</td>
+            <td>simple_fft_thread</td>
             <td>Complex-to-complex thread FFT</td>
         </tr>
         <tr>
-            <td>02_simple_fft_thread_fp16</td>
+            <td>simple_fft_thread_fp16</td>
             <td>Complex-to-complex thread FFT half-precision</td>
         </tr>
         <tr>
             <td rowspan="9">02_simple_fft_block</td>
-            <td>00_simple_fft_block</td>
+            <td>simple_fft_block</td>
             <td>Complex-to-complex block FFT</td>
         </tr>
         <tr>
-            <td>01_simple_fft_block_shared</td>
+            <td>simple_fft_block_shared</td>
             <td>Complex-to-complex block FFT shared-memory API</td>
         </tr>
         <tr>
-            <td>02_simple_fft_block_std_complex</td>
+            <td>simple_fft_block_std_complex</td>
             <td>Complex-to-complex block FFT with <code>cuda::std::complex</code> as data type</td>
         </tr>
         <tr>
-            <td>03_simple_fft_block_half2</td>
+            <td>simple_fft_block_half2</td>
             <td>Complex-to-complex block FFT with <code>__half2</code> as data type</td>
         </tr>
         <tr>
-            <td>04_simple_fft_block_fp16</td>
+            <td>simple_fft_block_fp16</td>
             <td>Complex-to-complex block FFT half-precision</td>
         </tr>
         <tr>
-            <td>05_simple_fft_block_c2r</td>
+            <td>simple_fft_block_c2r</td>
             <td>Complex-to-real block FFT</td>
         </tr>
         <tr>
-            <td>06_simple_fft_block_r2c</td>
+            <td>simple_fft_block_r2c</td>
             <td>Real-to-complex block FFT</td>
         </tr>
         <tr>
-            <td>07_simple_fft_block_c2r_fp16</td>
+            <td>simple_fft_block_c2r_fp16</td>
             <td>Complex-to-real block FFT half-precision</td>
         </tr>
         <tr>
-            <td>08_simple_fft_block_r2c_fp16</td>
+            <td>simple_fft_block_r2c_fp16</td>
             <td>Real-to-complex block FFT half-precision</td>
         </tr>
         <tr>
             <td colspan="2" rowspan="2">03_block_fft_performance</td>
-            <td>00_block_fft_performance</td>
+            <td>block_fft_performance</td>
             <td>Benchmark for C2C block FFT</td>
         </tr>
         <tr>
-            <td>01_block_fft_performance_many</td>
+            <td>block_fft_performance_many</td>
             <td>Benchmark for C2C/R2C/C2R block FFT</td>
         </tr>
         <tr>
             <td colspan="2" rowspan="2">04_nvrtc_fft</td>
-            <td>00_nvrtc_fft_thread</td>
+            <td>nvrtc_fft_thread</td>
             <td>Complex-to-complex thread FFT</td>
         </tr>
         <tr>
-            <td>01_nvrtc_fft_block</td>
+            <td>nvrtc_fft_block</td>
             <td>Complex-to-complex block FFT</td>
         </tr>
         <tr>
             <td colspan="2" rowspan="6">05_fft_Xd</td>
-            <td>00_fft_2d</td>
+            <td>fft_2d</td>
             <td>Example showing how to perform 2D FP32 C2C FFT with cuFFTDx</td>
         </tr>
         <tr>
-            <td>01_fft_2d_single_kernel</td>
+            <td>fft_2d_single_kernel</td>
             <td>2D FP32 FFT in a single kernel using Cooperative Groups kernel launch</td>
         </tr>
         <tr>
-            <td>02_fft_2d_r2c_c2r</td>
+            <td>fft_2d_r2c_c2r</td>
             <td>Example showing how to perform 2D FP32 R2C/C2R convolution with cuFFTDx</td>
         </tr>
         <tr>
-            <td>03_fft_3d</td>
+            <td>fft_3d</td>
             <td>Example showing how to perform 3D FP32 C2C FFT with cuFFTDx</td>
         </tr>
         <tr>
-            <td>04_fft_3d_box_single_block</td>
+            <td>fft_3d_box_single_block</td>
             <td>Small 3D FP32 FFT that fits into a single block, each dimension is different</td>
         </tr>
         <tr>
-            <td>05_fft_3d_cube_single_block</td>
+            <td>fft_3d_cube_single_block</td>
             <td>Small 3D (equal dimensions) FP32 FFT that fits into a single block</td>
         </tr>
         <tr>
             <td colspan="2" rowspan="4">06_convolution</td>
-            <td>00_convolution</td>
+            <td>convolution</td>
             <td>Simplified FFT convolution</td>
         </tr>
         <tr>
-            <td>01_convolution_padded</td>
+            <td>convolution_padded</td>
             <td>R2C-C2R FFT convolution with optimization and zero padding</td>
         </tr>
         <tr>
-            <td>02_convolution_r2c_c2r</td>
+            <td>convolution_r2c_c2r</td>
             <td>Simplified R2C-C2R FFT convolution</td>
         </tr>
         <tr>
-            <td>03_convolution_performance</td>
+            <td>convolution_performance</td>
             <td>Benchmark for FFT convolution using cuFFTDx and cuFFT</td>
         </tr>
         <tr>
             <td colspan="2" rowspan="5">07_convolution_3d</td>
-            <td>00_convolution_3d</td>
+            <td>convolution_3d</td>
             <td>cuFFTDx fused 3D convolution with preprocessing, filtering and postprocessing</td>
         </tr>
         <tr>
-            <td>01_convolution_3d_c2r</td>
+            <td>convolution_3d_c2r</td>
             <td>cuFFTDx fused 3D C2R/R2C FFT convolution</td>
         </tr>
         <tr>
-            <td>02_convolution_3d_r2c</td>
+            <td>convolution_3d_r2c</td>
             <td>cuFFTDx fused 3D R2C/C2R FFT convolution</td>
         </tr>
         <tr>
-            <td>03_convolution_3d_padded</td>
+            <td>convolution_3d_padded</td>
             <td>cuFFTDx fused 3D FFT convolution using zero padding</td>
         </tr>
         <tr>
-            <td>04_convolution_3d_padded_r2c</td>
+            <td>convolution_3d_padded_r2c</td>
             <td>cuFFTDx fused 3D R2C/C2R FFT convolution with zero padding</td>
         </tr>
         <tr>
             <td colspan="2" rowspan="2">08_mixed_precision</td>
-            <td>00_mixed_precision_fft_1d</td>
+            <td>mixed_precision_fft_1d</td>
             <td>Example showing how to use separate storage and compute precisions</td>
         </tr>
         <tr>
-            <td>01_mixed_precision_fft_2d</td>
+            <td>mixed_precision_fft_2d</td>
             <td>Mixed precision 2D FFT with benchmarking and accuracy comparison</td>
         </tr>
     </tbody>

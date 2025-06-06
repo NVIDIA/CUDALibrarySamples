@@ -20,7 +20,7 @@
             auto status = static_cast<CUresult>(error);                                                     \
             if (status != CUDA_SUCCESS) {                                                                   \
                 const char * pstr; cuGetErrorString(status, &pstr);                                         \
-                std::cout << pstr << " " << __FILE__ << ":" << __LINE__ << std::endl;                      \
+                std::cerr << pstr << " " << __FILE__ << ":" << __LINE__ << std::endl;                       \
                 std::exit(status);                                                                          \
             }                                                                                               \
         }
@@ -43,35 +43,46 @@ namespace example {
             return std::vector<std::string>();
 #else
             std::vector<std::string> cufftdx_include_dirs_array;
+
+            const auto path_handler = [&](const std::string& path_name, const std::string& entry) {
+                if (!entry.empty()) {
+                    cufftdx_include_dirs_array.push_back("--include-path=" + entry);
+                } else {
+                    std::cerr << "Empty include path in '" << path_name << "'" << std::endl;
+                    std::exit(-1);
+                }
+            };
+
             {
                 std::string cufftdx_include_dirs = CUFFTDX_INCLUDE_DIRS;
                 std::string delim                = ";";
                 size_t      start                = 0U;
                 size_t      end                  = cufftdx_include_dirs.find(delim);
+
                 while (end != std::string::npos) {
-                    cufftdx_include_dirs_array.push_back("--include-path=" +
-                                                         cufftdx_include_dirs.substr(start, end - start));
+                    const auto cufftdx_include_dir = cufftdx_include_dirs.substr(start, end - start);
+                    path_handler("CUFFTDX_INCLUDE_DIRS", cufftdx_include_dir);
                     start = end + delim.length();
                     end   = cufftdx_include_dirs.find(delim, start);
                 }
-                cufftdx_include_dirs_array.push_back("--include-path=" +
-                                                     cufftdx_include_dirs.substr(start, end - start));
+                const auto cufftdx_include_dir = cufftdx_include_dirs.substr(start, end - start);
+                path_handler("CUFFTDX_INCLUDE_DIRS", cufftdx_include_dir);
             }
             #ifdef COMMONDX_INCLUDE_DIR
             {
-                cufftdx_include_dirs_array.push_back("--include-path=" + std::string(COMMONDX_INCLUDE_DIR));
+                path_handler("COMMONDX_INCLUDE_DIR", std::string(COMMONDX_INCLUDE_DIR));
             }
             #endif
             {
                 const char* env_ptr = std::getenv("CUFFTDX_EXAMPLE_CUFFTDX_INCLUDE_DIR");
                 if(env_ptr != nullptr) {
-                    cufftdx_include_dirs_array.push_back("--include-path=" + std::string(env_ptr));
+                    path_handler("CUFFTDX_EXAMPLE_CUFFTDX_INCLUDE_DIR", std::string(env_ptr));
                 }
             }
             {
                 const char* env_ptr = std::getenv("CUFFTDX_EXAMPLE_CUTLASS_INCLUDE_DIR");
                 if(env_ptr != nullptr) {
-                    cufftdx_include_dirs_array.push_back("--include-path=" + std::string(env_ptr));
+                    path_handler("CUFFTDX_EXAMPLE_CUTLASS_INCLUDE_DIR", std::string(env_ptr));
                 } else {
                     cufftdx_include_dirs_array.push_back("-DCUFFTDX_DISABLE_CUTLASS_DEPENDENCY");
                 }
@@ -79,13 +90,13 @@ namespace example {
             {
                 const char* env_ptr = std::getenv("CUFFTDX_EXAMPLE_COMMONDX_INCLUDE_DIR");
                 if(env_ptr != nullptr) {
-                    cufftdx_include_dirs_array.push_back("--include-path=" + std::string(env_ptr));
+                    path_handler("CUFFTDX_EXAMPLE_COMMONDX_INCLUDE_DIR", std::string(env_ptr));
                 }
             }
             {
                 const char* env_ptr = std::getenv("CUFFTDX_EXAMPLE_CUDA_INCLUDE_DIR");
                 if(env_ptr != nullptr) {
-                    cufftdx_include_dirs_array.push_back("--include-path=" + std::string(env_ptr));
+                    path_handler("CUFFTDX_EXAMPLE_CUDA_INCLUDE_DIR", std::string(env_ptr));
                 }
             }
             return cufftdx_include_dirs_array;

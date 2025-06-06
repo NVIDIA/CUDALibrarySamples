@@ -1,6 +1,9 @@
 #ifndef CUSOLVERDX_EXAMPLE_COMMON_MEASURE_HPP
 #define CUSOLVERDX_EXAMPLE_COMMON_MEASURE_HPP
 
+#include "numeric.hpp"
+#include "cusolverdx.hpp"
+
 namespace common {
 
     struct measure {
@@ -80,7 +83,19 @@ namespace common {
     //==================================
 
     template<typename DataType>
-    double get_flops_trsm(const unsigned int n, const unsigned int nrhs) {
+    constexpr double get_flops_gemm(const unsigned int m, const unsigned int n, const unsigned int k) {
+        auto fmuls = m * n * k;
+        auto fadds = m * n * k;
+
+        if constexpr (common::is_complex<DataType>()) {
+            return 6. * fmuls + 2. * fadds;
+        } else {
+            return fmuls + fadds;
+        }
+    }
+
+    template<typename DataType>
+    constexpr double get_flops_trsm(const unsigned int n, const unsigned int nrhs) {
         auto fmuls = nrhs * n * (n + 1) / 2.;
         auto fadds = nrhs * n * (n - 1) / 2.;
 
@@ -93,7 +108,7 @@ namespace common {
 
     // https://github.com/icl-utk-edu/magma/blob/master/testing/flops.h
     template<typename DataType>
-    double get_flops_potrf(const unsigned int n) {
+    constexpr double get_flops_potrf(const unsigned int n) {
         auto fmuls = n * (((1. / 6.) * n + 0.5) * n + (1. / 3.));
         auto fadds = n * (((1. / 6.) * n) * n - (1. / 6.));
 
@@ -105,12 +120,12 @@ namespace common {
     }
 
     template<typename DataType>
-    double get_flops_potrs(const unsigned int n, const unsigned int nrhs) {
+    constexpr double get_flops_potrs(const unsigned int n, const unsigned int nrhs) {
         return 2 * get_flops_trsm<DataType>(n, nrhs);
     }
 
     template<typename DataType>
-    double get_flops_getrf(const unsigned int m, const unsigned int n) {
+    constexpr double get_flops_getrf(const unsigned int m, const unsigned int n) {
         // FLOP calculation depends on whether m or n is smaller
         auto mn = min(m, n);
         auto mx = max(m, n);
@@ -125,8 +140,34 @@ namespace common {
         }
     }
 
-    inline void print_perf(const std::string msg, const unsigned int batches, const unsigned int M, const unsigned int N, const unsigned int nrhs, const double gflops, const double gb_s, const double ms) {
-        printf("%-30s %10u %5u %5u %5u  %7.2f GFLOP/s, %7.2f GB/s, %7.2f ms\n", msg.c_str(), batches, M, N, nrhs, gflops, gb_s, ms);
+    template<typename DataType>
+    constexpr double get_flops_geqrf(const unsigned int m, const unsigned int n) {
+
+        double fmuls_geqrf = (m > n) ? (n * (n * (0.5 - (1./3.) * n + m) + m + 23. / 6.)) : (m * (m * (-0.5 - (1./3.) * m + n) + 2.*(n) + 23. / 6.));
+        double fadds_geqrf = (m > n) ? (n * (n * (0.5 - (1./3.) * n + m) + 5. / 6.)) : (m * (m * (-0.5 - (1./3.) * m + n) + n + 5. / 6.));
+
+        if constexpr (common::is_complex<DataType>()) {
+            return 6. * fmuls_geqrf + 2. * fadds_geqrf;
+        } else {
+            return fmuls_geqrf + fadds_geqrf;
+        }
+    }
+
+    template<typename DataType>
+    constexpr double get_flops_unmqr(const cusolverdx::side side, const unsigned int m, const unsigned int n, const unsigned int k) {
+
+        double fmuls_unmqr = (side == cusolverdx::side::left) ? k * (2 * m - k) * n : k * (2 * n - k) * m;
+        double fadds_unmqr = (side == cusolverdx::side::left) ? k * (2 * m - k) * n : k * (2 * n - k) * m;
+
+        if constexpr (common::is_complex<DataType>()) {
+            return 6. * fmuls_unmqr + 2. * fadds_unmqr;
+        } else {
+            return fmuls_unmqr + fadds_unmqr;
+        }
+    }
+
+    inline void print_perf(const std::string msg, const unsigned int batches, const unsigned int M, const unsigned int N, const unsigned int nrhs, const double gflops, const double gb_s, const double ms, const unsigned int blockDim) {
+        printf("%-30s %10u %5u %5u %5u  %7.2f GFLOP/s, %7.2f GB/s, %7.2f ms, %d blockDim\n", msg.c_str(), batches, M, N, nrhs, gflops, gb_s, ms, blockDim);
     }
 } // namespace common
 

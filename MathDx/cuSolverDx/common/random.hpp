@@ -1,7 +1,6 @@
 #ifndef CUSOLVERDX_EXAMPLE_COMMON_RANDOM_HPP
 #define CUSOLVERDX_EXAMPLE_COMMON_RANDOM_HPP
 
-#include <cassert>
 #include "numeric.hpp"
 
 namespace common {
@@ -199,9 +198,10 @@ namespace common {
         fillup_random_matrix(true, m, n, A, lda, symm, true, min, max, batches);
     }
 
+    // Input A(total_batches, dim_slow, dim_fast), dim_fast being the fastest dimension
+    // Output A(total_batches, dim_fast, dim_slow), dim_slow being the fastest dimension
     template<typename T>
     void transpose_matrix(std::vector<T>& A, const unsigned int dim_fast, const unsigned int dim_slow, const unsigned batches) {
-        assert(A.size() == dim_fast * dim_slow * batches);
 
         std::vector<T> A_temp(A);
         for (auto i = 0; i < batches; i++) {

@@ -1,6 +1,6 @@
 # MathDx Library - API Examples
 
-This folder includes examples for cuFFTDx, cuBLASDx, cuSolverDx and cuRANDDx libraries available in MathDx [package](https://developer.nvidia.com/mathdx) package. The examples are also shipped in the package.
+This folder includes examples for cuFFTDx, cuBLASDx, cuSolverDx, cuRANDDx, and nvCOMPDx libraries available in the MathDx [package](https://developer.nvidia.com/mathdx) package. The examples are also shipped in the package.
 
 ## [cuBLASDx](cuBLASDx)
 
@@ -100,13 +100,19 @@ This folder includes examples for cuFFTDx, cuBLASDx, cuSolverDx and cuRANDDx lib
 
 |              Group           |            Example                |                                  Description                                                      |
 |------------------------------|-----------------------------------|---------------------------------------------------------------------------------------------------|
-| Introduction Examples        | posv_batched                      | Introduction example                                                                              |
-| Cholesky Examples            | simple_potrf                      | Cholesky factorization                                                                            |
+| Introduction Examples        | posv_batched                      | Introduction example with Cholesky factorization and solve                                        |
+| Cholesky Examples            | potrf                             | Cholesky factorization                                                                            |
 |                              | potrf_runtime_ld                  | Cholesky factorization with runtime leading dimensions                                            |
 | LU Examples                  | getrf_wo_pivot                    | LU factorization without pivoting                                                                 |
-|                              | gesv_batched_wo_pivot             | Solves a batched linear systems with multiple right hand sides after performing LU factorization  |
+|                              | getrf_partial_pivot               | LU factorization with partial pivoting                                                            |
+|                              | gesv_batched_wo_pivot             | Solves batched linear systems without pivoting                                                    |
+|                              | gesv_batched_partial_pivot        | Solves batched linear systems with partial pivoting                                               |
+| QR and Least Squares         | geqrf_batched                     | QR factorization for batched matrices                                                             |
+|                              | gels_batched                      | Solves batched least squares problems                                                             |
 | NVRTC Examples               | nvrtc_potrs                       | Using cuSolverDx with NVTRC runtime compilation and nvJitLink runtime linking                     |
-| Advanced Examples            | blocked_potrf                     | Cholesky factorization using blocked algorithm for matrices too large to fit in the shared memory |
+| Performance Examples         | geqrf_batched_performance         | Performance analysis of batched QR factorization                                                  |
+| Advanced Examples            | blocked_potrf                     | Cholesky factorization using blocked algorithm for large matrices                                 |
+|                              | reg_least_squares                 | Regularized least squares solver                                                                  |
 
 
 ## [cuRANDDx](cuRANDDx)
@@ -116,11 +122,29 @@ This folder includes examples for cuFFTDx, cuBLASDx, cuSolverDx and cuRANDDx lib
 
 #### Examples
 
-|            Example                |                                  Description                                                      |
-|-----------------------------------|---------------------------------------------------------------------------------------------------|
-| Introduction Example              | Introduction example (Philox RNG)                                                                 |
-| PCG Generator Example             | Generate sequence of 32-bit random values using PCG generator                                     |
-| Separate Initialization Kernel    | Initialize RNG states in a separate kernel                                                        |
-| Skipping Values                   | Example of using skip methods                                                                     |
-| Quasirandom Generator             | Example of using Sobol quasirandom generator                                                      |
-| NVRTC Example                     | Using cuRANDDx with NVRTC                                                                         |
+|              Group           |            Example                  |                                  Description                                                    |
+|------------------------------|-------------------------------------|-------------------------------------------------------------------------------------------------|
+| Introduction Examples        | philox_thread_api                   | Introduction example with Philox random number generator                                        |
+| Thread API Examples          | xorwow_init_and_generate_thread_api | XORWOW random number generator with initialization and generation                               |
+|                              | sobol_thread_api                    | Sobol quasi-random number generator                                                             |
+|                              | pcg_thread_api                      | PCG random number generator                                                                     |
+|                              | mrg_two_distributions_thread_api    | Multiple random number distributions using MRG32k3a generator                                   |
+| NVRTC Examples               | nvrtc_pcg_thread_api                | Using cuRANDDx with NVTRC runtime compilation and nvJitLink runtime linkin g                    |
+
+
+## [nvCOMPDx](nvCOMPDx)
+
+* [nvCOMPDx download page](https://developer.nvidia.com/nvcompdx-downloads)
+* [nvCOMPDx API documentation](https://docs.nvidia.com/cuda/nvcompdx/index.html)
+
+#### Examples
+
+|              Group           |            Example                      |                                  Description                                                |
+|------------------------------|-----------------------------------------|---------------------------------------------------------------------------------------------|
+| Introduction Examples        | lz4_gpu_compression_introduction        | Introductory example showcasing GPU LZ4 compression                                         |
+| LZ4 GPU                      | lz4_gpu_compression_decompression       | Warp-level GPU LZ4 compression and decompression                                            |
+| LZ4 GPU and CPU              | lz4_cpu_compression_gpu_decompression   | CPU compression with Warp-level GPU LZ4 decompression                                       |
+|                              | lz4_gpu_compression_cpu_decompression   | Warp-level GPU LZ4 compression with CPU decompression                                       |
+| ANS GPU                      | ans_gpu_compression_decompression       | Block-level GPU ANS compression and decompression                                           |
+|                              | ans_gpu_decompression_reduction         | Fused block-level GPU ANS decompression followed by block-wide reduction                    |
+| NVRTC Examples               | lz4_cpu_compression_nvrtc_decompression | CPU compression, Warp-level GPU NVTRC + nvJitLink LZ4 decompression                         |

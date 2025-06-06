@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.26.0)
 
-project(00_cufft_device_api_example LANGUAGES CXX CUDA)
+project(10_cufft_device_api_example_cufft_device_api_example LANGUAGES CXX CUDA)
 
 if(NOT DEFINED CUFFTDX_CUDA_ARCHITECTURES)
     message(FATAL_ERROR "CUFFTDX_CUDA_ARCHITECTURES is not defined")
@@ -20,7 +20,7 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/cufft_device_api_lto_helper/cufft_device_ap
 run_cufft_device_api_lto_helper(
     ${CMAKE_CURRENT_SOURCE_DIR}/cufft_device_api_lto_helper
     ${CMAKE_CURRENT_BINARY_DIR}/cufft_device_api_lto_helper
-    00_cufft_device_api_example
+    10_cufft_device_api_example_cufft_device_api_example
     "${CUFFTDX_CUDA_ARCHITECTURES}"
 )
 
@@ -37,28 +37,29 @@ if(NOT TARGET cufftdx)
     )
 endif()
 
-add_executable(00_cufft_device_api_example
-    00_cufft_device_api_example.cu
+add_executable(10_cufft_device_api_example_cufft_device_api_example
+    cufft_device_api_example.cu
 )
 
-target_link_libraries(00_cufft_device_api_example
+target_link_libraries(10_cufft_device_api_example_cufft_device_api_example
     PRIVATE
         cufftdx::cufftdx
 )
 
-target_link_options(00_cufft_device_api_example
+target_link_options(10_cufft_device_api_example_cufft_device_api_example
     PUBLIC
-        $<DEVICE_LINK:$<TARGET_OBJECTS:00_cufft_device_api_example_lto_lib>>
+        $<DEVICE_LINK:$<TARGET_OBJECTS:10_cufft_device_api_example_cufft_device_api_example_lto_lib>>
 )
 
-target_include_directories(00_cufft_device_api_example
+target_include_directories(10_cufft_device_api_example_cufft_device_api_example
     PRIVATE
-        ${CMAKE_CURRENT_BINARY_DIR}/cufft_device_api_lto_helper/00_cufft_device_api_example_artifacts
+        ${CMAKE_CURRENT_BINARY_DIR}/cufft_device_api_lto_helper/10_cufft_device_api_example_cufft_device_api_example_artifacts
 )
 
-set_target_properties(00_cufft_device_api_example
+set_target_properties(10_cufft_device_api_example_cufft_device_api_example
     PROPERTIES
         CUDA_ARCHITECTURES "${CUFFTDX_CUDA_ARCHITECTURES}"
         CUDA_SEPARABLE_COMPILATION ON
         INTERPROCEDURAL_OPTIMIZATION ON
+        OUTPUT_NAME "cufft_device_api_example"
 )

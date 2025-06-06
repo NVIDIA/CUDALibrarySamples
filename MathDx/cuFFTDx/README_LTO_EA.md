@@ -54,40 +54,40 @@ For the detailed descriptions of the examples please visit [Examples](https://do
         <tr>
             <td rowspan="3">Introduction Examples</td>
             <td>09_introduction_lto_example</td>
-            <td>00_introduction_lto_example</td>
+            <td>introduction_lto_example</td>
             <td>(offline) cuFFTDx LTO introduction</td>
         </tr>
         <tr>
             <td>04_nvrtc_fft</td>
-            <td>03_nvrtc_fft_block_lto</td>
+            <td>nvrtc_fft_block_lto</td>
             <td>(online) cuFFTDx LTO introduction</td>
         </tr>
         <tr>
             <td>10_cufft_device_api_example</td>
-            <td>00_cufft_device_api_lto_example</td>
+            <td>cufft_device_api_lto_example</td>
             <td>(offline) cuFFT Device API introduction</td>
         </tr>
         <tr>
             <td rowspan="2">Simple FFT Examples</td>
             <td>01_simple_fft_thread</td>
-            <td>02_simple_fft_thread_lto</td>
+            <td>simple_fft_thread_lto</td>
             <td>(offline) Complex-to-complex (C2C) thread FFT using LTO</td>
         </tr>
         <tr>
             <td>02_simple_fft_block_lto</td>
-            <td>10_simple_fft_block_c2r_lto</td>
+            <td>simple_fft_block_c2r_lto</td>
             <td>(offline) Complex-to-real block FFT using LTO</td>
         </tr>
         <tr>
             <td>NVRTC Examples (additional)</td>
             <td>04_nvrtc_fft</td>
-            <td>02_nvrtc_fft_thread_lto</td>
+            <td>nvrtc_fft_thread_lto</td>
             <td>(online) Complex-to-complex thread FFT using LTO</td>
         </tr>
         <tr>
             <td>FFT Performance</td>
             <td>03_block_fft_performance</td>
-            <td>02_block_fft_lto_ptx_performance</td>
+            <td>block_fft_lto_ptx_performance</td>
             <td>(offline) Benchmark for C2C block FFT (LTO vs PTX)</td>
         </tr>
     </tbody>
