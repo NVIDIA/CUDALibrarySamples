@@ -123,7 +123,7 @@ int main (int argc, char *argv[]) {
     double *x_values_d = NULL, *b_values_d = NULL;
 
     /* Allocate host memory for the sparse input matrix A,
-       right-hand side x and solution b*/
+       right-hand side b and solution x*/
 
     csr_offsets_h = (int*)malloc((n + 1) * sizeof(int));
     csr_columns_h = (int*)malloc(nnz * sizeof(int));
