@@ -35,7 +35,7 @@ This folder includes examples for cuFFTDx, cuBLASDx, cuSolverDx, cuRANDDx, and n
 |                       |                | scaled_dot_prod_attn_batched   | Multi-head attention using cuBLASDx                                            |
 |                       | Other          | batched_gemm_fp64              | Manual batching in a single CUDA block                                         |
 |                       |                | blockdim_gemm_fp16             | BLAS execution with different block dimensions                                 |
-
+|                       | Emulation      | dgemm_emulation                | Emulate double precision GEMM using lower precision operations (Ozaki scheme)  |
 
 ## [cuFFTDx](cuFFTDx)
 

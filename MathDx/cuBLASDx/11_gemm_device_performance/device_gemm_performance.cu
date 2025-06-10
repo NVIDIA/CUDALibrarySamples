@@ -38,7 +38,7 @@ __global__ void gemm_kernel(GEMMShape  const  gemm_shape,
     const auto block_coord = example::get_block_coord(gemm_arr);
 
     // Create tensors for global A / B / C corresponding to set MNK, arrangement and LDs
-    auto [global_a, global_b, global_c] = example::make_device_gmem_tensors(gemm_shape, gemm_arr, gemm_ld, a, b, c);
+    auto [global_a, global_b, global_c] = example::make_device_global_tensors(gemm_shape, gemm_arr, gemm_ld, a, b, c);
 
     // Get a row of tiles from A, containing K / tile_k stages
     const auto tile_slice_a_gmem = example::get_block_tile_slice_a<BLAS>(global_a, block_coord);
@@ -347,7 +347,7 @@ int device_gemm_performance(GlobalShape global_shape) {
 
     // Use nullptr tensors to make it easier to calculate memory requirements
     auto [global_a, global_b, global_c] =
-        example::make_device_gmem_tensors(global_shape, global_arrangement, global_ld, a_cublas, b_cublas, c_cublas);
+        example::make_device_global_tensors(global_shape, global_arrangement, global_ld, a_cublas, b_cublas, c_cublas);
 
     CUDA_CHECK_AND_EXIT(cudaMalloc(&a_cublasdx, cublasdx::cosize(global_a.layout()) * sizeof(a_io_value_type)));
     CUDA_CHECK_AND_EXIT(cudaMalloc(&a_cublas,   cublasdx::cosize(global_a.layout()) * sizeof(a_compute_value_type)));
