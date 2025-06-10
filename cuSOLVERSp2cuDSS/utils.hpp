@@ -438,6 +438,10 @@ int read_matrixmarket(std::string filename,
                       const int verbose) {
   std::ifstream file;
   file.open(filename);
+
+  if (file.fail()) {
+    throw std::runtime_error("File could not be opened!");
+  }
   
   // reading mm header
   ordinal_type nnz;
@@ -458,6 +462,9 @@ int read_matrixmarket(std::string filename,
     hermitian = (header.find("hermitian") != std::string::npos);
 
     file >> m >> n >> nnz;
+  }
+  if (m == 0 || n == 0 || nnz == 0) {
+    throw std::runtime_error("Matrix must not be empty!");
   }
 
   if (verbose) {

@@ -77,7 +77,7 @@ int driver(int argc, char * argv[]) {
   int use_cudss(0);
   int use_timer(0);
   int use_single_api(0);
-  std::string filename("test.mtx");
+  std::string filename = arith_traits_t<value_type>::is_complex ? "test_complex.mtx" : "test_real.mtx";
   int verbose(0);  
   
   /// parse for solver type, filename and verbose
