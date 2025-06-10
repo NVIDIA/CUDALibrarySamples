@@ -31,6 +31,55 @@ struct default_value<std::optional<Internal>> {
     }
 };
 
+template<class EnableSM>
+void print_supported_sm(unsigned cuda_device_arch) {
+    auto stream = std::stringstream();
+
+    if constexpr (EnableSM::sm_70) {
+        stream << "- SM 700" << std::endl;
+    }
+    if constexpr (EnableSM::sm_72) {
+        stream << "- SM 720" << std::endl;
+    }
+    if constexpr (EnableSM::sm_75) {
+        stream << "- SM 750" << std::endl;
+    }
+    if constexpr (EnableSM::sm_80) {
+        stream << "- SM 800" << std::endl;
+    }
+    if constexpr (EnableSM::sm_86) {
+        stream << "- SM 860" << std::endl;
+    }
+    if constexpr (EnableSM::sm_87) {
+        stream << "- SM 870" << std::endl;
+    }
+    if constexpr (EnableSM::sm_89) {
+        stream << "- SM 890" << std::endl;
+    }
+    if constexpr (EnableSM::sm_90) {
+        stream << "- SM 900" << std::endl;
+    }  
+    if constexpr (EnableSM::sm_100) {
+        stream << "- SM 1000" << std::endl;
+    }
+    if constexpr (EnableSM::sm_101) {
+        stream << "- SM 1010" << std::endl;
+    }
+    if constexpr (EnableSM::sm_103) {
+        stream << "- SM 1030" << std::endl;
+    }
+    if constexpr (EnableSM::sm_120) {
+        stream << "- SM 1200" << std::endl;
+    }   
+    if constexpr (EnableSM::sm_121) {
+        stream << "- SM 1210" << std::endl;
+    }
+
+    std::cerr << "Functor failed to run on any supported SM, supported SMs: \n" << stream.str() << std::endl
+              << "this device architecture: " << cuda_device_arch << std::endl;
+}
+
+
 template<class EnableSM, class StatusType, class Functor, class ... Args>
 StatusType arch_runner(unsigned cuda_device_arch, Functor example_functor, Args&& ... args) {
     switch (cuda_device_arch) {
@@ -112,16 +161,12 @@ StatusType arch_runner(unsigned cuda_device_arch, Functor example_functor, Args&
             }
             break;
         }
-        default: {
-            printf("Examples not configured to support SM %u. Use the CUBLASDX_CUDA_ARCHITECTURES CMake variable to configure the SM support.\n",
-                   cuda_device_arch);
-            return 1;
-        }
     }
 
     // We cannot check invoke_result_t because that
     // would require instantiating Arch dependent
     // runner
+    print_supported_sm<EnableSM>(cuda_device_arch);
     return default_value<StatusType>::get();
 }
 
