@@ -3,6 +3,7 @@
 
 #include <type_traits>
 #include <vector>
+#include <sstream>
 #include <random>
 #include <complex>
 #include <algorithm>
@@ -139,10 +140,6 @@ namespace example {
             size_t _size = 0;
 
             device_vector() = default;
-            device_vector(size_t s) {
-                _size = s;
-                CUDA_CHECK_AND_EXIT(cudaMalloc(&_ptr, _size * sizeof(T)));
-            }
 
             device_vector(const std::vector<T>& other) {
                 *this = other;
@@ -150,6 +147,16 @@ namespace example {
 
             device_vector(const device_vector<T>& other) {
                 *this = other;
+            }
+
+            template<typename U>
+            device_vector(const U& other) {
+                if constexpr(cute::is_integral_v<U>) {
+                    _size = other;
+                    CUDA_CHECK_AND_EXIT(cudaMalloc(&_ptr, _size * sizeof(T)));
+                } else {
+                    *this = other;
+                }
             }
 
             device_vector(device_vector<T>&& other) {
@@ -182,6 +189,16 @@ namespace example {
                 reset();
                 std::swap(_size, other._size);
                 std::swap(_ptr, other._ptr);
+                return *this;
+            }
+
+            template<typename U>
+            device_vector& operator=(const U& other) {
+                static_assert(std::is_same_v<T, typename U::element_type>, "Source element type must match target element type");
+                reset();
+                _size = cute::cosize(other.layout());
+                CUDA_CHECK_AND_EXIT(cudaMalloc(&_ptr, _size * sizeof(T)));
+                CUDA_CHECK_AND_EXIT(cudaMemcpy(_ptr, other.data(), _size * sizeof(T), cudaMemcpyHostToDevice));
                 return *this;
             }
 
@@ -311,6 +328,31 @@ namespace example {
         T operator()(V const& v) const { return convert<T>(v); }
     };
 
+    template<typename Layout>
+    constexpr CUBLASDX_HOST_DEVICE auto
+    swap_layout_modes(const Layout& l) {
+        if constexpr(cute::rank(Layout{}) == 2) {
+            return cute::select<1, 0>(l);
+        } else if constexpr(cute::rank(Layout{}) == 3) {
+            return cute::select<0, 2, 1>(l);
+        } else {
+            static_assert(cute::rank(Layout{}) > 3, "Unsupported layout rank");
+        }
+    }
+
+    template<typename Swizzle, typename Offset, typename Layout>
+    constexpr CUBLASDX_HOST_DEVICE auto
+    swap_layout_modes(const cute::ComposedLayout<Swizzle, Offset, Layout>& l) {
+        return cute::composition(l.layout_a(),
+            l.offset(),
+            swap_layout_modes(l.layout_b()));
+    }
+
+    template<typename T, typename Layout>
+    constexpr CUBLASDX_HOST_DEVICE auto
+    swap_tensor_modes(const cute::Tensor<T, Layout>& t) {
+        return cute::make_tensor(t.data(), swap_layout_modes(t.layout()));
+    }
 
     // device_gemm_performance utilities
     template<class GEMMArr>
@@ -352,10 +394,10 @@ namespace example {
         CUTE_GCC_UNREACHABLE;
     }
 
-    template<class GEMMShape, class GEMMArr, class GEMMLD, class TA, class TB, class TC>
+    template<class GEMMShape, class GEMMArr, class GEMMLD, class AIter, class BIter, class CIter>
     CUBLASDX_HOST_DEVICE
-    auto make_device_gmem_tensors(GEMMShape const& gemm_shape, GEMMArr, GEMMLD const& gemm_ld,
-                                  TA* a_ptr, TB* b_ptr, TC* c_ptr) {
+    auto make_global_tensors(GEMMShape const& gemm_shape, GEMMArr, GEMMLD const& gemm_ld,
+                             AIter a_iter, BIter b_iter, CIter c_iter) {
 
         static_assert(cute::is_static<GEMMArr>::value, "Arrangement must be static");
 
@@ -369,9 +411,16 @@ namespace example {
         const auto stride_c = swap_if<arr_c == cublasdx::row_major>(cute::_1{}, cute::get<2>(gemm_ld));
 
         return cute::make_tuple(
-            cublasdx::make_tensor(cute::make_gmem_ptr(a_ptr), cute::make_layout(cute::select<0, 2>(gemm_shape), stride_a)),
-            cublasdx::make_tensor(cute::make_gmem_ptr(b_ptr), cute::make_layout(cute::select<2, 1>(gemm_shape), stride_b)),
-            cublasdx::make_tensor(cute::make_gmem_ptr(c_ptr), cute::make_layout(cute::select<0, 1>(gemm_shape), stride_c)));
+            cublasdx::make_tensor(a_iter, cute::make_layout(cute::select<0, 2>(gemm_shape), stride_a)),
+            cublasdx::make_tensor(b_iter, cute::make_layout(cute::select<2, 1>(gemm_shape), stride_b)),
+            cublasdx::make_tensor(c_iter, cute::make_layout(cute::select<0, 1>(gemm_shape), stride_c)));
+    }
+
+    template<class GEMMShape, class GEMMArr, class GEMMLD, class TA, class TB, class TC>
+    CUBLASDX_HOST_DEVICE
+    auto make_device_global_tensors(GEMMShape const& gemm_shape, GEMMArr gemm_arr, GEMMLD const& gemm_ld,
+                                    TA* a_ptr, TB* b_ptr, TC* c_ptr) {
+        return make_global_tensors(gemm_shape, gemm_arr, gemm_ld, cute::make_gmem_ptr(a_ptr), cute::make_gmem_ptr(b_ptr), cute::make_gmem_ptr(c_ptr));
     }
 
     template<class BLAS, class ATensor, class BlockCoord>
@@ -543,9 +592,10 @@ namespace example {
     template<typename T>
     std::vector<T> get_random_data(const float  min,
                                    const float  max,
-                                   const size_t size) {
+                                   const size_t size,
+                                   const int    seed = -1) {
         std::random_device                    rd;
-        std::mt19937                          gen(rd());
+        std::mt19937                          gen((seed != -1) ? seed : rd());
         using gen_t = std::conditional_t<commondx::is_floating_point_v<T>, float, int>;
         using dist_t = std::conditional_t<commondx::is_floating_point_v<T>,
                                           std::uniform_real_distribution<float>,

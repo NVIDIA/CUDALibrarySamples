@@ -175,6 +175,8 @@ function(add_cufftdx_cublasdx_example GROUP_TARGET EXAMPLE_SOURCES)
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xfatbin -compress-all>"
             # Required to support std::tuple in device code
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--expt-relaxed-constexpr>"
+            "--extended-lambda"
+             
     )
     set_tests_properties(${EXAMPLE_NAME}
         PROPERTIES
@@ -326,6 +328,7 @@ add_cublasdx_example(cublasdx_examples 12_gemm_device_partial_sums/gemm_device_p
 add_cublasdx_example(cublasdx_examples 14_gemm_fused/gemm_fusion.cu)
 add_cublasdx_example(cublasdx_examples 04_gemm_blockdim/blockdim_gemm_fp16.cu)
 add_cublasdx_example(cublasdx_examples 05_gemm_batched/batched_gemm_fp64.cu)
+add_cublasdx_example(cublasdx_examples 16_dgemm_emulation/dgemm_emulation.cu)
 
 # cuBLASDx performance examples
 # Examples which measure performance are enabled only for CUDA >=11.8.0 because of an NVCC bug
