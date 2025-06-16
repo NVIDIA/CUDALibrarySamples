@@ -27,22 +27,16 @@
  */
 
 #include <assert.h>
+#include <cublasmp.h>
 #include <cuda_fp8.h>
 #include <math.h>
 #include <mpi.h>
-#include <omp.h>
+#include <nvshmem.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 
 #include <vector>
-
-#ifdef USE_CAL_MPI
-#include <cal_mpi.h>
-#endif
-
-#include <cublasmp.h>
-#include <nvshmem.h>
 
 #include "helpers.h"
 #include "matrix_generator.hxx"
@@ -68,20 +62,17 @@ int main(int argc, char* argv[])
     CUDA_CHECK(cudaSetDevice(local_device));
     CUDA_CHECK(cudaFree(nullptr));
 
-    cal_comm_t cal_comm = nullptr;
-#ifdef USE_CAL_MPI
-    CAL_CHECK(cal_comm_create_mpi(MPI_COMM_WORLD, rank, nranks, local_device, &cal_comm));
-#else
-    cal_comm_create_params_t params;
-    params.allgather = allgather;
-    params.req_test = request_test;
-    params.req_free = request_free;
-    params.data = (void*)(MPI_COMM_WORLD);
-    params.rank = rank;
-    params.nranks = nranks;
-    params.local_device = local_device;
-    CAL_CHECK(cal_comm_create(params, &cal_comm));
-#endif
+    ncclUniqueId id;
+
+    if (rank == 0)
+    {
+        NCCL_CHECK(ncclGetUniqueId(&id));
+    }
+
+    MPI_CHECK(MPI_Bcast(&id, sizeof(id), MPI_BYTE, 0, MPI_COMM_WORLD));
+
+    ncclComm_t comm;
+    NCCL_CHECK(ncclCommInitRank(&comm, nranks, id, rank));
 
     cudaStream_t stream = nullptr;
     CUDA_CHECK(cudaStreamCreate(&stream));
@@ -110,8 +101,8 @@ int main(int argc, char* argv[])
     cublasMpGrid_t grid_col_major = nullptr;
     cublasMpGrid_t grid_row_major = nullptr;
 
-    CUBLASMP_CHECK(cublasMpGridCreate(nranks, 1, CUBLASMP_GRID_LAYOUT_COL_MAJOR, cal_comm, &grid_col_major));
-    CUBLASMP_CHECK(cublasMpGridCreate(1, nranks, CUBLASMP_GRID_LAYOUT_ROW_MAJOR, cal_comm, &grid_row_major));
+    CUBLASMP_CHECK(cublasMpGridCreate(nranks, 1, CUBLASMP_GRID_LAYOUT_COL_MAJOR, comm, &grid_col_major));
+    CUBLASMP_CHECK(cublasMpGridCreate(1, nranks, CUBLASMP_GRID_LAYOUT_ROW_MAJOR, comm, &grid_row_major));
 
     const int64_t m = 64;
     const int64_t n = 64 * nranks;
@@ -187,8 +178,7 @@ int main(int argc, char* argv[])
 
     std::vector<int8_t> h_work(workspaceInBytesOnHost);
 
-    CAL_CHECK(cal_stream_sync(cal_comm, stream));
-    CAL_CHECK(cal_comm_barrier(cal_comm, stream));
+    CUDA_CHECK(cudaStreamSynchronize(stream));
 
     const double begin = MPI_Wtime();
 
@@ -221,8 +211,7 @@ int main(int argc, char* argv[])
         h_work.data(),
         workspaceInBytesOnHost));
 
-    CAL_CHECK(cal_stream_sync(cal_comm, stream));
-    CAL_CHECK(cal_comm_barrier(cal_comm, stream));
+    CUDA_CHECK(cudaStreamSynchronize(stream));
 
     const double end = MPI_Wtime();
 
@@ -250,9 +239,8 @@ int main(int argc, char* argv[])
 
     CUBLASMP_CHECK(cublasMpDestroy(handle));
 
-    CAL_CHECK(cal_comm_barrier(cal_comm, stream));
-
-    CAL_CHECK(cal_comm_destroy(cal_comm));
+    NCCL_CHECK(ncclCommFinalize(comm));
+    NCCL_CHECK(ncclCommDestroy(comm));
 
     CUDA_CHECK(cudaStreamDestroy(stream));
 
