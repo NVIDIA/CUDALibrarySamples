@@ -46,8 +46,10 @@
  * comments to the code, the above Disclaimer and U.S. Government End
  * Users Notice.
  */
+
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
 #include <assert.h>
 #include <cuda_runtime.h>
@@ -168,7 +170,7 @@ int main (int argc, char *argv[]) {
     handler.ctx = reinterpret_cast<void*>(&pool);
     handler.device_alloc = example_device_alloc;
     handler.device_free = example_device_dealloc;
-    memcpy(handler.name, "simple verbose device memory pool", CUDSS_ALLOCATOR_NAME_LEN);
+    strncpy(handler.name, "simple verbose device memory pool", CUDSS_ALLOCATOR_NAME_LEN);
 
     /* Allocate host memory for the sparse input matrix A,
        right-hand side x and solution b*/
@@ -252,7 +254,7 @@ int main (int argc, char *argv[]) {
     CUDSS_CALL_AND_CHECK(cudssSetStream(handle, stream), status, "cudssSetStream");
 
     /* (optional) Setting a user-defined device memory pool for the library handle */
-    printf("Setting the device memory handler in the cudSS library handle so that now\n"
+    printf("Setting the device memory handler in the cudSS library handle so that now "
            "device memory allocations inside cuDSS will use the user's memory pool \n");
     CUDSS_CALL_AND_CHECK(cudssSetDeviceMemHandler(handle, &handler), status,
                          "cudssSetDeviceMemHandler");

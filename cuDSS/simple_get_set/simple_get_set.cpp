@@ -46,6 +46,7 @@
  * comments to the code, the above Disclaimer and U.S. Government End
  * Users Notice.
  */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -75,12 +76,16 @@
         free(x_values_h); \
         free(b_values_h); \
         free(diag_h);       \
+        free(row_scale_h); \
+        free(col_scale_h); \
         cudaFree(csr_offsets_d); \
         cudaFree(csr_columns_d); \
         cudaFree(csr_values_d); \
         cudaFree(x_values_d); \
         cudaFree(b_values_d); \
         cudaFree(diag_d); \
+        cudaFree(row_scale_d); \
+        cudaFree(col_scale_d); \
     } while(0);
 
 #define CUDA_CALL_AND_CHECK(call, msg) \
@@ -130,12 +135,14 @@ int main (int argc, char *argv[]) {
     double *csr_values_h = NULL;
     double *x_values_h = NULL, *b_values_h = NULL;
     double *diag_h = NULL;
+    double *row_scale_h = NULL, *col_scale_h = NULL;
 
     int *csr_offsets_d = NULL;
     int *csr_columns_d = NULL;
     double *csr_values_d = NULL;
     double *x_values_d = NULL, *b_values_d = NULL;
     double *diag_d = NULL;
+    double *row_scale_d = NULL, *col_scale_d = NULL;
 
     /* Allocate host memory for the sparse input matrix A,
        right-hand side x and solution b*/
@@ -147,9 +154,11 @@ int main (int argc, char *argv[]) {
     b_values_h = (double*)malloc(nrhs * n * sizeof(double));
 
     diag_h = (double*)malloc(n * sizeof(double));
+    row_scale_h = (double*)malloc(n * sizeof(double));
+    col_scale_h = (double*)malloc(n * sizeof(double));
 
     if (!csr_offsets_h || ! csr_columns_h || !csr_values_h ||
-        !x_values_h || !b_values_h || !diag_h) {
+        !x_values_h || !b_values_h || !diag_h || !row_scale_h || !col_scale_h) {
         printf("Error: host memory allocation failed\n");
         return -1;
     }
@@ -180,6 +189,7 @@ int main (int argc, char *argv[]) {
     /* Note: Right-hand side b is initialized with values which correspond
        to the exact solution vector {1, 2, 3, 4, 5} */
     i = 0;
+    // for symmetric-case
     b_values_h[i++] = 7.0;
     b_values_h[i++] = 12.0;
     b_values_h[i++] = 25.0;
@@ -200,6 +210,10 @@ int main (int argc, char *argv[]) {
 
     CUDA_CALL_AND_CHECK(cudaMalloc(&diag_d, n * sizeof(double)),
                         "cudaMalloc for diag");
+    CUDA_CALL_AND_CHECK(cudaMalloc(&row_scale_d, n * sizeof(double)),
+                        "cudaMalloc for row_scale");
+    CUDA_CALL_AND_CHECK(cudaMalloc(&col_scale_d, n * sizeof(double)),
+                        "cudaMalloc for col_scale");
 
     /* Copy host memory to device for A and b */
     CUDA_CALL_AND_CHECK(cudaMemcpy(csr_offsets_d, csr_offsets_h, (n + 1) * sizeof(int),
@@ -232,7 +246,15 @@ int main (int argc, char *argv[]) {
     /* (optional) Setting algorithmic knobs */
     cudssAlgType_t reorder_alg = CUDSS_ALG_DEFAULT;
     CUDSS_CALL_AND_CHECK(cudssConfigSet(solverConfig, CUDSS_CONFIG_REORDERING_ALG,
-                         &reorder_alg, sizeof(cudssAlgType_t)), status, "cudssSolverSet");
+                         &reorder_alg, sizeof(cudssAlgType_t)), status, "cudssConfigSet for reordering alg");
+
+    int ione = 1;
+    CUDSS_CALL_AND_CHECK(cudssConfigSet(solverConfig, CUDSS_CONFIG_USE_MATCHING,
+                         &ione, sizeof(int)), status, "cudssConfigSet for matching");
+
+    cudssAlgType_t matching_alg = CUDSS_ALG_DEFAULT; // matching with scaling, same as CUDSS_ALG_5
+    CUDSS_CALL_AND_CHECK(cudssConfigSet(solverConfig, CUDSS_CONFIG_MATCHING_ALG,
+                         &matching_alg, sizeof(cudssAlgType_t)), status, "cudssConfigSet for matching alg");
 
     /* Create matrix objects for the right-hand side b and solution x (as dense matrices). */
     cudssMatrix_t x, b;
@@ -249,6 +271,7 @@ int main (int argc, char *argv[]) {
     cudssMatrixType_t mtype     = CUDSS_MTYPE_SYMMETRIC;
     cudssMatrixViewType_t mview = CUDSS_MVIEW_UPPER;
     cudssIndexBase_t base       = CUDSS_BASE_ZERO;
+
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateCsr(&A, nrows, ncols, nnz, csr_offsets_d, NULL,
                          csr_columns_d, csr_values_d, CUDA_R_32I, CUDA_R_64F, mtype, mview,
                          base), status, "cudssMatrixCreateCsr");
@@ -258,19 +281,42 @@ int main (int argc, char *argv[]) {
                          A, x, b), status, "cudssExecute for analysis");
 
     size_t sizeWritten;
-    int row_perm[5];
-    CUDSS_CALL_AND_CHECK(cudssDataGet(handle, solverData, CUDSS_DATA_PERM_REORDER_ROW, &row_perm,
-                         sizeof(row_perm), &sizeWritten),
-                         status, "cudssDataGet for row reorder perm");
-    for (int i = 0; i < n; i++)
-        printf("row reorder perm[%d] = %d\n", i, row_perm[i]);
+    int perm[5];
+    CUDSS_CALL_AND_CHECK(cudssDataGet(handle, solverData, CUDSS_DATA_PERM_REORDER_ROW, &perm,
+                         sizeof(perm), &sizeWritten), status, "cudssDataGet for reorder row perm");
+    for (int i = 0; i < 5; i++)
+        printf("reorder row perm[%d] = %d\n", i, perm[i]);
 
-    int col_perm[5];
-    CUDSS_CALL_AND_CHECK(cudssDataGet(handle, solverData, CUDSS_DATA_PERM_REORDER_COL, &col_perm,
-                         sizeof(col_perm), &sizeWritten),
-                         status, "cudssDataGet for col reorder perm");
-    for (int i = 0; i < n; i++)
-        printf("col reorder perm[%d] = %d\n", i, col_perm[i]);
+    CUDSS_CALL_AND_CHECK(cudssDataGet(handle, solverData, CUDSS_DATA_PERM_REORDER_COL, &perm,
+                         sizeof(perm), &sizeWritten), status, "cudssDataGet for reorder col perm");
+    for (int i = 0; i < 5; i++)
+        printf("reorder col perm[%d] = %d\n", i, perm[i]);
+
+    int used_matching = 0;
+    CUDSS_CALL_AND_CHECK(cudssConfigGet(solverConfig, CUDSS_CONFIG_USE_MATCHING,
+                            &used_matching, sizeof(int), &sizeWritten),
+                        status, "cudssConfigGet for use_matching");
+
+    if (used_matching) {
+        CUDSS_CALL_AND_CHECK(cudssDataGet(handle, solverData, CUDSS_DATA_PERM_MATCHING, &perm,
+                            sizeof(perm), &sizeWritten), status, "cudssDataGet for matching perm");
+        for (int i = 0; i < 5; i++)
+            printf("matching (col) perm[%d] = %d\n", i, perm[i]);
+    }
+
+    /*  Note: currently these features are only supported for CUDSS_ALG_1 and CUDSS_ALG_2
+        reordering algorithms. */
+    if (reorder_alg == CUDSS_ALG_1 || reorder_alg == CUDSS_ALG_2) {
+        CUDSS_CALL_AND_CHECK(cudssDataGet(handle, solverData, CUDSS_DATA_PERM_ROW, &perm,
+                             sizeof(perm), &sizeWritten), status, "cudssDataGet for row perm");
+        for (int i = 0; i < 5; i++)
+            printf("final row perm[%d] = %d\n", i, perm[i]);
+
+        CUDSS_CALL_AND_CHECK(cudssDataGet(handle, solverData, CUDSS_DATA_PERM_COL, &perm,
+                             sizeof(perm), &sizeWritten), status, "cudssDataGet for col perm");
+        for (int i = 0; i < 5; i++)
+            printf("final col perm[%d] = %d\n", i, perm[i]);
+    }
 
     int64_t memory_estimates[16] = {0};
     CUDSS_CALL_AND_CHECK(cudssDataGet(handle, solverData, CUDSS_DATA_MEMORY_ESTIMATES,
@@ -280,9 +326,9 @@ int main (int argc, char *argv[]) {
             memory_estimates[0], memory_estimates[1]);
     printf("memory estimates: host: %ld (stable) %ld (peak)\n",
             memory_estimates[2], memory_estimates[3]);
-    // (would only make sense for the hybrid memory mode)
-    //printf("memory estimates: hybrid peak: %ld = (GPU) %ld (CPU)\n",
-    //        memory_estimates[4], memory_estimates[5]);
+    printf("memory estimates: hybrid peak: %ld = (GPU) %ld (CPU)\n",
+            memory_estimates[4], memory_estimates[5]);
+    fflush(0);
 
     /* Factorization */
     CUDSS_CALL_AND_CHECK(cudssExecute(handle, CUDSS_PHASE_FACTORIZATION, solverConfig,
@@ -325,34 +371,31 @@ int main (int argc, char *argv[]) {
                          sizeof(int64_t), NULL), status, "cudssDataGet for lu_nnz");
     printf("cuDSS #nnz in LU = %ld\n", lu_nnz);
 
-    /*  Note: currently these features are only supported for CUDSS_ALG_1 and CUDSS_ALG_2
-        reordering algorithms. */
-    if (reorder_alg == CUDSS_ALG_1 || reorder_alg == CUDSS_ALG_2) {
-        int row_final_perm[5];
-        CUDSS_CALL_AND_CHECK(cudssDataGet(handle, solverData, CUDSS_DATA_PERM_ROW, &row_final_perm,
-                             sizeof(row_final_perm), &sizeWritten),
-                             status, "cudssDataGet for row final perm");
-        for (int i = 0; i < n; i++)
-            printf("final row perm[%d] = %d\n", i, row_final_perm[i]);
-
-        int col_final_perm[5];
-        CUDSS_CALL_AND_CHECK(cudssDataGet(handle, solverData, CUDSS_DATA_PERM_COL, &col_final_perm,
-                             sizeof(col_final_perm), &sizeWritten),
-                             status, "cudssDataGet for col final perm");
-        for (int i = 0; i < n; i++)
-            printf("final col perm[%d] = %d\n", i, col_final_perm[i]);
-    }
-
-
     /* (optional) Getting data back when the user knows the size
-        Note: cudssDataGet is a synchronous API.
     */
     CUDSS_CALL_AND_CHECK(cudssDataGet(handle, solverData, CUDSS_DATA_DIAG, diag_d,
                          n*sizeof(double), &sizeWritten), status, "cudssDataGet for diag");
-    CUDA_CALL_AND_CHECK(cudaMemcpy(diag_h, diag_d, nrhs * n * sizeof(double),
+    CUDA_CALL_AND_CHECK(cudaMemcpy(diag_h, diag_d, n * sizeof(double),
                         cudaMemcpyDeviceToHost), "cudaMemcpy for diag");
     for (int i = 0; i < 5; i++)
         printf("diag[%d] = %f\n", i, diag_h[i]);
+
+    /* Note: scales are always real (never complex) and positive */
+    if (matching_alg == CUDSS_ALG_DEFAULT || matching_alg == CUDSS_ALG_5) {
+        CUDSS_CALL_AND_CHECK(cudssDataGet(handle, solverData, CUDSS_DATA_SCALE_ROW, row_scale_d,
+                             n*sizeof(double), &sizeWritten), status, "cudssDataGet for row scale");
+        CUDA_CALL_AND_CHECK(cudaMemcpy(row_scale_h, row_scale_d, n * sizeof(double),
+                            cudaMemcpyDeviceToHost), "cudaMemcpy for row scale");
+        for (int i = 0; i < 5; i++)
+            printf("row scale[%d] = %f\n", i, row_scale_h[i]);
+
+        CUDSS_CALL_AND_CHECK(cudssDataGet(handle, solverData, CUDSS_DATA_SCALE_COL, col_scale_d,
+            n*sizeof(double), &sizeWritten), status, "cudssDataGet for col scale");
+        CUDA_CALL_AND_CHECK(cudaMemcpy(col_scale_h, col_scale_d, n * sizeof(double),
+                            cudaMemcpyDeviceToHost), "cudaMemcpy for col scale");
+        for (int i = 0; i < 5; i++)
+            printf("col scale[%d] = %f\n", i, col_scale_h[i]);
+    }
 
     int iter_ref_nsteps = 2;
     CUDSS_CALL_AND_CHECK(cudssConfigSet(solverConfig, CUDSS_CONFIG_IR_N_STEPS,
@@ -388,10 +431,11 @@ int main (int argc, char *argv[]) {
 
     CUDSS_EXAMPLE_FREE;
 
-    if (status == CUDSS_STATUS_SUCCESS && passed)
+    if (status == CUDSS_STATUS_SUCCESS && passed) {
         printf("Example PASSED\n");
-    else
+        return 0;
+    } else {
         printf("Example FAILED\n");
-
-    return 0;
+        return -1;
+    }
 }
