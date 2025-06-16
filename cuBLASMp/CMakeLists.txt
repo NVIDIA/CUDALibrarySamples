@@ -14,13 +14,9 @@ project(cublasmp_samples LANGUAGES CXX CUDA)
 
 find_package(MPI REQUIRED)
 
-set(CMAKE_CUDA_STANDARD 11)
+set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 set(CUDA_RUNTIME_LIBRARY shared)
-
-if (CAL_MPI_INCLUDE_PATH AND CAL_MPI_LIBRARIES)
-    add_definitions(-DUSE_CAL_MPI)
-endif ()
 
 function(build_sample sample_name)
     add_executable(${sample_name} ${sample_name}.cu)
@@ -31,9 +27,8 @@ function(build_sample sample_name)
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
         ${MPI_CXX_INCLUDE_DIRS}
-        ${CAL_INCLUDE_DIRECTORIES}
         ${CUBLASMP_INCLUDE_DIRECTORIES}
-        ${CAL_MPI_INCLUDE_PATH}
+        ${NCCL_INCLUDE_DIRECTORIES}
         ${NVSHMEM_INCLUDE_DIRECTORIES}
     )
 
@@ -45,13 +40,12 @@ function(build_sample sample_name)
     target_link_libraries(${sample_name} PUBLIC
         cudart
         ${CUBLASMP_LIBRARIES}
-        ${CAL_LIBRARIES}
         ${MPI_CXX_LIBRARIES}
+        ${NCCL_LIBRARIES}
         ${NVSHMEM_HOST_LIBRARIES}
         ${NVSHMEM_DEVICE_LIBRARIES}
         nvidia-ml
         m
-        ${CAL_MPI_LIBRARIES}
     )
 
     install(TARGETS ${sample_name}
