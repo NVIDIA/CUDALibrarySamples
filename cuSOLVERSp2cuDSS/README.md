@@ -62,10 +62,21 @@ codes `cuSolverSp2cuDSS.hpp` and `cuSolverRf2cuDSS.hpp`.
 
 # Deprecated cuSOLVERSp APIs without direct replacement in cuDSS
 
-The eigenproblem solver `cusolverSp[S,D,C,Z]csreigvsi` does not have a direct counterpart in cuDSS.
+The eigenproblem solver `cusolverSp[S,D,C,Z]csreigvsi` and the eigenvalue counting `cusolverSp[S,D,C,Z]csreigs` do not have direct counterparts in cuDSS.
 The examples demonstrate how to implement this functionality using cuDSS and auxiliary routines.
 
-**Remark:** Since the eigenvectors are not unique, `csreigvsi` and its reimplementation using cuDSS may compute different results.
+**Remark on `csreigvsi`:**
+- Since the eigenvectors are not unique, `csreigvsi` and its reimplementation using cuDSS may compute different results.
+
+**Remark on `csreigs`:**
+- Since `csreigs` and the implementation using cuDSS use a different algorithmic formulation and potentially different resolutions, the computed results may differ.
+- Both implementations work on a box $B$ that is defined by its bottom left corner and its top right corner.
+- The routine `csreigs` approximates the number of zeros of the characteristic polynomial $P(z) = \det(A -zI)$ with the contour integral $\frac{1}{2 \pi i} \oint_B \frac{P^{\prime}(z)}{P(z)}dz$. The derivative is approximated using finite differences.
+- The implementation via cuDSS uses the mathematically equivalent formulation $\frac{1}{2 \pi i} \oint_B \operatorname{trace}((A-zI)^{-1})dz$. It is assumed that $A-zI$ is not singular (if so, the box or the quadrature points can be changed).
+- In general, eigenvalues that are on the contour of the box or close to it may not be accurately captured. For the cuDSS implementation, the accuracy may be improved by increasing the number of quadrature points on the contour.
+
+
+
 
 # Building the examples
 
@@ -187,4 +198,13 @@ Outputs from csreigvsi2cuDSS_double:
       0.412317
       -0.559572
       0.704567
+```
+
+Outputs from csreigs2cuDSS_dcomplex:
+```
+Box is defined by the bottom left corner [-1 + -3i] and the top right corner [1 + 1i]
+Compute eigenvalue count in box with cusolverSp
+Number of eigenvalues = 2
+Compute eigenvalue count in box with cuDSS
+Number of eigenvalues = 2
 ```
