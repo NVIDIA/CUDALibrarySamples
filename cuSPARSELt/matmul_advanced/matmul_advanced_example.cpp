@@ -106,7 +106,7 @@ struct cusparse_compute_type<int> {
     cusparseStatus_t status = (func);                                          \
     if (status != CUSPARSE_STATUS_SUCCESS) {                                   \
         printf("CUSPARSE API failed at line %d with error: %s (%d)\n",         \
-               __LINE__, cusparseGetErrorString(status), status);              \
+               __LINE__, cusparseLtGetErrorString(status), status);            \
         return EXIT_FAILURE;                                                   \
     }                                                                          \
 }
@@ -149,9 +149,12 @@ int main(void) {
         !(major_cc == 8 && minor_cc == 9) &&
         !(major_cc == 9 && minor_cc == 0) &&
         !(major_cc == 10 && minor_cc == 0) &&
-        !(major_cc == 12 && minor_cc == 0)) {
+        !(major_cc == 10 && minor_cc == 1) &&
+        !(major_cc == 11 && minor_cc == 0) &&
+        !(major_cc == 12 && minor_cc == 0) &&
+        !(major_cc == 12 && minor_cc == 1)) {
         std::printf("\ncusparseLt is supported only on GPU devices with"
-                    " compute capability == 8.0, 8.6, 8.7, 8.9, 9.0 10.0 12.0 current: %d.%d\n\n",
+                    " compute capability == 8.0, 8.6, 8.7, 8.9, 9.0 10.0 10.1 110 12.0 12.1 current: %d.%d\n\n",
                      major_cc, minor_cc);
         return EXIT_UNSUPPORTED;
     }
@@ -406,6 +409,7 @@ int main(void) {
     CHECK_CUSPARSE( cusparseLtMatDescriptorDestroy(&matA) )
     CHECK_CUSPARSE( cusparseLtMatDescriptorDestroy(&matB) )
     CHECK_CUSPARSE( cusparseLtMatDescriptorDestroy(&matC) )
+    CHECK_CUSPARSE( cusparseLtMatmulAlgSelectionDestroy(&alg_sel) )
     CHECK_CUSPARSE( cusparseLtMatmulPlanDestroy(&plan) )
     CHECK_CUSPARSE( cusparseLtDestroy(&handle) )
     //--------------------------------------------------------------------------
