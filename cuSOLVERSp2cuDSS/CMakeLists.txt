@@ -121,6 +121,13 @@ set(CUSOLVER_DRIVERS csreigvsi2cuDSS)
 build_driver()
 
 #
+# csreigs (only double complex)
+#
+set(CUSOLVER_ETI_VALUE_TYPES dcomplex)
+set(CUSOLVER_DRIVERS csreigs2cuDSS)
+build_driver()
+
+#
 # Copy test matrices to the build directory
 #
 configure_file(test_complex.mtx test_complex.mtx)
