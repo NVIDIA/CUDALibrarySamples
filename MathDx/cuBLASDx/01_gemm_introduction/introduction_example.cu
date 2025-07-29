@@ -141,7 +141,6 @@ int introduction_example() {
     // Shared Memory API: C = alpha * A * B + beta * C
     // Invokes kernel with GEMM::block_dim threads in CUDA block
     gemm_kernel_shared<GEMM><<<1, GEMM::block_dim, cublasdx::get_shared_storage_size<GEMM>()>>>(1.0, a, b, 1.0, c);
-    gemm_kernel_shared<GEMM><<<1, GEMM::block_dim, cublasdx::get_shared_storage_size<GEMM>()>>>(1.0, a, b, 1.0, c);
     CUDA_CHECK_AND_EXIT(cudaPeekAtLastError());
     // Register Fragment Accumulation API: C = A * B + C
     // Invokes kernel with GEMM::block_dim threads in CUDA block
