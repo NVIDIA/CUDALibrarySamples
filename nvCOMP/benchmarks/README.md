@@ -92,6 +92,15 @@ This folder contains benchmarks demonstrating the performance (and usage) of the
                 [{-m|--memory}]
     ```
 
+* [CRC32 benchmark](benchmark_crc32.cpp)
+
+    The sample demonstrates the nvCOMP CRC32 usage and performance via nvCOMP.
+
+    ```
+    benchmark_crc32 [output_file]
+                    [storage_size]
+    ```
+
 Most of the benchmark executables also support:
 
 ```
