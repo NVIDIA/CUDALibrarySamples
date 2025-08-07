@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2021-2025, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -368,7 +368,7 @@ int read_next_batch(FileNames &image_names, int batch_size,
 
 void populate_encoderconfig(nvjpeg2kEncodeConfig_t& enc_config, Image& input_image, encode_params_t &params)
 {
-    memset(&enc_config, 0, sizeof(enc_config));
+    enc_config = {}; // set to default
     enc_config.stream_type =  NVJPEG2K_STREAM_JP2;
     enc_config.color_space = input_image.getColorSpace();
     enc_config.image_width =  input_image.getnvjpeg2kImageInfo().image_width;
@@ -377,10 +377,15 @@ void populate_encoderconfig(nvjpeg2kEncodeConfig_t& enc_config, Image& input_ima
     enc_config.image_comp_info = input_image.getnvjpeg2kCompInfo();
     enc_config.code_block_w = (uint32_t)params.cblk_w;
     enc_config.code_block_h = (uint32_t)params.cblk_h;
-    enc_config.irreversible = (uint32_t)params.irreversible;
+    enc_config.irreversible = (uint32_t)params.is_irreversible;
     enc_config.mct_mode = enc_config.color_space == NVJPEG2K_COLORSPACE_SRGB ? 1 : 0;
     enc_config.prog_order = NVJPEG2K_LRCP;
     enc_config.num_resolutions = 6;
+
+    if (params.use_ht) {
+        enc_config.rsiz = NVJPEG2K_RSIZ_HT;
+        enc_config.encode_modes = NVJPEG2K_MODE_HT;
+    }
 }
 
 int encode_images(Image* input_images, encode_params_t &params, BitStreamData &bitstreams, double &time)
@@ -399,7 +404,9 @@ int encode_images(Image* input_images, encode_params_t &params, BitStreamData &b
         populate_encoderconfig(enc_config, input_images[batch_id], params);
 
         CHECK_NVJPEG2K(nvjpeg2kEncodeParamsSetEncodeConfig(params.enc_params, &enc_config));
-        CHECK_NVJPEG2K(nvjpeg2kEncodeParamsSetQuality(params.enc_params, params.target_psnr));
+        if (params.quality_value != 0) {
+            CHECK_NVJPEG2K(nvjpeg2kEncodeParamsSpecifyQuality(params.enc_params, params.quality_type, params.quality_value));
+        }
         CHECK_NVJPEG2K(nvjpeg2kEncode(params.enc_handle, params.enc_state, params.enc_params, 
             &input_images[batch_id].getImageDevice(), params.stream));
 
@@ -439,9 +446,12 @@ int write_output(BitStreamData &bitstreams, FileNames &filenames, encode_params_
         sFileName = (std::string::npos == position) ? sFileName
                                                     : sFileName.substr(0, position);
         const char* wavelet_type []= {"revWavelet","irrevWavelet"};
+        const char* ht_type []= {"legacy", "HT"};
         std::string fname(params.output_dir + "/" + sFileName 
-                         + "_q" + std::to_string((int)params.target_psnr)
-                         + "_"+ wavelet_type[params.irreversible]
+                         + "_qt" + std::to_string(params.quality_type)
+                         + "_qv" + std::to_string(params.quality_value)
+                         + "_"+ wavelet_type[params.is_irreversible]
+                         + "_"+ ht_type[params.use_ht]
                          + "_blksz"+ std::to_string((int)params.cblk_w)+"x"+std::to_string((int)params.cblk_h)
                          +".jp2");
 
@@ -643,32 +653,30 @@ int main(int argc, const char *argv[])
         std::cout << "Usage: " << argv[0]
                   << " -i images_dir [-b batch_size] [-t total_images] "
                   << "[-I] [-cblk cblk_w,cblk_h]"<<std::endl
-                  << "\t[-w warmup_iterations] [-o output_dir] "<<std::endl
+                  << "\t[-w warmup_iterations] [-o output_dir] [-ht] "<<std::endl
+                  << "\t[-q_factor value] [-quantization value] [-psnr value]"<<std::endl
                   << "\t[-img_fmt img_w,img_h,num_comp,precision,chromaformat]"
                   << " (-img_fmt is mandatory for raw yuv files)"<<std::endl
-                  << "\teg: for an 8 bit image of size 1920x1080 with 420 subsamling: "
+                  << "\teg: for an 8 bit image of size 1920x1080 with 420 subsampling: "
                   << "-img-dims 1920,1080,3,8,chroma420"<<std::endl;
                   
         std::cout << "Parameters: " << std::endl;
-        std::cout << "\timages_dir\t:\tPath to single image or directory of images"
-                  << std::endl;
-        std::cout << "\tbatch_size\t:\tEncode images from input by batches of "
-                     "specified size"
-                  << std::endl;
-        std::cout << "\ttotal_images\t:\tEncode these many images, if there are "
-                     "fewer images \n"
-                  << "\t\t\t\tin the input than total images, encoder will loop "
-                     "over the input"
-                  << std::endl;
-        std::cout<<"\t\t-I\t:\tEnable irreversible wavelet transform"<<std::endl;
+        std::cout << "\timages_dir\t:\tPath to single image or directory of images" << std::endl;
+        std::cout << "\tbatch_size\t:\tEncode images from input by batches of specified size" << std::endl;
+        std::cout << "\ttotal_images\t:\tEncode these many images, if there are fewer images \n"
+                  << "\t\t\t\tin the input than total images, encoder will loop over the input" << std::endl;
+        std::cout << "\t-ht\t\t:\tEnable High Throughput encoding"<<std::endl;
+        std::cout << "\t-I\t\t:\tEnable irreversible wavelet transform. Must be set to use any quality option"<<std::endl;
+        std::cout << "\t-q_factor\t:\tSet `value` as Q-Factor (jpeg-like) quality:\n"
+                  << "\t\t\t\tfloating point from 1.0 (worst) to 100.0 (best)"<<std::endl;
+        std::cout << "\t-quantization\t:\tSet `value` as quantization step (by how much pixel data will be divided):\n"
+                  << "\t\t\t\tfloating point, bigger the value, the lower the result quality."<<std::endl;
+        std::cout << "\t-psnr\t\t:\tSet `value` as target PSNR value: positive floating point.\n"
+                  << "\t\t\t\tCannot be used with -ht option "<<std::endl;
         std::cout << "\tcblk_w,cblk_h\t:\tCode block width and code block height"<<std::endl
                   << "\t\t\t\tvalid values are 32,32 and 64,64 "<<std::endl;
-        std::cout << "\twarmup_iterations:\tRun these many batches first "
-                     "without measuring performance"
-                  << std::endl;
-        std::cout
-            << "\toutput_dir\t:\tWrite compressed jpeg 2000 files  to this directory"
-            << std::endl;
+        std::cout << "\twarmup_iterations:\tRun these many batches first without measuring performance" << std::endl;
+        std::cout << "\toutput_dir\t:\tWrite compressed jpeg 2000 files  to this directory" << std::endl;
         return EXIT_SUCCESS;
     }
 
@@ -710,12 +718,7 @@ int main(int argc, const char *argv[])
         params.output_dir = argv[pidx + 1];
         params.write_bitstream = true;
     }
-    
-    params.target_psnr = 0;
-    if ((pidx = findParamIndex(argv, argc, "-q")) != -1)
-    {
-        params.target_psnr = atoi(argv[pidx + 1]);
-    }
+
     params.img_fmt_init = false;
     if ((pidx = findParamIndex(argv, argc, "-img_fmt")) != -1)
     {
@@ -727,10 +730,61 @@ int main(int argc, const char *argv[])
         params.img_fmt_init = true;
     }
 
-    params.irreversible = 0;
+    params.use_ht = 0;
+    if ((pidx = findParamIndex(argv, argc, "-ht")) != -1)
+    {
+        params.use_ht = 1;
+    }
+
+    params.is_irreversible = 0;
     if ((pidx = findParamIndex(argv, argc, "-I")) != -1)
     {
-        params.irreversible = 1;
+        params.is_irreversible = 1;
+    }
+
+    // 0 means do not set quality, use default instead
+    params.quality_value = 0;
+    if ((pidx = findParamIndex(argv, argc, "-q_factor")) != -1)
+    {
+        params.quality_value = atof(argv[pidx + 1]);
+        params.quality_type = NVJPEG2K_QUALITY_TYPE_Q_FACTOR;
+    }
+
+    if ((pidx = findParamIndex(argv, argc, "-quantization")) != -1)
+    {
+        if (params.quality_value != 0)
+        {
+            std::cout << "At most one quality type can be set" << std::endl;
+            return EXIT_FAILURE;
+        }
+
+        params.quality_value = atof(argv[pidx + 1]);
+        params.quality_type = NVJPEG2K_QUALITY_TYPE_QUANTIZATION_STEP;
+    }
+
+    if ((pidx = findParamIndex(argv, argc, "-psnr")) != -1)
+    {
+        if (params.quality_value != 0)
+        {
+            std::cout << "At most one quality type can be set" << std::endl;
+            return EXIT_FAILURE;
+        }
+
+        if (params.use_ht)
+        {
+            std::cout << "-psnr option cannot be used with -ht option" << std::endl;
+            return EXIT_FAILURE;
+        }
+
+        params.quality_value = atof(argv[pidx + 1]);
+        params.quality_type = NVJPEG2K_QUALITY_TYPE_TARGET_PSNR;
+    }
+
+
+    if (params.quality_value != 0 && !params.is_irreversible)
+    {
+        std::cout << "Quality can only be used if irreversible transform is enabled" << std::endl;
+        return EXIT_FAILURE;
     }
 
     params.cblk_w = 64;
