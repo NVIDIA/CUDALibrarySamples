@@ -1,19 +1,32 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES.
- * All rights reserved. SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+ * Copyright (c) 2025 NVIDIA CORPORATION AND AFFILIATES. All rights reserved.
  *
- * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
- * property and proprietary rights in and to this material, related
- * documentation and any modifications thereto. Any use, reproduction,
- * disclosure or distribution of this material and related documentation
- * without an express license agreement from NVIDIA CORPORATION or
- * its affiliates is strictly prohibited.
-*/
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
+ *  * Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
+ *  * Redistributions in binary form must reproduce the above copyright notice,
+ *    this list of conditions and the following disclaimer in the documentation
+ *    and/or other materials provided with the distribution.
+ *  * Neither the name of the NVIDIA CORPORATION nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software without
+ *    specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL NVIDIA CORPORATION BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
+ * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
+ * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 
 #include <nvcomp/native/gdeflate_cpu.h>
 #include <nvcomp/gdeflate.h>
 #include "BatchData.h"
-
 
 BatchDataCPU GetBatchDataCPU(const BatchData& batch_data, bool copy_data)
 {
@@ -43,16 +56,18 @@ static void run_example(const std::vector<std::vector<char>>& data,
   std::cout << "files: " << data.size() << std::endl;
   std::cout << "uncompressed (B): " << total_bytes << std::endl;
 
+  // Selected chunk size
   const size_t chunk_size = 1 << 16;
   static_assert(chunk_size <= nvcompGdeflateCompressionMaxAllowedChunkSize, "Chunk size must be less than the constant specified in the nvCOMP library");
 
-  auto nvcompBatchedGdeflateOpts = nvcompBatchedGdeflateDefaultOpts;
+  // Compression options
+  auto nvcompBatchedGdeflateOpts = nvcompBatchedGdeflateCompressDefaultOpts;
 
   // Query compression alignment requirements
   nvcompAlignmentRequirements_t compression_alignment_reqs;
   nvcompStatus_t status = nvcompBatchedGdeflateCompressGetRequiredAlignments(
-      nvcompBatchedGdeflateOpts,
-      &compression_alignment_reqs);
+    nvcompBatchedGdeflateOpts,
+    &compression_alignment_reqs);
   if (status != nvcompSuccess) {
     throw std::runtime_error("ERROR: nvcompBatchedGdeflateCompressGetRequiredAlignments() not successful");
   }
@@ -64,13 +79,14 @@ static void run_example(const std::vector<std::vector<char>>& data,
 
   // Compress on the GPU using batched API
   size_t comp_temp_bytes;
-  status = nvcompBatchedGdeflateCompressGetTempSize(
+  status = nvcompBatchedGdeflateCompressGetTempSizeAsync(
       chunk_count,
       chunk_size,
       nvcompBatchedGdeflateOpts,
-      &comp_temp_bytes);
+      &comp_temp_bytes,
+      chunk_count * chunk_size);
   if (status != nvcompSuccess) {
-    throw std::runtime_error("ERROR: nvcompBatchedGdeflateCompressGetTempSize() not successful");
+    throw std::runtime_error("ERROR: nvcompBatchedGdeflateCompressGetTempSizeAsync() not successful");
   }
 
   void* d_comp_temp;
@@ -103,6 +119,7 @@ static void run_example(const std::vector<std::vector<char>>& data,
           compress_data.ptrs(),
           compress_data.sizes(),
           nvcompBatchedGdeflateOpts,
+          nullptr,
           stream) != nvcompSuccess) {
       throw std::runtime_error("nvcompBatchedGdeflateCompressAsync() failed.");
     }
@@ -144,24 +161,14 @@ static void run_example(const std::vector<std::vector<char>>& data,
   BatchDataCPU compress_data_cpu = GetBatchDataCPU(compress_data, true);
   BatchDataCPU decompress_data_cpu(chunk_size, chunk_count);
 
-  // decompress on the CPU
-  // Note: decompress_data_cpu.sizes() points to a size_t array that holds the number of
-  //       bytes the decompressor can write in the output buffer (i.e., capacity in bytes).
-  //       Simultaneously, this is the array that the decompressor uses to return
-  //       the number of bytes actually written.
+  // Gdeflate CPU decompression
   gdeflate::decompressCPU(
       compress_data_cpu.ptrs(),
       compress_data_cpu.sizes(),
       chunk_count,
       decompress_data_cpu.ptrs(),
+      decompress_data_cpu.sizes(),
       decompress_data_cpu.sizes());
-
-  // Note:
-  // gdeflate::decompressCPU is going to add the number of bytes written,
-  // so we subtract the original byte capacity.
-  for(size_t i=0; i < chunk_count; ++i) {
-    decompress_data_cpu.sizes()[i]-=chunk_size;
-  }
 
   // Validate decompressed data against input
   if (!(decompress_data_cpu == input_data)) {

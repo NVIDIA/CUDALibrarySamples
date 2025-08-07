@@ -110,6 +110,14 @@ This folder contains examples demonstrating the usage of the nvCOMP C, C++, and 
     low_level_quickstart_example
     ```
 
+* [nvCOMP CRC32 example](nvcomp_crc32.cu)
+
+    The sample demonstrates nvCOMP CRC32 calculation and validates the results against a simple CPU implementation.
+
+    ```
+    nvcomp_crc32 -f <input file(s)>
+    ```
+
 * [Python API usage example](python/nvcomp_basic.ipynb)
 
     The sample demonstrates the usage of the nvCOMP Python API.
