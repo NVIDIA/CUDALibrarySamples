@@ -1,14 +1,28 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES.
- * All rights reserved. SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+ * Copyright (c) 2022-2025 NVIDIA CORPORATION AND AFFILIATES. All rights reserved.
  *
- * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
- * property and proprietary rights in and to this material, related
- * documentation and any modifications thereto. Any use, reproduction,
- * disclosure or distribution of this material and related documentation
- * without an express license agreement from NVIDIA CORPORATION or
- * its affiliates is strictly prohibited.
-*/
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
+ *  * Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
+ *  * Redistributions in binary form must reproduce the above copyright notice,
+ *    this list of conditions and the following disclaimer in the documentation
+ *    and/or other materials provided with the distribution.
+ *  * Neither the name of the NVIDIA CORPORATION nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software without
+ *    specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL NVIDIA CORPORATION BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
+ * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
+ * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 
 // Benchmark performance from the binary data file fname
 #include <vector>
@@ -53,8 +67,8 @@ int main(int argc, char* argv[])
   int verbose_memory = 0;
   int num_iters = 1;
 
-  // Cascaded opts
-  nvcompBatchedCascadedOpts_t cascaded_opts = nvcompBatchedCascadedDefaultOpts;
+  // Cascaded compression options
+  nvcompBatchedCascadedCompressOpts_t cascaded_compress_opts = nvcompBatchedCascadedCompressDefaultOpts;
 
   // Shared opts
   int chunk_size = 1 << 16;
@@ -68,7 +82,6 @@ int main(int argc, char* argv[])
   // Parse command-line arguments
   char** argv_end = argv + argc;
   argv += 1;
-  nvcompANSDataType_t ans_data_type = nvcompANSDataType_t::uint8;
 
   if(argc < 4) {
     print_usage();
@@ -142,7 +155,6 @@ int main(int argc, char* argv[])
         data_type = NVCOMP_TYPE_LONGLONG;
       } else if (strcmp(optarg, "float16") == 0) {
         data_type = NVCOMP_TYPE_FLOAT16;
-        ans_data_type = nvcompANSDataType_t::float16;
       } else {
         print_usage();
         return 1;
@@ -151,15 +163,15 @@ int main(int argc, char* argv[])
     }
 
     if (strcmp(arg, "--num_rles") == 0 || strcmp(arg, "-r") == 0) {
-      cascaded_opts.num_RLEs = atoi(optarg);
+      cascaded_compress_opts.num_RLEs = atoi(optarg);
       continue;
     }
     if (strcmp(arg, "--num_deltas") == 0 || strcmp(arg, "-d") == 0) {
-      cascaded_opts.num_deltas = atoi(optarg);
+      cascaded_compress_opts.num_deltas = atoi(optarg);
       continue;
     }
     if (strcmp(arg, "--num_bps") == 0 || strcmp(arg, "-b") == 0) {
-      cascaded_opts.use_bp = (atoi(optarg) != 0);
+      cascaded_compress_opts.use_bp = (atoi(optarg) != 0);
       continue;
     }
 
@@ -180,30 +192,29 @@ int main(int argc, char* argv[])
   {
     std::shared_ptr<nvcompManagerBase> manager;
     if (comp_format == "lz4") {
-      manager = std::make_shared<LZ4Manager>(chunk_size, nvcompBatchedLZ4Opts_t{data_type}, stream, NoComputeNoVerify);
+      manager = std::make_shared<LZ4Manager>(chunk_size, nvcompBatchedLZ4CompressOpts_t{data_type, {0}}, nvcompBatchedLZ4DecompressDefaultOpts, stream, NoComputeNoVerify);
     } else if (comp_format == "snappy") {
-      manager = std::make_shared<SnappyManager>(chunk_size, nvcompBatchedSnappyOpts_t{}, stream, NoComputeNoVerify);
+      manager = std::make_shared<SnappyManager>(chunk_size, nvcompBatchedSnappyCompressDefaultOpts, nvcompBatchedSnappyDecompressDefaultOpts, stream, NoComputeNoVerify);
     } else if (comp_format == "bitcomp") {
-      manager = std::make_shared<BitcompManager>(chunk_size, nvcompBatchedBitcompFormatOpts{0 /* algo--fixed for now */, data_type}, stream, NoComputeNoVerify);
+      manager = std::make_shared<BitcompManager>(chunk_size, nvcompBatchedBitcompCompressOpts_t{0 /* algo--fixed for now */, data_type, {0}}, nvcompBatchedBitcompDecompressDefaultOpts, stream, NoComputeNoVerify);
     } else if (comp_format == "ans") {
-      manager = std::make_shared<ANSManager>(chunk_size, nvcompBatchedANSOpts_t{nvcomp_rANS, ans_data_type}, stream, NoComputeNoVerify);
+      manager = std::make_shared<ANSManager>(chunk_size, nvcompBatchedANSCompressOpts_t{nvcomp_rANS, data_type, {0}}, nvcompBatchedANSDecompressDefaultOpts, stream, NoComputeNoVerify);
     } else if (comp_format == "cascaded") {
       if (explicit_type) {
-        cascaded_opts.type = data_type;
+        cascaded_compress_opts.type = data_type;
       }
 
       if (explicit_chunk_size) {
-        cascaded_opts.internal_chunk_bytes = chunk_size;
+        cascaded_compress_opts.internal_chunk_bytes = chunk_size;
       }
-
-      manager = std::make_shared<CascadedManager>(chunk_size, cascaded_opts, stream, NoComputeNoVerify);
+      manager = std::make_shared<CascadedManager>(chunk_size, cascaded_compress_opts, nvcompBatchedCascadedDecompressDefaultOpts, stream, NoComputeNoVerify);
     } else if (comp_format == "gdeflate") {
-      manager = std::make_shared<GdeflateManager>(chunk_size, nvcompBatchedGdeflateOpts_t{0 /* algo--fixed for now */}, stream, NoComputeNoVerify);
+      manager = std::make_shared<GdeflateManager>(chunk_size, nvcompBatchedGdeflateCompressOpts_t{0 /* algo--fixed for now */, {0}}, nvcompBatchedGdeflateDecompressDefaultOpts, stream, NoComputeNoVerify);
     } else if (comp_format == "deflate") {
-      manager = std::make_shared<DeflateManager>(chunk_size, nvcompBatchedDeflateDefaultOpts, stream, NoComputeNoVerify);
+      manager = std::make_shared<DeflateManager>(chunk_size, nvcompBatchedDeflateCompressDefaultOpts, nvcompBatchedDeflateDecompressDefaultOpts, stream, NoComputeNoVerify);
     } else if (comp_format == "zstd") {
       // Get file size
-      manager = std::make_shared<ZstdManager>(static_cast<size_t>(chunk_size), nvcompBatchedZstdDefaultOpts, stream, NoComputeNoVerify);
+      manager = std::make_shared<ZstdManager>(static_cast<size_t>(chunk_size), nvcompBatchedZstdCompressDefaultOpts, nvcompBatchedZstdDecompressDefaultOpts, stream, NoComputeNoVerify);
     } else {
       print_usage();
       return 1;

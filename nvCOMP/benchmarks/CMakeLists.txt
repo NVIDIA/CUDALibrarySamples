@@ -1,12 +1,26 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES.
-# All rights reserved. SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+# Copyright (c) 2024-2025 NVIDIA CORPORATION AND AFFILIATES. All rights reserved.
 #
-# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
-# property and proprietary rights in and to this material, related
-# documentation and any modifications thereto. Any use, reproduction,
-# disclosure or distribution of this material and related documentation
-# without an express license agreement from NVIDIA CORPORATION or
-# its affiliates is strictly prohibited.
+# Redistribution and use in source and binary forms, with or without modification,
+# are permitted provided that the following conditions are met:
+#  * Redistributions of source code must retain the above copyright notice,
+#    this list of conditions and the following disclaimer.
+#  * Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+#  * Neither the name of the NVIDIA CORPORATION nor the names of its contributors
+#    may be used to endorse or promote products derived from this software without
+#    specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL NVIDIA CORPORATION BE LIABLE FOR ANY DIRECT,
+# INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+# BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
+# OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+# NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
+# EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   cmake_minimum_required(VERSION 3.18)
@@ -19,11 +33,18 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
   # Compilation settings
   set(NVCOMP_NAMESPACE "nvcomp::")
-  set(GPU_ARCHS "70;75;80;86;89;90")
-  if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "12.8")
-    set(GPU_ARCHS ${GPU_ARCHS} "100" "120")
+  set(GPU_ARCHS "75;80;86;89;90")
+  if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "13")
+    set(GPU_ARCHS ${GPU_ARCHS} "70")
   endif()
-  add_compile_definitions("THRUST_CUB_WRAPPED_NAMESPACE=nvcomp")
+  if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "12.8")
+    set(GPU_ARCHS ${GPU_ARCHS} "100;120")
+    if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "13")
+      set(GPU_ARCHS ${GPU_ARCHS} "110")
+    else()
+      set(GPU_ARCHS ${GPU_ARCHS} "101")
+    endif()
+  endif()
   if (BUILD_STATIC)
     add_compile_definitions("NVCOMP_STATIC_DEFINE")
   endif()
@@ -37,8 +58,14 @@ else()
 endif()
 
 # Making the compilation consistent between standalone and library build modes
-set(CMAKE_CXX_STANDARD 11)
-set(CMAKE_CUDA_STANDARD 11)
+if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "13")
+  set(CMAKE_CXX_STANDARD 11)
+  set(CMAKE_CUDA_STANDARD 11)
+else()
+  # Note: Thrust requires C++17
+  set(CMAKE_CXX_STANDARD 17)
+  set(CMAKE_CUDA_STANDARD 17)
+endif()
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 if (BUILD_STATIC)
@@ -55,6 +82,10 @@ foreach(BENCHMARK_SOURCE ${BENCHMARK_SOURCES})
   string(REPLACE ".cpp" "" BENCHMARK_NAME ${BENCHMARK_SOURCE})
   string(REPLACE ".cu" "" BENCHMARK_NAME ${BENCHMARK_NAME})
   get_filename_component(BARE_NAME ${BENCHMARK_NAME} NAME)
+  if (BARE_NAME STREQUAL "benchmark_crc32")
+    # Handle CRC32 benchmark separately
+    continue()
+  endif()
   add_executable(${BARE_NAME} ${BENCHMARK_SOURCE})
   set_property(TARGET ${BARE_NAME} PROPERTY CUDA_ARCHITECTURES ${GPU_ARCHS})
   target_link_libraries(${BARE_NAME} PRIVATE ${NVCOMP_LIBRARY_NAME} CUDA::cudart_static)
@@ -67,3 +98,15 @@ foreach(BENCHMARK_SOURCE ${BENCHMARK_SOURCES})
     COMPONENT tests 
     EXCLUDE_FROM_ALL)
 endforeach(BENCHMARK_SOURCE ${BENCHMARK_SOURCES})
+
+if (TARGET CUDA::curand_static)
+  message(STATUS "Found CUDA::curand_static, building CRC32 benchmark")
+  # CRC32 benchmark requires curand
+  add_executable(benchmark_crc32 benchmark_crc32.cpp)
+  set_property(TARGET benchmark_crc32 PROPERTY CUDA_ARCHITECTURES ${GPU_ARCHS})
+  target_link_libraries(benchmark_crc32 PRIVATE ${NVCOMP_LIBRARY_NAME} CUDA::cudart_static CUDA::curand_static)
+  target_include_directories(benchmark_crc32 PRIVATE "$<BUILD_INTERFACE:${nvcomp_SOURCE_DIR}/include>")
+  install(TARGETS benchmark_crc32 RUNTIME DESTINATION bin COMPONENT tests EXCLUDE_FROM_ALL)
+else()
+  message(STATUS "Skipping CRC32 benchmark, CUDA::curand_static not found")
+endif()
