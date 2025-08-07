@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2021-2025, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -262,10 +262,12 @@ struct encode_params_t
     int total_images;
     int dev;
     int warmup;
-    int irreversible;
+    int is_irreversible;
     int cblk_w;
     int cblk_h;
-    double target_psnr;
+    bool use_ht;
+    nvjpeg2kQualityType_t quality_type;
+    double quality_value;
     nvjpeg2kEncoder_t enc_handle;
     nvjpeg2kEncodeState_t enc_state;
     nvjpeg2kEncodeParams_t enc_params;
