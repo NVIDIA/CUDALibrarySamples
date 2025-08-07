@@ -53,20 +53,28 @@ $ make
 ./nvjpeg2k_encode -h
 
 ```
-Usage: ./build/nvjpeg2k_encode -i images_dir [-b batch_size] [-t total_images] [-I] [-cblk cblk_w,cblk_h]
-        [-w warmup_iterations] [-o output_dir] 
+Usage: ./nvjpeg2k_encode -i images_dir [-b batch_size] [-t total_images] [-I] [-cblk cblk_w,cblk_h]
+        [-w warmup_iterations] [-o output_dir] [-ht]
+        [-q_factor value] [-quantization value] [-psnr value]
         [-img_fmt img_w,img_h,num_comp,precision,chromaformat] (-img_fmt is mandatory for raw yuv files)
-        eg: for an 8 bit image of size 1920x1080 with 420 subsamling: -img-dims 1920,1080,3,8,chroma420
-Parameters: 
+        eg: for an 8 bit image of size 1920x1080 with 420 subsampling: -img-dims 1920,1080,3,8,chroma420
+Parameters:
         images_dir      :       Path to single image or directory of images
         batch_size      :       Encode images from input by batches of specified size
-        total_images    :       Encode these many images, if there are fewer images 
+        total_images    :       Encode these many images, if there are fewer images
                                 in the input than total images, encoder will loop over the input
-                -I      :       Enable irreversible wavelet transform
+        -ht             :       Enable High Throughput encoding
+        -I              :       Enable irreversible wavelet transform. Must be set to use any quality option
+        -q_factor       :       Set `value` as Q-Factor (jpeg-like) quality:
+                                floating point from 1.0 (worst) to 100.0 (best)
+        -quantization   :       Set `value` as quantization step (by how much pixel data will be divided):
+                                floating point, bigger the value, the lower the result quality.
+        -psnr           :       Set `value` as target PSNR value: positive floating point.
+                                Cannot be used with -ht option
         cblk_w,cblk_h   :       Code block width and code block height
-                                valid values are 32,32 and 64,64 
+                                valid values are 32,32 and 64,64
         warmup_iterations:      Run these many batches first without measuring performance
-        output_dir      :       Write compressed jpeg 2000 files to this directory
+        output_dir      :       Write compressed jpeg 2000 files  to this directory
 
 ```
 
