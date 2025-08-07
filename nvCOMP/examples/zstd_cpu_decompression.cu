@@ -1,14 +1,28 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES.
- * All rights reserved. SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+ * Copyright (c) 2025 NVIDIA CORPORATION AND AFFILIATES. All rights reserved.
  *
- * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
- * property and proprietary rights in and to this material, related
- * documentation and any modifications thereto. Any use, reproduction,
- * disclosure or distribution of this material and related documentation
- * without an express license agreement from NVIDIA CORPORATION or
- * its affiliates is strictly prohibited.
-*/
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
+ *  * Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
+ *  * Redistributions in binary form must reproduce the above copyright notice,
+ *    this list of conditions and the following disclaimer in the documentation
+ *    and/or other materials provided with the distribution.
+ *  * Neither the name of the NVIDIA CORPORATION nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software without
+ *    specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL NVIDIA CORPORATION BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
+ * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
+ * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 
 #include "zstd.h"
 #include "nvcomp/zstd.h"
@@ -43,17 +57,17 @@ static void run_example(const std::vector<std::vector<char>>& data,
   std::cout << "files: " << data.size() << std::endl;
   std::cout << "uncompressed (B): " << total_bytes << std::endl;
 
-  const size_t chunk_size = 1 << 16;
+  constexpr size_t chunk_size = 1 << 16;
   static_assert(chunk_size <= ZSTD_BLOCKSIZE_MAX, "Chunk size must be less than the constant specified in the Zstandard library");
   static_assert(chunk_size <= nvcompZstdCompressionMaxAllowedChunkSize, "Chunk size must be less than the constant specified in the nvCOMP library");
 
-  auto nvcompBatchedZstdOpts = nvcompBatchedZstdDefaultOpts;
+  auto nvcompBatchedZstdOpts = nvcompBatchedZstdCompressDefaultOpts;
 
   // Query compression alignment requirements
   nvcompAlignmentRequirements_t compression_alignment_reqs;
   nvcompStatus_t status = nvcompBatchedZstdCompressGetRequiredAlignments(
-      nvcompBatchedZstdOpts,
-      &compression_alignment_reqs);
+    nvcompBatchedZstdOpts,
+    &compression_alignment_reqs);
   if (status != nvcompSuccess) {
     throw std::runtime_error("ERROR: nvcompBatchedZstdCompressGetRequiredAlignments() not successful");
   }
@@ -64,13 +78,14 @@ static void run_example(const std::vector<std::vector<char>>& data,
 
   // Compress on the GPU using batched API
   size_t comp_temp_bytes;
-  status = nvcompBatchedZstdCompressGetTempSize(
+  status = nvcompBatchedZstdCompressGetTempSizeAsync(
       chunk_count,
       chunk_size,
       nvcompBatchedZstdOpts,
-      &comp_temp_bytes);
+      &comp_temp_bytes,
+      chunk_count * chunk_size);
   if (status != nvcompSuccess) {
-    throw std::runtime_error("ERROR: nvcompBatchedZstdCompressGetTempSize() not successful");
+    throw std::runtime_error("ERROR: nvcompBatchedZstdCompressGetTempSizeAsync() not successful");
   }
 
   void* d_comp_temp;
@@ -103,6 +118,7 @@ static void run_example(const std::vector<std::vector<char>>& data,
           compressed_data.ptrs(),
           compressed_data.sizes(),
           nvcompBatchedZstdOpts,
+          nullptr,
           stream) != nvcompSuccess) {
       throw std::runtime_error("nvcompBatchedZstdCompressAsync() failed.");
     }

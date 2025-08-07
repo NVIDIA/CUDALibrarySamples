@@ -1,14 +1,28 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES.
- * All rights reserved. SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+ * Copyright (c) 2024-2025 NVIDIA CORPORATION AND AFFILIATES. All rights reserved.
  *
- * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
- * property and proprietary rights in and to this material, related
- * documentation and any modifications thereto. Any use, reproduction,
- * disclosure or distribution of this material and related documentation
- * without an express license agreement from NVIDIA CORPORATION or
- * its affiliates is strictly prohibited.
-*/
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
+ *  * Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
+ *  * Redistributions in binary form must reproduce the above copyright notice,
+ *    this list of conditions and the following disclaimer in the documentation
+ *    and/or other materials provided with the distribution.
+ *  * Neither the name of the NVIDIA CORPORATION nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software without
+ *    specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL NVIDIA CORPORATION BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
+ * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
+ * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 
 #include <random>
 #include <assert.h>
@@ -38,7 +52,7 @@ void execute_example(char* input_data, const size_t in_bytes)
 
   // compute chunk sizes
   size_t* host_uncompressed_bytes;
-  const size_t chunk_size = 65536;
+  constexpr size_t chunk_size = 65536;
   const size_t batch_size = (in_bytes + chunk_size - 1) / chunk_size;
 
   static_assert(chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize, "Chunk size must be less than the constant specified in the nvCOMP library");
@@ -74,13 +88,13 @@ void execute_example(char* input_data, const size_t in_bytes)
 
   // Then we need to allocate the temporary workspace and output space needed by the compressor.
   size_t temp_bytes;
-  nvcompBatchedLZ4CompressGetTempSize(batch_size, chunk_size, nvcompBatchedLZ4DefaultOpts, &temp_bytes);
+  nvcompBatchedLZ4CompressGetTempSizeAsync(batch_size, chunk_size, nvcompBatchedLZ4CompressDefaultOpts, &temp_bytes, batch_size * chunk_size);
   void* device_temp_ptr;
   CUDA_CHECK(cudaMalloc(&device_temp_ptr, temp_bytes));
 
   // get the maxmimum output size for each chunk
   size_t max_out_bytes;
-  nvcompBatchedLZ4CompressGetMaxOutputChunkSize(chunk_size, nvcompBatchedLZ4DefaultOpts, &max_out_bytes);
+  nvcompBatchedLZ4CompressGetMaxOutputChunkSize(chunk_size, nvcompBatchedLZ4CompressDefaultOpts, &max_out_bytes);
 
   // Next, allocate output space on the device
   void ** host_compressed_ptrs;
@@ -92,7 +106,7 @@ void execute_example(char* input_data, const size_t in_bytes)
   void** device_compressed_ptrs;
   CUDA_CHECK(cudaMalloc(&device_compressed_ptrs, sizeof(size_t) * batch_size));
   CUDA_CHECK(cudaMemcpyAsync(
-      device_compressed_ptrs, host_compressed_ptrs, 
+      device_compressed_ptrs, host_compressed_ptrs,
       sizeof(size_t) * batch_size,cudaMemcpyHostToDevice, stream));
 
   // allocate space for compressed chunk sizes to be written to
@@ -109,7 +123,8 @@ void execute_example(char* input_data, const size_t in_bytes)
       temp_bytes,
       device_compressed_ptrs,
       device_compressed_bytes,
-      nvcompBatchedLZ4DefaultOpts,
+      nvcompBatchedLZ4CompressDefaultOpts,
+      nullptr,
       stream);
 
   if (comp_res != nvcompSuccess)
@@ -131,9 +146,16 @@ void execute_example(char* input_data, const size_t in_bytes)
       batch_size,
       stream);
 
-  // Next, allocate the temporary buffer 
+  nvcompBatchedLZ4DecompressOpts_t decompress_opts = nvcompBatchedLZ4DecompressDefaultOpts;
+
+  // Next, allocate the temporary buffer
   size_t decomp_temp_bytes;
-  nvcompBatchedLZ4DecompressGetTempSize(batch_size, chunk_size, &decomp_temp_bytes);
+  nvcompBatchedLZ4DecompressGetTempSizeAsync(
+      batch_size,
+      chunk_size,
+      decompress_opts,
+      &decomp_temp_bytes,
+      batch_size * chunk_size);
   void * device_decomp_temp;
   CUDA_CHECK(cudaMalloc(&device_decomp_temp, decomp_temp_bytes));
 
@@ -160,6 +182,7 @@ void execute_example(char* input_data, const size_t in_bytes)
       device_decomp_temp, 
       decomp_temp_bytes, 
       device_uncompressed_ptrs, 
+      decompress_opts,
       device_statuses, 
       stream);
   

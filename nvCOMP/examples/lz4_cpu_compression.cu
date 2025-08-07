@@ -1,14 +1,28 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES.
- * All rights reserved. SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+ * Copyright (c) 2020-2025 NVIDIA CORPORATION AND AFFILIATES. All rights reserved.
  *
- * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
- * property and proprietary rights in and to this material, related
- * documentation and any modifications thereto. Any use, reproduction,
- * disclosure or distribution of this material and related documentation
- * without an express license agreement from NVIDIA CORPORATION or
- * its affiliates is strictly prohibited.
-*/
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
+ *  * Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
+ *  * Redistributions in binary form must reproduce the above copyright notice,
+ *    this list of conditions and the following disclaimer in the documentation
+ *    and/or other materials provided with the distribution.
+ *  * Neither the name of the NVIDIA CORPORATION nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software without
+ *    specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL NVIDIA CORPORATION BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
+ * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
+ * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 
 #include "BatchData.h"
 
@@ -75,11 +89,23 @@ static void run_example(const std::vector<std::vector<char>>& data,
             << ", compressed ratio: " << std::fixed << std::setprecision(2)
             << (double)total_bytes / comp_bytes << std::endl;
 
+  // Decompression options
+  nvcompBatchedLZ4DecompressOpts_t decompress_opts = nvcompBatchedLZ4DecompressDefaultOpts;
+
+  // Query decompression alignment requirements
+  nvcompAlignmentRequirements_t decompression_alignment_reqs;
+  nvcompStatus_t status = nvcompBatchedLZ4DecompressGetRequiredAlignments(
+    decompress_opts,
+    &decompression_alignment_reqs);
+  if (status != nvcompSuccess) {
+    throw std::runtime_error("ERROR: nvcompBatchedLZ4DecompressGetRequiredAlignments() not successful");
+  }
+
   // Copy compressed data to GPU
-  BatchData compressed_data(compressed_data_cpu, true, nvcompBatchedLZ4DecompressRequiredAlignments.input);
+  BatchData compressed_data(compressed_data_cpu, true, decompression_alignment_reqs.input);
 
   // Allocate and build up decompression batch on GPU
-  BatchData decomp_data(input_data_cpu, false, nvcompBatchedLZ4DecompressRequiredAlignments.output);
+  BatchData decomp_data(input_data_cpu, false, decompression_alignment_reqs.output);
 
   // Create CUDA stream
   cudaStream_t stream;
@@ -90,12 +116,16 @@ static void run_example(const std::vector<std::vector<char>>& data,
   CUDA_CHECK(cudaEventCreate(&start));
   CUDA_CHECK(cudaEventCreate(&end));
 
-  // lz4 GPU decompression
+  // LZ4 GPU decompression
   size_t decomp_temp_bytes;
-  nvcompStatus_t status = nvcompBatchedLZ4DecompressGetTempSize(
-      chunk_count, chunk_size, &decomp_temp_bytes);
+  status = nvcompBatchedLZ4DecompressGetTempSizeAsync(
+      chunk_count,
+      chunk_size,
+      decompress_opts,
+      &decomp_temp_bytes,
+      chunk_count * chunk_size);
   if (status != nvcompSuccess) {
-    throw std::runtime_error("nvcompBatchedLZ4DecompressGetTempSize() failed.");
+    throw std::runtime_error("nvcompBatchedLZ4DecompressGetTempSizeAsync() failed.");
   }
 
   void* d_decomp_temp;
@@ -119,6 +149,7 @@ static void run_example(const std::vector<std::vector<char>>& data,
           d_decomp_temp,
           decomp_temp_bytes,
           decomp_data.ptrs(),
+          decompress_opts,
           d_status_ptrs,
           stream) != nvcompSuccess) {
       throw std::runtime_error("ERROR: nvcompBatchedLZ4DecompressAsync() not successful");

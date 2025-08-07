@@ -1,14 +1,28 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES.
- * All rights reserved. SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+ * Copyright (c) 2022-2025 NVIDIA CORPORATION AND AFFILIATES. All rights reserved.
  *
- * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
- * property and proprietary rights in and to this material, related
- * documentation and any modifications thereto. Any use, reproduction,
- * disclosure or distribution of this material and related documentation
- * without an express license agreement from NVIDIA CORPORATION or
- * its affiliates is strictly prohibited.
-*/
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
+ *  * Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
+ *  * Redistributions in binary form must reproduce the above copyright notice,
+ *    this list of conditions and the following disclaimer in the documentation
+ *    and/or other materials provided with the distribution.
+ *  * Neither the name of the NVIDIA CORPORATION nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software without
+ *    specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL NVIDIA CORPORATION BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
+ * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
+ * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 
 #include <random>
 #include <assert.h>
@@ -49,13 +63,12 @@ void decomp_compressed_with_manager_factory_example(uint8_t* device_input_ptrs, 
   // then it will be deallocated in destructor of the manager, which require cuda stream to exists
   // and this is why we introduce the scope in each of the following examples.
 
-  const size_t chunk_size = 1 << 16;
-  nvcompType_t data_type = NVCOMP_TYPE_CHAR;
-
+  constexpr size_t chunk_size = 1 << 16;
   static_assert(chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize, "Chunk size must be less than the constant specified in the nvCOMP library");
 
-  nvcompBatchedLZ4Opts_t format_opts{data_type};
-  LZ4Manager nvcomp_manager{chunk_size, format_opts, stream};
+  nvcompBatchedLZ4CompressOpts_t compress_opts = nvcompBatchedLZ4CompressDefaultOpts;
+  nvcompBatchedLZ4DecompressOpts_t decompress_opts = nvcompBatchedLZ4DecompressDefaultOpts;
+  LZ4Manager nvcomp_manager{chunk_size, compress_opts, decompress_opts, stream};
   CompressionConfig comp_config = nvcomp_manager.configure_compression(input_buffer_len);
 
   uint8_t* comp_buffer;
@@ -69,7 +82,8 @@ void decomp_compressed_with_manager_factory_example(uint8_t* device_input_ptrs, 
   // Also note, creating the manager in this way synchronizes the stream, as the compressed buffer must be read to
   // construct the manager
 
-  auto decomp_nvcomp_manager = create_manager(comp_buffer, stream);
+  nvcompDecompressBackend_t backend = NVCOMP_DECOMPRESS_BACKEND_DEFAULT;
+  auto decomp_nvcomp_manager = create_manager(comp_buffer, stream, NoComputeNoVerify, backend, false /* use_de_sort */);
 
   DecompressionConfig decomp_config = decomp_nvcomp_manager->configure_decompression(comp_buffer);
   uint8_t* res_decomp_buffer;
@@ -98,16 +112,15 @@ void comp_decomp_with_single_manager(uint8_t* device_input_ptrs, const size_t in
   cudaStream_t stream;
   CUDA_CHECK(cudaStreamCreate(&stream));
 
-  const size_t chunk_size = 1 << 16;
-  nvcompType_t data_type = NVCOMP_TYPE_CHAR;
-
+  constexpr size_t chunk_size = 1 << 16;
   static_assert(chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize, "Chunk size must be less than the constant specified in the nvCOMP library");
 
   // We are introducing a scope, so that nvcomp_manager is destructed
   // before we destroy the stream.
   {
-    nvcompBatchedLZ4Opts_t format_opts{data_type};
-    LZ4Manager nvcomp_manager{chunk_size, format_opts, stream};
+    nvcompBatchedLZ4CompressOpts_t compress_opts = nvcompBatchedLZ4CompressDefaultOpts;
+    nvcompBatchedLZ4DecompressOpts_t decompress_opts = nvcompBatchedLZ4DecompressDefaultOpts;
+    LZ4Manager nvcomp_manager{chunk_size, compress_opts, decompress_opts, stream};
     CompressionConfig comp_config = nvcomp_manager.configure_compression(input_buffer_len);
 
     uint8_t* comp_buffer;
@@ -143,9 +156,7 @@ void multi_comp_decomp_example(const std::vector<uint8_t*>& device_input_ptrs, s
   cudaStream_t stream;
   CUDA_CHECK(cudaStreamCreate(&stream));
 
-  const size_t chunk_size = 1 << 16;
-  nvcompType_t data_type = NVCOMP_TYPE_CHAR;
-
+  constexpr size_t chunk_size = 1 << 16;
   static_assert(chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize, "Chunk size must be less than the constant specified in the nvCOMP library");
 
   // Are asynchronous memory (de)allocations supported?
@@ -168,8 +179,9 @@ void multi_comp_decomp_example(const std::vector<uint8_t*>& device_input_ptrs, s
   // We are introducing a scope, so that nvcomp_manager is destructed
   // before we destroy the stream.
   {
-    nvcompBatchedLZ4Opts_t format_opts{data_type};
-    LZ4Manager nvcomp_manager{chunk_size, format_opts, stream};
+    nvcompBatchedLZ4CompressOpts_t compress_opts = nvcompBatchedLZ4CompressDefaultOpts;
+    nvcompBatchedLZ4DecompressOpts_t decompress_opts = nvcompBatchedLZ4DecompressDefaultOpts;
+    LZ4Manager nvcomp_manager{chunk_size, compress_opts, decompress_opts, stream};
 
     size_t offset = 8;
     auto alloc_fn = [&stream, offset, use_async_mem_ops](size_t alloc_size){
@@ -235,13 +247,12 @@ void multi_comp_decomp_example_comp_config(const std::vector<uint8_t*>& device_i
   // We are introducing a scope, so that nvcomp_manager is destructed
   // before we destroy the stream.
   {
-    const size_t chunk_size = 1 << 16;
-    nvcompType_t data_type = NVCOMP_TYPE_CHAR;
-
+    constexpr size_t chunk_size = 1 << 16;
     static_assert(chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize, "Chunk size must be less than the constant specified in the nvCOMP library");
 
-    nvcompBatchedLZ4Opts_t format_opts{data_type};
-    LZ4Manager nvcomp_manager{chunk_size, format_opts, stream};
+    nvcompBatchedLZ4CompressOpts_t compress_opts = nvcompBatchedLZ4CompressDefaultOpts;
+    nvcompBatchedLZ4DecompressOpts_t decompress_opts = nvcompBatchedLZ4DecompressDefaultOpts;
+    LZ4Manager nvcomp_manager{chunk_size, compress_opts, decompress_opts, stream};
 
     size_t num_buffers = input_buffer_lengths.size();
 
@@ -290,13 +301,12 @@ void multi_comp_decomp_batched(const std::vector<uint8_t*>& device_input_ptrs, s
   // We are introducing a scope, so that nvcomp_manager is destructed
   // before we destroy the stream.
   {
-    const size_t chunk_size = 1 << 16;
-    nvcompType_t data_type = NVCOMP_TYPE_CHAR;
-
+    constexpr size_t chunk_size = 1 << 16;
     static_assert(chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize, "Chunk size must be less than the constant specified in the nvCOMP library");
 
-    nvcompBatchedLZ4Opts_t format_opts{data_type};
-    LZ4Manager nvcomp_manager{chunk_size, format_opts, stream};
+    nvcompBatchedLZ4CompressOpts_t compress_opts = nvcompBatchedLZ4CompressDefaultOpts;
+    nvcompBatchedLZ4DecompressOpts_t decompress_opts = nvcompBatchedLZ4DecompressDefaultOpts;
+    LZ4Manager nvcomp_manager{chunk_size, compress_opts, decompress_opts, stream};
 
     size_t num_buffers = input_buffer_lengths.size();
 
@@ -349,13 +359,14 @@ void multi_comp_decomp_raw(const std::vector<uint8_t*>& device_input_ptrs, std::
   // We are introducing a scope, so that nvcomp_manager is destructed
   // before we destroy the stream.
   {
-    const size_t chunk_size = 1 << 16;
-    nvcompType_t data_type = NVCOMP_TYPE_CHAR;
+    constexpr size_t chunk_size = 1 << 16;
+    static_assert(chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize, "Chunk size must be less than the constant specified in the nvCOMP library");
 
-    nvcompBatchedLZ4Opts_t format_opts{data_type};
+    nvcompBatchedLZ4CompressOpts_t compress_opts = nvcompBatchedLZ4CompressDefaultOpts;
+    nvcompBatchedLZ4DecompressOpts_t decompress_opts = nvcompBatchedLZ4DecompressDefaultOpts;
     // Chunk_size is ignored when we use BitstreamKind::RAW, since data is compressed as is.
     // However, the input data itself still needs to satisfy the maximum chunk size limitations.
-    LZ4Manager nvcomp_manager{chunk_size, format_opts, stream, NoComputeNoVerify, BitstreamKind::RAW};
+    LZ4Manager nvcomp_manager{chunk_size, compress_opts, decompress_opts, stream, NoComputeNoVerify, BitstreamKind::RAW};
 
     size_t num_buffers = input_buffer_lengths.size();
 
@@ -411,9 +422,7 @@ void comp_decomp_with_single_manager_with_checksums(uint8_t* device_input_ptrs, 
   cudaStream_t stream;
   CUDA_CHECK(cudaStreamCreate(&stream));
 
-  const size_t chunk_size = 1 << 16;
-  nvcompType_t data_type = NVCOMP_TYPE_CHAR;
-
+  constexpr size_t chunk_size = 1 << 16;
   static_assert(chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize, "Chunk size must be less than the constant specified in the nvCOMP library");
 
   /* 
@@ -453,8 +462,9 @@ void comp_decomp_with_single_manager_with_checksums(uint8_t* device_input_ptrs, 
   // We are introducing a scope, so that nvcomp_manager is destructed
   // before we destroy the stream.
   {
-    nvcompBatchedLZ4Opts_t format_opts{data_type};
-    LZ4Manager nvcomp_manager{chunk_size, format_opts, stream, ComputeAndVerify};
+    nvcompBatchedLZ4CompressOpts_t compress_opts = nvcompBatchedLZ4CompressDefaultOpts;
+    nvcompBatchedLZ4DecompressOpts_t decompress_opts = nvcompBatchedLZ4DecompressDefaultOpts;
+    LZ4Manager nvcomp_manager{chunk_size, compress_opts, decompress_opts, stream, ComputeAndVerify};
     CompressionConfig comp_config = nvcomp_manager.configure_compression(input_buffer_len);
 
     uint8_t* comp_buffer;
@@ -497,9 +507,7 @@ void decomp_compressed_with_manager_factory_with_checksums(
   cudaStream_t stream;
   CUDA_CHECK(cudaStreamCreate(&stream));
 
-  const size_t chunk_size = 1 << 16;
-  nvcompType_t data_type = NVCOMP_TYPE_CHAR;
-
+  constexpr size_t chunk_size = 1 << 16;
   static_assert(chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize, "Chunk size must be less than the constant specified in the nvCOMP library");
 
   // We are introducing a scope, so that nvcomp_manager is destructed
@@ -510,8 +518,9 @@ void decomp_compressed_with_manager_factory_with_checksums(
     * constructed manager will compute checksums on compression, but not verify them
     * on decompression.
     */
-    nvcompBatchedLZ4Opts_t format_opts{data_type};
-    LZ4Manager nvcomp_manager{chunk_size, format_opts, stream, ComputeAndNoVerify};
+    nvcompBatchedLZ4CompressOpts_t compress_opts = nvcompBatchedLZ4CompressDefaultOpts;
+    nvcompBatchedLZ4DecompressOpts_t decompress_opts = nvcompBatchedLZ4DecompressDefaultOpts;
+    LZ4Manager nvcomp_manager{chunk_size, compress_opts, decompress_opts, stream, ComputeAndNoVerify};
     CompressionConfig comp_config = nvcomp_manager.configure_compression(input_buffer_len);
 
     uint8_t* comp_buffer;
@@ -526,7 +535,8 @@ void decomp_compressed_with_manager_factory_with_checksums(
     // construct the manager. This manager is configured to verify checksums on decompression if they were
     // supplied in the compressed buffer. For a full description of the checksum modes, see the
     // above example.
-    auto decomp_nvcomp_manager = create_manager(comp_buffer, stream, NoComputeAndVerifyIfPresent);
+    nvcompDecompressBackend_t backend = NVCOMP_DECOMPRESS_BACKEND_DEFAULT;
+    auto decomp_nvcomp_manager = create_manager(comp_buffer, stream, NoComputeAndVerifyIfPresent, backend, false /* use_de_sort */);
 
     DecompressionConfig decomp_config = decomp_nvcomp_manager->configure_decompression(comp_buffer);
     uint8_t* res_decomp_buffer;
@@ -557,7 +567,7 @@ int main()
 {
   // Initialize a random array of chars
   const size_t input_buffer_len = 1000000;
-  
+
   std::mt19937 random_gen(42);
 
   // char specialization of std::uniform_int_distribution is
