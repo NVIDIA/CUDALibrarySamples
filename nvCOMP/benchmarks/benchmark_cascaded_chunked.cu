@@ -1,14 +1,28 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES.
- * All rights reserved. SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+ * Copyright (c) 2020-2025 NVIDIA CORPORATION AND AFFILIATES. All rights reserved.
  *
- * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
- * property and proprietary rights in and to this material, related
- * documentation and any modifications thereto. Any use, reproduction,
- * disclosure or distribution of this material and related documentation
- * without an express license agreement from NVIDIA CORPORATION or
- * its affiliates is strictly prohibited.
-*/
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
+ *  * Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
+ *  * Redistributions in binary form must reproduce the above copyright notice,
+ *    this list of conditions and the following disclaimer in the documentation
+ *    and/or other materials provided with the distribution.
+ *  * Neither the name of the NVIDIA CORPORATION nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software without
+ *    specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL NVIDIA CORPORATION BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
+ * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
+ * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 
 #include "benchmark_template_chunked.cuh"
 #include "nvcomp/cascaded.h"
@@ -16,8 +30,10 @@
 #include <iostream>
 #include <vector>
 
-static nvcompBatchedCascadedOpts_t nvcompBatchedCascadedTestOpts
-    = {4096, NVCOMP_TYPE_UINT, 2, 1, 1};
+static nvcompBatchedCascadedCompressOpts_t nvcompBatchedCascadedCompressOpts =
+  {4096, NVCOMP_TYPE_UINT, 2, 1, 1, {0}};
+static nvcompBatchedCascadedDecompressOpts_t nvcompBatchedCascadedDecompressOpts =
+  nvcompBatchedCascadedDecompressDefaultOpts;
 
 static bool handleCommandLineArgument(
     const std::string& arg,
@@ -28,7 +44,7 @@ static bool handleCommandLineArgument(
     const char* const typeArg = *additionalArgs;
     additionalArgsUsed = 1;
     bool valid;
-    nvcompBatchedCascadedTestOpts.type = string_to_data_type(typeArg, valid);
+    nvcompBatchedCascadedCompressOpts.type = string_to_data_type(typeArg, valid);
     return valid;
   }
   if (arg == "--num_rles" || arg == "-r") {
@@ -39,7 +55,7 @@ static bool handleCommandLineArgument(
                 << std::endl;
       return false;
     }
-    nvcompBatchedCascadedTestOpts.num_RLEs = n;
+    nvcompBatchedCascadedCompressOpts.num_RLEs = n;
     return true;
   }
   if (arg == "--num_deltas" || arg == "-d") {
@@ -50,7 +66,7 @@ static bool handleCommandLineArgument(
                 << std::endl;
       return false;
     }
-    nvcompBatchedCascadedTestOpts.num_deltas = n;
+    nvcompBatchedCascadedCompressOpts.num_deltas = n;
     return true;
   }
   if (arg == "--num_bps" || arg == "-b") {
@@ -61,7 +77,7 @@ static bool handleCommandLineArgument(
                 << std::endl;
       return false;
     }
-    nvcompBatchedCascadedTestOpts.use_bp = n;
+    nvcompBatchedCascadedCompressOpts.use_bp = n;
     return true;
   }
   return false;
@@ -72,7 +88,7 @@ static bool isCascadedInputValid(const std::vector<std::vector<char>>& data,
 {
   // Find the type size, to check that all chunk sizes are a multiple of it.
   size_t typeSize = 1;
-  auto type = nvcompBatchedCascadedTestOpts.type;
+  auto type = nvcompBatchedCascadedCompressOpts.type;
   switch (type) {
   case NVCOMP_TYPE_CHAR:
   case NVCOMP_TYPE_UCHAR:
@@ -117,6 +133,7 @@ void run_benchmark(
     const bool warmup,
     const size_t count,
     const bool csv_output,
+    const nvcompDecompressBackend_t decompress_backend,
     const bool tab_separator,
     const size_t duplicate_count,
     const size_t num_files,
@@ -126,20 +143,23 @@ void run_benchmark(
     const std::string& output_decompressed_filename)
 {
   run_benchmark_template(
-      nvcompBatchedCascadedCompressGetTempSize,
+      nvcompBatchedCascadedCompressGetTempSizeAsync,
       nvcompBatchedCascadedCompressGetMaxOutputChunkSize,
       nvcompBatchedCascadedCompressAsync,
       nvcompBatchedCascadedCompressGetRequiredAlignments,
-      nvcompBatchedCascadedDecompressGetTempSize,
+      nvcompBatchedCascadedDecompressGetTempSizeAsync,
+      nvcompBatchedCascadedDecompressGetTempSizeSync,
       nvcompBatchedCascadedDecompressAsync,
       nvcompBatchedCascadedGetDecompressSizeAsync,
-      nvcompBatchedCascadedDecompressRequiredAlignments,
+      nvcompBatchedCascadedDecompressGetRequiredAlignments,
       isCascadedInputValid,
-      nvcompBatchedCascadedTestOpts,
+      nvcompBatchedCascadedCompressOpts,
+      nvcompBatchedCascadedDecompressOpts,
       data,
       warmup,
       count,
       csv_output,
+      decompress_backend,
       tab_separator,
       duplicate_count,
       num_files,

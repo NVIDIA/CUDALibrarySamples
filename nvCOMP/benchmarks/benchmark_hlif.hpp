@@ -1,14 +1,28 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES.
- * All rights reserved. SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+ * Copyright (c) 2022-2025 NVIDIA CORPORATION AND AFFILIATES. All rights reserved.
  *
- * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
- * property and proprietary rights in and to this material, related
- * documentation and any modifications thereto. Any use, reproduction,
- * disclosure or distribution of this material and related documentation
- * without an express license agreement from NVIDIA CORPORATION or
- * its affiliates is strictly prohibited.
-*/
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
+ *  * Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
+ *  * Redistributions in binary form must reproduce the above copyright notice,
+ *    this list of conditions and the following disclaimer in the documentation
+ *    and/or other materials provided with the distribution.
+ *  * Neither the name of the NVIDIA CORPORATION nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software without
+ *    specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL NVIDIA CORPORATION BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
+ * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
+ * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 
 #pragma once
 
@@ -49,7 +63,7 @@ void run_benchmark(
     std::cout << "Insufficient GPU memory to perform compression." << std::endl;
     exit(1);
   }
-  
+
   std::cout << "----------" << std::endl;
   std::cout << "uncompressed (B): " << data.size() * sizeof(T) << std::endl;
 
@@ -60,7 +74,7 @@ void run_benchmark(
       cudaMemcpy(d_in_data, data.data(), in_bytes, cudaMemcpyHostToDevice));
 
   auto compress_config = batch_manager.configure_compression(in_bytes);
-  
+
   size_t comp_out_bytes = compress_config.max_compressed_buffer_size;
   benchmark_assert(
       comp_out_bytes > 0, "Output size must be greater than zero.");
@@ -118,17 +132,17 @@ void run_benchmark(
             << (double)data.size() * sizeof(T) / comp_out_bytes << std::endl;
   std::cout << "compression throughput (GB/s): "
             << average_gbs(compress_run_times, data.size() * sizeof(T)) << std::endl;
-  
+
   CUDA_CHECK(cudaFree(d_in_data));
 
   std::vector<float> decompress_run_times(benchmark_exec_count);
-  
+
   auto decomp_config = batch_manager.configure_decompression(d_comp_out);
   // allocate output buffer
   const size_t decomp_bytes = decomp_config.decomp_data_size;
   uint8_t* decomp_out_ptr;
   CUDA_CHECK(cudaMalloc(&decomp_out_ptr, decomp_bytes));
-  
+
   if (warmup) {
 #ifdef NVTX_ENABLED
     nvtxRangePush("decomp warmup");
@@ -188,9 +202,9 @@ void run_benchmark(
       decomp_out_ptr,
       input_element_count * sizeof(T),
       cudaMemcpyDeviceToHost));
-  
+
   CUDA_CHECK(cudaFree(decomp_out_ptr));
-  
+
   // check the size
 #if VERBOSE > 1
   // dump output data

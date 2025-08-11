@@ -1,14 +1,28 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES.
- * All rights reserved. SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+ * Copyright (c) 2020-2025 NVIDIA CORPORATION AND AFFILIATES. All rights reserved.
  *
- * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
- * property and proprietary rights in and to this material, related
- * documentation and any modifications thereto. Any use, reproduction,
- * disclosure or distribution of this material and related documentation
- * without an express license agreement from NVIDIA CORPORATION or
- * its affiliates is strictly prohibited.
-*/
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
+ *  * Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
+ *  * Redistributions in binary form must reproduce the above copyright notice,
+ *    this list of conditions and the following disclaimer in the documentation
+ *    and/or other materials provided with the distribution.
+ *  * Neither the name of the NVIDIA CORPORATION nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software without
+ *    specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL NVIDIA CORPORATION BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
+ * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
+ * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 
 #pragma once
 
@@ -38,17 +52,17 @@ public:
     m_size = compute_batch_size(host_data, chunk_size);
 
     const size_t aligned_chunk_size = roundUpTo(chunk_size, alignment);
-    m_data = nvcomp::thrust::device_vector<uint8_t>(aligned_chunk_size * size());
+    m_data = thrust::device_vector<uint8_t>(aligned_chunk_size * size());
 
     std::vector<void*> uncompressed_ptrs(size());
     for (size_t i = 0; i < size(); ++i) {
       uncompressed_ptrs[i] = static_cast<void*>(data() + aligned_chunk_size * i);
     }
 
-    m_ptrs = nvcomp::thrust::device_vector<void*>(uncompressed_ptrs);
+    m_ptrs = thrust::device_vector<void*>(uncompressed_ptrs);
     std::vector<size_t> sizes
         = compute_chunk_sizes(host_data, size(), chunk_size);
-    m_sizes = nvcomp::thrust::device_vector<size_t>(sizes);
+    m_sizes = thrust::device_vector<size_t>(sizes);
 
     // copy data to GPU
     size_t offset = 0;
@@ -74,14 +88,14 @@ public:
       m_size()
   {
     m_size = batch_data.size();
-    m_sizes = nvcomp::thrust::device_vector<size_t>(
+    m_sizes = thrust::device_vector<size_t>(
         batch_data.sizes(), batch_data.sizes() + size());
 
     size_t data_size = 0;
     for (size_t i = 0; i < size(); ++i) {
       data_size += roundUpTo(batch_data.sizes()[i], alignment);
     }
-    m_data = nvcomp::thrust::device_vector<uint8_t>(data_size);
+    m_data = thrust::device_vector<uint8_t>(data_size);
 
     size_t offset = 0;
     std::vector<void*> ptrs(size());
@@ -89,7 +103,7 @@ public:
       ptrs[i] = data() + offset;
       offset += roundUpTo(batch_data.sizes()[i], alignment);
     }
-    m_ptrs = nvcomp::thrust::device_vector<void*>(ptrs);
+    m_ptrs = thrust::device_vector<void*>(ptrs);
 
     if (copy_data) {
       const void* const* src = batch_data.ptrs();
@@ -109,16 +123,16 @@ public:
       m_size(batch_size)
   {
     const size_t aligned_max_output_size = roundUpTo(max_output_size, alignment);
-    m_data = nvcomp::thrust::device_vector<uint8_t>(aligned_max_output_size * size());
+    m_data = thrust::device_vector<uint8_t>(aligned_max_output_size * size());
 
     std::vector<size_t> sizes(size(), aligned_max_output_size);
-    m_sizes = nvcomp::thrust::device_vector<size_t>(sizes);
+    m_sizes = thrust::device_vector<size_t>(sizes);
 
     std::vector<void*> ptrs(batch_size);
     for (size_t i = 0; i < batch_size; ++i) {
       ptrs[i] = data() + aligned_max_output_size * i;
     }
-    m_ptrs = nvcomp::thrust::device_vector<void*>(ptrs);
+    m_ptrs = thrust::device_vector<void*>(ptrs);
   }
 
   BatchData(BatchData&& other) = default;
@@ -160,9 +174,9 @@ public:
   }
 
 private:
-  nvcomp::thrust::device_vector<void*> m_ptrs;
-  nvcomp::thrust::device_vector<size_t> m_sizes;
-  nvcomp::thrust::device_vector<uint8_t> m_data;
+  thrust::device_vector<void*> m_ptrs;
+  thrust::device_vector<size_t> m_sizes;
+  thrust::device_vector<uint8_t> m_data;
   size_t m_size;
 };
 
