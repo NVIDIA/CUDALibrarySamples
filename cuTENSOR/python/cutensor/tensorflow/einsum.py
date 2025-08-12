@@ -57,7 +57,7 @@ def einsum(equation, *inputs, **kwargs):
         inputs = list(inputs)
 
         input_shapes = [x.get_shape() for x in inputs]
-        input_axis_labels, output_axis_labels = special_math_ops._einsum_parse_and_resolve_equation(
+        input_axis_labels, output_axis_labels = special_math_ops._einsum_v1_parse_and_resolve_equation(
             equation, input_shapes)
 
         axis_labels = set(''.join(input_axis_labels) + output_axis_labels)
@@ -79,7 +79,7 @@ def einsum(equation, *inputs, **kwargs):
             input_count = sum(1 for s in input_axis_labels if a in s)
 
             if input_count > 2 and a not in output_axis_labels:
-                tf.logging.warn(
+                tf.compat.v1.logging.warn(
                     'Falling back to exponential-space implementation of einsum()'
                     ' because index "%s" is summed over more than two inputs.',
                     a)

@@ -32,7 +32,7 @@
 import torch
 import torch.autograd
 import numpy as np
-from .binding import einsum
+from .binding import einsum, plan, execute
 from ..common import normalize_subscript
 
 class EinsumFunction(torch.autograd.Function):
@@ -78,6 +78,30 @@ class EinsumFunction(torch.autograd.Function):
             return None, d_input
 
 
+    def plan(equation, input_0, input_1=None, jit_pref=False):
+        equation, isBinary = normalize_subscript(equation)
+        if isBinary and input_1 is None:
+            raise RuntimeError('The subscript indicates two inputs, but only one was passed')
+        if not isBinary and input_1 is not None:
+            raise RuntimeError('The subscript indicates one input, but two were passed')
+        if input_1 is None:
+            input_1 = input_0.new_empty((1,))
+
+        output = plan(equation, input_0, input_1, False, False, jit_pref)
+
+        return output
+    
+
+    def execute(plan):
+        try:
+            result = execute(plan)
+            if result is None:  # Handle NULL return
+                raise RuntimeError("cuTENSOR execute returned NULL (CUTENSOR_STATUS_INVALID_VALUE)")
+            return result
+        except SystemError as e:
+            raise RuntimeError(f"cuTENSOR execution failed {e}")
+
+
 class Einsum(torch.nn.Module):
 
     def __init__(self, equation):
@@ -90,6 +114,12 @@ class Einsum(torch.nn.Module):
 
     def forward(self, input_0, input_1):
         return EinsumFunction.apply(self.equation, input_0, input_1)
+    
+    def plan(self, input_0, input_1, jit_pref=False):
+        return EinsumFunction.plan(self.equation, input_0, input_1=input_1, jit_pref=jit_pref)
+
+    def execute(self, plan):
+        return EinsumFunction.execute(plan)
 
 
 def _compute_target_tensor(in0, in1, target, rest):
@@ -137,3 +167,4 @@ def EinsumGeneral(equation, *tensors, **kwargs):
         result = EinsumFunction.apply(eq, in0, in1)
         tensors.append(result)
     return result
+    

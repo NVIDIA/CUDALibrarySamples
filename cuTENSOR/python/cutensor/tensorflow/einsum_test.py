@@ -43,6 +43,10 @@ tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 
 class EinsumcuTENSORTest(tensorflow.test.TestCase):
 
+    def setUp(self):
+        super().setUp()
+        tf.config.experimental.enable_tensor_float_32_execution(False)
+
     @parameterized.expand(
         # yapf: disable
         [
@@ -131,33 +135,39 @@ class EinsumcuTENSORTest(tensorflow.test.TestCase):
                                        b_size,
                                        equation,
                                        dtype=tf.float32):
-        A = tf.compat.v1.get_variable("A",
-                                      shape=a_size,
-                                      initializer=tf.random_normal_initializer,
-                                      dtype=dtype)
+        A = tf.random.normal(a_size, dtype=dtype)
+
 
         if b_size is not None:
-            B = tf.compat.v1.get_variable("B",
-                                          shape=b_size,
-                                          initializer=tf.random_normal_initializer,
-                                          dtype=dtype)
+            B = tf.random.normal(b_size, dtype=dtype)
 
-            tf_native_rslt = tf.einsum(equation, A, B, name="tf_native_einsum")
-            tf_native_grads = tf.gradients(tf_native_rslt, [A, B])
+            with tf.GradientTape() as tape:
+                tape.watch([A, B])
+                tf_native_rslt = tf.einsum(equation, A, B, name="tf_native_einsum")
 
-            tf_cutensor_rslt = cutensor.einsum(equation,
-                                               A,
-                                               B,
-                                               name="tf_cuTensor_einsum")
-            tf_cutensor_grads = tf.gradients(tf_cutensor_rslt, [A, B])
+            tf_native_grads = tape.gradient(tf_native_rslt, [A, B])
+
+            with tf.GradientTape() as tape:
+                tape.watch([A, B])
+                tf_cutensor_rslt = cutensor.einsum(equation,
+                                                   A,
+                                                   B,
+                                                   name="tf_cuTensor_einsum")
+            
+            tf_cutensor_grads = tape.gradient(tf_cutensor_rslt, [A, B])
         else:
-            tf_native_rslt = tf.einsum(equation, A, name="tf_native_einsum")
-            tf_native_grads = tf.gradients(tf_native_rslt, [A])
+            with tf.GradientTape() as tape:
+                tape.watch([A])
+                tf_native_rslt = tf.einsum(equation, A, name="tf_native_einsum")
 
-            tf_cutensor_rslt = cutensor.einsum(equation,
-                                               A,
-                                               name="tf_cuTensor_einsum")
-            tf_cutensor_grads = tf.gradients(tf_cutensor_rslt, [A])
+            tf_native_grads = tape.gradient(tf_native_rslt, [A])
+
+            with tf.GradientTape() as tape:
+                tape.watch([A])
+                tf_cutensor_rslt = cutensor.einsum(equation,
+                                                   A,
+                                                   name="tf_cuTensor_einsum")
+            tf_cutensor_grads = tape.gradient(tf_cutensor_rslt, [A])
 
         self.assertEqual(tf_native_rslt.get_shape(),
                          tf_cutensor_rslt.get_shape())
@@ -165,22 +175,18 @@ class EinsumcuTENSORTest(tensorflow.test.TestCase):
         self.assertEqual(tf_native_rslt.dtype, tf_cutensor_rslt.dtype)
         self.assertEqual(len(tf_cutensor_grads), len(tf_native_grads))
 
-        with self.session(use_gpu=True) as sess:
+        self.assertAllClose(tf_native_rslt,
+                            tf_cutensor_rslt,
+                            rtol=5e-03,
+                            atol=5e-03)
 
-            sess.run(tf.compat.v1.global_variables_initializer())
-
-            self.assertAllClose(tf_native_rslt,
-                                tf_cutensor_rslt,
+        for tf_native_grad, tf_cutensor_grad in zip(tf_native_grads,
+                                                    tf_cutensor_grads):
+            self.assertAllClose(tf_native_grad,
+                                tf_cutensor_grad,
                                 rtol=5e-03,
                                 atol=5e-03)
-
-            for tf_native_grad, tf_cutensor_grad in zip(tf_native_grads,
-                                                        tf_cutensor_grads):
-                self.assertAllClose(tf_native_grad,
-                                    tf_cutensor_grad,
-                                    rtol=5e-03,
-                                    atol=5e-03)
-                self.assertEqual(tf_native_grad.dtype, tf_cutensor_grad.dtype)
+            self.assertEqual(tf_native_grad.dtype, tf_cutensor_grad.dtype)
 
 
 if __name__ == '__main__':

@@ -1,5 +1,4 @@
 /*  
-        issert tgt != ""
  * Copyright (c) 2021, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
  * 
  * 
@@ -260,7 +259,14 @@ struct Einsum
         isInitialized_ = true;
     }
 
-    uint64_t getWorksize() const { return kWorksize_; }
+    uint64_t getWorksize()  
+    {
+        if (kWorksize_== 0) 
+        {
+            std::cerr << "cutensor: Error, worksize has not been determined, create plan first \n";
+        }
+        return kWorksize_; 
+    }
 
     std::vector<IntType> getOutputShape() const
     {
@@ -280,7 +286,7 @@ struct Einsum
      * \param[in] handle cuTensor handle
      * \param[in] workspaceSizeProvided size of the workspace provided by the user
      */
-    bool plan(const cutensorHandle_t handle, const uint64_t workspaceSizeProvided)
+    bool plan(const cutensorHandle_t handle, const uint64_t workspaceSizeProvided, bool jit_pref)
     {
         if (!isInitialized_) return false;
 
@@ -347,12 +353,24 @@ struct Einsum
          * Set the algorithm to use
          ***************************/
         cutensorPlanPreference_t planPref;
+        
+        if (jit_pref==true) {
+        HANDLE_ERROR(cutensorCreatePlanPreference(
+                    handle,
+                    &planPref,
+                    CUTENSOR_ALGO_DEFAULT,
+                    CUTENSOR_JIT_MODE_DEFAULT));
+                    
+        } 
+        else 
+        {
         HANDLE_ERROR(cutensorCreatePlanPreference(
                     handle,
                     &planPref,
                     CUTENSOR_ALGO_DEFAULT,
                     CUTENSOR_JIT_MODE_NONE));
 
+        }
         /**********************
          * Query workspace estimate
          **********************/
@@ -380,11 +398,13 @@ struct Einsum
                                              &actualWorkspaceSize,
                                              sizeof(actualWorkspaceSize)));
 
-        // At this point the user knows exactly how much memory is need by the operation and
-        // only the smaller actual workspace needs to be allocated
-        assert(actualWorkspaceSize <= workspaceSizeEstimate);
+
+        //Default min workspace (even if 0 required)
+        if (actualWorkspaceSize < 1024ULL * 1024ULL * 1024ULL) actualWorkspaceSize = 1024ULL * 1024ULL * 1024ULL;
         assert(actualWorkspaceSize <= workspaceSizeProvided);
-        kWorksize_ = std::max(actualWorkspaceSize, static_cast<uint64_t>(4ULL * 1024ULL * 1024ULL));
+
+        //set workspace to actually used workspace size (! Larger workspace will negatively impact performance !)
+        kWorksize_ = actualWorkspaceSize;
 
         HANDLE_ERROR(cutensorDestroyOperationDescriptor(desc));
         HANDLE_ERROR(cutensorDestroyTensorDescriptor(descA));
@@ -447,7 +467,7 @@ struct Einsum
     }
 
     private:
-    uint64_t kWorksize_ = 1024ULL * 1024ULL * 1024ULL;
+    uint64_t kWorksize_ = 0; // not initialized
     cutensorPlan_t plan_;
     uint32_t numModesA_;
     uint32_t numModesB_;
@@ -463,14 +483,35 @@ struct Einsum
     cutensorOperator_t opB_ = CUTENSOR_OP_IDENTITY;
 };
 
-inline cutensorHandle_t CreateCuTensorHandle() {
-  cutensorHandle_t handle;
-  cutensorCreate(&handle);
-  return handle;
-}
+class CutensorLib
+{
+public:
+    CutensorLib()
+    {
+        cutensorCreate(&handle);
+    }
+    ~CutensorLib()
+    {
+        cutensorDestroy(handle);
+    }
+
+    static cutensorHandle_t getCutensorHandle()
+    {
+        static CutensorLib lib;
+        return lib.getHandle();
+    }
+
+    cutensorHandle_t getHandle() const { return handle; }
+
+    CutensorLib(CutensorLib const&) = delete;
+    void operator=(CutensorLib const&) = delete;
+
+private:
+    cutensorHandle_t handle;
+};
 
 inline cutensorHandle_t GetCuTensorHandle() {
-  static thread_local cutensorHandle_t handle = CreateCuTensorHandle();
-  return handle;
+  cudaFree(0);
+  return CutensorLib::getCutensorHandle();
 }
 

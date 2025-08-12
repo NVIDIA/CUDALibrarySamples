@@ -64,14 +64,11 @@ public:
     {
         end_ = std::chrono::steady_clock::now();
         elapsed_ = end_ - start_;
-        //return in ms
-        return elapsed_.count() * 1000;
+        return elapsed_.count();
     }
 
 private:
-    typedef std::chrono::steady_clock::time_point tp;
-    tp start_;
-    tp end_;
+    std::chrono::steady_clock::time_point start_, end_;
     std::chrono::duration<double> elapsed_;
 };
 
@@ -227,6 +224,11 @@ int main()
         printf("No kernel cache found. It will be generated before the end of this execution.\n");
     else if (readKernelCacheStatus == CUTENSOR_STATUS_SUCCESS)
         printf("Kernel cache found and read successfully.\n");
+    else if (readKernelCacheStatus == CUTENSOR_STATUS_NOT_SUPPORTED)
+    {
+        printf("JIT not supported (rerun with CUTENSOR_LOG_LEVEL=5 for details).\n");
+        return 0;
+    }
     else
         HANDLE_ERROR(readKernelCacheStatus);
 
@@ -472,7 +474,7 @@ int main()
     printf("cuTENSOR    : %6.0f GFLOPs/s\n", gflopsPerSec);
     printf("cuTENSOR JIT: %6.0f GFLOPs/s\n", gflopsPerSecJit);
     printf("Speedup: %.1fx\n", gflopsPerSecJit / gflopsPerSec);
-    printf("JIT Compilation time: %.1f seconds ", jitPlanTime / 1e3);
+    printf("JIT Compilation time: %.1f seconds ", jitPlanTime);
     if (readKernelCacheStatus == CUTENSOR_STATUS_SUCCESS)
         printf("(Kernel cache file was read successfully; Compilation was not required)\n");
     else

@@ -85,5 +85,5 @@ REGISTER_OP("EinsumCuTensor")
       ShapeHandle output_shape = c->MakeShape(output_dims);
       c->set_output(0, output_shape);
 
-      return Status::OK();
+      return OkStatus();
     });
