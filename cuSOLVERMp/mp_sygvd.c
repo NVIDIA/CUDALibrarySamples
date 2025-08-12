@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 NVIDIA Corporation.  All rights reserved.
+ * Copyright 2025 NVIDIA Corporation.  All rights reserved.
  *
  * NOTICE TO LICENSEE:
  *
@@ -64,8 +64,6 @@
 /* A is a diagonal weighted matrix */
 static void generate_diagonal_dominant_symmetric_matrix(int64_t n, double* A, int64_t lda)
 {
-    time(NULL);
-
     /* set A[0:n, 0:n] = 0 */
     for (int64_t j = 0; j < n; j++)
     {
@@ -174,32 +172,6 @@ int main(int argc, char* argv[])
     if (mpiRank == 0)
     {
         print(&opts);
-
-        fprintf(stdout, "input arguments used:\n");
-        fprintf(stdout,
-                "m=%d, "
-                "mbA=%d, nbA=%d, ia=%d, ja=%d, "
-                "mbB=%d, nbB=%d, ib=%d, jb=%d, "
-                "mbZ=%d, nbZ=%d, iz=%d, jz=%d, "
-                "p=%d, q=%d, grid_layout=%s verbose=%d\n",
-                (int)(m),
-                (int)mbA,
-                (int)nbA,
-                (int)ia,
-                (int)ja,
-                (int)mbB,
-                (int)nbB,
-                (int)ib,
-                (int)jb,
-                (int)mbZ,
-                (int)nbZ,
-                (int)iz,
-                (int)jz,
-                numRowDevices,
-                numColDevices,
-                gridLayout == CUSOLVERMP_GRID_MAPPING_COL_MAJOR ? "CUSOLVERMP_GRID_MAPPING_COL_MAJOR"
-                                                                : "CUSOLVERMP_GRID_MAPPING_ROW_MAJOR",
-                verbose);
     }
 
     /* error check of implementation restrictions */
@@ -250,29 +222,25 @@ int main(int argc, char* argv[])
 
         /* Error codes */
         cusolverStatus_t cusolverStat = CUSOLVER_STATUS_SUCCESS;
-        calError_t       calStat      = CAL_OK;
+        ncclResult_t     ncclStat     = ncclSuccess;
         cudaError_t      cudaStat     = cudaSuccess;
 
         cudaStat = cudaSetDevice(localRank);
         assert(cudaStat == cudaSuccess);
 
         /* Create communicator */
-        cal_comm_t cal_comm = NULL;
-#ifdef USE_CAL_MPI
-        calStat = cal_comm_create_mpi(MPI_COMM_WORLD, rank, commSize, localRank, &cal_comm);
-#else
-        cal_comm_create_params_t params;
-        params.allgather    = allgather;
-        params.req_test     = request_test;
-        params.req_free     = request_free;
-        params.data         = (void*)(MPI_COMM_WORLD);
-        params.rank         = rank;
-        params.nranks       = commSize;
-        params.local_device = localRank;
+        ncclUniqueId id;
 
-        calStat = cal_comm_create(params, &cal_comm);
-#endif
-        assert(calStat == CAL_OK);
+        if (rank == 0)
+        {
+            ncclGetUniqueId(&id);
+        }
+
+        MPI_Bcast((void*)&id, sizeof(id), MPI_BYTE, 0, MPI_COMM_WORLD);
+
+        ncclComm_t comm;
+        ncclStat = ncclCommInitRank(&comm, commSize, id, rank);
+        assert(ncclStat == ncclSuccess);
 
         /* Create local stream */
         cudaStream_t localStream = NULL;
@@ -395,7 +363,7 @@ int main(int argc, char* argv[])
         /*          CREATE GRID DESCRIPTORS            */
         /* =========================================== */
         cusolverStat =
-                cusolverMpCreateDeviceGrid(cusolverMpHandle, &grid, cal_comm, numRowDevices, numColDevices, gridLayout);
+                cusolverMpCreateDeviceGrid(cusolverMpHandle, &grid, comm, numRowDevices, numColDevices, gridLayout);
         assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
         /* =========================================== */
@@ -443,8 +411,8 @@ int main(int argc, char* argv[])
         assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
         /* sync wait for data to arrive to device */
-        calStat = cal_stream_sync(cal_comm, localStream);
-        assert(calStat == CAL_OK);
+        cudaStat = cudaStreamSynchronize(localStream);
+        assert(cudaStat == cudaSuccess);
 
         cusolverStat = cusolverMpMatrixScatterH2D(cusolverMpHandle,
                                                   m_global,
@@ -459,8 +427,8 @@ int main(int argc, char* argv[])
         assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
         /* sync wait for data to arrive to device */
-        calStat = cal_stream_sync(cal_comm, localStream);
-        assert(calStat == CAL_OK);
+        cudaStat = cudaStreamSynchronize(localStream);
+        assert(cudaStat == cudaSuccess);
 
         /* =========================================== */
         /*     QUERY WORKSPACE SIZE FOR MP ROUTINES    */
@@ -496,8 +464,8 @@ int main(int argc, char* argv[])
         assert(h_sygvdWork != NULL);
 
         /* sync wait for data to arrive to device */
-        calStat = cal_stream_sync(cal_comm, localStream);
-        assert(calStat == CAL_OK);
+        cudaStat = cudaStreamSynchronize(localStream);
+        assert(cudaStat == cudaSuccess);
 
         /* =========================================== */
         /*                   CALL psygvd               */
@@ -530,8 +498,8 @@ int main(int argc, char* argv[])
         assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
         /* sync after cusolverMpsygvd */
-        calStat = cal_stream_sync(cal_comm, localStream);
-        assert(calStat == CAL_OK);
+        cudaStat = cudaStreamSynchronize(localStream);
+        assert(cudaStat == cudaSuccess);
 
         /* copy d_sygvdInfo to host */
         cudaStat = cudaMemcpyAsync(&h_sygvdInfo, d_sygvdInfo, sizeof(int), cudaMemcpyDeviceToHost, localStream);
@@ -569,8 +537,8 @@ int main(int argc, char* argv[])
         }
 
         /* sync wait for data to arrive to host */
-        calStat = cal_stream_sync(cal_comm, localStream);
-        assert(calStat == CAL_OK);
+        cudaStat = cudaStreamSynchronize(localStream);
+        assert(cudaStat == cudaSuccess);
 
         if (rank == 0)
         {
@@ -691,13 +659,13 @@ int main(int argc, char* argv[])
         cusolverStat = cusolverMpDestroy(cusolverMpHandle);
         assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
-        /* sync before cal_comm_destroy */
-        calStat = cal_comm_barrier(cal_comm, localStream);
-        assert(calStat == CAL_OK);
+        /* sync before ncclCommDestroy */
+        cudaStat = cudaStreamSynchronize(localStream);
+        assert(cudaStat == cudaSuccess);
 
-        /* destroy CAL communicator */
-        calStat = cal_comm_destroy(cal_comm);
-        assert(calStat == CAL_OK);
+        /* destroy nccl communicator */
+        ncclStat = ncclCommDestroy(comm);
+        assert(ncclStat == ncclSuccess);
 
         /* destroy user stream */
         cudaStat = cudaStreamDestroy(localStream);
@@ -709,6 +677,11 @@ int main(int argc, char* argv[])
 
     /* Finalize MPI environment */
     MPI_Finalize();
+
+    if (mpiRank == 0)
+    {
+        printf("[SUCCEEDED]\n");
+    }
 
     return 0;
 }

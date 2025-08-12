@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 NVIDIA Corporation.  All rights reserved.
+ * Copyright 2025 NVIDIA Corporation.  All rights reserved.
  *
  * NOTICE TO LICENSEE:
  *
@@ -52,7 +52,6 @@
 #include <stdbool.h>
 #include <string.h>
 #include <mpi.h>
-#include <cal.h>
 
 typedef struct _Options
 {
@@ -118,7 +117,7 @@ void print(const Options* opts)
 {
     printf("Parameters: "
            "m=%d n=%d nrhs=%d "
-           "mbA=%d nbA=%d mbB=%d nbB=%d mbQ=%d nbQ=%d mbZ=%d nbZ=%d"
+           "mbA=%d nbA=%d mbB=%d nbB=%d mbQ=%d nbQ=%d mbZ=%d nbZ=%d "
            "ia=%d ja=%d ib=%d jb=%d iq=%d jq=%d iz=%d jz=%d p=%d q=%d grid_layout=%c verbose=%d\n",
            opts->m,
            opts->n,
@@ -317,33 +316,4 @@ static inline int getLocalRank()
     MPI_Comm_free(&localComm);
 
     return localRank;
-}
-
-static calError_t allgather(void* src_buf, void* recv_buf, size_t size, void* data, void** request)
-{
-    MPI_Request req;
-    int         err = MPI_Iallgather(src_buf, size, MPI_BYTE, recv_buf, size, MPI_BYTE, (MPI_Comm)(data), &req);
-    if (err != MPI_SUCCESS)
-    {
-        return CAL_ERROR;
-    }
-    *request = (void*)(req);
-    return CAL_OK;
-}
-
-static calError_t request_test(void* request)
-{
-    MPI_Request req = (MPI_Request)(request);
-    int         completed;
-    int         err = MPI_Test(&req, &completed, MPI_STATUS_IGNORE);
-    if (err != MPI_SUCCESS)
-    {
-        return CAL_ERROR;
-    }
-    return completed ? CAL_OK : CAL_ERROR_INPROGRESS;
-}
-
-static calError_t request_free(void* request)
-{
-    return CAL_OK;
 }

@@ -1,12 +1,12 @@
-# 
-# Copyright 2023 NVIDIA Corporation.  All rights reserved.
-# 
+#
+# Copyright 2025 NVIDIA Corporation.  All rights reserved.
+#
 # NOTICE TO LICENSEE:
-# 
+#
 # This source code and/or documentation ("Licensed Deliverables") are
 # subject to NVIDIA intellectual property rights under U.S. and
 # international Copyright laws.
-# 
+#
 # These Licensed Deliverables contained herein is PROPRIETARY and
 # CONFIDENTIAL to NVIDIA and is being provided under the terms and
 # conditions of a form of NVIDIA software license agreement by and
@@ -15,7 +15,7 @@
 # the contrary in the License Agreement, reproduction or disclosure
 # of the Licensed Deliverables to any third party without the express
 # written consent of NVIDIA is prohibited.
-# 
+#
 # NOTWITHSTANDING ANY TERMS OR CONDITIONS TO THE CONTRARY IN THE
 # LICENSE AGREEMENT, NVIDIA MAKES NO REPRESENTATION ABOUT THE
 # SUITABILITY OF THESE LICENSED DELIVERABLES FOR ANY PURPOSE.  IT IS
@@ -30,7 +30,7 @@
 # WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS
 # ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE
 # OF THESE LICENSED DELIVERABLES.
-# 
+#
 # U.S. Government End Users.  These Licensed Deliverables are a
 # "commercial item" as that term is defined at 48 C.F.R. 2.101 (OCT
 # 1995), consisting of "commercial computer software" and "commercial
@@ -40,12 +40,12 @@
 # 48 C.F.R. 227.7202-1 through 227.7202-4 (JUNE 1995), all
 # U.S. Government End Users acquire the Licensed Deliverables with
 # only those rights set forth herein.
-# 
+#
 # Any use of the Licensed Deliverables in individual and commercial
 # software must include, in the user documentation and internal
 # comments to the code, the above Disclaimer and U.S. Government End
 # Users Notice.
-# 
+#
 
 cmake_minimum_required(VERSION 3.16)
 
@@ -53,13 +53,9 @@ project(cusolvermp_samples LANGUAGES C CUDA)
 
 find_package(MPI REQUIRED)
 
-set(CMAKE_CUDA_STANDARD 11)
+set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 set(CUDA_RUNTIME_LIBRARY shared)
-
-if (CAL_MPI_INCLUDE_PATH AND CAL_MPI_LIBRARIES)
-    add_definitions(-DUSE_CAL_MPI)
-endif ()
 
 function(build_sample sample_name)
     add_executable(${sample_name} ${sample_name}.c)
@@ -68,21 +64,19 @@ function(build_sample sample_name)
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
         ${MPI_C_INCLUDE_DIRS}
-        ${CAL_INCLUDE_DIRECTORIES}
+        ${NCCL_INCLUDE_DIR}
         ${CUSOLVERMP_INCLUDE_DIRECTORIES}
-        ${CAL_MPI_INCLUDE_PATH}
     )
 
     target_link_directories(${sample_name} PUBLIC
         ${CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES}
         ${CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES}/stubs
-        ${CAL_LINK_DIRECTORIES}
         ${CUSOLVERMP_LINK_DIRECTORIES}
     )
 
     target_link_libraries(${sample_name} PUBLIC
         ${MPI_C_LIBRARIES}
-        cal
+        ${NCCL_LIBRARIES}
         cudart
         cublas
         cublasLt
@@ -91,7 +85,6 @@ function(build_sample sample_name)
         cuda
         nvidia-ml
         m
-        ${CAL_MPI_LIBRARIES}
     )
 
     install(TARGETS ${sample_name}
@@ -101,6 +94,8 @@ endfunction(build_sample)
 
 build_sample("mp_getrf_getrs")
 build_sample("mp_potrf_potrs")
+build_sample("mp_potrf_potrs_fp32")
+build_sample("mp_potrf_potrs_fp32emulation")
 build_sample("mp_geqrf")
 build_sample("mp_syevd")
 build_sample("mp_sygvd")
