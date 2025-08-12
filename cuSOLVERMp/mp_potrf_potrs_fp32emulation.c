@@ -62,30 +62,30 @@
 #include "helpers.h"
 
 /* compute |x|_inf */
-static double normI(int64_t m, int64_t n, int64_t lda, const double* A)
+static float normI(int64_t m, int64_t n, int64_t lda, const float* A)
 {
-    double max_nrm = 0;
+    float max_nrm = 0;
 
     for (int64_t col = 0; col < n; col++)
     {
-        double err = 0;
+        float err = 0;
         for (int64_t row = 0; row < m; row++)
         {
-            err += fabs(A[row + col * lda]);
+            err += fabsf(A[row + col * lda]);
         }
 
-        max_nrm = fmax(max_nrm, err);
+        max_nrm = fmaxf(max_nrm, err);
     }
 
     return max_nrm;
 };
 
-static void generate_diagonal_dominant_symmetric_matrix(int64_t n, double* A, int64_t lda)
+static void generate_diagonal_dominant_symmetric_matrix(int64_t n, float* A, int64_t lda)
 {
     /* set A[0:n, 0:n] = 0 */
     for (int64_t j = 0; j < n; j++)
     {
-        double sum = 0;
+        float sum = 0;
         for (int64_t i = 0; i < n; i++)
         {
             if (i < j)
@@ -94,7 +94,7 @@ static void generate_diagonal_dominant_symmetric_matrix(int64_t n, double* A, in
             }
             else
             {
-                A[i + j * lda] = (double)(rand()) / RAND_MAX;
+                A[i + j * lda] = (float)(rand()) / RAND_MAX;
             }
             sum += A[i + j * lda];
         }
@@ -104,7 +104,7 @@ static void generate_diagonal_dominant_symmetric_matrix(int64_t n, double* A, in
 }
 
 /* Print matrix */
-static void print_host_matrix(int64_t m, int64_t n, double* A, int64_t lda, const char* msg)
+static void print_host_matrix(int64_t m, int64_t n, float* A, int64_t lda, const char* msg)
 {
     printf("print_host_matrix : %s\n", msg);
 
@@ -112,7 +112,7 @@ static void print_host_matrix(int64_t m, int64_t n, double* A, int64_t lda, cons
     {
         for (int64_t j = 0; j < n; j++)
         {
-            printf("%.2lf  ", A[i + j * lda]);
+            printf("%.2f  ", A[i + j * lda]);
         }
         printf("\n");
     }
@@ -228,6 +228,21 @@ int main(int argc, char* argv[])
         cusolverStat                        = cusolverMpCreate(&cusolverMpHandle, localRank, localStream);
         assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
+        /* Enable FP32 emulation */
+
+        // FP32 emulation is available starting from CTK 13, cuSOLVER 12, cuSOLVERMp 0.7.0
+#if CUSOLVER_VERSION >= 12000
+
+        // enable FP32 emulation in cuSOLVERMp and its internal cuBLAS and cuSOLVER handles
+        cusolverStat = cusolverMpSetMathMode(cusolverMpHandle, CUSOLVER_FP32_EMULATED_BF16X9_MATH);
+        assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
+
+        // explicitly set the emulation strategy to default (redundant)
+        cusolverStat = cusolverMpSetEmulationStrategy(cusolverMpHandle, CUDA_EMULATION_STRATEGY_DEFAULT);
+        assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
+
+#endif
+
         /* cusolverMp grids */
         cusolverMpGrid_t gridA = NULL;
         cusolverMpGrid_t gridB = NULL;
@@ -283,25 +298,25 @@ int main(int argc, char* argv[])
         const int64_t ldb   = (ib - 1) + n;
         const int64_t colsB = (jb - 1) + nrhs;
 
-        double* h_A = NULL;
-        double* h_B = NULL;
-        double* h_X = NULL;
+        float* h_A = NULL;
+        float* h_B = NULL;
+        float* h_X = NULL;
 
         if (rank == 0)
         {
             /* allocate host workspace */
-            h_A = (double*)malloc(lda * colsA * sizeof(double));
-            h_X = (double*)malloc(ldb * colsB * sizeof(double));
-            h_B = (double*)malloc(ldb * colsB * sizeof(double));
+            h_A = (float*)malloc(lda * colsA * sizeof(float));
+            h_X = (float*)malloc(ldb * colsB * sizeof(float));
+            h_B = (float*)malloc(ldb * colsB * sizeof(float));
 
             /* reset host workspace */
-            memset(h_A, 0xFF, lda * colsA * sizeof(double));
-            memset(h_X, 0xFF, ldb * colsB * sizeof(double));
-            memset(h_B, 0xFF, ldb * colsB * sizeof(double));
+            memset(h_A, 0xFF, lda * colsA * sizeof(float));
+            memset(h_X, 0xFF, ldb * colsB * sizeof(float));
+            memset(h_B, 0xFF, ldb * colsB * sizeof(float));
 
             /* pointers to the first valid entry of A and B */
-            double* _A = &h_A[(ia - 1) + (ja - 1) * lda];
-            double* _B = &h_B[(ib - 1) + (jb - 1) * ldb];
+            float* _A = &h_A[(ia - 1) + (ja - 1) * lda];
+            float* _B = &h_B[(ib - 1) + (jb - 1) * ldb];
 
             /* Set A[ia:ia+n, ja:ja+n] = diagonal dominant lower triangular matrix */
             generate_diagonal_dominant_symmetric_matrix(n, _A, lda);
@@ -309,7 +324,7 @@ int main(int argc, char* argv[])
             /* Set B[ib:ib+n, jb] = 1 */
             for (int64_t i = 0; i < n; i++)
             {
-                _B[i] = 1.0;
+                _B[i] = 1.0f;
             }
 
             /* print input matrices */
@@ -342,11 +357,11 @@ int main(int argc, char* argv[])
         const int64_t localColsB = cusolverMpNUMROC(colsB, nbB, myColRank, csrcb, numColDevices);
 
         /* Allocate global d_A */
-        cudaStat = cudaMalloc((void**)&d_A, llda * localColsA * sizeof(double));
+        cudaStat = cudaMalloc((void**)&d_A, llda * localColsA * sizeof(float));
         assert(cudaStat == cudaSuccess);
 
         /* Allocate global d_B */
-        cudaStat = cudaMalloc((void**)&d_B, lldb * localColsB * sizeof(double));
+        cudaStat = cudaMalloc((void**)&d_B, lldb * localColsB * sizeof(float));
         assert(cudaStat == cudaSuccess);
 
         /* =========================================== */
@@ -363,11 +378,11 @@ int main(int argc, char* argv[])
         /* =========================================== */
         /*        CREATE MATRIX DESCRIPTORS            */
         /* =========================================== */
-        cusolverStat = cusolverMpCreateMatrixDesc(&descA, gridA, CUDA_R_64F, lda, colsA, mbA, nbA, rsrca, csrca, llda);
+        cusolverStat = cusolverMpCreateMatrixDesc(&descA, gridA, CUDA_R_32F, lda, colsA, mbA, nbA, rsrca, csrca, llda);
 
         assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
-        cusolverStat = cusolverMpCreateMatrixDesc(&descB, gridB, CUDA_R_64F, ldb, colsB, mbB, nbB, rsrcb, csrcb, lldb);
+        cusolverStat = cusolverMpCreateMatrixDesc(&descB, gridB, CUDA_R_32F, ldb, colsB, mbB, nbB, rsrcb, csrcb, lldb);
         assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
         /* =========================================== */
@@ -402,7 +417,7 @@ int main(int argc, char* argv[])
                                                   ia,
                                                   ja,
                                                   descA,
-                                                  CUDA_R_64F,
+                                                  CUDA_R_32F,
                                                   &potrfWorkspaceInBytesOnDevice,
                                                   &potrfWorkspaceInBytesOnHost);
         assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
@@ -419,7 +434,7 @@ int main(int argc, char* argv[])
                                                   ib,
                                                   jb,
                                                   descB,
-                                                  CUDA_R_64F,
+                                                  CUDA_R_32F,
                                                   &potrsWorkspaceInBytesOnDevice,
                                                   &potrsWorkspaceInBytesOnHost);
         assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
@@ -487,7 +502,7 @@ int main(int argc, char* argv[])
                                        ia,
                                        ja,
                                        descA,
-                                       CUDA_R_64F,
+                                       CUDA_R_32F,
                                        d_potrfWork,
                                        potrfWorkspaceInBytesOnDevice,
                                        h_potrfWork,
@@ -526,7 +541,7 @@ int main(int argc, char* argv[])
                                        ib,
                                        jb,
                                        descB,
-                                       CUDA_R_64F,
+                                       CUDA_R_32F,
                                        d_potrsWork,
                                        potrsWorkspaceInBytesOnDevice,
                                        h_potrsWork,
@@ -582,31 +597,31 @@ int main(int argc, char* argv[])
             }
 
             /* pointers to the first valid entry of A, B and X */
-            double* _A = &h_A[(ia - 1) + (ja - 1) * lda];
-            double* _X = &h_X[(ib - 1) + (jb - 1) * ldb];
-            double* _B = &h_B[(ib - 1) + (jb - 1) * ldb];
+            float* _A = &h_A[(ia - 1) + (ja - 1) * lda];
+            float* _X = &h_X[(ib - 1) + (jb - 1) * ldb];
+            float* _B = &h_B[(ib - 1) + (jb - 1) * ldb];
 
             /* measure residual error |b - A*x| */
-            double max_err = 0;
+            float max_err = 0;
             for (int row = 0; row < n; row++)
             {
-                double sum = 0.0;
+                float sum = 0.0f;
                 for (int col = 0; col < n; col++)
                 {
-                    double Aij = _A[row + col * lda];
-                    double xj  = _X[col];
+                    float Aij = _A[row + col * lda];
+                    float xj  = _X[col];
                     sum += Aij * xj;
                 }
-                double bi  = _B[row];
-                double err = fabs(bi - sum);
+                float bi  = _B[row];
+                float err = fabsf(bi - sum);
 
-                max_err = fmax(max_err, err);
+                max_err = fmaxf(max_err, err);
             }
 
-            double x_nrm_inf = normI(n, 1, ldb, _X);
-            double b_nrm_inf = normI(n, 1, ldb, _B);
-            double A_nrm_inf = normI(n, n, lda, _A);
-            double rel_err   = max_err / (A_nrm_inf * x_nrm_inf + b_nrm_inf);
+            float x_nrm_inf = normI(n, 1, ldb, _X);
+            float b_nrm_inf = normI(n, 1, ldb, _B);
+            float A_nrm_inf = normI(n, n, lda, _A);
+            float rel_err   = max_err / (A_nrm_inf * x_nrm_inf + b_nrm_inf);
 
             printf("\n|b - A*x|_inf = %E\n", max_err);
             printf("|x|_inf = %E\n", x_nrm_inf);
