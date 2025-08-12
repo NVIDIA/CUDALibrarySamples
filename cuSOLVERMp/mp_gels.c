@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 NVIDIA Corporation.  All rights reserved.
+ * Copyright 2025 NVIDIA Corporation.  All rights reserved.
  *
  * NOTICE TO LICENSEE:
  *
@@ -62,10 +62,6 @@
 
 #include "helpers.h"
 
-#ifdef USE_CAL_MPI
-    #include <cal_mpi.h>
-#endif
-
 /* print matrix */
 static void print_host_matrix(const int64_t m, const int64_t n, const double* A, const int64_t lda, const char* msg)
 {
@@ -82,8 +78,6 @@ static void print_host_matrix(const int64_t m, const int64_t n, const double* A,
 /* set random matrix A, dim(A) = [m,n] */
 static void generate_random_matrix(const int64_t m, const int64_t n, double* A, const int64_t lda)
 {
-    time(NULL);
-
     for (int64_t j = 0; j < n; ++j)
     {
         for (int64_t i = 0; i < m; ++i)
@@ -168,24 +162,25 @@ static double compute_error(const int64_t m,
 
 int main(int argc, char* argv[])
 {
-    Options opts = { .m       = 10,
-                     .n       = 4,
-                     .nrhs    = 1,
-                     .mbA     = 2,
-                     .nbA     = 2,
-                     .mbB     = 2,
-                     .nbB     = 2,
-                     .mbQ     = 1,
-                     .nbQ     = 1,
-                     .ia      = 3,
-                     .ja      = 1,
-                     .ib      = 3,
-                     .jb      = 1,
-                     .iq      = 1,
-                     .jq      = 1,
-                     .p       = 1,
-                     .q       = 2,
-                     .verbose = false };
+    Options opts = { .m           = 20,
+                     .n           = 8,
+                     .nrhs        = 1,
+                     .mbA         = 2,
+                     .nbA         = 2,
+                     .mbB         = 2,
+                     .nbB         = 2,
+                     .mbQ         = 1,
+                     .nbQ         = 1,
+                     .ia          = 3,
+                     .ja          = 1,
+                     .ib          = 3,
+                     .jb          = 1,
+                     .iq          = 1,
+                     .jq          = 1,
+                     .p           = 1,
+                     .q           = 2,
+                     .grid_layout = 'C',
+                     .verbose     = false };
 
     parse(&opts, argc, argv);
     validate(&opts);
@@ -227,6 +222,11 @@ int main(int argc, char* argv[])
     const int numRowDevices = opts.p;
     const int numColDevices = opts.q;
 
+    /* Convert grid layout to cusolverMp grid mapping */
+    const cusolverMpGridMapping_t gridLayout =
+            (opts.grid_layout == 'C' || opts.grid_layout == 'c' ? CUSOLVERMP_GRID_MAPPING_COL_MAJOR
+                                                                : CUSOLVERMP_GRID_MAPPING_ROW_MAJOR);
+
     /* Current implementation only allows RSRC,CSRC=(0,0) */
     const uint32_t rsrca = 0;
     const uint32_t csrca = 0;
@@ -248,29 +248,25 @@ int main(int argc, char* argv[])
 
         /* Error codes */
         cusolverStatus_t cusolverStat = CUSOLVER_STATUS_SUCCESS;
-        calError_t       calStat      = CAL_OK;
+        ncclResult_t     ncclStat     = ncclSuccess;
         cudaError_t      cudaStat     = cudaSuccess;
 
         cudaStat = cudaSetDevice(localRank);
         assert(cudaStat == cudaSuccess);
 
         /* Create communicator */
-        cal_comm_t cal_comm = NULL;
-#ifdef USE_CAL_MPI
-        calStat = cal_comm_create_mpi(MPI_COMM_WORLD, rank, commSize, localRank, &cal_comm);
-#else
-        cal_comm_create_params_t params;
-        params.allgather    = allgather;
-        params.req_test     = request_test;
-        params.req_free     = request_free;
-        params.data         = (void*)(MPI_COMM_WORLD);
-        params.rank         = rank;
-        params.nranks       = commSize;
-        params.local_device = localRank;
+        ncclUniqueId id;
 
-        calStat = cal_comm_create(params, &cal_comm);
-#endif
-        assert(calStat == CAL_OK);
+        if (rank == 0)
+        {
+            ncclGetUniqueId(&id);
+        }
+
+        MPI_Bcast((void*)&id, sizeof(id), MPI_BYTE, 0, mpi_global_comm);
+
+        ncclComm_t comm;
+        ncclStat = ncclCommInitRank(&comm, commSize, id, rank);
+        assert(ncclStat == ncclSuccess);
 
         /* Create local stream */
         cudaStream_t localStream = NULL;
@@ -361,12 +357,25 @@ int main(int argc, char* argv[])
             }
         }
 
-        /* compute the load leading dimension of the device buffers */
-        const int64_t m_local_A = cusolverMpNUMROC(m_global_A, mbA, rank % numRowDevices, rsrca, numRowDevices);
-        const int64_t n_local_A = cusolverMpNUMROC(n_global_A, nbA, rank / numRowDevices, csrca, numColDevices);
+        /* compute process grid index */
+        int myRowRank, myColRank;
+        if (gridLayout == CUSOLVERMP_GRID_MAPPING_COL_MAJOR)
+        {
+            myRowRank = rank % numRowDevices;
+            myColRank = rank / numRowDevices;
+        }
+        else
+        {
+            myRowRank = rank / numColDevices;
+            myColRank = rank % numColDevices;
+        }
 
-        const int64_t m_local_B = cusolverMpNUMROC(m_global_B, mbB, rank % numRowDevices, rsrcb, numRowDevices);
-        const int64_t n_local_B = cusolverMpNUMROC(n_global_B, nbB, rank / numRowDevices, csrcb, numColDevices);
+        /* compute the load leading dimension of the device buffers */
+        const int64_t m_local_A = cusolverMpNUMROC(m_global_A, mbA, myRowRank, rsrca, numRowDevices);
+        const int64_t n_local_A = cusolverMpNUMROC(n_global_A, nbA, myColRank, csrca, numColDevices);
+
+        const int64_t m_local_B = cusolverMpNUMROC(m_global_B, mbB, myRowRank, rsrcb, numRowDevices);
+        const int64_t n_local_B = cusolverMpNUMROC(n_global_B, nbB, myColRank, csrcb, numColDevices);
 
         /* Allocate global d_A */
         cudaStat = cudaMalloc((void**)&d_A, m_local_A * n_local_A * sizeof(double));
@@ -379,12 +388,12 @@ int main(int argc, char* argv[])
         /* =========================================== */
         /*          CREATE GRID DESCRIPTORS            */
         /* =========================================== */
-        cusolverStat = cusolverMpCreateDeviceGrid(
-                cusolverMpHandle, &gridA, cal_comm, numRowDevices, numColDevices, CUSOLVERMP_GRID_MAPPING_COL_MAJOR);
+        cusolverStat =
+                cusolverMpCreateDeviceGrid(cusolverMpHandle, &gridA, comm, numRowDevices, numColDevices, gridLayout);
         assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
-        cusolverStat = cusolverMpCreateDeviceGrid(
-                cusolverMpHandle, &gridB, cal_comm, numRowDevices, numColDevices, CUSOLVERMP_GRID_MAPPING_COL_MAJOR);
+        cusolverStat =
+                cusolverMpCreateDeviceGrid(cusolverMpHandle, &gridB, comm, numRowDevices, numColDevices, gridLayout);
         assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
         /* =========================================== */
@@ -396,7 +405,7 @@ int main(int argc, char* argv[])
         assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
         cusolverStat = cusolverMpCreateMatrixDesc(
-                &descB, gridB, CUDA_R_64F, m_global_B, n_global_B, mbB, nbB, rsrcb, csrcb, m_global_B);
+                &descB, gridB, CUDA_R_64F, m_global_B, n_global_B, mbB, nbB, rsrcb, csrcb, m_local_B);
         assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
         /* =========================================== */
@@ -473,8 +482,8 @@ int main(int argc, char* argv[])
         assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
         /* sync wait for data to arrive to device */
-        calStat = cal_stream_sync(cal_comm, localStream);
-        assert(calStat == CAL_OK);
+        cudaStat = cudaStreamSynchronize(localStream);
+        assert(cudaStat == cudaSuccess);
 
         /* =========================================== */
         /*                   CALL PGELS                */
@@ -502,8 +511,8 @@ int main(int argc, char* argv[])
         assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
         /* sync after PGELS */
-        calStat = cal_stream_sync(cal_comm, localStream);
-        assert(calStat == CAL_OK);
+        cudaStat = cudaStreamSynchronize(localStream);
+        assert(cudaStat == cudaSuccess);
 
         /* copy d_gelsInfo to host */
         cudaStat = cudaMemcpyAsync(&h_gelsInfo, d_gelsInfo, sizeof(int), cudaMemcpyDeviceToHost, localStream);
@@ -534,8 +543,8 @@ int main(int argc, char* argv[])
         assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
         /* sync wait for data to arrive to host */
-        calStat = cal_stream_sync(cal_comm, localStream);
-        assert(calStat == CAL_OK);
+        cudaStat = cudaStreamSynchronize(localStream);
+        assert(cudaStat == cudaSuccess);
 
         /* =========================================== */
         /*            CHECK RESIDUAL ON MASTER         */
@@ -654,13 +663,13 @@ int main(int argc, char* argv[])
         cusolverStat = cusolverMpDestroy(cusolverMpHandle);
         assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
-        /* sync before cal_comm_destroy */
-        calStat = cal_comm_barrier(cal_comm, localStream);
-        assert(calStat == CAL_OK);
+        /* sync before ncclCommDestroy */
+        cudaStat = cudaStreamSynchronize(localStream);
+        assert(cudaStat == cudaSuccess);
 
-        /* destroy CAL communicator */
-        calStat = cal_comm_destroy(cal_comm);
-        assert(calStat == CAL_OK);
+        /* destroy nccl communicator */
+        ncclStat = ncclCommDestroy(comm);
+        assert(ncclStat == ncclSuccess);
 
         /* destroy user stream */
         cudaStat = cudaStreamDestroy(localStream);
@@ -672,6 +681,11 @@ int main(int argc, char* argv[])
 
     /* Finalize MPI environment */
     MPI_Finalize();
+
+    if (mpiRank == 0)
+    {
+        printf("[SUCCEEDED]\n");
+    }
 
     return 0;
 }
