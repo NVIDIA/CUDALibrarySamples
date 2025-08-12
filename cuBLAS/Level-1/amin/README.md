@@ -22,7 +22,6 @@ Windows
 ## Supported CPU Architecture
 
 x86_64  
-ppc64le  
 arm64-sbsa
 
 ## CUDA APIs involved

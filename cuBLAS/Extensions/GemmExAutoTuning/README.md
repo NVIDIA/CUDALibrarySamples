@@ -2,7 +2,7 @@
 
 ## Description
 
-This code demonstrates a usage of cuBLAS `GemmEx` function to compute a matrix-matrix product
+This code demonstrates usage of cuBLAS `GemmEx` function with autotuning (`algo=CUBLAS_GEMM_AUTOTUNE`) and timing to show that the first GEMM call is slower due to benchmarking, while subsequent calls reuse the cached optimal algorithm. It computes a matrix–matrix product
 
 ```
 A = | 1.0 | 2.0 |
@@ -12,7 +12,7 @@ B = | 5.0 | 6.0 |
     | 7.0 | 8.0 |
 ```
 
-This function is an extension of `cublas<t>gemm` that allows the user to individually specify the data types for each of the A, B and C matrices, the precision of computation and the GEMM algorithm to be run. Supported combinations of arguments are listed further down in this section.
+This function is an extension of `cublas<t>gemm` that allows the user to individually specify the data types for each of the A, B and C matrices, the precision of computation and the GEMM algorithm to be run (with `CUBLAS_GEMM_AUTOTUNE` selecting the optimal one). Supported combinations of arguments are listed further down in this section.
 
 See documentation for further details.
 
@@ -32,6 +32,7 @@ arm64-sbsa
 
 ## CUDA APIs involved
 - [cublasGemmEx API](https://docs.nvidia.com/cuda/cublas/index.html#cublasgemmex)
+- [cublasGemmAlgo_t](https://docs.nvidia.com/cuda/cublas/index.html#cublasgemmalgo-t)
 
 # Building (make)
 
@@ -65,15 +66,19 @@ Sample example output:
 
 ```
 A
-1.00 2.00 
-3.00 4.00 
+1.00 2.00
+3.00 4.00
 =====
 B
-5.00 6.00 
-7.00 8.00 
+5.00 6.00
+7.00 8.00
 =====
+Timing first call (without autotuning: to let the library initialize internal structures): 30.852 ms
+Timing second call (without autotuning: baseline): 0.017 ms
+Timing third call (autotune + GEMM): 0.356 ms
+Timing fourth call (cached algorithm): 0.007 ms
 C
-19.00 22.00 
-43.00 50.00 
+19.00 22.00
+43.00 50.00
 =====
 ```
