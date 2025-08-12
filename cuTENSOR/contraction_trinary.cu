@@ -1,7 +1,7 @@
-/*  
- * Copyright (c) 2019, NVIDIA CORPORATION.  All rights reserved.
- * 
- * 
+/*
+ * Copyright (c) 2019-2025, NVIDIA CORPORATION.  All rights reserved.
+ *
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
  * met:
@@ -13,7 +13,7 @@
  *  - Neither the name(s) of the copyright holder(s) nor the names of its
  *    contributors may be used to endorse or promote products derived
  *    from this software without specific prior written permission.
- * 
+ *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
  * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR 
@@ -25,14 +25,14 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */  
+ */
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <assert.h>
 
 #include <unordered_map>
 #include <vector>
-#include <cassert>
 
 #include <cuda_runtime.h>
 #include <cutensor.h>
@@ -86,46 +86,53 @@ int main()
     typedef float floatTypeA;
     typedef float floatTypeB;
     typedef float floatTypeC;
-    typedef float floatTypeCompute;
+    typedef float floatTypeD;
 
     cutensorDataType_t typeA = CUTENSOR_R_32F;
     cutensorDataType_t typeB = CUTENSOR_R_32F;
     cutensorDataType_t typeC = CUTENSOR_R_32F;
+    cutensorDataType_t typeD = CUTENSOR_R_32F;
     const cutensorComputeDescriptor_t descCompute = CUTENSOR_COMPUTE_DESC_32F;
 
-    floatTypeCompute alpha = (floatTypeCompute)1.1f;
-    floatTypeCompute beta  = (floatTypeCompute)0.f;
-
     /**********************
-     * Computing: C_{m,u,n,v} = alpha * A_{m,h,k,n} B_{u,k,v,h} + beta * C_{m,u,n,v}
+     * Computing: D_{m,n,b,r,a} = alpha * A_{m,k,a,j,b,i} B_{k,n,i} C_{r,j} + beta * D_{m,n,b,r,a}
      **********************/
 
-    std::vector<int> modeC{'m','u','n','v'};
-    std::vector<int> modeA{'m','h','k','n'};
-    std::vector<int> modeB{'u','k','v','h'};
+    std::vector<int> modeD{'m','n','b','r','a'};
+    std::vector<int> modeA{'m','k','a','j','b','i'};
+    std::vector<int> modeB{'k','n','i'};
+    std::vector<int> modeC{'r','j'};
     int nmodeA = modeA.size();
     int nmodeB = modeB.size();
     int nmodeC = modeC.size();
+    int nmodeD = modeD.size();
 
     std::unordered_map<int, int64_t> extent;
-    extent['m'] = 96;
-    extent['n'] = 96;
-    extent['u'] = 96;
-    extent['v'] = 64;
-    extent['h'] = 64;
-    extent['k'] = 64;
+    extent['m'] = 256;
+    extent['a'] = 32;
+    extent['b'] = 32;
+    extent['n'] = 64;
+    extent['r'] = 64;
+    extent['k'] = 8;
+    extent['i'] = 8;
+    extent['j'] = 64;
 
-    double gflops = (2.0 * extent['m'] * extent['n'] * extent['u'] * extent['v'] * extent['k'] * extent['h']) /1e9;
+    double gflopsFirstContraction  = 2.0 * extent['m'] * extent['a'] * extent['b'] * extent['j'] * extent['n'] * extent['k'] * extent['i'] / 1e9;
+    double gflopsSecondContraction = 2.0 * extent['m'] * extent['a'] * extent['b'] * extent['n'] * extent['r'] * extent['j'] / 1e9;
+    double gflops = gflopsFirstContraction + gflopsSecondContraction;
 
-    std::vector<int64_t> extentC;
-    for (auto mode : modeC)
-        extentC.push_back(extent[mode]);
+    std::vector<int64_t> extentD;
+    for (auto mode : modeD)
+        extentD.push_back(extent[mode]);
     std::vector<int64_t> extentA;
     for (auto mode : modeA)
         extentA.push_back(extent[mode]);
     std::vector<int64_t> extentB;
     for (auto mode : modeB)
         extentB.push_back(extent[mode]);
+    std::vector<int64_t> extentC;
+    for (auto mode : modeC)
+        extentC.push_back(extent[mode]);
 
     /**********************
      * Allocating data
@@ -140,27 +147,28 @@ int main()
     size_t elementsC = 1;
     for (auto mode : modeC)
         elementsC *= extent[mode];
+    size_t elementsD = 1;
+    for (auto mode : modeD)
+        elementsD *= extent[mode];
 
     size_t sizeA = sizeof(floatTypeA) * elementsA;
     size_t sizeB = sizeof(floatTypeB) * elementsB;
     size_t sizeC = sizeof(floatTypeC) * elementsC;
-    printf("Total memory: %.2f GiB\n", (sizeA + sizeB + sizeC)/1024./1024./1024);
+    size_t sizeD = sizeof(floatTypeD) * elementsD;
+    printf("Total memory: %.2f GiB\n", (sizeA + sizeB + sizeC + sizeD)/1024./1024./1024);
 
-    void *A_d, *B_d, *C_d;
+    void *A_d, *B_d, *C_d, *D_d;
     HANDLE_CUDA_ERROR(cudaMalloc((void**) &A_d, sizeA));
     HANDLE_CUDA_ERROR(cudaMalloc((void**) &B_d, sizeB));
     HANDLE_CUDA_ERROR(cudaMalloc((void**) &C_d, sizeC));
-
-    const uint32_t kAlignment = 128; // Alignment of the global-memory device pointers (bytes)
-    assert(uintptr_t(A_d) % kAlignment == 0);
-    assert(uintptr_t(B_d) % kAlignment == 0);
-    assert(uintptr_t(C_d) % kAlignment == 0);
+    HANDLE_CUDA_ERROR(cudaMalloc((void**) &D_d, sizeD));
 
     floatTypeA *A = (floatTypeA*) malloc(sizeof(floatTypeA) * elementsA);
     floatTypeB *B = (floatTypeB*) malloc(sizeof(floatTypeB) * elementsB);
     floatTypeC *C = (floatTypeC*) malloc(sizeof(floatTypeC) * elementsC);
+    floatTypeD *D = (floatTypeC*) malloc(sizeof(floatTypeD) * elementsD);
 
-    if (A == NULL || B == NULL || C == NULL)
+    if (A == NULL || B == NULL || C == NULL || D == NULL)
     {
         printf("Error: Host allocation of A or C.\n");
         return -1;
@@ -176,10 +184,19 @@ int main()
         B[i] = (((float) rand())/RAND_MAX - 0.5)*100;
     for (int64_t i = 0; i < elementsC; i++)
         C[i] = (((float) rand())/RAND_MAX - 0.5)*100;
+    for (int64_t i = 0; i < elementsD; i++)
+        D[i] = (((float) rand())/RAND_MAX - 0.5)*100;
 
     HANDLE_CUDA_ERROR(cudaMemcpy(A_d, A, sizeA, cudaMemcpyHostToDevice));
     HANDLE_CUDA_ERROR(cudaMemcpy(B_d, B, sizeB, cudaMemcpyHostToDevice));
     HANDLE_CUDA_ERROR(cudaMemcpy(C_d, C, sizeC, cudaMemcpyHostToDevice));
+    HANDLE_CUDA_ERROR(cudaMemcpy(D_d, D, sizeD, cudaMemcpyHostToDevice));
+
+    const uint32_t kAlignment = 128; // Alignment of the global-memory device pointers (bytes)
+    assert(uintptr_t(A_d) % kAlignment == 0);
+    assert(uintptr_t(B_d) % kAlignment == 0);
+    assert(uintptr_t(C_d) % kAlignment == 0);
+    assert(uintptr_t(D_d) % kAlignment == 0);
 
     /*************************
      * cuTENSOR
@@ -189,37 +206,9 @@ int main()
     HANDLE_ERROR(cutensorCreate(&handle));
 
     /**********************
-     * Load plan cache
-     **********************/
-
-    // holds information about the per-handle plan cache
-    const char planCacheFilename[] = "./planCache.bin";
-    uint32_t numCachelines = 0;
-    cutensorStatus_t status = cutensorHandleReadPlanCacheFromFile(handle,
-            planCacheFilename, &numCachelines);
-    if (status == CUTENSOR_STATUS_IO_ERROR)
-    {
-        printf("File (%s) doesn't seem to exist.\n", planCacheFilename);
-    }
-    else if (status != CUTENSOR_STATUS_SUCCESS)
-    {
-        printf("cutensorHandleReadPlanCacheFromFile reports error: %s\n", cutensorGetErrorString(status));
-    }
-    else
-    {
-        printf("cutensorHandleReadPlanCacheFromFile read %d cachelines from file.\n",
-                numCachelines);
-    }
-
-    /**********************
-     * Optional: Resize the cache in case you expect the default option to be insufficient fore your use case
-     **********************/
-    uint32_t numEntries = 128;
-    HANDLE_ERROR(cutensorHandleResizePlanCache(handle, numEntries));
-
-    /**********************
      * Create Tensor Descriptors
      **********************/
+
     cutensorTensorDescriptor_t descA;
     HANDLE_ERROR(cutensorCreateTensorDescriptor(handle,
                  &descA,
@@ -244,22 +233,47 @@ int main()
                  NULL,/*stride*/
                  typeC, kAlignment));
 
+    cutensorTensorDescriptor_t descD;
+    HANDLE_ERROR(cutensorCreateTensorDescriptor(handle,
+                 &descD,
+                 nmodeD,
+                 extentD.data(),
+                 NULL,/*stride*/
+                 typeD, kAlignment));
+
     /*******************************
      * Create Contraction Descriptor
      *******************************/
 
     cutensorOperationDescriptor_t desc;
-    HANDLE_ERROR(cutensorCreateContraction(handle, 
+    HANDLE_ERROR(cutensorCreateContractionTrinary(handle, 
                  &desc,
                  descA, modeA.data(), /* unary operator A*/CUTENSOR_OP_IDENTITY,
                  descB, modeB.data(), /* unary operator B*/CUTENSOR_OP_IDENTITY,
                  descC, modeC.data(), /* unary operator C*/CUTENSOR_OP_IDENTITY,
-                 descC, modeC.data(),
+                 descD, modeD.data(), /* unary operator D*/CUTENSOR_OP_IDENTITY,
+                 descD, modeD.data(),
                  descCompute));
 
+    /*****************************
+     * Optional (but recommended): ensure that the scalar type is correct.
+     *****************************/
+
+    cutensorDataType_t scalarType;
+    HANDLE_ERROR(cutensorOperationDescriptorGetAttribute(handle,
+        desc,
+        CUTENSOR_OPERATION_DESCRIPTOR_SCALAR_TYPE,
+        (void*)&scalarType,
+        sizeof(scalarType)));
+
+    assert(scalarType == CUTENSOR_R_32F);
+    typedef float floatTypeCompute;
+    floatTypeCompute alpha = (floatTypeCompute)1.1f;
+    floatTypeCompute beta  = (floatTypeCompute)0.f;
+
     /**************************
-     * PlanPreference: Set the algorithm to use and enable incremental autotuning
-     ***************************/
+    * Set the algorithm to use
+    ***************************/
 
     const cutensorAlgo_t algo = CUTENSOR_ALGO_DEFAULT;
 
@@ -268,31 +282,7 @@ int main()
                                handle,
                                &planPref,
                                algo,
-                               CUTENSOR_JIT_MODE_NONE)); // disable just-in-time compilation
-
-    const cutensorCacheMode_t cacheMode = CUTENSOR_CACHE_MODE_PEDANTIC;
-    HANDLE_ERROR(cutensorPlanPreferenceSetAttribute(
-        handle,
-        planPref,
-        CUTENSOR_PLAN_PREFERENCE_CACHE_MODE,
-        &cacheMode,
-        sizeof(cutensorCacheMode_t)));
-
-    const cutensorAutotuneMode_t autotuneMode = CUTENSOR_AUTOTUNE_MODE_INCREMENTAL;
-    HANDLE_ERROR(cutensorPlanPreferenceSetAttribute(
-        handle,
-        planPref,
-        CUTENSOR_PLAN_PREFERENCE_AUTOTUNE_MODE,
-        &autotuneMode ,
-        sizeof(cutensorAutotuneMode_t)));
-
-    const uint32_t incCount = 4;
-    HANDLE_ERROR(cutensorPlanPreferenceSetAttribute(
-        handle,
-        planPref,
-        CUTENSOR_PLAN_PREFERENCE_INCREMENTAL_COUNT,
-        &incCount,
-        sizeof(uint32_t)));
+                               CUTENSOR_JIT_MODE_NONE));
 
     /**********************
      * Query workspace estimate
@@ -306,53 +296,50 @@ int main()
                                           workspacePref,
                                           &workspaceSizeEstimate));
 
+    /**************************
+     * Create Contraction Plan
+     **************************/
+
+    cutensorPlan_t plan;
+    HANDLE_ERROR(cutensorCreatePlan(handle,
+                 &plan,
+                 desc,
+                 planPref,
+                 workspaceSizeEstimate));
+
+    /**************************
+     * Optional: Query information about the created plan
+     **************************/
+
+    // query actually used workspace
+    uint64_t actualWorkspaceSize = 0;
+    HANDLE_ERROR(cutensorPlanGetAttribute(handle,
+        plan,
+        CUTENSOR_PLAN_REQUIRED_WORKSPACE,
+        &actualWorkspaceSize,
+        sizeof(actualWorkspaceSize)));
+
+    // At this point the user knows exactly how much memory is need by the operation and
+    // only the smaller actual workspace needs to be allocated
+    assert(actualWorkspaceSize <= workspaceSizeEstimate);
 
     void *work = nullptr;
-    cutensorPlan_t plan;
-    uint64_t currentWorkspace = 0;
+    if (actualWorkspaceSize > 0)
+    {
+        HANDLE_CUDA_ERROR(cudaMalloc(&work, actualWorkspaceSize));
+        assert(uintptr_t(work) % 128 == 0); // workspace must be aligned to 128 byte-boundary
+    }
 
     /**********************
      * Run
      **********************/
 
+    cudaStream_t stream;
+    HANDLE_CUDA_ERROR(cudaStreamCreate(&stream));
+
     double minTimeCUTENSOR = 1e100;
-    for (int i=0; i < incCount + 1; ++i) // last iteration will hit the cache
+    for (int i=0; i < 3; ++i)
     {
-
-        /**************************
-         * Create Contraction Plan
-         **************************/
-        HANDLE_ERROR(cutensorCreatePlan(handle,
-                     &plan,
-                     desc,
-                     planPref,
-                     workspaceSizeEstimate));
-
-        /**************************
-         * Optional: Query information about the created plan
-         **************************/
-
-        // query actually used workspace
-        uint64_t actualWorkspaceSize = 0;
-        HANDLE_ERROR(cutensorPlanGetAttribute(handle,
-            plan,
-            CUTENSOR_PLAN_REQUIRED_WORKSPACE,
-            &actualWorkspaceSize,
-            sizeof(actualWorkspaceSize)));
-
-        // At this point the user knows exactly how much memory is need by the operation and
-        // only the smaller actual workspace needs to be allocated
-        assert(actualWorkspaceSize <= workspaceSizeEstimate);
-
-        if (actualWorkspaceSize > currentWorkspace)
-        {
-            if (work) cudaFree(work);
-            currentWorkspace = 0;
-            HANDLE_CUDA_ERROR(cudaMalloc(&work, actualWorkspaceSize));
-            currentWorkspace = actualWorkspaceSize;
-            assert(uintptr_t(work) % 128 == 0); // workspace must be aligned to 128 byte-boundary
-        }
-
         cudaMemcpy(C_d, C, sizeC, cudaMemcpyHostToDevice);
         cudaDeviceSynchronize();
 
@@ -360,41 +347,23 @@ int main()
         GPUTimer timer;
         timer.start();
 
-        // Automatically takes advantage of the incremental-autotuning (and updates the cache inside the context)
-        HANDLE_ERROR(cutensorContract(handle,
-                                  plan,
-                                  (void*) &alpha, A_d, B_d,
-                                  (void*) &beta,  C_d, C_d, 
-                                  work, actualWorkspaceSize, 0 /* stream */));
+        HANDLE_ERROR(cutensorContractTrinary(handle,
+                               plan,
+                               (void*) &alpha, A_d, B_d, C_d,
+                               (void*) &beta,  D_d, D_d,
+                               work, actualWorkspaceSize, stream));
 
         // Synchronize and measure timing
         auto time = timer.seconds();
-
         minTimeCUTENSOR = (minTimeCUTENSOR < time) ? minTimeCUTENSOR : time;
     }
 
     /*************************/
 
-    double transferedBytes = sizeC + sizeA + sizeB;
-    transferedBytes += ((float) beta != 0.f) ? sizeC : 0;
+    double transferedBytes = sizeA + sizeB + sizeC + sizeD;
+    transferedBytes += ((float) beta != 0.f) ? sizeD : 0;
     transferedBytes /= 1e9;
     printf("cuTensor: %.2f GFLOPs/s %.2f GB/s\n", gflops / minTimeCUTENSOR, transferedBytes/ minTimeCUTENSOR);
-
-    status = cutensorHandleWritePlanCacheToFile(handle, planCacheFilename);
-    if (status == CUTENSOR_STATUS_IO_ERROR)
-    {
-        printf("File (%s) couldn't be written to.\n", planCacheFilename);
-    }
-    else if (status != CUTENSOR_STATUS_SUCCESS)
-    {
-        printf("cutensorHandleWritePlanCacheToFile reports error: %s\n",
-                cutensorGetErrorString(status));
-    }
-    else
-    {
-        printf("Plan cache successfully stored to %s.\n", planCacheFilename);
-    }
-
 
     HANDLE_ERROR(cutensorDestroy(handle));
     HANDLE_ERROR(cutensorDestroyPlan(plan));
@@ -402,13 +371,17 @@ int main()
     HANDLE_ERROR(cutensorDestroyTensorDescriptor(descA));
     HANDLE_ERROR(cutensorDestroyTensorDescriptor(descB));
     HANDLE_ERROR(cutensorDestroyTensorDescriptor(descC));
+    HANDLE_ERROR(cutensorDestroyTensorDescriptor(descD));
+    HANDLE_CUDA_ERROR(cudaStreamDestroy(stream));
 
     if (A) free(A);
     if (B) free(B);
     if (C) free(C);
+    if (D) free(D);
     if (A_d) cudaFree(A_d);
     if (B_d) cudaFree(B_d);
     if (C_d) cudaFree(C_d);
+    if (D_d) cudaFree(D_d);
     if (work) cudaFree(work);
 
     return 0;

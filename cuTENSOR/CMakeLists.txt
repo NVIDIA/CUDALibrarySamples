@@ -28,12 +28,13 @@
 # 
 
 # ---[ Check cmake version.
-cmake_minimum_required(VERSION 3.12.0 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.20.0 FATAL_ERROR)
+cmake_policy(SET CMP0104 NEW)
+
+# ---[ Project specification.
+project(cutensor_example LANGUAGES C CXX CUDA)
 
 include(GNUInstallDirs)
-
-# ---[ Project specIFication.
-project(cutensor_example LANGUAGES C CXX CUDA)
 
 # ##########################################
 # cuTENSOR_example build mode
@@ -51,7 +52,7 @@ endif()
 # cuTENSOR_example dependencies
 # ##########################################
 
-find_package(CUDA 10.1 REQUIRED)
+find_package(CUDA 12.0 REQUIRED)
 include_directories("${CUDA_INCLUDE_DIRS}")
 
 if(NOT DEFINED ENV{CUTENSOR_ROOT} AND NOT DEFINED CUTENSOR_ROOT)
@@ -74,10 +75,9 @@ if(NOT TARGET cutensor)
   else()
     set(CUTENSOR_LIBRARY_NAME "libcutensor.so")
   endif()
-  if("${CUDA_VERSION_MAJOR}.${CUDA_VERSION_MINOR}" VERSION_GREATER_EQUAL "11.1")
-      set(LIB_DIR "/lib/${CUDA_VERSION_MAJOR}")
-  else()
-      set(LIB_DIR "/lib/${CUDA_VERSION_MAJOR}.${CUDA_VERSION_MINOR}")
+  set(LIB_DIR "/lib/${CUDA_VERSION_MAJOR}")
+  if(NOT EXISTS "${CUTENSOR_ROOT}${LIB_DIR}")
+      set(LIB_DIR "/lib")
   endif()
   set_target_properties(cutensor PROPERTIES
     IMPORTED_LOCATION "${CUTENSOR_ROOT}/${LIB_DIR}/${CUTENSOR_LIBRARY_NAME}"
@@ -98,13 +98,13 @@ endif()
 # Global CXX/CUDA flags
 
 # Global CXX flags/options
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Global CUDA CXX flags/options
 set(CUDA_HOST_COMPILER ${CMAKE_CXX_COMPILER})
-set(CMAKE_CUDA_STANDARD 11)
+set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_EXTENSIONS OFF)
 
@@ -149,6 +149,8 @@ add_cutensor_example(cutensor_examples "cuTENSOR.example.einsum" einsum.cu)
 add_cutensor_example(cutensor_examples "cuTENSOR.example.contraction" contraction.cu)
 add_cutensor_example(cutensor_examples "cuTENSOR.example.contraction_jit" contraction_jit.cu)
 add_cutensor_example(cutensor_examples "cuTENSOR.example.contraction_plan_cache" contraction_plan_cache.cu)
+add_cutensor_example(cutensor_examples "cuTENSOR.example.contraction_trinary" contraction_trinary.cu)
+add_cutensor_example(cutensor_examples "cuTENSOR.example.block_sparse_contraction" blocksparse.cu)
 add_cutensor_example(cutensor_examples "cuTENSOR.example.elementwise_binary" elementwise_binary.cu)
 add_cutensor_example(cutensor_examples "cuTENSOR.example.elementwise_permute" elementwise_permute.cu)
 add_cutensor_example(cutensor_examples "cuTENSOR.example.elementwise_permute_padding" elementwise_permute_padding.cu)

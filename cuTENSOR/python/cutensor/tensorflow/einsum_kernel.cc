@@ -92,10 +92,10 @@ class EinsumCuTensorOp : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape,
                                                      &output_tensor));
 
-    size_t worksize = myEinsum.getWorksize();
+    size_t worksize = 0;  // TODO: Query for max available device memory
     // create contraction plan according to the worksize provided
     // update the worksize if cutensor does not need that much memory
-    auto ret1 = myEinsum.plan(GetCuTensorHandle(), worksize);
+    auto ret1 = myEinsum.plan(GetCuTensorHandle(), worksize, 0 /* JIT compilation */);
     OP_REQUIRES(context, ret1, errors::Internal("cuTensor: plan creation failed."));
     // get the updated worksize
     worksize = myEinsum.getWorksize();

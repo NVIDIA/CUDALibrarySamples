@@ -10,10 +10,10 @@ This sample provides a Python package `cutensor` with bindings for PyTorch and T
    
    ```
    # PyTorch
-   host$ docker run -it --rm --gpus all -v $PWD/libcutensor:/cutensor --env CUTENSOR_ROOT=/cutensor nvcr.io/nvidia/pytorch:23.09-py3
+   host$ docker run -it --rm --gpus all -v $PWD/libcutensor:/cutensor --env CUTENSOR_ROOT=/cutensor nvcr.io/nvidia/pytorch:25.06-py3
 
    # Tensorflow
-   host$ docker run -it --rm --gpus all -v $PWD/libcutensor:/cutensor --env CUTENSOR_ROOT=/cutensor nvcr.io/nvidia/tensorflow:23.03-tf1-py3
+   host$ docker run -it --rm --gpus all -v $PWD/libcutensor:/cutensor --env CUTENSOR_ROOT=/cutensor nvcr.io/nvidia/tensorflow:25.02-tf2-py3
    ```
 3. Clone this repository in the docker container, and install this package.
 
