@@ -32,7 +32,7 @@ where `A` is an structured matrix, and `B`, `C`, `D` are dense matrices
 
 ## Support
 
-* **Supported SM Architectures:** SM 8.0, SM 8.6, SM 8.7, SM 8.9, SM 9.0
+* **Supported SM Architectures:** SM 8.0, SM 8.6, SM 8.7, SM 8.9, SM 9.0, SM10.0, SM10.1, SM110, SM 12.0, SM 12.1
 * **Supported OSes:** Linux, Windows
 * **Supported CPU Architectures**: x86_64, arm64
 * **Supported Compilers**: gcc, clang, Microsoft msvc, Nvidia HPC SDK nvc
@@ -40,6 +40,6 @@ where `A` is an structured matrix, and `B`, `C`, `D` are dense matrices
 
 ## Prerequisites
 
-* [CUDA 12.8 toolkit](https://developer.nvidia.com/cuda-downloads) (or above) and compatible driver (see [CUDA Driver Release Notes](https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/index.html#cuda-major-component-versions)).
-* [cusparseLt 0.7.0 or above](https://developer.nvidia.com/cusparselt/downloads)
+* [CUDA 12.9 toolkit](https://developer.nvidia.com/cuda-downloads) (or above) and compatible driver (see [CUDA Driver Release Notes](https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/index.html#cuda-major-component-versions)).
+* [cusparseLt 0.8.0 or above](https://developer.nvidia.com/cusparselt/downloads)
 * [CMake 3.18](https://cmake.org/download/) or above
