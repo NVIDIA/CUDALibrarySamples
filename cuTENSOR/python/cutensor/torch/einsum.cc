@@ -70,8 +70,8 @@ size_t getMaxAvailableMemorySize()
     // query the size of reserved and allocated memory in the torch memory pool
     auto current_device = at::cuda::current_device();
     auto device_stats = at::cuda::CUDACachingAllocator::getDeviceStats(current_device);
-    auto allocated_bytes = device_stats.allocated_bytes[static_cast<size_t>(at::cuda::CUDACachingAllocator::StatType::AGGREGATE)].current;
-    auto reserved_bytes = device_stats.reserved_bytes[static_cast<size_t>(at::cuda::CUDACachingAllocator::StatType::AGGREGATE)].current;
+    auto allocated_bytes = device_stats.allocated_bytes[static_cast<size_t>(c10::CachingDeviceAllocator::StatType::AGGREGATE)].current;
+    auto reserved_bytes = device_stats.reserved_bytes[static_cast<size_t>(c10::CachingDeviceAllocator::StatType::AGGREGATE)].current;
 
     // cached in torch memory pool
     size_t cached_bytes = reserved_bytes - allocated_bytes;
@@ -98,28 +98,46 @@ torch::Tensor einsum(
     cutensorOperator_t opB = conjB ? CUTENSOR_OP_CONJ : CUTENSOR_OP_IDENTITY;
     Einsum<scalar_t, int64_t, kMaxNumModes_> myEinsum(subscripts, input_0.sizes().vec(), input_1.sizes().vec(), opA, opB);
     if (!myEinsum.isInitialized()) {
+      std::cerr << "cutensor: Initialization failed." << std::endl;
       throw std::runtime_error("cutensor: Initialization failed.");
     }
-
     output_tensor = torch::empty(myEinsum.getOutputShape(), input_0.options());
 
-    uint64_t worksize_provided = ULLONG_MAX;
-    auto ret1 = myEinsum.plan(GetCuTensorHandle(), worksize_provided);
-    if (! ret1) throw std::runtime_error("cuTensor: plan creation failed.");
+    //get available GPU memory size
+    uint64_t worksize_provided = getMaxAvailableMemorySize();
+    //plan the einsum kernel
+    auto ret1 = myEinsum.plan(GetCuTensorHandle(), worksize_provided, false);
+    if (! ret1){
+      std::cerr << "cutensor: plan creation failed." << std::endl;
+      throw std::runtime_error("cutensor: plan creation failed.");
+    }
+
+
+    //get the estimated workspace size
     uint64_t worksize = myEinsum.getWorksize();
-    // try to allocate the workspace according to the cuTensor required size
-    // if failed, query the available memory size and recreate the plan
+
+    //try to allocate the workspace according to the cuTensor required size
     at::Tensor workspace;
     try {
       workspace = at::empty(worksize, at::CUDA(at::kByte));
-    } catch (std::exception& e) {
-      worksize_provided = getMaxAvailableMemorySize();
-      ret1 = myEinsum.plan(GetCuTensorHandle(), worksize_provided);
-      if (! ret1) throw std::runtime_error("cuTensor: plan recreation failed.");
-      worksize = myEinsum.getWorksize();
-      workspace = at::empty(worksize, at::CUDA(at::kByte));
+    } 
+    catch (std::exception& e) {
+        ret1 = myEinsum.plan(GetCuTensorHandle(), 1024ULL * 1024ULL * 1024ULL, false);
+        if (! ret1){
+          std::cerr << "cutensor: plan with less workspace failed." << std::endl;
+          throw std::runtime_error("cutensor: plan creation failed.");
+        }
+        worksize = myEinsum.getWorksize();
+        try {
+          workspace = at::empty(worksize, at::CUDA(at::kByte));
+        } 
+        catch (std::exception& e) {
+          std::cerr << "cutensor: error allocating workspace" << std::endl;
+          throw std::runtime_error("cutensor: error allocating workspace");
+        }
     }
 
+    //launch the einsum kernel
     auto stream = at::cuda::getCurrentCUDAStream().stream();
     auto ret = myEinsum.execute(GetCuTensorHandle(),
                                 input_0.data_ptr<scalar_t>(),
@@ -133,6 +151,122 @@ torch::Tensor einsum(
   return output_tensor;
 }
 
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-  m.def("einsum", &einsum, "Einsum");
-}
+ struct EinsumPlan {
+   void* myEinsumPtr = nullptr;
+   uint64_t worksize = 0;
+   torch::Tensor workspace;
+   torch::Tensor output_tensor;
+   torch::Tensor input_0;
+   torch::Tensor input_1;
+ };
+ 
+  EinsumPlan plan(
+   const std::string& subscripts,
+   const torch::Tensor& input_0,
+   const torch::Tensor& input_1,
+   bool conjA = false,
+   bool conjB = false,
+   bool jit_pref = false
+ ) {
+   EinsumPlan new_plan;
+   new_plan.input_0 = input_0;
+   new_plan.input_1 = input_1;
+   AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, input_0.scalar_type(), "plan", [&] {
+       constexpr int kMaxNumModes_ = 64;
+       cutensorOperator_t opA = conjA ? CUTENSOR_OP_CONJ : CUTENSOR_OP_IDENTITY;
+       cutensorOperator_t opB = conjB ? CUTENSOR_OP_CONJ : CUTENSOR_OP_IDENTITY;
+       Einsum<scalar_t, int64_t, kMaxNumModes_>* myEinsumPtr = new Einsum<scalar_t, int64_t, kMaxNumModes_>(
+           subscripts, input_0.sizes().vec(), input_1.sizes().vec(), opA, opB
+       );
+       new_plan.myEinsumPtr = myEinsumPtr;
+       if (!myEinsumPtr->isInitialized()) {
+         std::cerr << "cutensor: No Einsum pointer " << std::endl;
+         throw std::runtime_error("cutensor: Einsum pointer is NULL");
+       }
+       uint64_t worksize_provided = getMaxAvailableMemorySize();
+       bool ret1;
+       
+       if (jit_pref) {
+         try {
+           ret1 = myEinsumPtr->plan(GetCuTensorHandle(), worksize_provided, true);
+           if (!ret1){
+            ret1 = myEinsumPtr->plan(GetCuTensorHandle(), worksize_provided, true);
+            if (!ret1) {
+              std::cerr << "cutensor: JIT plan creation failed again" << std::endl;
+              throw std::runtime_error("cutensor: JIT plan creation failed again");
+            }
+           } 
+         } 
+         catch (const std::exception& e) {
+          ret1 = myEinsumPtr->plan(GetCuTensorHandle(), worksize_provided, false); // Always use non-JIT for recovery
+          if (!ret1) {
+            std::cerr << "Fallback to non-jit planing failed" << std::endl;
+            throw std::runtime_error("cutensor: Fallback to non-jit planing failed");
+          } 
+         }
+       }
+       else {
+         ret1 = myEinsumPtr->plan(GetCuTensorHandle(), worksize_provided, false); 
+         if (!ret1) {
+           std::cerr << "cutensor: NON-JIT plan creation failed 1 with error code but no exception" << std::endl;
+           throw std::runtime_error("cutensor: NON-JIT plan creation failed 1 with error code but no exception");
+         } 
+       }
+    
+       new_plan.worksize = myEinsumPtr->getWorksize();
+       try {
+        new_plan.workspace = at::empty(new_plan.worksize, at::CUDA(at::kByte));
+       } 
+       catch (std::exception& e) {
+        std::cerr << "cutensor: Workspace allocation failed: " << e.what() << std::endl;
+        throw std::runtime_error("cutensor: Workspace allocation failed.");
+       }
+       
+       new_plan.output_tensor = torch::empty(myEinsumPtr->getOutputShape(), input_0.options());
+   });
+   return new_plan;
+ }
+ 
+  torch::Tensor execute(
+   const EinsumPlan& exec_plan
+  ) {
+   if (!exec_plan.myEinsumPtr) {
+     throw std::runtime_error("Invalid EinsumPlan: myEinsumPtr is NULL");
+   }
+
+   AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, exec_plan.input_0.scalar_type(), "execute", [&] {
+     constexpr int kMaxNumModes_ = 64;  
+     Einsum<scalar_t, int64_t, kMaxNumModes_>* myEinsumPtr = static_cast<Einsum<scalar_t, int64_t, kMaxNumModes_>*>(exec_plan.myEinsumPtr);
+     auto stream = at::cuda::getCurrentCUDAStream().stream();
+     auto ret = myEinsumPtr->execute(
+         GetCuTensorHandle(),
+         exec_plan.input_0.data_ptr<scalar_t>(),
+         exec_plan.input_1.data_ptr<scalar_t>(),
+         exec_plan.output_tensor.data_ptr<scalar_t>(),
+         exec_plan.workspace.data_ptr<uint8_t>(),
+         stream
+     );
+     if (!ret){
+      std::cerr << "cutensor: Einsum execution failed" << std::endl;
+      throw std::runtime_error("cutensor: Launch failed.");
+     } 
+   });
+   return exec_plan.output_tensor;
+ }
+ 
+ 
+ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+   m.def("einsum", &einsum, "einsum");
+   m.def("execute", &execute, "execute");
+   m.def("plan", &plan, "plan");
+
+  py::class_<EinsumPlan>(m, "EinsumPlan")
+    .def(py::init<>())
+    .def_readwrite("myEinsumPtr", &EinsumPlan::myEinsumPtr)
+    .def_readwrite("worksize", &EinsumPlan::worksize)
+    .def_readwrite("workspace", &EinsumPlan::workspace)
+    .def_readwrite("output_tensor", &EinsumPlan::output_tensor)
+    .def_readwrite("input_0", &EinsumPlan::input_0)
+    .def_readwrite("input_1", &EinsumPlan::input_1);
+
+ }

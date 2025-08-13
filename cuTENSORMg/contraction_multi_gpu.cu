@@ -90,16 +90,19 @@ void printDeviceInfo(int deviceId)
 {
     struct cudaDeviceProp prop;
     int currentDeviceId = 0;
+    int clockRate = 0, memoryClockRate = 0;
     CHECK(cudaGetDevice(&currentDeviceId));
     CHECK(cudaSetDevice(deviceId));
     CHECK(cudaGetDeviceProperties(&prop, deviceId));
+    CHECK(cudaDeviceGetAttribute(&clockRate, cudaDevAttrClockRate, deviceId));
+    CHECK(cudaDeviceGetAttribute(&memoryClockRate, cudaDevAttrMemoryClockRate, deviceId));
     printf( "device %d (%s): SMs %2d  Capabilities %d.%d, SmClock %.1f Mhz, MemSize (MB) %d, MemClock %.1f Mhz\n",
             deviceId,
             prop.name,
             prop.multiProcessorCount, prop.major, prop.minor,
-            (float)prop.clockRate*1e-3,
+            (float)clockRate*1e-3,
             (int)(prop.totalGlobalMem/(1024*1024)),
-            (float)prop.memoryClockRate*1e-3);
+            (float)memoryClockRate*1e-3);
     CHECK(cudaSetDevice(currentDeviceId));
 }
 
