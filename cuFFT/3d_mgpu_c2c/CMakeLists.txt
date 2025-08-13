@@ -58,8 +58,8 @@ if("${CMAKE_BUILD_TYPE}" STREQUAL "")
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
-if(CMAKE_CUDA_ARCHITECTURES LESS 60)
-  set(CMAKE_CUDA_ARCHITECTURES 60 70 75 80 86 90)
+if(CMAKE_CUDA_ARCHITECTURES LESS 75)
+  set(CMAKE_CUDA_ARCHITECTURES 75 80 86 90 100 120)
 endif()
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
@@ -67,7 +67,7 @@ set_source_files_properties(${ROUTINE}_example.cpp PROPERTIES LANGUAGE CUDA)
 add_executable(${ROUTINE}_example)
 
 target_include_directories(${ROUTINE}_example
-                           PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES} 
+                           PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
                            ${CMAKE_SOURCE_DIR}/../utils)
 
 target_sources(${ROUTINE}_example

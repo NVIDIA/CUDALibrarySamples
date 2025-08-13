@@ -26,18 +26,14 @@
  */
 
 
-/* 
- * Example showing the use of LTO callbacks with CUFFT to perform 
+/*
+ * Example showing the use of LTO callbacks with CUFFT to perform
  * truncation with zero padding.
- * 
+ *
 */
 
 #include <cufftXt.h>
-
-struct cb_params {
-	unsigned window_size;
-	unsigned signal_size;
-};
+#include "callback_params.h"
 
 // This is the store callback routine. It filters high frequencies
 // based on a truncation window specified by the user
@@ -45,11 +41,26 @@ __device__ cufftComplex windowing_callback(void*              input,
                                            unsigned long long idx,
                                            void*              info,
                                            void*              sharedmem) {
-  
+
 	const cb_params* params = static_cast<const cb_params*>(info);
 	cufftComplex* cb_output = static_cast<cufftComplex*>(input);
 
 	const unsigned sample   = idx % params->signal_size;
 
 	return (sample < params->window_size) ? cb_output[idx] : cufftComplex{0.f, 0.f};
+}
+
+// Same as above, but using constant memory
+__constant__ unsigned cmem_window_size = window_size;
+__constant__ unsigned cmem_signal_size = complex_signal_size;
+__device__ cufftComplex windowing_constant_memory_callback(void*              input,
+														   unsigned long long idx,
+														   void*              info,
+														   void*              sharedmem) {
+
+	cufftComplex* cb_output = static_cast<cufftComplex*>(input);
+
+	const unsigned sample   = idx % cmem_signal_size;
+
+	return (sample < cmem_window_size) ? cb_output[idx] : cufftComplex{0.f, 0.f};
 }

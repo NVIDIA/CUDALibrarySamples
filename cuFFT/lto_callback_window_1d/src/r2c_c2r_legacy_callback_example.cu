@@ -26,48 +26,40 @@
  */
 
 
-/* 
- * Example showing the use of LTO callbacks with CUFFT to perform 
+/*
+ * Example showing the use of LTO callbacks with CUFFT to perform
  * normalization and truncation with zero padding.
- * 
+ *
 */
 
 #include <cuda_runtime_api.h>
 #include <cufftXt.h>
 #include "common.h"
 #include "r2c_c2r_reference.h"
-
-// Struct to pass data to callback
-struct cb_params {
-  unsigned window_size;
-  unsigned signal_size;
-};
+#include "callback_params.h"
 
 // This is the store callback routine. It filters high frequencies
 // based on a truncation window specified by the user
 // NOTE: unlike the LTO version, the callback function can have
 // any name
+__constant__ unsigned cmem_window_size = window_size;
+__constant__ unsigned cmem_signal_size = complex_signal_size;
 __device__ cufftComplex windowing_callback(void *input,
                                            size_t index,
                                            void *info,
                                            void *sharedmem) {
- 	const cb_params* params = static_cast<const cb_params*>(info);
-	cufftComplex* cb_output = static_cast<cufftComplex*>(input);
-	const unsigned sample   = index % params->signal_size;
-
+ 	cufftComplex* cb_output = static_cast<cufftComplex*>(input);
+#ifdef CB_USE_CONSTANT_MEMORY
+	const unsigned sample = index % cmem_signal_size;
+	return (sample < cmem_window_size) ? cb_output[index] : cufftComplex{0.f, 0.f};
+#else
+	const cb_params* params = static_cast<const cb_params*>(info);
+	const unsigned sample = index % params->signal_size;
 	return (sample < params->window_size) ? cb_output[index] : cufftComplex{0.f, 0.f};
+#endif
 }
 
 __device__ cufftCallbackLoadC device_callback_ptr = windowing_callback;
-
-// Problem input parameters
-constexpr unsigned batches              = 830;
-constexpr unsigned signal_size          = 328;
-constexpr unsigned window_size          =  32;
-constexpr unsigned complex_signal_size  = signal_size / 2 + 1;
-
-// Precision threshold
-constexpr float threshold = 1e-6;
 
 static_assert(window_size < (signal_size/2 + 1), "The window size must be smaller than the signal size in complex space");
 
@@ -87,16 +79,6 @@ int test_r2c_window_c2r() {
 	CHECK_ERROR(cudaMalloc((void **)&device_signals, complex_size_bytes));
 	CHECK_ERROR(cudaMemcpy(device_signals, input_signals, complex_size_bytes, cudaMemcpyHostToDevice));
 
-	// Define a structure used to pass in the window size
-	cb_params host_params;
-	host_params.window_size = window_size;
-	host_params.signal_size = complex_signal_size;
-
-	// Allocate and copy callback parameters from host to GPU
-	cb_params *device_params;
-	CHECK_ERROR(cudaMalloc((void **)&device_params, sizeof(cb_params)));
-	CHECK_ERROR(cudaMemcpy(device_params, &host_params, sizeof(cb_params), cudaMemcpyHostToDevice));
-
 	// Create a CUFFT plan for the forward transform, and a cuFFT plan for the inverse transform with load callback
 	cufftHandle forward_plan, inverse_plan_cb;
 	size_t work_size;
@@ -111,6 +93,19 @@ int test_r2c_window_c2r() {
 	cufftCallbackLoadC host_callback_ptr;
 	CHECK_ERROR(cudaMemcpyFromSymbol(&host_callback_ptr, device_callback_ptr, sizeof(host_callback_ptr)));
 
+#ifdef CB_USE_CONSTANT_MEMORY
+	cb_params *device_params = nullptr;
+#else
+	// Define a structure used to pass in the window size
+	cb_params host_params;
+	host_params.window_size = window_size;
+	host_params.signal_size = complex_signal_size;
+
+	// Allocate and copy callback parameters from host to GPU
+	cb_params *device_params;
+	CHECK_ERROR(cudaMalloc((void **)&device_params, sizeof(cb_params)));
+	CHECK_ERROR(cudaMemcpy(device_params, &host_params, sizeof(cb_params), cudaMemcpyHostToDevice));
+#endif
 	// Now associate the load callback with the plan.
 	CHECK_ERROR(cufftXtSetCallback(inverse_plan_cb, (void **)&host_callback_ptr, CUFFT_CB_LD_COMPLEX, (void **)&device_params));
 

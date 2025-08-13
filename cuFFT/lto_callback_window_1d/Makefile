@@ -6,14 +6,14 @@ NVCC  ?= nvcc
 BIN2C ?= bin2c
 
 CUDA_PATH ?= /usr/local/cuda
-CUDA_ARCH ?= 60 70 75 80 86 90
-CUDA_LTO_ARCH ?= 60
+CUDA_ARCH ?= 75 80 86 90 100 120
+CUDA_LTO_ARCH ?= 75
 
 ###########################################################################################################
 # Paths
 
-INCLUDES = $(CUDA_PATH)/include
-LIBS = $(CUDA_PATH)/lib64
+INCLUDES = -I$(CUDA_PATH)/include -I./build
+LIBS = -L$(CUDA_PATH)/lib64
 
 $(shell   mkdir -p ./bin)
 $(shell   mkdir -p ./build)
@@ -26,6 +26,9 @@ GENCODE_FLAGS := $(foreach arch, $(CUDA_ARCH), --generate-code arch=compute_$(ar
 
 DEFINES = -DCUDA_ARCH=$(CUDA_LTO_ARCH) -DCUDA_PATH=$(CUDA_PATH) -DSOURCE_PATH=${CURDIR}/src
 
+# Uncomment to use constant memory version of the callback
+# CB_SWITCH = -DCB_USE_CONSTANT_MEMORY
+
 ###########################################################################################################
 # Rules
 
@@ -33,41 +36,41 @@ all: bin/r2c_c2r_lto_callback_example bin/r2c_c2r_lto_nvrtc_callback_example bin
 
 # LTO example
 bin/r2c_c2r_lto_callback_example: build/r2c_c2r_lto_callback_example.o build/r2c_c2r_reference.o build/common.o
-	$(CXX) -L $(LIBS) $^ -o $@ -lcufft -lcudart
+	$(CXX) $(LIBS) $^ -o $@ -lcufft -lcudart
 
-build/r2c_c2r_lto_callback_example.o: src/r2c_c2r_lto_callback_example.cpp src/r2c_c2r_lto_callback_device_fatbin.h
-	$(CXX) -I $(INCLUDES) -c $< -o $@
+build/r2c_c2r_lto_callback_example.o: src/r2c_c2r_lto_callback_example.cpp build/r2c_c2r_lto_callback_device_fatbin.h
+	$(CXX) $(INCLUDES) -c $< -o $@
 
-src/r2c_c2r_lto_callback_device_fatbin.h: build/r2c_c2r_lto_callback_device.fatbin
+build/r2c_c2r_lto_callback_device_fatbin.h: build/r2c_c2r_lto_callback_device.fatbin
 	$(BIN2C) --name window_callback --type longlong $< > $@
 
 build/r2c_c2r_lto_callback_device.fatbin: src/r2c_c2r_lto_callback_device.cu
-	$(NVCC) --std=c++11 $(GENCODE_FLAGS_LTO) -dc -fatbin $< -o $@
+	$(NVCC) --std=c++11 $(GENCODE_FLAGS_LTO) $(CB_SWITCH) -dc -fatbin $< -o $@
 
 # NVRTC + LTO example
 bin/r2c_c2r_lto_nvrtc_callback_example: build/r2c_c2r_lto_nvrtc_callback_example.o build/r2c_c2r_reference.o build/common.o
-	$(CXX) -L $(LIBS) $^ -o $@ -lcufft -lnvrtc -lcudart
+	$(CXX) $(LIBS) $^ -o $@ -lcufft -lnvrtc -lcudart
 
 build/r2c_c2r_lto_nvrtc_callback_example.o: src/r2c_c2r_lto_nvrtc_callback_example.cpp
-	$(CXX) -I $(INCLUDES) $(DEFINES) -c $< -o $@
+	$(CXX) $(INCLUDES) $(DEFINES) $(CB_SWITCH) -c $< -o $@
 
 # Regular callback example
 # NOTE: we compile the sample with nvcc and do device-linking against the static library. With the
-# LTO sample, on the other hand, we only need to do separate compilation of the callback function; 
+# LTO sample, on the other hand, we only need to do separate compilation of the callback function;
 # we can use the dynamic library and compile the host code with the host compiler
 build/r2c_c2r_legacy_callback_example.o: src/r2c_c2r_legacy_callback_example.cu
-	$(NVCC) -I $(INCLUDES) --std=c++11 $(GENCODE_FLAGS) -dc -c $< -o $@ 
+	$(NVCC) $(INCLUDES) --std=c++11 $(GENCODE_FLAGS) $(CB_SWITCH) -dc -c $< -o $@
 
 bin/r2c_c2r_legacy_callback_example: build/r2c_c2r_legacy_callback_example.o build/r2c_c2r_reference.o build/common.o
-	$(NVCC) -L $(LIBS) $(GENCODE_FLAGS) -o $@ $^ -lcufft_static -lcudart -lculibos
+	$(NVCC) $(LIBS) $(GENCODE_FLAGS) $(CB_SWITCH) -o $@ $^ -lcufft_static -lcudart -lculibos
 
 # Reference
 build/r2c_c2r_reference.o: src/r2c_c2r_reference.cu
-	$(NVCC) -I $(INCLUDES) --std=c++11 $(GENCODE_FLAGS) -c $< -o $@ 
+	$(NVCC) $(INCLUDES) --std=c++11 $(GENCODE_FLAGS) -c $< -o $@
 
 build/common.o: src/common.cpp
-	$(CXX) -I $(INCLUDES) --std=c++11 -c $< -o $@
+	$(CXX) $(INCLUDES) --std=c++11 -c $< -o $@
 
 clean:
-	rm -f build/* bin/* src/r2c_c2r_lto_callback_device_fatbin.h
+	rm -f build/* bin/*
 ###########################################################################################################

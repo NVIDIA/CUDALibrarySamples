@@ -81,8 +81,6 @@ int main(int argc, char *argv[]) {
     input_type *d_input = nullptr;
     cufftComplex *d_output = nullptr;
 
-    CUFFT_CALL(cufftCreate(&planr2c));
-    CUFFT_CALL(cufftCreate(&planc2r));
     CUFFT_CALL(cufftPlan1d(&planr2c, fft_size, CUFFT_R2C, batch_size));
     CUFFT_CALL(cufftPlan1d(&planc2r, fft_size, CUFFT_C2R, batch_size));
 

@@ -42,7 +42,7 @@
 cmake_minimum_required(VERSION 3.18)
 
 project(
-  lto_ea_sample 
+  lto_ea_sample
   DESCRIPTION "cuFFT LTO EA preview sample"
   HOMEPAGE_URL "https://docs.nvidia.com/cuda/cufft/index.html"
   LANGUAGES CXX CUDA)
@@ -56,11 +56,13 @@ if("${CMAKE_BUILD_TYPE}" STREQUAL "")
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
-if(CMAKE_CUDA_ARCHITECTURES LESS 60)
-  set(CMAKE_CUDA_ARCHITECTURES 60 70 75 80 86 90)
+if(CMAKE_CUDA_ARCHITECTURES LESS 75)
+  set(CMAKE_CUDA_ARCHITECTURES 75 80 86 90 100 120)
 endif()
 
-set(CUDA_LTO_ARCHITECTURE 60)
+option(CB_USE_CONSTANT_MEMORY "Use constant memory for windowing callback parameters" OFF)
+
+set(CUDA_LTO_ARCHITECTURE 75)
 set(GENCODE_FLAGS_LTO --generate-code arch=compute_${CUDA_LTO_ARCHITECTURE},code=lto_${CUDA_LTO_ARCHITECTURE})
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
@@ -70,23 +72,23 @@ add_executable(r2c_c2r_lto_nvrtc_callback_example)
 add_executable(r2c_c2r_legacy_callback_example)
 
 target_include_directories(r2c_c2r_lto_callback_example
-                           PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES} 
-                           ${CMAKE_SOURCE_DIR}/../utils
-                           ${CMAKE_SOURCE_DIR}/src)
+                           PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
+                           ${CMAKE_SOURCE_DIR}/src
+                           ${CMAKE_BINARY_DIR})
 target_include_directories(r2c_c2r_lto_nvrtc_callback_example
-                           PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES} 
-                           ${CMAKE_SOURCE_DIR}/../utils
-                           ${CMAKE_SOURCE_DIR}/src)
+                           PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
+                           ${CMAKE_SOURCE_DIR}/src
+                           ${CMAKE_BINARY_DIR})
 target_include_directories(r2c_c2r_legacy_callback_example
-                           PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES} 
-                           ${CMAKE_SOURCE_DIR}/../utils
-                           ${CMAKE_SOURCE_DIR}/src)
+                           PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
+                           ${CMAKE_SOURCE_DIR}/src
+                           ${CMAKE_BINARY_DIR})
 
 target_sources(r2c_c2r_lto_callback_example
                PRIVATE ${PROJECT_SOURCE_DIR}/src/r2c_c2r_lto_callback_example.cpp
-                       ${PROJECT_SOURCE_DIR}/src/r2c_c2r_lto_callback_device_fatbin.h
                        ${PROJECT_SOURCE_DIR}/src/common.cpp
-                       ${PROJECT_SOURCE_DIR}/src/r2c_c2r_reference.cu)
+                       ${PROJECT_SOURCE_DIR}/src/r2c_c2r_reference.cu
+                       ${CMAKE_BINARY_DIR}/r2c_c2r_lto_callback_device_fatbin.h)
 
 target_sources(r2c_c2r_lto_nvrtc_callback_example
                PRIVATE ${PROJECT_SOURCE_DIR}/src/r2c_c2r_lto_nvrtc_callback_example.cpp
@@ -98,16 +100,23 @@ target_sources(r2c_c2r_legacy_callback_example
                        ${PROJECT_SOURCE_DIR}/src/common.cpp
                        ${PROJECT_SOURCE_DIR}/src/r2c_c2r_reference.cu)
 
+if(CB_USE_CONSTANT_MEMORY)
+  target_compile_definitions(r2c_c2r_legacy_callback_example PRIVATE CB_USE_CONSTANT_MEMORY)
+  target_compile_definitions(r2c_c2r_lto_callback_example PRIVATE CB_USE_CONSTANT_MEMORY)
+  target_compile_definitions(r2c_c2r_lto_nvrtc_callback_example PRIVATE CB_USE_CONSTANT_MEMORY)
+endif()
+
 target_compile_definitions(r2c_c2r_lto_nvrtc_callback_example PRIVATE CUDA_ARCH=${CUDA_LTO_ARCHITECTURE} CUDA_PATH=${CUDAToolkit_BIN_DIR}/.. -DSOURCE_PATH=${CMAKE_SOURCE_DIR}/src)
 
 set_target_properties(r2c_c2r_legacy_callback_example PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON
                                                                  CUDA_SEPARABLE_COMPILATION ON)
 
+message(STATUS "CMAKE_BINARY_DIR: ${CMAKE_BINARY_DIR}")
 add_custom_command(
-    OUTPUT  ${CMAKE_BINARY_DIR}/r2c_c2r_lto_callback_device.fatbin ${CMAKE_SOURCE_DIR}/src/r2c_c2r_lto_callback_device_fatbin.h
+    OUTPUT  ${CMAKE_BINARY_DIR}/r2c_c2r_lto_callback_device.fatbin ${CMAKE_BINARY_DIR}/r2c_c2r_lto_callback_device_fatbin.h
     DEPENDS ${CMAKE_SOURCE_DIR}/src/r2c_c2r_lto_callback_device.cu
-    COMMAND ${CMAKE_CUDA_COMPILER} --std=c++11 ${GENCODE_FLAGS_LTO} -dc -fatbin ${CMAKE_SOURCE_DIR}/src/r2c_c2r_lto_callback_device.cu -o ${CMAKE_BINARY_DIR}/r2c_c2r_lto_callback_device.fatbin 
-    COMMAND ${CUDAToolkit_BIN_DIR}/bin2c --name window_callback --type longlong ${CMAKE_BINARY_DIR}/r2c_c2r_lto_callback_device.fatbin > ${CMAKE_SOURCE_DIR}/src/r2c_c2r_lto_callback_device_fatbin.h
+    COMMAND ${CMAKE_CUDA_COMPILER} --std=c++11 ${GENCODE_FLAGS_LTO} -dc -fatbin ${CMAKE_SOURCE_DIR}/src/r2c_c2r_lto_callback_device.cu -o ${CMAKE_BINARY_DIR}/r2c_c2r_lto_callback_device.fatbin
+    COMMAND ${CUDAToolkit_BIN_DIR}/bin2c --name window_callback --type longlong ${CMAKE_BINARY_DIR}/r2c_c2r_lto_callback_device.fatbin > ${CMAKE_BINARY_DIR}/r2c_c2r_lto_callback_device_fatbin.h
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 

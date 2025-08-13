@@ -84,23 +84,22 @@ int main(int argc, char *argv[]) {
 
     cufftComplex *d_data = nullptr;
 
-    CUFFT_CALL(cufftCreate(&planc2r));
-    CUFFT_CALL(cufftCreate(&planr2c));
     // inembed/onembed being nullptr indicates contiguous data for each batch, then the stride and dist settings are ignored
-    CUFFT_CALL(cufftPlanMany(&planc2r, fft_size.size(), fft_size.data(), 
-                             nullptr, 1, 0, // *inembed, istride, idist 
+    CUFFT_CALL(cufftPlanMany(&planc2r, fft_size.size(), fft_size.data(),
+                             nullptr, 1, 0, // *inembed, istride, idist
                              nullptr, 1, 0, // *onembed, ostride, odist
                              CUFFT_C2R, batch_size));
-    CUFFT_CALL(cufftPlanMany(&planr2c, fft_size.size(), fft_size.data(), 
+    CUFFT_CALL(cufftPlanMany(&planr2c, fft_size.size(), fft_size.data(),
                              nullptr, 1, 0, // *inembed, istride, idist
                              nullptr, 1, 0, // *onembed, ostride, odist
                              CUFFT_R2C, batch_size));
+
     CUDA_RT_CALL(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
     CUFFT_CALL(cufftSetStream(planc2r, stream));
     CUFFT_CALL(cufftSetStream(planr2c, stream));
 
     // Create device arrays
-    // For in-place r2c/c2r transforms, make sure the device array is always allocated to the size of complex array 
+    // For in-place r2c/c2r transforms, make sure the device array is always allocated to the size of complex array
     CUDA_RT_CALL(
         cudaMalloc(reinterpret_cast<void **>(&d_data), sizeof(input_type) * input_complex.size()));
 
@@ -124,7 +123,7 @@ int main(int argc, char *argv[]) {
     // Normalize the data
     scaling_kernel<<<1, 128, 0, stream>>>(d_data, input_complex.size(), 1.f/(nx * ny));
 
-    // R2C 
+    // R2C
     CUFFT_CALL(cufftExecR2C(planr2c, reinterpret_cast<scalar_type*>(d_data), d_data));
 
     CUDA_RT_CALL(cudaMemcpyAsync(input_complex.data(), d_data, sizeof(input_type) * input_complex.size(),
