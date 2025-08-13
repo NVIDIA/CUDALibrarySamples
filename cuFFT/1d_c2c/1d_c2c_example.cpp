@@ -78,9 +78,7 @@ int main(int argc, char *argv[]) {
 
     cufftComplex *d_data = nullptr;
 
-    CUFFT_CALL(cufftCreate(&plan));
     CUFFT_CALL(cufftPlan1d(&plan, fft_size, CUFFT_C2C, batch_size));
-
     CUDA_RT_CALL(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
     CUFFT_CALL(cufftSetStream(plan, stream));
 

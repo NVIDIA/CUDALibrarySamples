@@ -72,6 +72,6 @@ double compute_error(T* ref, T* out, unsigned batches, unsigned signal_size){
     return std::sqrt(squared_diff / squared_norm);
 }
 
+// Initialize input signals
 void init_input_signals(unsigned batches, unsigned signal_size, float* signals);
-
 #endif // _COMMON__H_

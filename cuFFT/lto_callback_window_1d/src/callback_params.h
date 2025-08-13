@@ -1,4 +1,4 @@
-/* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+/* Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,33 +25,22 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifndef _CALLBACK_PARAMS__H_
+#define _CALLBACK_PARAMS__H_
 
-/* 
- * Example showing the use of LTO callbacks with CUFFT to perform 
- * truncation with zero padding.
- * 
-*/
-
-#include <cufftXt.h>
-
+// Callback parameters structure
 struct cb_params {
-	unsigned window_N;
+	unsigned window_size;
 	unsigned signal_size;
 };
 
-// This is the store callback routine. It filters high frequencies
-// based on a truncation window specified by the user
-// NOTE: unlike the non-LTO version, the callback device function
-// must have the name cufftJITCallbackLoadComplex, it cannot be aliased
-__device__ cufftComplex cufftJITCallbackLoadComplex(void *input,
-                                                    size_t index,
-                                                    void *info,
-                                                    void *sharedmem) {
-  
-	const cb_params* params = static_cast<const cb_params*>(info);
-	cufftComplex* cb_output = static_cast<cufftComplex*>(input);
-	const unsigned sample   = index % params->signal_size;
+// Problem input parameters
+constexpr unsigned batches              = 830;
+constexpr unsigned signal_size          = 328;
+constexpr unsigned window_size          =  32;
+constexpr unsigned complex_signal_size  = signal_size / 2 + 1;
 
-	return (sample < params->window_N) ? cb_output[index] : cufftComplex{0.f, 0.f};
-}
+// Precision threshold
+constexpr float threshold = 1e-6;
 
+#endif // _CALLBACK_PARAMS__H_

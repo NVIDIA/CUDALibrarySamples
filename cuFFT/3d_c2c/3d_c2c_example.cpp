@@ -85,9 +85,8 @@ int main(int argc, char *argv[]) {
 
     cufftComplex *d_data = nullptr;
 
-    CUFFT_CALL(cufftCreate(&plan));
     // inembed/onembed being nullptr indicates contiguous data for each batch, then the stride and dist settings are ignored
-    CUFFT_CALL(cufftPlanMany(&plan, fft.size(), fft.data(), 
+    CUFFT_CALL(cufftPlanMany(&plan, fft.size(), fft.data(),
                              nullptr, 1, 0, // *inembed, istride, idist
                              nullptr, 1, 0, // *onembed, ostride, odist
                              CUFFT_C2C, batch_size));

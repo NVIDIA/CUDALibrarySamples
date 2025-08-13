@@ -26,10 +26,10 @@
  */
 
 
-/* 
- * Example showing the use of LTO callbacks with CUFFT to perform 
+/*
+ * Example showing the use of LTO callbacks with CUFFT to perform
  * truncation with zero padding.
- * 
+ *
 */
 
 #include <cuda_runtime_api.h>
@@ -37,22 +37,7 @@
 #include "r2c_c2r_reference.h"
 #include "common.h"
 #include "nvrtc_helper.h"
-
-// Struct to pass data to callback
-struct cb_params {
-	unsigned window_size;
-	unsigned signal_size;
-};
-
-// Problem input parameters
-constexpr unsigned batches             = 830;
-constexpr unsigned signal_size         = 328;
-constexpr unsigned window_size         =  32;
-constexpr unsigned complex_signal_size = signal_size / 2 + 1;
-
-// Precision threshold
-constexpr float threshold = 1e-6;
-
+#include "callback_params.h"
 static_assert(window_size < (signal_size/2 + 1), "The window size must be smaller than the signal size in complex space");
 
 int test_r2c_window_c2r() {
@@ -70,16 +55,6 @@ int test_r2c_window_c2r() {
 	CHECK_ERROR(cudaMalloc((void **)&device_signals, complex_size_bytes));
 	CHECK_ERROR(cudaMemcpy(device_signals, input_signals, complex_size_bytes, cudaMemcpyHostToDevice));
 
-	// Define a structure used to pass in the window size
-	cb_params host_params;
-	host_params.window_size = window_size;
-	host_params.signal_size = complex_signal_size;
-
-	// Allocate and copy callback parameters from host to GPU
-	cb_params *device_params;
-	CHECK_ERROR(cudaMalloc((void **)&device_params, sizeof(cb_params)));
-	CHECK_ERROR(cudaMemcpy(device_params, &host_params, sizeof(cb_params), cudaMemcpyHostToDevice));
-
 	// NOTE: Use NVRTC to compile the callback function to LTO
 	std::vector<char> callback_buffer;
 	compile_file_to_lto(callback_buffer, CALLBACK_CODE_PATH("r2c_c2r_lto_callback_device.cu"));
@@ -91,9 +66,25 @@ int test_r2c_window_c2r() {
 	CHECK_ERROR(cufftCreate(&forward_plan));
 	CHECK_ERROR(cufftCreate(&inverse_plan_cb));
 
-	// // NOTE: LTO callbacks must be set before plan creation and cannot be unset (yet)
+	// NOTE: LTO callbacks must be set before plan creation and cannot be unset (yet)
+#ifdef CB_USE_CONSTANT_MEMORY
+	cb_params *device_params  = nullptr;
+	std::string callback_name = "windowing_constant_memory_callback";
+#else
+	// Define a structure used to pass in the window size
+	cb_params host_params;
+	host_params.window_size = window_size;
+	host_params.signal_size = complex_signal_size;
+
+	// Allocate and copy callback parameters from host to GPU
+	cb_params *device_params;
+	CHECK_ERROR(cudaMalloc((void **)&device_params, sizeof(cb_params)));
+	CHECK_ERROR(cudaMemcpy(device_params, &host_params, sizeof(cb_params), cudaMemcpyHostToDevice));
+
+	std::string callback_name = "windowing_callback";
+#endif
 	CHECK_ERROR(cufftXtSetJITCallback(inverse_plan_cb,
-                                      "windowing_callback",
+                                      callback_name.c_str(),
                                       (void*)callback_buffer.data(),
                                       callback_buffer.size(),
                                       CUFFT_CB_LD_COMPLEX,
