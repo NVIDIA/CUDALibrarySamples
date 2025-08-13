@@ -26,11 +26,11 @@
 //  */
 
 
-/* 
+/*
  * Reference for the example of LTO callbacks,
  * run the same plans but perform the windowing with
  * a separate kernel.
- * 
+ *
 */
 
 #include <cuda_runtime_api.h>
@@ -45,7 +45,7 @@ __global__ void windowing(unsigned nbatches, unsigned complex_signal_size, unsig
 
 	if(idx >= nbatches * complex_signal_size) return;
 
-	const unsigned sample = idx % complex_signal_size; 
+	const unsigned sample = idx % complex_signal_size;
 
 	buffer[idx].x = (sample < window_size) ? buffer[idx].x : 0.f;
 	buffer[idx].y = (sample < window_size) ? buffer[idx].y : 0.f;
