@@ -27,10 +27,12 @@ make
 ./example_ml_dsa
 ./example_sha2
 ./example_sha3
+./example_poseidon2
+./example_merkle
 ```
 
 ## Examples
 There is a ML-KEM and a ML-DSA example in this directory, these demonstrate the usage for the cuPQC library, and requires `libcupqc.a`. 
-There are also SHA2 and SHA3 examples that demonstrate the usage of the cuHash library, these require `libcuhash.a`. 
-For the detailed descriptions of the examples please visit [Examples](https://docs.nvidia.com/cuda/cupqc/examples.html) section of the cuCPQ documentation.
+There are also SHA2, SHA3, Poseidon2 and Merkle Tree examples that demonstrate the usage of the cuHash library, these require `libcuhash.a`. 
+For the detailed descriptions of the cuPQC API please visit [cuPQC SDK Docs](https://docs.nvidia.com/cuda/cupqc/index.html) section of the cuPQC documentation.
 
