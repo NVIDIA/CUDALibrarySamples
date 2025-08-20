@@ -7,6 +7,7 @@
 #include <chrono>
 #include <random>
 #include <algorithm>
+#include <sstream>
 
 #include <cuda_runtime_api.h>
 #include <cufft.h>
@@ -175,6 +176,143 @@ namespace example {
         float          avg_time_in_ms;
     };
 
+    struct cufftdx_enable_example_sm {
+        #if defined(CUFFTDX_EXAMPLE_ENABLE_SM_70)
+        static constexpr bool sm_70 = true;
+        #else
+        static constexpr bool sm_70 = false;
+        #endif
+
+        #if defined(CUFFTDX_EXAMPLE_ENABLE_SM_72)
+        static constexpr bool sm_72 = true;
+        #else
+        static constexpr bool sm_72 = false;
+        #endif
+
+        #if defined(CUFFTDX_EXAMPLE_ENABLE_SM_75)
+        static constexpr bool sm_75 = true;
+        #else
+        static constexpr bool sm_75 = false;
+        #endif
+
+        #if defined(CUFFTDX_EXAMPLE_ENABLE_SM_80)
+        static constexpr bool sm_80 = true;
+        #else
+        static constexpr bool sm_80 = false;
+        #endif
+
+        #if defined(CUFFTDX_EXAMPLE_ENABLE_SM_86)
+        static constexpr bool sm_86 = true;
+        #else
+        static constexpr bool sm_86 = false;
+        #endif
+
+        #if defined(CUFFTDX_EXAMPLE_ENABLE_SM_87)
+        static constexpr bool sm_87 = true;
+        #else
+        static constexpr bool sm_87 = false;
+        #endif
+
+        #if defined(CUFFTDX_EXAMPLE_ENABLE_SM_89)
+        static constexpr bool sm_89 = true;
+        #else
+        static constexpr bool sm_89 = false;
+        #endif
+
+        #if defined(CUFFTDX_EXAMPLE_ENABLE_SM_90)
+        static constexpr bool sm_90 = true;
+        #else
+        static constexpr bool sm_90 = false;
+        #endif
+
+        #if defined(CUFFTDX_EXAMPLE_ENABLE_SM_100)
+        static constexpr bool sm_100 = true;
+        #else
+        static constexpr bool sm_100 = false;
+        #endif
+
+        #if defined(CUFFTDX_EXAMPLE_ENABLE_SM_101)
+        static constexpr bool sm_101 = true;
+        #else
+        static constexpr bool sm_101 = false;
+        #endif
+
+        #if defined(CUFFTDX_EXAMPLE_ENABLE_SM_103)
+        static constexpr bool sm_103 = true;
+        #else
+        static constexpr bool sm_103 = false;
+        #endif
+
+        #if defined(CUFFTDX_EXAMPLE_ENABLE_SM_110)
+        static constexpr bool sm_110 = true;
+        #else
+        static constexpr bool sm_110 = false;
+        #endif
+
+        #if defined(CUFFTDX_EXAMPLE_ENABLE_SM_120)
+        static constexpr bool sm_120 = true;
+        #else
+        static constexpr bool sm_120 = false;
+        #endif
+
+        #if defined(CUFFTDX_EXAMPLE_ENABLE_SM_121)
+        static constexpr bool sm_121 = true;
+        #else
+        static constexpr bool sm_121 = false;
+        #endif
+    };
+
+    template<class EnableSM>
+    void print_supported_sm(unsigned cuda_device_arch) {
+        auto stream = std::stringstream();
+
+        if constexpr (EnableSM::sm_70) {
+            stream << "- SM 700" << std::endl;
+        }
+        if constexpr (EnableSM::sm_72) {
+            stream << "- SM 720" << std::endl;
+        }
+        if constexpr (EnableSM::sm_75) {
+            stream << "- SM 750" << std::endl;
+        }
+        if constexpr (EnableSM::sm_80) {
+            stream << "- SM 800" << std::endl;
+        }
+        if constexpr (EnableSM::sm_86) {
+            stream << "- SM 860" << std::endl;
+        }
+        if constexpr (EnableSM::sm_87) {
+            stream << "- SM 870" << std::endl;
+        }
+        if constexpr (EnableSM::sm_89) {
+            stream << "- SM 890" << std::endl;
+        }
+        if constexpr (EnableSM::sm_90) {
+            stream << "- SM 900" << std::endl;
+        }
+        if constexpr (EnableSM::sm_100) {
+            stream << "- SM 1000" << std::endl;
+        }
+        if constexpr (EnableSM::sm_101) {
+            stream << "- SM 1010" << std::endl;
+        }
+        if constexpr (EnableSM::sm_103) {
+            stream << "- SM 1030" << std::endl;
+        }
+        if constexpr (EnableSM::sm_110) {
+            stream << "- SM 1100" << std::endl;
+        }
+        if constexpr (EnableSM::sm_120) {
+            stream << "- SM 1200" << std::endl;
+        }
+        if constexpr (EnableSM::sm_121) {
+            stream << "- SM 1210" << std::endl;
+        }
+
+        std::cerr << "Functor failed to run on any supported SM, supported SMs: \n" << stream.str() << std::endl
+                << "this device architecture: " << cuda_device_arch << std::endl;
+    }
+
     template<template<unsigned int> class Functor>
     inline int sm_runner() {
         // Get CUDA device compute capability
@@ -207,22 +345,26 @@ namespace example {
 #if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_90)
             case 900: Functor<900>()(); return 0;
 #endif
-#if (!defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_100)) && (CUFFTDX_VERSION > 10400)
+#if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_100)
             case 1000: Functor<1000>()(); return 0;
 #endif
-#if (!defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_101)) && (CUFFTDX_VERSION > 10400)
+#if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_101)
             case 1010: Functor<1010>()(); return 0;
 #endif
-#if (!defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_103)) && (CUFFTDX_VERSION > 10400)
+#if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_103)
             case 1030: Functor<1030>()(); return 0;
 #endif
-#if (!defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_120)) && (CUFFTDX_VERSION > 10400)
+#if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_110)
+            case 1100: Functor<1100>()(); return 0;
+#endif
+#if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_120)
             case 1200: Functor<1200>()(); return 0;
 #endif
-#if (!defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_121)) && (CUFFTDX_VERSION > 10400)
+#if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_121)
             case 1210: Functor<1210>()(); return 0;
 #endif
         }
+        print_supported_sm<cufftdx_enable_example_sm>(cuda_device_arch);
         return 1;
     }
 

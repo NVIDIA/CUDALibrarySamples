@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.26)
 
 # cuFFTDx project
-project(cufftdx_examples VERSION 1.5.0 LANGUAGES CXX CUDA)
+project(cufftdx_examples VERSION 1.5.1 LANGUAGES CXX CUDA)
 
 # Project options
 option(USE_MATHDX_PACKAGE "Use mathDx package to find cuFFTDx" ON)
@@ -27,7 +27,7 @@ if(NOT TARGET cufftdx)
     if(USE_MATHDX_PACKAGE)
         message(STATUS "Using mathDx package to find cuFFTDx")
         # Find mathDx and cuFFTDx (mathDx's component)
-        # Default path: "/opt/nvidia/mathdx/25.06", path to mathDx can be passed cmake in mathdx_ROOT variable
+        # Default path: "/opt/nvidia/mathdx/25.06.1", path to mathDx can be passed cmake in mathdx_ROOT variable
         find_package(mathdx REQUIRED COMPONENTS cufftdx CONFIG
             PATHS
                 "${PROJECT_SOURCE_DIR}/../.." # example/cufftdx
@@ -37,8 +37,8 @@ if(NOT TARGET cufftdx)
     elseif(USE_CUFFTDX_PACKAGE)
         message(STATUS "Using cuFFTDx package to find cuFFTDx")
         # Find cuFFTDx
-        # Default path: "/opt/nvidia/mathdx/25.06/", path to cuFFTDx can be passed cmake in cufftdx_ROOT variable
-        find_package(cufftdx REQUIRED CONFIG PATHS "/opt/nvidia/mathdx/25.06/" "${PROJECT_SOURCE_DIR}/../../")
+        # Default path: "/opt/nvidia/mathdx/25.06.1/", path to cuFFTDx can be passed cmake in cufftdx_ROOT variable
+        find_package(cufftdx REQUIRED CONFIG PATHS "/opt/nvidia/mathdx/25.06.1/" "${PROJECT_SOURCE_DIR}/../../")
     else()
         message(FATAL_ERROR "No cuFFTDx package found")
     endif()
@@ -137,7 +137,7 @@ if(PROJECT_IS_TOP_LEVEL)
     set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcompiler \"${CUFFTDX_CUDA_CXX_FLAGS}\"")
 
     # Targeted CUDA Architectures, see https://cmake.org/cmake/help/latest/prop_tgt/CUDA_ARCHITECTURES.html#prop_tgt:CUDA_ARCHITECTURES
-    set(CUFFTDX_CUDA_ARCHITECTURES 70-real;80-real CACHE
+    set(CUFFTDX_CUDA_ARCHITECTURES 80-real CACHE
         STRING "List of targeted cuFFTDx CUDA architectures, for example \"70-real;75-real;80\""
     )
     # Remove unsupported architectures

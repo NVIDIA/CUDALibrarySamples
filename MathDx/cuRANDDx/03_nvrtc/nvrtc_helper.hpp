@@ -93,6 +93,9 @@ namespace example {
                 const char* env_ptr = std::getenv("CURANDDX_EXAMPLE_CUDA_INCLUDE_DIR");
                 if (env_ptr != nullptr) {
                     curanddx_include_dirs_array.push_back("--include-path=" + std::string(env_ptr));
+                    #if CUDA_VERSION >= 13000
+                    curanddx_include_dirs_array.push_back("--include-path=" + std::string(env_ptr) + "/cccl");
+                    #endif
                 }
             }
             return curanddx_include_dirs_array;

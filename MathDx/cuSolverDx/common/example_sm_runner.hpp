@@ -3,6 +3,7 @@
 
 #include "macros.hpp"
 #include <cusolverdx.hpp>
+#include <cstdio>
 
 namespace common {
     // This function enables creating architecture agnostic examples
@@ -16,7 +17,7 @@ namespace common {
     template<template<int> class Functor>
     inline int run_example_with_sm() {
         // Get CUDA device compute capability
-        const auto cuda_device_arch = get_cuda_device_arch();
+        const unsigned cuda_device_arch = get_cuda_device_arch();
 
         switch (cuda_device_arch) {
 // All SM supported by cuSOLVERDx
@@ -47,11 +48,14 @@ namespace common {
 #ifdef CUSOLVERDX_EXAMPLE_ENABLE_SM_100
             case 1000: return Functor<1000>()();
 #endif
+#ifdef CUSOLVERDX_EXAMPLE_ENABLE_SM_101
+            case 1010: return Functor<1010>()();
+#endif
 #ifdef CUSOLVERDX_EXAMPLE_ENABLE_SM_120
             case 1200: return Functor<1200>()();
 #endif
-#ifdef CUSOLVERDX_EXAMPLE_ENABLE_SM_101
-            case 1010: return Functor<1010>()();
+#ifdef CUSOLVERDX_EXAMPLE_ENABLE_SM_110
+            case 1100: return Functor<1100>()();
 #endif
 #ifdef CUSOLVERDX_EXAMPLE_ENABLE_SM_103
             case 1030: return Functor<1030>()();
@@ -61,7 +65,7 @@ namespace common {
 #endif
 
             default: {
-                printf("Examples not configured to support SM %u. Use the CUSOLVERDX_CUDA_ARCHITECTURES CMake variable to configure the SM support.\n",
+                printf("Examples not configured to support SM %u.  Use the CUSOLVERDX_CUDA_ARCHITECTURES CMake variable to configure the SM support.\n",
                        cuda_device_arch);
                 // Fail
                 return 1;

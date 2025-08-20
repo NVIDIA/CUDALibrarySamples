@@ -395,7 +395,11 @@ int gemm_fft() {
     {
         int device;
         CUDA_CHECK_AND_EXIT(cudaGetDevice(&device));
+        #if CUDA_VERSION >= 13000
+        CUDA_CHECK_AND_EXIT(cudaMemPrefetchAsync(a, size_bytes, cudaMemLocation{cudaMemLocationTypeDevice, device}, 0, stream));
+        #else
         CUDA_CHECK_AND_EXIT(cudaMemPrefetchAsync(a, size_bytes, device, stream));
+        #endif
         CUDA_CHECK_AND_EXIT(cudaStreamSynchronize(stream));
         CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
     }

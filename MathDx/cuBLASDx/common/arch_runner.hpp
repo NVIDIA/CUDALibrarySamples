@@ -62,12 +62,23 @@ void print_supported_sm(unsigned cuda_device_arch) {
     if constexpr (EnableSM::sm_100) {
         stream << "- SM 1000" << std::endl;
     }
+
+  #if CUDA_VERSION < 13000
     if constexpr (EnableSM::sm_101) {
         stream << "- SM 1010" << std::endl;
     }
+  #endif
+
     if constexpr (EnableSM::sm_103) {
         stream << "- SM 1030" << std::endl;
     }
+
+  #if CUDA_VERSION >= 13000
+    if constexpr (EnableSM::sm_110) {
+        stream << "- SM 1100" << std::endl;
+    }
+  #endif
+
     if constexpr (EnableSM::sm_120) {
         stream << "- SM 1200" << std::endl;
     }   
@@ -137,18 +148,28 @@ StatusType arch_runner(unsigned cuda_device_arch, Functor example_functor, Args&
             }
             break;
         }
+#if CUDA_VERSION < 13000
         case 1010: {
             if constexpr(EnableSM::sm_101) {
                 return example_functor(std::integral_constant<int, 1010>{}, static_cast<Args&&>(args)...);
             }
             break;
         } 
+#endif
         case 1030: {
             if constexpr(EnableSM::sm_103) {
                 return example_functor(std::integral_constant<int, 1030>{}, static_cast<Args&&>(args)...);
             }
             break;
         } 
+#if CUDA_VERSION >= 13000
+        case 1100: {
+            if constexpr(EnableSM::sm_110) {
+                return example_functor(std::integral_constant<int, 1100>{}, static_cast<Args&&>(args)...);
+            }
+            break;
+        } 
+#endif
         case 1200: {
             if constexpr(EnableSM::sm_120) {
                 return example_functor(std::integral_constant<int, 1200>{}, static_cast<Args&&>(args)...);

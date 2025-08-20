@@ -46,8 +46,8 @@ if(PROJECT_IS_TOP_LEVEL)
     set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcompiler \"${CURANDDX_CUDA_CXX_FLAGS}\"")
 
     # Targeted CUDA Architectures, see https://cmake.org/cmake/help/latest/prop_tgt/CUDA_ARCHITECTURES.html#prop_tgt:CUDA_ARCHITECTURES
-    set(CURANDDX_CUDA_ARCHITECTURES 70-real;80-real CACHE
-        STRING "List of targeted cuRANDDx CUDA architectures, for example \"70-real;75-real;80\""
+    set(CURANDDX_CUDA_ARCHITECTURES 80-real CACHE
+        STRING "List of targeted cuRANDDx CUDA architectures, for example \"75-real;80-real\""
     )
 
     # Remove unsupported architectures
@@ -186,6 +186,7 @@ function(add_curanddx_nvrtc_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
     target_compile_definitions(${EXAMPLE_TARGET}
         PRIVATE
             CUDA_INCLUDE_DIR="${CUDAToolkit_INCLUDE_DIRS}"
+            CUDA_CCCL_INCLUDE_DIR="${CUDAToolkit_INCLUDE_DIRS}/cccl/" # for CTK 13.0 support
             COMMONDX_INCLUDE_DIR="${curanddx_commondx_INCLUDE_DIR}"
             CURANDDX_INCLUDE_DIRS="${curanddx_INCLUDE_DIRS}"
     )

@@ -128,8 +128,8 @@ int main(int, char**) {
         "--device-as-default-execution-space",
         // specify that LTO IR should be generated for LTO operation
         "-dlto",
-        "--relocatable-device-code=true",
-        "--include-path=" CUDA_INCLUDE_DIR // Add path to CUDA include directory
+        "--include-path=" CUDA_INCLUDE_DIR, // Add path to CUDA include directory
+        "--include-path=" CUDA_CCCL_INCLUDE_DIR // Add path to CCCL include directory for CTK 13.0
     };
 
     // Parse cuSOLVERDx include dirs
@@ -186,7 +186,12 @@ int main(int, char**) {
     CUfunction kernel;
     CU_CHECK_AND_EXIT(cuInit(0));
     CU_CHECK_AND_EXIT(cuDeviceGet(&cuDevice, current_device));
+#if CUDA_VERSION >= 13000
+    CU_CHECK_AND_EXIT(cuCtxCreate(&context, (CUctxCreateParams*)0, 0, cuDevice));
+#else
     CU_CHECK_AND_EXIT(cuCtxCreate(&context, 0, cuDevice));
+#endif
+
 
     // Load the generated LTO IR and the static cusolverdx LTO library
     nvJitLinkHandle linker;

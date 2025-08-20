@@ -22,7 +22,7 @@ This folder demonstrates cuRANDDx APIs usage.
 
 ```
 mkdir build && cd build
-cmake -DCURANDDX_CUDA_ARCHITECTURES=80-real -Dmathdx_ROOT=<path_of_mathdx>/nvidia-mathdx-25.06.0/nvidia/mathdx/25.06 ../example/cuRANDDx
+cmake -DCURANDDX_CUDA_ARCHITECTURES=80-real -Dmathdx_ROOT=<path_of_mathdx>/nvidia-mathdx-25.06.1/nvidia/mathdx/25.06 ../example/cuRANDDx
 make
 // Run
 ctest

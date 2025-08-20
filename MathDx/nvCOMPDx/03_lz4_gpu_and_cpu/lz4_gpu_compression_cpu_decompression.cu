@@ -139,7 +139,7 @@ static int lz4_gpu_comp_cpu_decomp(const std::vector<std::vector<char>>& data,
     CUDA_CHECK(cudaGetLastError());
   });
 
-  // Compute compression ratio
+  // compute compression ratio
   std::vector<size_t> compressed_sizes_host(batch_size);
   CUDA_CHECK(cudaMemcpy(
       compressed_sizes_host.data(),
@@ -162,7 +162,7 @@ static int lz4_gpu_comp_cpu_decomp(const std::vector<std::vector<char>>& data,
   BatchDataCPU compressed_data_cpu = convert_batch(compressed_data, true);
   BatchDataCPU decompressed_data_cpu = convert_batch(input_data, false);
 
-  // Loop over chunks on the CPU, decompressing each one
+  // loop over chunks on the CPU, decompressing each one
   for (size_t i = 0; i < batch_size; ++i) {
     const int size = LZ4_decompress_safe(
         static_cast<const char*>(compressed_data_cpu.chunk_ptrs()[i]),
@@ -218,7 +218,7 @@ int main(int argc, char* argv[])
     while (i < argc) {
       const char* current_argv = argv[i++];
       if (strcmp(current_argv, "-f") == 0) {
-        // Parse until next `-` argument
+        // parse until next `-` argument
         while (i < argc && argv[i][0] != '-') {
           file_names.emplace_back(argv[i++]);
         }
