@@ -25,7 +25,7 @@
 // 
 // The generated RNs are the same as the results using cuRAND host API with CURAND_ORDERING_PSEUDO_LEGACY ordering. 
 // The ordering requires that the result at offset n is from position 
-// (n mod 4096) * 2^67 + (i/4096) in the original MRG32k3a sequence
+// (n mod 4096) * 2^76 + (n/4096) in the original MRG32k3a sequence
 // https://docs.nvidia.com/cuda/curand/host-api-overview.html#generator-types MRG32k3a pseudorandom generator
 
 constexpr unsigned int subsequences = 4096;

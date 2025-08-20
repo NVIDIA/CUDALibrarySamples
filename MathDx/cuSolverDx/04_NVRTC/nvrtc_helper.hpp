@@ -102,6 +102,9 @@ namespace common {
                 const char* env_ptr = std::getenv("CUSOLVERDX_EXAMPLE_CUDA_INCLUDE_DIR");
                 if (env_ptr != nullptr) {
                     solver_include_dirs_array.push_back("--include-path=" + std::string(env_ptr));
+                    #if CUDA_VERSION >= 13000
+                    solver_include_dirs_array.push_back("--include-path=" + std::string(env_ptr) + "/cccl");
+                    #endif
                 }
             }
             return solver_include_dirs_array;

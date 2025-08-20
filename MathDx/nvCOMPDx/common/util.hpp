@@ -222,6 +222,10 @@ int run_with_current_arch(Args&&... args)
     case 1030:
       return Runner<1030>::run(std::forward<Args>(args)...);
 #endif
+#ifdef NVCOMPDX_EXAMPLE_ENABLE_SM_110
+    case 1100:
+      return Runner<1100>::run(std::forward<Args>(args)...);
+#endif
 #ifdef NVCOMPDX_EXAMPLE_ENABLE_SM_120
     case 1200:
       return Runner<1200>::run(std::forward<Args>(args)...);

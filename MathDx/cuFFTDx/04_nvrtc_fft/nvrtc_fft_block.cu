@@ -84,8 +84,7 @@ int main(int, char**) {
     std::vector<const char*> opts = {
         "--std=c++17",
         "--device-as-default-execution-space",
-        "-DCUFFTDX_DISABLE_CUTLASS_DEPENDENCY",
-        "--include-path=" CUDA_INCLUDE_DIR // Add path to CUDA include directory
+        "-DCUFFTDX_DISABLE_CUTLASS_DEPENDENCY"
     };
 
     // Parse cuFFTDx include dirs
@@ -138,12 +137,13 @@ int main(int, char**) {
     CUfunction kernel;
     CU_CHECK_AND_EXIT(cuInit(0));
     CU_CHECK_AND_EXIT(cuDeviceGet(&cuDevice, current_device));
-    #if CUDA_VERSION >= 12090
-    CUctxCreateParams params;
-    CU_CHECK_AND_EXIT(cuCtxCreate_v4(&context, &params, 0, cuDevice));
+
+    #if defined(CUDA_VERSION) && CUDA_VERSION >= 13000
+        CU_CHECK_AND_EXIT(cuCtxCreate(&context, (CUctxCreateParams*)0, 0, cuDevice));
     #else
-    CU_CHECK_AND_EXIT(cuCtxCreate(&context, 0, cuDevice));
+        CU_CHECK_AND_EXIT(cuCtxCreate(&context, 0, cuDevice));
     #endif
+
     CU_CHECK_AND_EXIT(cuModuleLoadDataEx(&module, ptx.get(), 0, 0, 0));
     CU_CHECK_AND_EXIT(cuModuleGetFunction(&kernel, module, "test_kernel"));
 

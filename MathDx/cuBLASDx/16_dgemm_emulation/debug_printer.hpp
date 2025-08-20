@@ -24,6 +24,7 @@ void print_slices(const Tensor& T, std::string msg) {
 
 void print_device_properties() {
     cudaDeviceProp prop;
+    int sm_clock, mem_clock;
 
     int device_count = 0;
     CUDA_CHECK_AND_EXIT(cudaGetDeviceCount(&device_count));
@@ -33,6 +34,8 @@ void print_device_properties() {
 
     for (auto device_id = 0; device_id < device_count; device_id++) {
         CUDA_CHECK_AND_EXIT(cudaGetDeviceProperties(&prop, device_id));
+        CUDA_CHECK_AND_EXIT(cudaDeviceGetAttribute(&sm_clock, cudaDevAttrClockRate, device_id));
+        CUDA_CHECK_AND_EXIT(cudaDeviceGetAttribute(&mem_clock, cudaDevAttrMemoryClockRate, device_id));
 
         ss << "Device " << device_id << ": " << prop.name << std::endl;
         ss << "  Compute capability: " << prop.major << "." << prop.minor << std::endl;
@@ -41,8 +44,10 @@ void print_device_properties() {
         ss << "  Max threads per block: " << prop.maxThreadsPerBlock << std::endl;
         ss << "  Max threads per multiprocessor: " << prop.maxThreadsPerMultiProcessor << std::endl;
         ss << "  Warp size: " << prop.warpSize << std::endl;
-        ss << "  Clock rate: " << prop.clockRate / 1000 << " MHz" << std::endl;
-        ss << "  Memory Clock Rate: " << prop.memoryClockRate / 1000 << " MHz" << std::endl;
+
+        ss << "  Clock Rate: " << sm_clock / 1000.f << " MHz" << std::endl;
+        ss << "  Memory Clock Rate: " << mem_clock / 1000.f << " MHz" << std::endl;
+
         ss << "  Memory Bus Width: " << prop.memoryBusWidth << " bits" << std::endl;
         ss << std::endl;
     }

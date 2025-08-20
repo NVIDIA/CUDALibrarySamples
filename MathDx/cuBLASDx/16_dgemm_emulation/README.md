@@ -110,7 +110,7 @@ std::vector<problem_shape> problems = {
 ## Building and Running
 
 ### Prerequisites
-- CUDA toolkit (11.0 or later)
+- CUDA toolkit (12.0 or later)
 - cuBLASDx library
 - GPU with Tensor Core support (recommended)
 

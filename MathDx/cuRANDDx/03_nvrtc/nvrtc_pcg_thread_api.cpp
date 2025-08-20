@@ -64,7 +64,8 @@ int main(int, char**) {
     std::vector<const char*> opts = {
         "--std=c++17",
         "--device-as-default-execution-space",
-        "--include-path=" CUDA_INCLUDE_DIR // Add path to CUDA include directory
+        "--include-path=" CUDA_INCLUDE_DIR, // Add path to CUDA include directory
+        "--include-path=" CUDA_CCCL_INCLUDE_DIR // Add path to CCCL include directory for CTK 13.0
     };
 
     // Parse cuRANDDx include dirs
@@ -112,7 +113,11 @@ int main(int, char**) {
     CUfunction kernel;
     CU_CHECK_AND_EXIT(cuInit(0));
     CU_CHECK_AND_EXIT(cuDeviceGet(&cuDevice, current_device));
+#if CUDA_VERSION >= 13000
+    CU_CHECK_AND_EXIT(cuCtxCreate(&context, (CUctxCreateParams*)0, 0, cuDevice));
+#else
     CU_CHECK_AND_EXIT(cuCtxCreate(&context, 0, cuDevice));
+#endif
     CU_CHECK_AND_EXIT(cuModuleLoadDataEx(&module, cubin.get(), 0, 0, 0));
     CU_CHECK_AND_EXIT(cuModuleGetFunction(&kernel, module, "generate_kernel"));
 

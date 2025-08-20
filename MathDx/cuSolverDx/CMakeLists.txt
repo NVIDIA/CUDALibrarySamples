@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.18)
 
 # cuSOLVERDx examples project
-project(cusolverdx_examples VERSION 0.2.0 LANGUAGES CXX CUDA)
+project(cusolverdx_examples VERSION 0.2.1 LANGUAGES CXX CUDA)
 
 # PROJECT_IS_TOP_LEVEL is available since 3.21
 if(CMAKE_VERSION VERSION_LESS 3.21)
@@ -98,8 +98,8 @@ if(PROJECT_IS_TOP_LEVEL)
     set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcompiler \"${CUSOLVERDX_CUDA_CXX_FLAGS}\"")
 
     # Targeted CUDA Architectures, see https://cmake.org/cmake/help/latest/prop_tgt/CUDA_ARCHITECTURES.html#prop_tgt:CUDA_ARCHITECTURES
-    set(CUSOLVERDX_CUDA_ARCHITECTURES 70-real;80-real CACHE
-        STRING "List of targeted cuSOLVERDx CUDA architectures, for example \"70-real;75-real;80\""
+    set(CUSOLVERDX_CUDA_ARCHITECTURES 80-real CACHE
+        STRING "List of targeted cuSOLVERDx CUDA architectures, for example \"75-real;80-real\""
     )
 
     # Remove unsupported architectures
@@ -306,6 +306,7 @@ function(add_cusolverdx_nvrtc_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
     target_compile_definitions(${EXAMPLE_TARGET}
         PRIVATE
             CUDA_INCLUDE_DIR="${CUDAToolkit_INCLUDE_DIRS}"
+            CUDA_CCCL_INCLUDE_DIR="${CUDAToolkit_INCLUDE_DIRS}/cccl/" # for CTK 13.0 support
             CUTLASS_INCLUDE_DIR="${cusolverdx_cutlass_INCLUDE_DIR}"
             COMMONDX_INCLUDE_DIR="${cusolverdx_commondx_INCLUDE_DIR}"
             CUSOLVERDX_INCLUDE_DIRS="${cusolverdx_INCLUDE_DIRS}"

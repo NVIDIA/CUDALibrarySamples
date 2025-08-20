@@ -12,7 +12,6 @@
 #include <thrust/transform.h>
 #include <thrust/iterator/counting_iterator.h>
 #include <thrust/iterator/discard_iterator.h>
-#include <cub/block/block_reduce.cuh>
 
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
@@ -458,10 +457,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
     std::vector<problem_shape> problems = {
         {512, 512, 512},
         {1024, 1024, 1024},
-        {2048, 2048, 2048},
-        {4096, 4096, 4096},
-        {8192, 8192, 8192},
-        {16384, 16384, 16384}
+        {2048, 2048, 2048}
     };
 
     return example::sm_runner(dgemm_emulation_functor<params> {}, problems, debug);

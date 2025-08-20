@@ -40,56 +40,75 @@ namespace example {
         }
 
         inline std::vector<std::string> get_cublasdx_include_dirs() {
-#ifndef CUBLASDX_INCLUDE_DIRS
-            return std::vector<std::string>();
-#endif
             std::vector<std::string> cublasdx_include_dirs_array;
-            {
-                std::string cublasdx_include_dirs = CUBLASDX_INCLUDE_DIRS;
-                std::string delim                = ";";
-                size_t      start                = 0U;
-                size_t      end                  = cublasdx_include_dirs.find(delim);
-                while (end != std::string::npos) {
-                    cublasdx_include_dirs_array.push_back("--include-path=" +
-                                                         cublasdx_include_dirs.substr(start, end - start));
-                    start = end + delim.length();
-                    end   = cublasdx_include_dirs.find(delim, start);
+
+            auto append_multiple_dirs = [](auto& container, const std::string& semicolon_separated_dirs) {
+                if (semicolon_separated_dirs.empty()) return;
+                
+                std::stringstream ss(semicolon_separated_dirs);
+                std::string dir;
+                while (std::getline(ss, dir, ';')) {
+                    if (!dir.empty()) {  // Skip empty directories
+                        container.push_back("--include-path=" + dir);
+                    }
                 }
-                cublasdx_include_dirs_array.push_back("--include-path=" +
-                                                     cublasdx_include_dirs.substr(start, end - start));
-            }
-            #ifdef COMMONDX_INCLUDE_DIR
-            {
-                cublasdx_include_dirs_array.push_back("--include-path=" + std::string(COMMONDX_INCLUDE_DIR));
-            }
-            #endif
-            #ifdef CUTLASS_INCLUDE_DIR
-            {
-                cublasdx_include_dirs_array.push_back("--include-path=" + std::string(CUTLASS_INCLUDE_DIR));
-            }
-            #endif
+            };
+
             {
                 const char* env_ptr = std::getenv("CUBLASDX_EXAMPLE_COMMONDX_INCLUDE_DIR");
                 if(env_ptr != nullptr) {
                     cublasdx_include_dirs_array.push_back("--include-path=" + std::string(env_ptr));
+                } else {
+                    #ifdef COMMONDX_INCLUDE_DIR
+                    {
+                        cublasdx_include_dirs_array.push_back("--include-path=" + std::string(COMMONDX_INCLUDE_DIR));
+                    }
+                    #endif
                 }
             }
             {
                 const char* env_ptr = std::getenv("CUBLASDX_EXAMPLE_CUTLASS_INCLUDE_DIR");
                 if(env_ptr != nullptr) {
                     cublasdx_include_dirs_array.push_back("--include-path=" + std::string(env_ptr));
+                } else {
+                    #ifdef CUTLASS_INCLUDE_DIR
+                    cublasdx_include_dirs_array.push_back("--include-path=" + std::string(CUTLASS_INCLUDE_DIR));
+                    #endif
                 }
             }
             {
                 const char* env_ptr = std::getenv("CUBLASDX_EXAMPLE_CUBLASDX_INCLUDE_DIR");
                 if(env_ptr != nullptr) {
                     cublasdx_include_dirs_array.push_back("--include-path=" + std::string(env_ptr));
+                } else {
+                    #ifdef CUBLASDX_INCLUDE_DIRS
+                    append_multiple_dirs(cublasdx_include_dirs_array, std::string(CUBLASDX_INCLUDE_DIRS)); 
+                    #endif
                 }
             }
             {
                 const char* env_ptr = std::getenv("CUBLASDX_EXAMPLE_CUDA_INCLUDE_DIR");
                 if(env_ptr != nullptr) {
                     cublasdx_include_dirs_array.push_back("--include-path=" + std::string(env_ptr));
+                    // CUDA 13 created a separate include folder for CCCL
+                    #if CUDA_VERSION >= 13000
+                    cublasdx_include_dirs_array.push_back("--include-path=" + std::string(env_ptr) + "/cccl");
+                    #endif
+                } else {
+                    #ifdef CUDA_INCLUDE_DIR
+                    cublasdx_include_dirs_array.push_back("--include-path=" + std::string(CUDA_INCLUDE_DIR));
+                    // CUDA 13 created a separate include folder for CCCL
+                    #if CUDA_VERSION >= 13000
+                    cublasdx_include_dirs_array.push_back("--include-path=" + std::string(CUDA_INCLUDE_DIR) + "/cccl");
+                    #endif
+                    #endif
+                }
+            }
+
+            {
+                const char* env_ptr = std::getenv("CUBLASDX_EXAMPLE_USER_DIRECTORIES");
+                if(env_ptr != nullptr) {
+                    append_multiple_dirs(cublasdx_include_dirs_array, std::string(env_ptr)); 
                 }
             }
             return cublasdx_include_dirs_array;
