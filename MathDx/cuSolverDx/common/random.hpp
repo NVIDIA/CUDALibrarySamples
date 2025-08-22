@@ -48,11 +48,6 @@ namespace common {
                                                                  const float        max,
                                                                  const unsigned int batches = 1) {
 
-        using precision = typename get_precision<T>::type;
-        std::random_device                        rd;
-        std::default_random_engine                gen(rd());
-        std::uniform_real_distribution<precision> distribution(min, max);
-
         std::vector<T> h_data = generate_random_data<T>(min, max, m * n * batches);
 
         const unsigned int row_stride = is_column_major ? 1 : lda;
@@ -111,11 +106,6 @@ namespace common {
                                                                   const float        min,
                                                                   const float        max,
                                                                   const unsigned int batches = 1) {
-
-        using precision = typename get_precision<T>::type;
-        std::random_device                        rd;
-        std::default_random_engine                gen(rd());
-        std::uniform_real_distribution<precision> distribution(min, max);
 
         std::vector<T> h_data = generate_random_data<T>(min, max, m * n * batches);
 

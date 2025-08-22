@@ -714,7 +714,7 @@ namespace example {
         static constexpr bool sm_100 = false;
         #endif
 
-        #if defined(CUBLASDX_EXAMPLE_ENABLE_SM_101)
+        #if defined(CUBLASDX_EXAMPLE_ENABLE_SM_101) && (CUDA_VERSION < 13000)
         static constexpr bool sm_101 = true;
         #else
         static constexpr bool sm_101 = false;
@@ -724,6 +724,12 @@ namespace example {
         static constexpr bool sm_103 = true;
         #else
         static constexpr bool sm_103 = false;
+        #endif
+
+        #if defined(CUBLASDX_EXAMPLE_ENABLE_SM_110) && (CUDA_VERSION >= 13000)
+        static constexpr bool sm_110 = true;
+        #else
+        static constexpr bool sm_110 = false;
         #endif
 
         #if defined(CUBLASDX_EXAMPLE_ENABLE_SM_120)

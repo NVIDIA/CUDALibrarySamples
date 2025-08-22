@@ -93,9 +93,9 @@ static int lz4_cpu_comp_gpu_decomp(const std::vector<std::vector<char>>& data,
       LZ4_compressBound(chunk_size), batch_size);
 
   // Compressing on the CPU
-  // Loop over chunks on the CPU, compressing each one one by one
+  // loop over chunks on the CPU, compressing each one one by one
   for (size_t i = 0; i < batch_size; ++i) {
-    // Could use LZ4_compress_default or LZ4_compress_fast instead
+    // could use LZ4_compress_default or LZ4_compress_fast instead
     const int size = LZ4_compress_HC(
         static_cast<const char*>(input_data_cpu.chunk_ptrs()[i]),
         static_cast<char*>(compressed_data_cpu.chunk_ptrs()[i]),
@@ -107,7 +107,7 @@ static int lz4_cpu_comp_gpu_decomp(const std::vector<std::vector<char>>& data,
           "LZ4 CPU failed to compress chunk " + std::to_string(i) + ".");
     }
 
-    // Set the actual compressed size
+    // set the actual compressed size
     compressed_data_cpu.chunk_sizes()[i] = static_cast<size_t>(size);
   }
 
@@ -207,7 +207,7 @@ int main(int argc, char* argv[])
     while (i < argc) {
       const char* current_argv = argv[i++];
       if (strcmp(current_argv, "-f") == 0) {
-        // Parse until next `-` argument
+        // parse until next `-` argument
         while (i < argc && argv[i][0] != '-') {
           file_names.emplace_back(argv[i++]);
         }

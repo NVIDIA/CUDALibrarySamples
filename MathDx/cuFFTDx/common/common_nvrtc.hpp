@@ -1,8 +1,8 @@
-
 #ifndef CUFFTDX_EXAMPLE_COMMON_NVRTC_HPP
 #define CUFFTDX_EXAMPLE_COMMON_NVRTC_HPP
 
 #include <cstdlib>
+#include <sstream>
 #include "common.hpp"
 
 #define NVRTC_SAFE_CALL(x)                                                                            \
@@ -39,9 +39,7 @@ namespace example {
         }
 
         inline std::vector<std::string> get_cufftdx_include_dirs() {
-#ifndef CUFFTDX_INCLUDE_DIRS
-            return std::vector<std::string>();
-#else
+
             std::vector<std::string> cufftdx_include_dirs_array;
 
             const auto path_handler = [&](const std::string& path_name, const std::string& entry) {
@@ -53,30 +51,41 @@ namespace example {
                 }
             };
 
-            {
-                std::string cufftdx_include_dirs = CUFFTDX_INCLUDE_DIRS;
-                std::string delim                = ";";
-                size_t      start                = 0U;
-                size_t      end                  = cufftdx_include_dirs.find(delim);
+            auto append_multiple_dirs = [](auto& container, const std::string& semicolon_separated_dirs) {
+                if (semicolon_separated_dirs.empty()) return;
 
-                while (end != std::string::npos) {
-                    const auto cufftdx_include_dir = cufftdx_include_dirs.substr(start, end - start);
-                    path_handler("CUFFTDX_INCLUDE_DIRS", cufftdx_include_dir);
-                    start = end + delim.length();
-                    end   = cufftdx_include_dirs.find(delim, start);
+                std::stringstream ss(semicolon_separated_dirs);
+                std::string dir;
+                while (std::getline(ss, dir, ';')) {
+                    if (!dir.empty()) {  // Skip empty directories
+                        container.push_back("--include-path=" + dir);
+                    }
                 }
-                const auto cufftdx_include_dir = cufftdx_include_dirs.substr(start, end - start);
-                path_handler("CUFFTDX_INCLUDE_DIRS", cufftdx_include_dir);
-            }
-            #ifdef COMMONDX_INCLUDE_DIR
+            };
+
             {
-                path_handler("COMMONDX_INCLUDE_DIR", std::string(COMMONDX_INCLUDE_DIR));
+                const char* env_ptr = std::getenv("CUFFTDX_EXAMPLE_COMMONDX_INCLUDE_DIR");
+                if(env_ptr != nullptr) {
+                    path_handler("COMMONDX_INCLUDE_DIR", std::string(env_ptr));
+                } else {
+                    #ifdef COMMONDX_INCLUDE_DIR
+                    {
+                        path_handler("COMMONDX_INCLUDE_DIR", std::string(COMMONDX_INCLUDE_DIR));
+                    }
+                    #endif
+                }
             }
-            #endif
+
             {
                 const char* env_ptr = std::getenv("CUFFTDX_EXAMPLE_CUFFTDX_INCLUDE_DIR");
                 if(env_ptr != nullptr) {
                     path_handler("CUFFTDX_EXAMPLE_CUFFTDX_INCLUDE_DIR", std::string(env_ptr));
+                } else {
+                    #ifdef CUFFTDX_INCLUDE_DIRS
+                    {
+                        append_multiple_dirs(cufftdx_include_dirs_array, std::string(CUFFTDX_INCLUDE_DIRS));
+                    }
+                    #endif
                 }
             }
             {
@@ -88,19 +97,32 @@ namespace example {
                 }
             }
             {
-                const char* env_ptr = std::getenv("CUFFTDX_EXAMPLE_COMMONDX_INCLUDE_DIR");
-                if(env_ptr != nullptr) {
-                    path_handler("CUFFTDX_EXAMPLE_COMMONDX_INCLUDE_DIR", std::string(env_ptr));
-                }
-            }
-            {
                 const char* env_ptr = std::getenv("CUFFTDX_EXAMPLE_CUDA_INCLUDE_DIR");
                 if(env_ptr != nullptr) {
                     path_handler("CUFFTDX_EXAMPLE_CUDA_INCLUDE_DIR", std::string(env_ptr));
+                    // CUDA 13 created a separate include folder for CCCL
+                    #if CUDA_VERSION >= 13000
+                    path_handler("CUFFTDX_EXAMPLE_CUDA_INCLUDE_DIR_CCCL", std::string(env_ptr) + "/cccl");
+                    #endif
+                } else {
+                    #ifdef CUDA_INCLUDE_DIR
+                    {
+                        path_handler("CUDA_INCLUDE_DIR", std::string(CUDA_INCLUDE_DIR));
+                        // CUDA 13 created a separate include folder for CCCL
+                        #if CUDA_VERSION >= 13000
+                        path_handler("CUDA_INCLUDE_DIR_CCCL", std::string(CUDA_INCLUDE_DIR) + "/cccl");
+                        #endif
+                    }
+                    #endif
+                }
+            }
+            {
+                const char* env_ptr = std::getenv("CUFFTDX_EXAMPLE_USER_DIRECTORIES");
+                if(env_ptr != nullptr) {
+                    append_multiple_dirs(cufftdx_include_dirs_array, std::string(env_ptr));
                 }
             }
             return cufftdx_include_dirs_array;
-#endif
         }
 
         inline unsigned get_device_architecture(int device) {

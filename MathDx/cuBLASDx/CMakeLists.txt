@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.18.0)
 
 # cuBLASDx Examples project
-project(cublasdx_examples VERSION 0.4.0 LANGUAGES CXX CUDA)
+project(cublasdx_examples VERSION 0.4.1 LANGUAGES CXX CUDA)
 
 # PROJECT_IS_TOP_LEVEL is available since 3.21
 if(CMAKE_VERSION VERSION_LESS 3.21)

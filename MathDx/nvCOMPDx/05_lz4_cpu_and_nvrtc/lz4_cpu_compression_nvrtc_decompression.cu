@@ -129,7 +129,9 @@ static std::vector<std::string> get_comp_include_dirs()
     const char* env_ptr = std::getenv("NVCOMPDX_EXAMPLE_CUDA_INCLUDE_DIR");
     if (env_ptr != nullptr) {
         comp_include_dirs_array.push_back("--include-path=" + std::string(env_ptr));
+        comp_include_dirs_array.push_back("--include-path=" + std::string(env_ptr) + "/cccl");
         comp_include_dirs_array.push_back("--include-path=" + std::string(env_ptr) + "/cuda/std");
+        comp_include_dirs_array.push_back("--include-path=" + std::string(env_ptr) + "/cccl/cuda/std");
     }
   }
   return comp_include_dirs_array;
@@ -166,9 +168,9 @@ static int run_nvrtc_example(const std::vector<std::vector<char>>& data)
       LZ4_compressBound(chunk_size), batch_size);
 
   // Compressing on the CPU
-  // Loop over chunks on the CPU, compressing each one one by one
+  // loop over chunks on the CPU, compressing each one one by one
   for (size_t i = 0; i < batch_size; ++i) {
-    // Could use LZ4_compress_default or LZ4_compress_fast instead
+    // could use LZ4_compress_default or LZ4_compress_fast instead
     const int size = LZ4_compress_HC(
         static_cast<const char*>(input_data_cpu.chunk_ptrs()[i]),
         static_cast<char*>(compressed_data_cpu.chunk_ptrs()[i]),
@@ -238,7 +240,9 @@ static int run_nvrtc_example(const std::vector<std::vector<char>>& data)
     "--std=c++17",
     "--device-as-default-execution-space",
     "--include-path=" CUDAToolkit_INCLUDE_DIR, // Path to the CUDA include directory
-    "--include-path=" CUDAToolkit_INCLUDE_DIR "/cuda/std", // Path to standard headers
+    "--include-path=" CUDAToolkit_INCLUDE_DIR "/cccl", // Path to CCCL headers (CTK 13+)
+    "--include-path=" CUDAToolkit_INCLUDE_DIR "/cuda/std", // Path to standard headers (CTK <13)
+    "--include-path=" CUDAToolkit_INCLUDE_DIR "/cccl/cuda/std", // Path to standard headers (CTK 13+)
     "-dlto",
     "-rdc=true",
 #ifdef NVCOMPDX_DISABLE_CUTLASS
@@ -290,7 +294,11 @@ static int run_nvrtc_example(const std::vector<std::vector<char>>& data)
 
   // Load the generated Cubin and get a handle to our kernel
   CUcontext context;
+#if CUDA_VERSION >= 13000
+  CU_CHECK(cuCtxCreate(&context, (CUctxCreateParams*)0, 0 /* flags */, cuDevice));
+#else
   CU_CHECK(cuCtxCreate(&context, 0 /* flags */, cuDevice));
+#endif // CUDA_VERSION >= 13000
 
   // Load the generated LTO IR and the static nvCOMPDx LTO library
   nvJitLinkHandle linker;
@@ -404,7 +412,7 @@ int main(int argc, char* argv[])
     while (i < argc) {
       const char* current_argv = argv[i++];
       if (strcmp(current_argv, "-f") == 0) {
-        // Parse until next `-` argument
+        // parse until next `-` argument
         while (i < argc && argv[i][0] != '-') {
           file_names.emplace_back(argv[i++]);
         }

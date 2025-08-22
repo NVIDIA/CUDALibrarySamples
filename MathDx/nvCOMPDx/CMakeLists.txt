@@ -97,13 +97,19 @@ if(PROJECT_IS_TOP_LEVEL)
     set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcompiler \"${NVCOMPDX_CUDA_CXX_FLAGS}\"")
 
     # Targeted CUDA Architectures, see https://cmake.org/cmake/help/latest/prop_tgt/CUDA_ARCHITECTURES.html#prop_tgt:CUDA_ARCHITECTURES
-    set(NVCOMPDX_CUDA_ARCHITECTURES 70-real;80-real CACHE
+    set(NVCOMPDX_CUDA_ARCHITECTURES 70-real;75-real;80-real CACHE
         STRING "List of targeted nvCOMPDx CUDA architectures, for example \"70-real;75-real;80\""
     )
+
     # Remove unsupported architectures
     list(REMOVE_ITEM NVCOMPDX_CUDA_ARCHITECTURES 30;32;35;37;50;52;53;60)
     list(REMOVE_ITEM NVCOMPDX_CUDA_ARCHITECTURES 30-real;32-real;35-real;37-real;50-real;52-real;53-real;60-real)
     list(REMOVE_ITEM NVCOMPDX_CUDA_ARCHITECTURES 30-virtual;32-virtual;35-virtual;37-virtual;50-virtual;52-virtual;53-virtual;60-virtual)
+    if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "13.0")
+        list(REMOVE_ITEM NVCOMPDX_CUDA_ARCHITECTURES 70;72)
+        list(REMOVE_ITEM NVCOMPDX_CUDA_ARCHITECTURES 70-real;72-real)
+        list(REMOVE_ITEM NVCOMPDX_CUDA_ARCHITECTURES 70-virtual;72-virtual)
+    endif()
     message(STATUS "Targeted nvCOMPDx CUDA Architectures: ${NVCOMPDX_CUDA_ARCHITECTURES}")
 
     find_package(mathdx REQUIRED COMPONENTS nvcompdx CONFIG
@@ -171,8 +177,6 @@ function(add_nvcompdx_example_impl GROUP_TARGET EXAMPLE_SOURCES CTEST_ARGUMENTS)
         PROPERTIES
             CUDA_SEPARABLE_COMPILATION ON
             CUDA_ARCHITECTURES "${NVCOMPDX_CUDA_ARCHITECTURES}"
-            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${EXAMPLE_DIRECTORY}"
-            OUTPUT_NAME "${EXAMPLE_FILENAME}"
     )
 
     if(NOT(CMAKE_BUILD_TYPE STREQUAL "DEBUG") AND NOT(CMAKE_BUILD_TYPE STREQUAL "Debug"))

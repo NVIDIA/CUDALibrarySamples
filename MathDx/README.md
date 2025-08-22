@@ -9,33 +9,33 @@ This folder includes examples for cuFFTDx, cuBLASDx, cuSolverDx, cuRANDDx, and n
 
 #### Examples
 
-| Group                 | Subgroup       | Example                        | Description                                                                    |
-|-----------------------|----------------|--------------------------------|--------------------------------------------------------------------------------|
-| Introduction Examples |                | introduction_example           | cuBLASDx API introduction example                                              |
-| Simple GEMM Examples  | Basic Example  | simple_gemm_fp32               | Performs fp32 GEMM                                                             |
-|                       |                | simple_gemm_int8_int8_int32    | Performs integral GEMM using Tensor Cores                                      |
-|                       |                | simple_gemm_cfp16              | Performs complex fp16 GEMM                                                     |
-|                       |                | simple_gemm_fp8                | Performs fp8 GEMM                                                              |
-|                       | Extra Examples | simple_gemm_leading_dimensions | Performs GEMM with non-default leading dimensions                              |
-|                       |                | simple_gemm_fp32_decoupled     | Performs fp32 GEMM using 16-bit input type to save on storage and transfers    |
-|                       |                | simple_gemm_std_complex_fp32   | Performs GEMM with cuda::std::complex as data type                             |
-|                       |                | simple_gemm_mixed_precision    | Performs a mixed precision GEMM                                                |
-|                       |                | simple_gemm_transform          | Performs GEMM with custom load and store operators                             |
-|                       |                | simple_gemm_custom_layout      | Performs GEMM with a custom user provided CuTe layout                          |
-|                       |                | simple_gemm_aat                | Performs GEMM where C = A * A^T                                                |
-| NVRTC Examples        |                | nvrtc_gemm                     | Performs GEMM, kernel is compiled using NVRTC                                  |
-| GEMM Performance      |                | single_gemm_performance        | Benchmark for single GEMM                                                      |
-|                       |                | fused_gemm_performance         | Benchmark for 2 GEMMs fused into a single kernel                               |
-|                       |                | device_gemm_performance        | Benchmark entire device GEMMs using cuBLASDx for single tile                   |
-| Advanced Examples     | Fusion         | fused_gemm                     | Performs 2 GEMMs in a single kernel                                            |
-|                       |                | gemm_fft                       | Perform GEMM and FFT in a single kernel                                        |
-|                       |                | gemm_fft_fp16                  | Perform GEMM and FFT in a single kernel (half-precision complex type)          |
-|                       |                | gemm_fft_performance           | Benchmark for GEMM and FFT fused into a single kernel                          |
-|                       | Deep Learning  | scaled_dot_prod_attn           | Scaled dot product attention using cuBLASDx                                    |
-|                       |                | scaled_dot_prod_attn_batched   | Multi-head attention using cuBLASDx                                            |
-|                       | Other          | batched_gemm_fp64              | Manual batching in a single CUDA block                                         |
-|                       |                | blockdim_gemm_fp16             | BLAS execution with different block dimensions                                 |
-|                       | Emulation      | dgemm_emulation                | Emulate double precision GEMM using lower precision operations (Ozaki scheme)  |
+| Group                 | Subgroup       | Example                           | Description                                                                    |
+|-----------------------|----------------|-----------------------------------|--------------------------------------------------------------------------------|
+| Introduction Examples |                | 01_introduction_example           | cuBLASDx API introduction example                                              |
+| Simple GEMM Examples  | Basic Example  | 02_simple_gemm_fp32               | Performs fp32 GEMM                                                             |
+|                       |                | 02_simple_gemm_int8_int8_int32    | Performs integral GEMM using Tensor Cores                                      |
+|                       |                | 02_simple_gemm_fp8                | Performs fp8 GEMM                                                              |
+|                       |                | 02_simple_gemm_mixed_precision    | Performs a mixed precision GEMM                                                |
+|                       |                | 03_simple_gemm_cfp16              | Performs complex fp16 GEMM                                                     |
+|                       |                | 03_simple_gemm_std_complex_fp32   | Performs GEMM with cuda::std::complex as data type                             |
+|                       |                | 04_blockdim_gemm_fp16             | BLAS execution with different block dimensions                                 |
+|                       | Other          | 05_batched_gemm_fp64              | Manual batching in a single CUDA block                                         |
+|                       |                | 06_simple_gemm_leading_dimensions | Performs GEMM with non-default leading dimensions                              |
+|                       |                | 07_simple_gemm_transform          | Performs GEMM with custom load and store operators                             |
+|                       |                | 08_simple_gemm_fp32_decoupled     | Performs fp32 GEMM using 16-bit input type to save on storage and transfers    |
+|                       |                | 09_simple_gemm_custom_layout      | Performs GEMM with a custom user provided CuTe layout                          |
+|                       |                | 09_simple_gemm_aat                | Performs GEMM where C = A * A^T                                                |
+| GEMM Performance      |                | 10_single_gemm_performance        | Benchmark for single GEMM                                                      |
+|                       |                | 11_device_gemm_performance        | Benchmark entire device GEMMs using cuBLASDx for single tile                   |
+| Advanced Examples     |                | 12_gemm_device_partial_sums       | Enhance GEMM precision by performing higher precision partial sum accumulation |
+|                       |                | 14_fused_gemm_performance         | Benchmark for 2 GEMMs fused into a single kernel                               |
+| Advanced Examples     | Fusion         | 14_gemm_fusion                    | Performs 2 GEMMs in a single kernel                                            |
+|                       |                | 13_gemm_fft                       | Perform GEMM and FFT in a single kernel                                        |
+|                       |                | 13_gemm_fft_fp16                  | Perform GEMM and FFT in a single kernel (half-precision complex type)          |
+|                       |                | 13_gemm_fft_performance           | Benchmark for GEMM and FFT fused into a single kernel                          |
+|                       | Emulation      | 16_dgemm_emulation                | Emulate double precision GEMM using lower precision operations (Ozaki scheme)  |
+| NVRTC Examples        |                | 15_nvrtc_gemm                     | Performs GEMM, kernel is compiled using NVRTC                                  |
+
 
 ## [cuFFTDx](cuFFTDx)
 

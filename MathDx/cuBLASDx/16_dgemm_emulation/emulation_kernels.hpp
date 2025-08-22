@@ -7,6 +7,8 @@
 #include <cublasdx.hpp>
 using namespace cublasdx;
 
+#include <cub/block/block_reduce.cuh>
+
 #include "../common/common.hpp"
 
 // This header contains the CUDA kernels implementing the Ozaki scheme for
@@ -55,7 +57,7 @@ max_reduce_kernel(cute::Tensor<InEngine, InLayout> in_tensor, cute::Tensor<OutEn
     auto global_tile = in_tensor(bid, cute::_);
 
     // 1. Find local maximum absolute value for this thread
-    auto local_max = 0;
+    double local_max = 0;
 
     for(auto i = tid; i < tile_size; i += BlockSize) {
         local_max = cute::max(local_max, cute::abs(global_tile(i)));
@@ -63,7 +65,8 @@ max_reduce_kernel(cute::Tensor<InEngine, InLayout> in_tensor, cute::Tensor<OutEn
 
     // 2. Compute block-wide reduction to find maximum across all threads
     __syncthreads();
-    const auto block_max = BlockReduce(temp_storage).Reduce(local_max, cub::Max());
+    const double block_max = BlockReduce(temp_storage).Reduce(local_max, 
+        [](const auto& a, const auto& b) { return cute::max(a, b);});
     
     // 3. Convert maximum value to exponent shift and store to global memory
     // This shift determines the scaling factor for slicing this row/column
