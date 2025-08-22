@@ -261,9 +261,9 @@ struct Einsum
 
     uint64_t getWorksize()  
     {
-        if (kWorksize_== 0) 
+        if (!workspaceSet_)
         {
-            std::cerr << "cutensor: Error, worksize has not been determined, create plan first \n";
+            std::cerr << "cutensor: Error, workspace size has not been determined, create plan first";
         }
         return kWorksize_; 
     }
@@ -286,7 +286,7 @@ struct Einsum
      * \param[in] handle cuTensor handle
      * \param[in] workspaceSizeProvided size of the workspace provided by the user
      */
-    bool plan(const cutensorHandle_t handle, const uint64_t workspaceSizeProvided, bool jit_pref)
+    bool plan(const cutensorHandle_t handle, cutensorWorksizePreference_t worksizePref, bool jit_pref)
     {
         if (!isInitialized_) return false;
 
@@ -375,7 +375,7 @@ struct Einsum
          * Query workspace estimate
          **********************/
         uint64_t workspaceSizeEstimate = 0;
-        const cutensorWorksizePreference_t workspacePref = CUTENSOR_WORKSPACE_DEFAULT;
+        const cutensorWorksizePreference_t workspacePref = worksizePref;
         HANDLE_ERROR(cutensorEstimateWorkspaceSize(handle,
                                                   desc,
                                                   planPref,
@@ -389,7 +389,7 @@ struct Einsum
                     &plan_,
                     desc,
                     planPref,
-                    workspaceSizeProvided));
+                    workspaceSizeEstimate));
 
         uint64_t actualWorkspaceSize = 0;
         HANDLE_ERROR(cutensorPlanGetAttribute(handle,
@@ -399,11 +399,8 @@ struct Einsum
                                              sizeof(actualWorkspaceSize)));
 
 
-        //Default min workspace (even if 0 required)
-        if (actualWorkspaceSize < 1024ULL * 1024ULL * 1024ULL) actualWorkspaceSize = 1024ULL * 1024ULL * 1024ULL;
-        assert(actualWorkspaceSize <= workspaceSizeProvided);
-
-        //set workspace to actually used workspace size (! Larger workspace will negatively impact performance !)
+        //set workspace to actually used workspace size
+        workspaceSet_ = true;
         kWorksize_ = actualWorkspaceSize;
 
         HANDLE_ERROR(cutensorDestroyOperationDescriptor(desc));
@@ -467,7 +464,8 @@ struct Einsum
     }
 
     private:
-    uint64_t kWorksize_ = 0; // not initialized
+    bool workspaceSet_ = false;
+    uint64_t kWorksize_ = 0;
     cutensorPlan_t plan_;
     uint32_t numModesA_;
     uint32_t numModesB_;
