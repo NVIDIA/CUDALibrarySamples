@@ -103,17 +103,14 @@ torch::Tensor einsum(
     }
     output_tensor = torch::empty(myEinsum.getOutputShape(), input_0.options());
 
-    //get available GPU memory size
-    uint64_t worksize_provided = getMaxAvailableMemorySize();
     //plan the einsum kernel
-    auto ret1 = myEinsum.plan(GetCuTensorHandle(), worksize_provided, false);
+    auto ret1 = myEinsum.plan(GetCuTensorHandle(), CUTENSOR_WORKSPACE_DEFAULT, false);
     if (! ret1){
       std::cerr << "cutensor: plan creation failed." << std::endl;
       throw std::runtime_error("cutensor: plan creation failed.");
     }
 
-
-    //get the estimated workspace size
+    //get the required workspace size
     uint64_t worksize = myEinsum.getWorksize();
 
     //try to allocate the workspace according to the cuTensor required size
@@ -122,7 +119,7 @@ torch::Tensor einsum(
       workspace = at::empty(worksize, at::CUDA(at::kByte));
     } 
     catch (std::exception& e) {
-        ret1 = myEinsum.plan(GetCuTensorHandle(), 1024ULL * 1024ULL * 1024ULL, false);
+        ret1 = myEinsum.plan(GetCuTensorHandle(), CUTENSOR_WORKSPACE_MIN, false);
         if (! ret1){
           std::cerr << "cutensor: plan with less workspace failed." << std::endl;
           throw std::runtime_error("cutensor: plan creation failed.");
@@ -183,33 +180,26 @@ torch::Tensor einsum(
          std::cerr << "cutensor: No Einsum pointer " << std::endl;
          throw std::runtime_error("cutensor: Einsum pointer is NULL");
        }
-       uint64_t worksize_provided = getMaxAvailableMemorySize();
+
        bool ret1;
-       
        if (jit_pref) {
          try {
-           ret1 = myEinsumPtr->plan(GetCuTensorHandle(), worksize_provided, true);
-           if (!ret1){
-            ret1 = myEinsumPtr->plan(GetCuTensorHandle(), worksize_provided, true);
-            if (!ret1) {
-              std::cerr << "cutensor: JIT plan creation failed again" << std::endl;
-              throw std::runtime_error("cutensor: JIT plan creation failed again");
-            }
-           } 
+           ret1 = myEinsumPtr->plan(GetCuTensorHandle(), CUTENSOR_WORKSPACE_DEFAULT, true);
+           if (!ret1) {
+             throw std::runtime_error("cutensor: JIT plan creation failed");
+           }
          } 
          catch (const std::exception& e) {
-          ret1 = myEinsumPtr->plan(GetCuTensorHandle(), worksize_provided, false); // Always use non-JIT for recovery
+          ret1 = myEinsumPtr->plan(GetCuTensorHandle(), CUTENSOR_WORKSPACE_DEFAULT, false); // use Non-JIT as fallback
           if (!ret1) {
-            std::cerr << "Fallback to non-jit planing failed" << std::endl;
-            throw std::runtime_error("cutensor: Fallback to non-jit planing failed");
+            throw std::runtime_error("cutensor: Fallback to non-JIT plan creation failed");
           } 
          }
        }
        else {
-         ret1 = myEinsumPtr->plan(GetCuTensorHandle(), worksize_provided, false); 
+         ret1 = myEinsumPtr->plan(GetCuTensorHandle(), CUTENSOR_WORKSPACE_DEFAULT, false);
          if (!ret1) {
-           std::cerr << "cutensor: NON-JIT plan creation failed 1 with error code but no exception" << std::endl;
-           throw std::runtime_error("cutensor: NON-JIT plan creation failed 1 with error code but no exception");
+           throw std::runtime_error("cutensor: non-JIT plan creation failed");
          } 
        }
     
@@ -268,5 +258,4 @@ torch::Tensor einsum(
     .def_readwrite("output_tensor", &EinsumPlan::output_tensor)
     .def_readwrite("input_0", &EinsumPlan::input_0)
     .def_readwrite("input_1", &EinsumPlan::input_1);
-
  }
