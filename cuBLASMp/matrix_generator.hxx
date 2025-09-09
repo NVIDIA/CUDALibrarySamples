@@ -141,3 +141,71 @@ void generate_diag_matrix(
 
     generate_distributed_matrix(m, n, a, mb, nb, ia, ja, lld, nprow, npcol, myprow, mypcol, generator);
 }
+
+template <typename T>
+static void generate_values(
+    int seed,
+    T* buffer,
+    int64_t size,
+    bool device_allocation,
+    double min = 0.0,
+    double max = 1.0)
+{
+    T* ptr = buffer;
+
+    if (device_allocation)
+    {
+        ptr = reinterpret_cast<T*>(malloc(size * sizeof(T)));
+    }
+
+    std::srand(seed);
+    std::for_each(ptr, ptr + size, [&](T& x) {
+        const double v = double(std::rand()) / RAND_MAX;
+        x = T(min + v * (max - min));
+    });
+
+    if (device_allocation)
+    {
+        CUDA_CHECK(cudaMemcpy(buffer, ptr, size * sizeof(T), cudaMemcpyHostToDevice));
+        free(ptr);
+    }
+}
+
+static void generate_values(
+    int seed,
+    void* buffer,
+    int64_t size,
+    cudaDataType_t type,
+    bool device_allocation = false,
+    double min = 0.0,
+    double max = 1.0)
+{
+    switch (type)
+    {
+        case CUDA_R_4F_E2M1:
+            generate_values(seed, reinterpret_cast<__nv_fp4_e2m1*>(buffer), size, device_allocation, min, max);
+            break;
+        case CUDA_R_8F_E4M3:
+            generate_values(seed, reinterpret_cast<__nv_fp8_e4m3*>(buffer), size, device_allocation, min, max);
+            break;
+        case CUDA_R_8F_E5M2:
+            generate_values(seed, reinterpret_cast<__nv_fp8_e5m2*>(buffer), size, device_allocation, min, max);
+            break;
+        case CUDA_R_8F_UE8M0:
+            generate_values(seed, reinterpret_cast<__nv_fp8_e8m0*>(buffer), size, device_allocation, min, max);
+            break;
+        case CUDA_R_16F:
+            generate_values(seed, reinterpret_cast<__half*>(buffer), size, device_allocation, min, max);
+            break;
+        case CUDA_R_16BF:
+            generate_values(seed, reinterpret_cast<__nv_bfloat16*>(buffer), size, device_allocation, min, max);
+            break;
+        case CUDA_R_32F:
+            generate_values(seed, reinterpret_cast<float*>(buffer), size, device_allocation, min, max);
+            break;
+        case CUDA_R_64F:
+            generate_values(seed, reinterpret_cast<double*>(buffer), size, device_allocation, min, max);
+            break;
+        default: throw std::runtime_error("unsupported datatype");
+    }
+}
