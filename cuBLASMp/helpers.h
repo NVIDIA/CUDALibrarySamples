@@ -28,9 +28,15 @@
 
 #pragma once
 
+#include <cuda_fp4.h>
+#include <cuda_fp8.h>
 #include <mpi.h>
-#include <stdbool.h>
 #include <string.h>
+
+#include <cctype>
+#include <cstdint>
+#include <stdexcept>
+#include <vector>
 
 #define MPI_CHECK(call)                                                                                                \
     do                                                                                                                 \
@@ -87,6 +93,193 @@
         }                                                                                                              \
     } while (0)
 
+template <typename T>
+struct CudaTypeTraits;
+
+#define MAKE_TYPE_TRAITS(T, type_enum, type_size)                                                                      \
+    template <>                                                                                                        \
+    struct CudaTypeTraits<T>                                                                                           \
+    {                                                                                                                  \
+        static constexpr cudaDataType_t typeEnum = type_enum;                                                          \
+        static constexpr int typeSize = type_size;                                                                     \
+    };
+
+MAKE_TYPE_TRAITS(__nv_fp4_e2m1, CUDA_R_4F_E2M1, 1);
+MAKE_TYPE_TRAITS(__nv_fp8_e4m3, CUDA_R_8F_E4M3, 1);
+MAKE_TYPE_TRAITS(__nv_fp8_e5m2, CUDA_R_8F_E5M2, 1);
+MAKE_TYPE_TRAITS(__nv_fp8_e8m0, CUDA_R_8F_UE8M0, 1);
+MAKE_TYPE_TRAITS(__nv_bfloat16, CUDA_R_16BF, 2);
+MAKE_TYPE_TRAITS(__half, CUDA_R_16F, 2);
+MAKE_TYPE_TRAITS(float, CUDA_R_32F, 4);
+
+#include "matrix_generator.hxx"
+
+cudaDataType_t string_to_cuda_data_type(const char* type)
+{
+    if (strcmp(type, "fp4_e2m1") == 0)
+    {
+        return CUDA_R_4F_E2M1;
+    }
+    else if (strcmp(type, "fp8_e4m3") == 0)
+    {
+        return CUDA_R_8F_E4M3;
+    }
+    else if (strcmp(type, "fp8_e5m2") == 0)
+    {
+        return CUDA_R_8F_E5M2;
+    }
+    else if (strcmp(type, "bf16") == 0)
+    {
+        return CUDA_R_16BF;
+    }
+    else if (strcmp(type, "fp16") == 0)
+    {
+        return CUDA_R_16F;
+    }
+    else if (strcmp(type, "fp32") == 0)
+    {
+        return CUDA_R_32F;
+    }
+    else if (strcmp(type, "fp64") == 0)
+    {
+        return CUDA_R_64F;
+    }
+    else if (strcmp(type, "cfp32") == 0)
+    {
+        return CUDA_C_32F;
+    }
+    else if (strcmp(type, "cfp64") == 0)
+    {
+        return CUDA_C_64F;
+    }
+    else
+    {
+        throw std::runtime_error("unsupported datatype");
+    }
+}
+
+cublasMpMatmulMatrixScale_t string_to_scale_type(const char* scale)
+{
+    if (scale == nullptr)
+    {
+        return CUBLASMP_MATMUL_MATRIX_SCALE_SCALAR_FP32; // default
+    }
+    else if (strcmp(scale, "scalar_fp32") == 0)
+    {
+        return CUBLASMP_MATMUL_MATRIX_SCALE_SCALAR_FP32;
+    }
+    else if (strcmp(scale, "vec16_ue4m3") == 0)
+    {
+        return CUBLASMP_MATMUL_MATRIX_SCALE_VEC16_UE4M3;
+    }
+    else if (strcmp(scale, "vec32_ue8m0") == 0)
+    {
+        return CUBLASMP_MATMUL_MATRIX_SCALE_VEC32_UE8M0;
+    }
+    else if (strcmp(scale, "outer_vec_fp32") == 0)
+    {
+        return CUBLASMP_MATMUL_MATRIX_SCALE_OUTER_VEC_FP32;
+    }
+    else if (strcmp(scale, "vec128_fp32") == 0)
+    {
+        return CUBLASMP_MATMUL_MATRIX_SCALE_VEC128_FP32;
+    }
+    else if (strcmp(scale, "blk128x128_fp32") == 0)
+    {
+        return CUBLASMP_MATMUL_MATRIX_SCALE_BLK128x128_FP32;
+    }
+    else
+    {
+        throw std::runtime_error("unsupported scale type");
+    }
+}
+
+inline int64_t roundup(int64_t x, int64_t y)
+{
+    return ((x + y - 1) / y) * y;
+}
+
+size_t get_scaling_tensor_size(int64_t m, int64_t n, cublasMpMatmulMatrixScale_t scale_mode)
+{
+    switch (scale_mode)
+    {
+        case CUBLASMP_MATMUL_MATRIX_SCALE_SCALAR_FP32: return sizeof(float);
+        case CUBLASMP_MATMUL_MATRIX_SCALE_OUTER_VEC_FP32: return n * sizeof(float);
+        case CUBLASMP_MATMUL_MATRIX_SCALE_VEC16_UE4M3:
+            return roundup(m, 4 * 16) / 16 * roundup(n, 128) * sizeof(__nv_fp8_e4m3);
+        case CUBLASMP_MATMUL_MATRIX_SCALE_VEC32_UE8M0:
+            return roundup(m, 4 * 32) / 32 * roundup(n, 128) * sizeof(__nv_fp8_e8m0);
+        case CUBLASMP_MATMUL_MATRIX_SCALE_VEC128_FP32: return roundup((m + 127) / 128, 4) * n * sizeof(float);
+        case CUBLASMP_MATMUL_MATRIX_SCALE_BLK128x128_FP32:
+            return (roundup((m + 127) / 128, 4) * ((n + 127) / 128)) * sizeof(float);
+        default: return 0;
+    }
+}
+
+void* allocate_and_init_scaling_factors(int64_t m, int64_t n, cublasMpMatmulMatrixScale_t scale_mode)
+{
+    size_t scale_size = get_scaling_tensor_size(m, n, scale_mode);
+    if (scale_size == 0) return nullptr;
+
+    int rank;
+    MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &rank));
+
+    std::srand(rank);
+
+    void* d_scale = nullptr;
+    CUDA_CHECK(cudaMalloc(&d_scale, scale_size));
+
+    switch (scale_mode)
+    {
+        case CUBLASMP_MATMUL_MATRIX_SCALE_SCALAR_FP32:
+        {
+            generate_values(rank, reinterpret_cast<float*>(d_scale), 1, true, 1, 10);
+            break;
+        }
+
+        case CUBLASMP_MATMUL_MATRIX_SCALE_OUTER_VEC_FP32:
+        case CUBLASMP_MATMUL_MATRIX_SCALE_VEC128_FP32:
+        case CUBLASMP_MATMUL_MATRIX_SCALE_BLK128x128_FP32:
+        {
+            generate_values(rank, reinterpret_cast<float*>(d_scale), scale_size / sizeof(float), true, 1, 10);
+            break;
+        }
+
+        case CUBLASMP_MATMUL_MATRIX_SCALE_VEC16_UE4M3:
+        {
+            generate_values(
+                rank, reinterpret_cast<__nv_fp8_e4m3*>(d_scale), scale_size / sizeof(__nv_fp8_e4m3), true, 1, 10);
+            break;
+        }
+
+        case CUBLASMP_MATMUL_MATRIX_SCALE_VEC32_UE8M0:
+        {
+            generate_values(
+                rank, reinterpret_cast<__nv_fp8_e8m0*>(d_scale), scale_size / sizeof(__nv_fp8_e8m0), true, 1, 10);
+            break;
+        }
+
+        default:
+        {
+            CUDA_CHECK(cudaFree(d_scale));
+            return nullptr;
+        }
+    }
+
+    return d_scale;
+}
+
+cublasOperation_t char_to_cublas_operation(char op)
+{
+    switch (std::tolower(op))
+    {
+        case 'n': return CUBLAS_OP_N;
+        case 't': return CUBLAS_OP_T;
+        case 'c': return CUBLAS_OP_C;
+        default: throw std::runtime_error("unsupported operation");
+    }
+}
+
 struct Options
 {
     // problem properties
@@ -111,31 +304,60 @@ struct Options
     int q;
     char grid_layout;
 
+    // data types
+    cudaDataType_t typeA = CUDA_R_64F;
+    cudaDataType_t typeB = CUDA_R_64F;
+    cudaDataType_t typeC = CUDA_R_64F;
+    cudaDataType_t typeD = CUDA_R_64F;
+
+    cublasOperation_t transA = CUBLAS_OP_N;
+    cublasOperation_t transB = CUBLAS_OP_N;
+
     // others
-    bool verbose;
+    bool verbose = false;
+    int cycles = 1;
+    int warmup = 0;
+
+    // FP8 scaling options
+    const char* scaleA = nullptr;
+    const char* scaleB = nullptr;
+    const char* scaleD = nullptr;
 
     void printHelp()
     {
-        printf("Available options:\n"
-               "    -m\n"
-               "    -n\n"
-               "    -k\n"
-               "    -mbA\n"
-               "    -nbA\n"
-               "    -mbB\n"
-               "    -nbB\n"
-               "    -mbC\n"
-               "    -nbC\n"
-               "    -ia\n"
-               "    -ja\n"
-               "    -ib\n"
-               "    -jb\n"
-               "    -ic\n"
-               "    -jc\n"
-               "    -p\n"
-               "    -q\n"
-               "    -grid_layout\n"
-               "    -verbose\n");
+        printf(
+            "Available options:\n"
+            "    -m <int>\n"
+            "    -n <int>\n"
+            "    -k <int>\n"
+            "    -mbA <int>\n"
+            "    -nbA <int>\n"
+            "    -mbB <int>\n"
+            "    -nbB <int>\n"
+            "    -mbC <int>\n"
+            "    -nbC <int>\n"
+            "    -ia <int>\n"
+            "    -ja <int>\n"
+            "    -ib <int>\n"
+            "    -jb <int>\n"
+            "    -ic <int>\n"
+            "    -jc <int>\n"
+            "    -typeA <string> (fp4_e2m1, fp8_e4m3, fp8_e5m2, bf16, fp16, fp32, fp64, cfp32, cfp64)\n"
+            "    -typeB <string> (fp4_e2m1, fp8_e4m3, fp8_e5m2, bf16, fp16, fp32, fp64, cfp32, cfp64)\n"
+            "    -typeC <string> (fp4_e2m1, fp8_e4m3, fp8_e5m2, bf16, fp16, fp32, fp64, cfp32, cfp64)\n"
+            "    -typeD <string> (fp4_e2m1, fp8_e4m3, fp8_e5m2, bf16, fp16, fp32, fp64, cfp32, cfp64)\n"
+            "    -transA <char> (n, t, c)\n"
+            "    -transB <char> (n, t, c)\n"
+            "    -scaleA <string> (scalar_fp32, vec16_ue4m3, vec32_ue8m0, outer_vec_fp32, vec128_fp32, blk128x128_fp32)\n"
+            "    -scaleB <string> (scalar_fp32, vec16_ue4m3, vec32_ue8m0, outer_vec_fp32, vec128_fp32, blk128x128_fp32)\n"
+            "    -scaleD <string> (scalar_fp32, vec16_ue4m3, vec32_ue8m0, outer_vec_fp32, vec128_fp32, blk128x128_fp32)\n"
+            "    -p <int>\n"
+            "    -q <int>\n"
+            "    -gridLayout <char> (c, r)\n"
+            "    -cycles <int>\n"
+            "    -warmup <int>\n"
+            "    -verbose\n"
+            "    -help\n");
     }
 
     void print()
@@ -144,7 +366,13 @@ struct Options
             "Parameters: "
             "m=%d n=%d k=%d "
             "mbA=%d nbA=%d mbB=%d nbB=%d mbC=%d nbC=%d "
-            "ia=%d ja=%d ib=%d jb=%d ic=%d jc=%d p=%d q=%d grid_layout=%c verbose=%d\n",
+            "ia=%d ja=%d ib=%d jb=%d ic=%d jc=%d "
+            "typeA=%d typeB=%d typeC=%d typeD=%d "
+            "transA=%d transB=%d "
+            "scaleA=%s scaleB=%s scaleD=%s "
+            "p=%d q=%d gridLayout=%c "
+            "cycles=%d warmup=%d "
+            "verbose=%s\n",
             m,
             n,
             k,
@@ -160,10 +388,21 @@ struct Options
             jb,
             ic,
             jc,
+            typeA,
+            typeB,
+            typeC,
+            typeD,
+            transA,
+            transB,
+            scaleA,
+            scaleB,
+            scaleD,
             p,
             q,
             grid_layout,
-            verbose);
+            cycles,
+            warmup,
+            verbose ? "true" : "false");
     }
 
     void parse(int argc, char** argv)
@@ -238,13 +477,57 @@ struct Options
             {
                 q = atoi(argv[++i]);
             }
-            else if (strcmp(argv[i], "-grid_layout") == 0)
+            else if (strcmp(argv[i], "-gridLayout") == 0)
             {
                 grid_layout = *argv[++i];
             }
+            else if (strcmp(argv[i], "-typeA") == 0)
+            {
+                typeA = string_to_cuda_data_type(argv[++i]);
+            }
+            else if (strcmp(argv[i], "-typeB") == 0)
+            {
+                typeB = string_to_cuda_data_type(argv[++i]);
+            }
+            else if (strcmp(argv[i], "-typeC") == 0)
+            {
+                typeC = string_to_cuda_data_type(argv[++i]);
+            }
+            else if (strcmp(argv[i], "-typeD") == 0)
+            {
+                typeD = string_to_cuda_data_type(argv[++i]);
+            }
+            else if (strcmp(argv[i], "-transA") == 0)
+            {
+                transA = char_to_cublas_operation(*argv[++i]);
+            }
+            else if (strcmp(argv[i], "-transB") == 0)
+            {
+                transB = char_to_cublas_operation(*argv[++i]);
+            }
             else if (strcmp(argv[i], "-verbose") == 0)
             {
-                verbose = atoi(argv[++i]);
+                verbose = true;
+            }
+            else if (strcmp(argv[i], "-cycles") == 0)
+            {
+                cycles = atoi(argv[++i]);
+            }
+            else if (strcmp(argv[i], "-warmup") == 0)
+            {
+                warmup = atoi(argv[++i]);
+            }
+            else if (strcmp(argv[i], "-scaleA") == 0)
+            {
+                scaleA = argv[++i];
+            }
+            else if (strcmp(argv[i], "-scaleB") == 0)
+            {
+                scaleB = argv[++i];
+            }
+            else if (strcmp(argv[i], "-scaleD") == 0)
+            {
+                scaleD = argv[++i];
             }
             else if (strcmp(argv[i], "-help") == 0)
             {
