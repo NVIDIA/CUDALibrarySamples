@@ -55,6 +55,8 @@ endfunction(build_sample)
 
 build_sample("pgemm")
 build_sample("pmatmul")
+build_sample("pmatmul_ag")
+build_sample("pmatmul_rs")
 build_sample("pmatmul_ar")
 build_sample("ptrsm")
 build_sample("psyrk")

@@ -37,7 +37,7 @@
 #include "matrix_generator.hxx"
 
 template <typename TypeA, typename TypeB, typename TypeD>
-int run_matmul_ar(const Options& opts)
+int run_matmul_rs(const Options& opts)
 {
     int rank, nranks;
     MPI_Comm_size(MPI_COMM_WORLD, &nranks);
@@ -84,20 +84,20 @@ int run_matmul_ar(const Options& opts)
     const int64_t n = opts.n;
     const int64_t k = opts.k;
 
-    const int64_t loc_a_m = k / nranks;
-    const int64_t loc_a_n = m;
-    const int64_t loc_b_m = k / nranks;
-    const int64_t loc_b_n = n;
+    const int64_t loc_a_m = ta ? k / nranks : m;
+    const int64_t loc_a_n = ta ? m : k / nranks;
+    const int64_t loc_b_m = tb ? n / nranks : k / nranks;
+    const int64_t loc_b_n = tb ? k / nranks : n / nranks;
     const int64_t loc_d_m = m;
-    const int64_t loc_d_n = n;
+    const int64_t loc_d_n = n / nranks;
 
     std::vector<TypeA> h_A(loc_a_m * loc_a_n, TypeA(0));
     std::vector<TypeB> h_B(loc_b_m * loc_b_n, TypeB(0));
     std::vector<TypeD> h_D(loc_d_m * loc_d_n, TypeD(0));
 
     generate_random_matrix(
-        k,
-        m,
+        ta ? k : m,
+        ta ? m : k,
         h_A.data(),
         loc_a_m,
         loc_a_n,
@@ -109,8 +109,8 @@ int run_matmul_ar(const Options& opts)
         ta ? 1 : rank,
         ta ? rank : 1);
     generate_random_matrix(
-        k,
-        n,
+        tb ? n : k,
+        tb ? k : n,
         h_B.data(),
         loc_b_m,
         loc_b_n,
@@ -121,7 +121,7 @@ int run_matmul_ar(const Options& opts)
         tb ? nranks : 1,
         tb ? 1 : rank,
         tb ? rank : 1);
-    generate_random_matrix(m, n * nranks, h_D.data(), loc_d_m, loc_d_n, 1, 1, loc_d_m, 1, nranks, 1, rank);
+    generate_random_matrix(m, n, h_D.data(), loc_d_m, loc_d_n, 1, 1, loc_d_m, 1, nranks, 1, rank);
 
     TypeA* d_A = nullptr;
     TypeB* d_B = nullptr;
@@ -140,14 +140,31 @@ int run_matmul_ar(const Options& opts)
     cublasMpMatrixDescriptor_t descD = nullptr;
 
     CUBLASMP_CHECK(cublasMpMatrixDescriptorCreate(
-        k, m, loc_a_m, loc_a_n, 0, 0, loc_a_m, CudaTypeTraits<TypeA>::typeEnum, grid_col_major, &descA));
+        ta ? k : m,
+        ta ? m : k,
+        loc_a_m,
+        loc_a_n,
+        0,
+        0,
+        loc_a_m,
+        CudaTypeTraits<TypeA>::typeEnum,
+        ta ? grid_col_major : grid_row_major,
+        &descA));
     CUBLASMP_CHECK(cublasMpMatrixDescriptorCreate(
-        k, n, loc_b_m, loc_b_n, 0, 0, loc_b_m, CudaTypeTraits<TypeB>::typeEnum, grid_col_major, &descB));
+        tb ? n : k,
+        tb ? k : n,
+        loc_b_m,
+        loc_b_n,
+        0,
+        0,
+        loc_b_m,
+        CudaTypeTraits<TypeB>::typeEnum,
+        tb ? grid_row_major : grid_col_major,
+        &descB));
     CUBLASMP_CHECK(cublasMpMatrixDescriptorCreate(
-        m, n * nranks, loc_d_m, loc_d_n, 0, 0, loc_d_m, CudaTypeTraits<TypeD>::typeEnum, grid_row_major, &descD));
+        m, n, loc_d_m, loc_d_n, 0, 0, loc_d_m, CudaTypeTraits<TypeD>::typeEnum, grid_row_major, &descD));
 
-    const cublasMpMatmulAlgoType_t algoType = CUBLASMP_MATMUL_ALGO_TYPE_SPLIT_MULTICAST;
-    const cublasMpMatmulEpilogue_t epilogue = CUBLASMP_MATMUL_EPILOGUE_ALLREDUCE;
+    const cublasMpMatmulAlgoType_t algoType = CUBLASMP_MATMUL_ALGO_TYPE_SPLIT_P2P;
 
     cublasMpMatmulDescriptor_t matmulDesc = nullptr;
 
@@ -194,9 +211,6 @@ int run_matmul_ar(const Options& opts)
         CUBLASMP_CHECK(cublasMpMatmulDescriptorAttributeSet(
             matmulDesc, CUBLASMP_MATMUL_DESCRIPTOR_ATTRIBUTE_D_SCALE_POINTER, &d_d_scale, sizeof(d_d_scale)));
     }
-
-    CUBLASMP_CHECK(cublasMpMatmulDescriptorAttributeSet(
-        matmulDesc, CUBLASMP_MATMUL_DESCRIPTOR_ATTRIBUTE_EPILOGUE, &epilogue, sizeof(epilogue)));
 
     size_t workspaceInBytesOnDevice = 0;
     size_t workspaceInBytesOnHost = 0;
@@ -349,71 +363,71 @@ int main(int argc, char** argv)
 
     if (opts.typeA == CUDA_R_16F && opts.typeB == CUDA_R_16F && opts.typeD == CUDA_R_16F)
     {
-        run_matmul_ar<__half, __half, __half>(opts);
+        run_matmul_rs<__half, __half, __half>(opts);
     }
     else if (opts.typeA == CUDA_R_16BF && opts.typeB == CUDA_R_16BF && opts.typeD == CUDA_R_16BF)
     {
-        run_matmul_ar<__nv_bfloat16, __nv_bfloat16, __nv_bfloat16>(opts);
+        run_matmul_rs<__nv_bfloat16, __nv_bfloat16, __nv_bfloat16>(opts);
     }
     else if (opts.typeA == CUDA_R_8F_E4M3 && opts.typeB == CUDA_R_8F_E4M3 && opts.typeD == CUDA_R_8F_E4M3)
     {
-        run_matmul_ar<__nv_fp8_e4m3, __nv_fp8_e4m3, __nv_fp8_e4m3>(opts);
+        run_matmul_rs<__nv_fp8_e4m3, __nv_fp8_e4m3, __nv_fp8_e4m3>(opts);
     }
     else if (opts.typeA == CUDA_R_8F_E4M3 && opts.typeB == CUDA_R_8F_E4M3 && opts.typeD == CUDA_R_16F)
     {
-        run_matmul_ar<__nv_fp8_e4m3, __nv_fp8_e4m3, __half>(opts);
+        run_matmul_rs<__nv_fp8_e4m3, __nv_fp8_e4m3, __half>(opts);
     }
     else if (opts.typeA == CUDA_R_8F_E4M3 && opts.typeB == CUDA_R_8F_E4M3 && opts.typeD == CUDA_R_16BF)
     {
-        run_matmul_ar<__nv_fp8_e4m3, __nv_fp8_e4m3, __nv_bfloat16>(opts);
+        run_matmul_rs<__nv_fp8_e4m3, __nv_fp8_e4m3, __nv_bfloat16>(opts);
     }
     else if (opts.typeA == CUDA_R_8F_E4M3 && opts.typeB == CUDA_R_8F_E4M3 && opts.typeD == CUDA_R_32F)
     {
-        run_matmul_ar<__nv_fp8_e4m3, __nv_fp8_e4m3, float>(opts);
+        run_matmul_rs<__nv_fp8_e4m3, __nv_fp8_e4m3, float>(opts);
     }
     else if (opts.typeA == CUDA_R_8F_E4M3 && opts.typeB == CUDA_R_8F_E5M2 && opts.typeD == CUDA_R_8F_E4M3)
     {
-        run_matmul_ar<__nv_fp8_e4m3, __nv_fp8_e5m2, __nv_fp8_e4m3>(opts);
+        run_matmul_rs<__nv_fp8_e4m3, __nv_fp8_e5m2, __nv_fp8_e4m3>(opts);
     }
     else if (opts.typeA == CUDA_R_8F_E4M3 && opts.typeB == CUDA_R_8F_E5M2 && opts.typeD == CUDA_R_8F_E5M2)
     {
-        run_matmul_ar<__nv_fp8_e4m3, __nv_fp8_e5m2, __nv_fp8_e5m2>(opts);
+        run_matmul_rs<__nv_fp8_e4m3, __nv_fp8_e5m2, __nv_fp8_e5m2>(opts);
     }
     else if (opts.typeA == CUDA_R_8F_E4M3 && opts.typeB == CUDA_R_8F_E5M2 && opts.typeD == CUDA_R_16F)
     {
-        run_matmul_ar<__nv_fp8_e4m3, __nv_fp8_e5m2, __half>(opts);
+        run_matmul_rs<__nv_fp8_e4m3, __nv_fp8_e5m2, __half>(opts);
     }
     else if (opts.typeA == CUDA_R_8F_E4M3 && opts.typeB == CUDA_R_8F_E5M2 && opts.typeD == CUDA_R_16BF)
     {
-        run_matmul_ar<__nv_fp8_e4m3, __nv_fp8_e5m2, __nv_bfloat16>(opts);
+        run_matmul_rs<__nv_fp8_e4m3, __nv_fp8_e5m2, __nv_bfloat16>(opts);
     }
     else if (opts.typeA == CUDA_R_8F_E4M3 && opts.typeB == CUDA_R_8F_E5M2 && opts.typeD == CUDA_R_32F)
     {
-        run_matmul_ar<__nv_fp8_e4m3, __nv_fp8_e5m2, float>(opts);
+        run_matmul_rs<__nv_fp8_e4m3, __nv_fp8_e5m2, float>(opts);
     }
     else if (opts.typeA == CUDA_R_8F_E5M2 && opts.typeB == CUDA_R_8F_E4M3 && opts.typeD == CUDA_R_8F_E4M3)
     {
-        run_matmul_ar<__nv_fp8_e5m2, __nv_fp8_e4m3, __nv_fp8_e4m3>(opts);
+        run_matmul_rs<__nv_fp8_e5m2, __nv_fp8_e4m3, __nv_fp8_e4m3>(opts);
     }
     else if (opts.typeA == CUDA_R_8F_E5M2 && opts.typeB == CUDA_R_8F_E4M3 && opts.typeD == CUDA_R_8F_E5M2)
     {
-        run_matmul_ar<__nv_fp8_e5m2, __nv_fp8_e4m3, __nv_fp8_e5m2>(opts);
+        run_matmul_rs<__nv_fp8_e5m2, __nv_fp8_e4m3, __nv_fp8_e5m2>(opts);
     }
     else if (opts.typeA == CUDA_R_8F_E5M2 && opts.typeB == CUDA_R_8F_E4M3 && opts.typeD == CUDA_R_16F)
     {
-        run_matmul_ar<__nv_fp8_e5m2, __nv_fp8_e4m3, __half>(opts);
+        run_matmul_rs<__nv_fp8_e5m2, __nv_fp8_e4m3, __half>(opts);
     }
     else if (opts.typeA == CUDA_R_8F_E5M2 && opts.typeB == CUDA_R_8F_E4M3 && opts.typeD == CUDA_R_16BF)
     {
-        run_matmul_ar<__nv_fp8_e5m2, __nv_fp8_e4m3, __nv_bfloat16>(opts);
+        run_matmul_rs<__nv_fp8_e5m2, __nv_fp8_e4m3, __nv_bfloat16>(opts);
     }
     else if (opts.typeA == CUDA_R_8F_E5M2 && opts.typeB == CUDA_R_8F_E4M3 && opts.typeD == CUDA_R_32F)
     {
-        run_matmul_ar<__nv_fp8_e5m2, __nv_fp8_e4m3, float>(opts);
+        run_matmul_rs<__nv_fp8_e5m2, __nv_fp8_e4m3, float>(opts);
     }
     else
     {
-        throw std::runtime_error("The matmul_ar sample doesn't support the given datatype combination");
+        throw std::runtime_error("The matmul_rs sample doesn't support the given datatype combination");
     }
 
     MPI_Barrier(MPI_COMM_WORLD);
