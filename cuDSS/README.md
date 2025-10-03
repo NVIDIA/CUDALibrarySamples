@@ -4,7 +4,8 @@
 
 This folder demonstrates main cuDSS APIs usage.
 
-Note: samples are updated to work with the latest version of cuDSS available (currently: 0.5.0) and might be imcompatible with older versions. For further details, please check the release notes in the official documentation.
+Note: samples are updated to work with the latest version of cuDSS available (currently: 0.7.0) and might be incompatible with older versions.
+For further details, please check the release notes in the official documentation.
 
 [cuDSS Documentation](https://docs.nvidia.com/cuda/cudss/index.html)
 
@@ -73,6 +74,26 @@ Note: samples are updated to work with the latest version of cuDSS available (cu
 
 * [Multi-gpu multi-node (MGMN) mode with a distributed matrix](simple_mgmn_distributed_matrix/)
 
-    The sample demonstrates how to use cuDSS for solving a real sparse linear system using the multi-GPU multi-node mode with a distributed system matrix.
+    The sample demonstrates how to use cuDSS for solving a real sparse linear system using the multi-GPU multi-node mode with a distributed system matrix (available since cudss 0.6.0)
 
     Note: building MGMN mode samples require extra options for the communication backend at build and runtime, and must be run with mpirun
+
+* [Multi-gpu single-node (MG) mode](simple_mg_mode/)
+
+    The sample demonstrates how to use cuDSS for solving a real sparse linear system using the multi-GPU mode (without any distributed communication backend) (available since cudss 0.7.0)
+
+* [Schur complement computation](simple_schur_complement/)
+
+    The sample demonstrates how to use cuDSS for computing the Schur complement matrix (and how it can be used for solving the full system) (available since cudss 0.7.0)
+
+* [Residual computation](simple_residual/)
+
+    The sample demonstrates how one can compute the relative residual norm to estimate accuracy of cuDSS (available since cudss 0.7.0)
+
+* [Helper for testing the communication layer library](test_communication_layer/)
+
+    The sample demonstrates how one can check functional health of a distributed communication backend and the associated communication layer library of cuDSS (available since cudss 0.7.0)
+
+* [Helper for testing the threading layer library](test_threading_layer/)
+
+    The sample demonstrates how one can check functional health of a threading backend and the associated threading layer library of cuDSS (available since cudss 0.7.0)
