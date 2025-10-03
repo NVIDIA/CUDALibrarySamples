@@ -1,3 +1,5 @@
+[![License](https://img.shields.io/badge/License-Apache_2.0-yellowgreen.svg)](https://opensource.org/licenses/Apache-2.0)
+
 # CUDA Library Samples
 
 The **CUDA Library Samples** repository contains various examples that demonstrate the use of GPU-accelerated libraries in CUDA. These libraries enable high-performance computing in a wide range of applications, including math operations, image processing, signal processing, linear algebra, and compression. The samples included cover:
@@ -16,7 +18,7 @@ The **CUDA Library Samples** repository contains various examples that demonstra
 
 ## About
 
-The CUDA Library Samples are provided by NVIDIA Corporation as Open Source software, released under the 3-clause "New" BSD license. These examples showcase how to leverage GPU-accelerated libraries for efficient computation across various fields.
+The CUDA Library Samples are provided by NVIDIA Corporation as Open Source software, released under the Apache 2.0 License. These examples showcase how to leverage GPU-accelerated libraries for efficient computation across various fields.
 
 For more information on the available libraries and their uses, visit [GPU Accelerated Libraries](https://developer.nvidia.com/gpu-accelerated-libraries).
 
@@ -58,32 +60,13 @@ For more information and documentation on CUDA libraries, please visit:
 - [NVIDIA Developer Zone](https://developer.nvidia.com/)
 - [CUDA Samples](https://github.com/NVIDIA/cuda-samples)
 
+## Contributing
+
+We welcome contributions to **CUDA Library Samples**. To contribute to **CUDA Library Samples** and make pull requests,
+follow the guidelines outlined in the [Contributing](./CONTRIBUTING.md) document.
+
 ## License
 
-The CUDA Library Samples are distributed under the 3-clause "New" BSD license. For more details, refer to the license terms below:
+The CUDA Library Samples are distributed under the Apache 2.0 License. For more details, refer to the LICENSE.md file.
 
-## Copyright
-
-Copyright (c) 2022-2024 NVIDIA CORPORATION AND AFFILIATES.  All rights reserved.
-
-```
-  Redistribution and use in source and binary forms, with or without modification, are permitted
-  provided that the following conditions are met:
-      * Redistributions of source code must retain the above copyright notice, this list of
-        conditions and the following disclaimer.
-      * Redistributions in binary form must reproduce the above copyright notice, this list of
-        conditions and the following disclaimer in the documentation and/or other materials
-        provided with the distribution.
-      * Neither the name of the NVIDIA CORPORATION nor the names of its contributors may be used
-        to endorse or promote products derived from this software without specific prior written
-        permission.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR
-  IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND
-  FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL NVIDIA CORPORATION BE LIABLE
-  FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
-  BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
-  OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
-  STRICT LIABILITY, OR TOR (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-```
+The old code that was originally distributed under the 3-clause "New" BSD license is available at bsd3_main branch and is no longer maintained.
