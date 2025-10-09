@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -174,6 +174,9 @@ struct TestBench {
         APtrArrayHost(ptrArrayBatch ? N : 0), BPtrArrayHost(ptrArrayBatch ? N : 0), CPtrArrayHost(ptrArrayBatch ? N : 0), DPtrArrayHost(ptrArrayBatch && outOfPlace ? N : 0),
         AScaleMode(AScaleMode), BScaleMode(BScaleMode), CScaleMode(CScaleMode), DScaleMode(DScaleMode), DOutScaleMode(DOutScaleMode), ptrArrayBatch(ptrArrayBatch) {
 
+        // Currently only fp8 supports per-tensor scaling (from second file)
+        perTensorScalingEnabled = std::is_same<InTypeAB, __nv_fp8_e4m3>::value || std::is_same<InTypeAB, __nv_fp8_e5m2>::value;
+
         if (isNarrowPrecision<InTypeAB>()) {
             AscaleHost.resize(getScaleTensorSize(transa != CUBLAS_OP_N ? k : m, transa != CUBLAS_OP_N ? m : k, AScaleMode));
             BscaleHost.resize(getScaleTensorSize(transb != CUBLAS_OP_N ? n : k, transb != CUBLAS_OP_N ? k : n, BScaleMode));
@@ -225,6 +228,16 @@ struct TestBench {
         checkCudaStatus(cudaMalloc(reinterpret_cast<void **>(&DOutscaleDev), DOutscaleHost.size() * sizeof(DOutscaleHost[0])));
         checkCudaStatus(cudaMalloc(reinterpret_cast<void **>(&DscaleDev), DscaleHost.size() * sizeof(DscaleHost[0])));
         checkCudaStatus(cudaMalloc(reinterpret_cast<void **>(&DamaxDev), sizeof(DamaxHost)));
+
+        // Additional per-tensor scaling allocation (from second file)
+        if (perTensorScalingEnabled && AscaleHost.empty()) {
+            // Fallback allocation for simple per-tensor scaling when not using advanced scaling modes
+            checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&AscaleDev), sizeof(ScaleType)));
+            checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&BscaleDev), sizeof(ScaleType)));
+            checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&CscaleDev), sizeof(ScaleType)));
+            checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&DscaleDev), sizeof(DScaleType)));
+            checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&DamaxDev), sizeof(ComputeType)));
+        }
 
         fillData();
         fillScales(Ascale, Bscale, Cscale, Dscale);
@@ -297,6 +310,19 @@ struct TestBench {
         checkCudaStatus(cudaMemcpyAsync(CscaleDev, CscaleHost.data(), CscaleHost.size() * sizeof(CscaleHost[0]), cudaMemcpyHostToDevice, stream));
         checkCudaStatus(cudaMemcpyAsync(DscaleDev, DscaleHost.data(), DscaleHost.size() * sizeof(DscaleHost[0]), cudaMemcpyHostToDevice, stream));
         checkCudaStatus(cudaMemcpyAsync(DamaxDev, &DamaxHost, sizeof(DamaxHost), cudaMemcpyHostToDevice, stream));
+        
+        // Additional per-tensor scaling copy logic (from second file)
+        if (perTensorScalingEnabled && AscaleHost.empty()) {
+            // For simple per-tensor scaling, copy individual scale values
+            ScaleType tempAscale = ScaleType{2.0f}, tempBscale = ScaleType{0.5f}, tempCscale = ScaleType{1.0f};
+            DScaleType tempDscale = DScaleType{1.0f};
+            ComputeType tempDamax = ComputeType{0.0f};
+            checkCudaStatus(cudaMemcpyAsync(AscaleDev, &tempAscale, sizeof(tempAscale), cudaMemcpyHostToDevice));
+            checkCudaStatus(cudaMemcpyAsync(BscaleDev, &tempBscale, sizeof(tempBscale), cudaMemcpyHostToDevice));
+            checkCudaStatus(cudaMemcpyAsync(CscaleDev, &tempCscale, sizeof(tempCscale), cudaMemcpyHostToDevice));
+            checkCudaStatus(cudaMemcpyAsync(DscaleDev, &tempDscale, sizeof(tempDscale), cudaMemcpyHostToDevice));
+            checkCudaStatus(cudaMemcpyAsync(DamaxDev, &tempDamax, sizeof(tempDamax), cudaMemcpyHostToDevice));
+        }
     }
 
     void copyDataFromDevice() {
@@ -332,6 +358,7 @@ struct TestBench {
 
     bool outOfPlace;
     bool ptrArrayBatch;
+    bool perTensorScalingEnabled;
     cublasOperation_t transa, transb;
     int m, n, k, N;
     int lda, ldb, ldc, ldd;

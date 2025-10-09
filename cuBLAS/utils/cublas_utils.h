@@ -1,6 +1,5 @@
 /*
- * Copyright (c) 2019, NVIDIA CORPORATION. All rights reserved.
- *
+ * Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
@@ -276,6 +275,45 @@ template <> void print_vector(const int &m, const cuDoubleComplex *A) {
     std::printf("\n");
 }
 
+template <typename T> void generate_random_matrix(int m, int n, T **A, int *lda) {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<typename traits<T>::S> dis(-1.0, 1.0);
+    auto rand_gen = std::bind(dis, gen);
+
+    *lda = n;
+
+    size_t matrix_mem_size = static_cast<size_t>(*lda * m * sizeof(T));
+    // suppress gcc 7 size warning
+    if (matrix_mem_size <= PTRDIFF_MAX)
+        *A = (T *)malloc(matrix_mem_size);
+    else
+        throw std::runtime_error("Memory allocation size is too large");
+
+    if (*A == NULL)
+        throw std::runtime_error("Unable to allocate host matrix");
+
+    // random matrix and accumulate row sums
+    for (int i = 0; i < m; ++i) {
+        for (int j = 0; j < n; ++j) {
+            T *A_row = (*A) + *lda * i;
+            A_row[j] = traits<T>::rand(rand_gen);
+        }
+    }
+}
+
+// Makes a diagonally dominant matrix A of size mxn and leading dimension lda
+template <typename T> void make_diag_dominant_matrix(int m, int n, T *A, int lda) {
+    for (int i = 0; i < std::min(m, n); ++i) {
+        T *A_row = A + lda * i;
+        auto row_sum = traits<typename traits<T>::S>::zero;
+        for (int j = 0; j < n; ++j) {
+            row_sum += traits<T>::abs(A_row[j]);
+        }
+        A_row[i] = traits<T>::add(A_row[i], row_sum);
+    }
+}
+
 // Returns cudaDataType value as defined in library_types.h for the string
 // containing type name
 cudaDataType get_cuda_library_type(std::string type_string) {
@@ -309,4 +347,40 @@ cudaDataType get_cuda_library_type(std::string type_string) {
         return CUDA_C_32U;
     else
         throw std::runtime_error("Unknown CUDA datatype");
+}
+
+static inline int ceildiv(int a, int b) {
+    return (a + b - 1) / b;
+}
+
+// This function provides the workspace size for a given problem shape and emulation configuration
+size_t getFixedPointWorkspaceSizeInBytes(int m, int n, int k, int batchCount, bool isComplex,
+                                        cudaEmulationMantissaControl mantissaControl, int maxMantissaBitCount) {
+
+    constexpr double MULTIPLIER = 1.25;
+
+    int mult = isComplex ? 2 : 1;
+    int numSlices = ceildiv(maxMantissaBitCount + 1, 8);
+
+    int padded_m = ceildiv(m, 1024) * 1024;
+    int padded_n = ceildiv(n, 1024) * 1024;
+    int padded_k = ceildiv(k, 128) * 128;
+    int num_blocks_k = ceildiv(k, 64);
+
+    size_t gemm_workspace = sizeof(int8_t) *
+        ((size_t)padded_m * padded_k + (size_t)padded_n * padded_k) * mult * numSlices;
+
+    gemm_workspace += sizeof(int32_t) * ((size_t)padded_m + padded_n) * mult;
+    if (isComplex) {
+        gemm_workspace += sizeof(double) * (size_t)m * n * mult * mult;
+    }
+
+    size_t adp_workspace = 0;
+    if (mantissaControl == CUDA_EMULATION_MANTISSA_CONTROL_DYNAMIC) {
+        adp_workspace = sizeof(int32_t) * ((size_t)m * num_blocks_k + (size_t)n * num_blocks_k +
+                        (size_t)m * n) * mult;
+    }
+
+    constexpr size_t CONSTANT_SIZE = 128 * 1024 * 1024;
+    return (size_t)(std::max(gemm_workspace, adp_workspace) * batchCount * MULTIPLIER) + CONSTANT_SIZE;
 }
