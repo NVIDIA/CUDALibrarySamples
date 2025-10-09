@@ -12,6 +12,7 @@ cmake_minimum_required(VERSION 3.10.0)
 
 project(cublasLtSamples)
 
+add_subdirectory(LtDgemmEmulated)
 add_subdirectory(LtSgemm)
 add_subdirectory(LtFp8Matmul)
 add_subdirectory(LtBlk128x128Fp8Matmul)
