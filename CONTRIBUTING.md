@@ -9,7 +9,7 @@
 - Make sure that the build log is clean, meaning no warnings or errors should be present.
 - If the new sample code introduces new non-trivial dependencies (either on external components or on a specific version of the library) which are different from other samples for the same project or not mentioned in the documentation, the new dependencies and implied limitations should be clearly stated, preferably with checks to guard potential users from encountering an unexpected behavior. 
 - The contributed code should be tested to compile and run successfully in a clean environment with all non-trivial dependencies explicitly listed in the corresponding build scripts. If the contributed code is a new sample, the limitations on when the code is supposed to work must be listed explicitly (e.g., what types of inputs are expected)
-- Make sure that you can contribute your work to open source (no license and/or patent conflict is introduced by your code). The code in this repository is licensed under <link to LICENSE>.
+- Make sure that you can contribute your work to open source (no license and/or patent conflict is introduced by your code). The code in this repository is licensed under [Apache 2.0](./LICENSE.md).
 - You need to [`sign`](#Sign) your commit.
 - Thanks in advance for your patience as we review your contributions; we do appreciate them!
 
