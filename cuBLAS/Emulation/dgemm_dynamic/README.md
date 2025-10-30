@@ -40,7 +40,8 @@ arm64-sbsa
 # Building (make)
 
 # Prerequisites
-- A Linux/Windows system with recent NVIDIA drivers minimum 580.95.05 and CUDA 13.0 Release 2.
+- A Linux/Windows system with recent NVIDIA drivers (r580+)
+- CUDA Toolkit 13.0 Update 2 or newer
 - [CMake](https://cmake.org/download) version 3.18 minimum
 
 ## Build command on Linux
