@@ -1,4 +1,4 @@
-%%MatrixMarket matrix coordinate real general
+%%MatrixMarket matrix coordinate real spd
 % 5x5 matrix with 8 non-zero entries in coordinate format
 5 5 8
 1 1 4.0

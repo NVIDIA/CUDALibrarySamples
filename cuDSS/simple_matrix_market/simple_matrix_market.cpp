@@ -36,11 +36,9 @@
         b is the (dense) right-hand side vector (or a matrix),
         x is the (dense) solution vector (or a matrix).
 
-    Example usage from build directory
-    ./simple_matrix_market_example 0 general full ../matrix.mtx ../rhs.mtx
 */
 
-double compute_residual_error(int n, const int *csr_offsets_h, const int *csr_columns_h,
+double compute_residual_abs_norm(int n, const int *csr_offsets_h, const int *csr_columns_h,
                               const double *csr_values_h, const double *x_values_h,
                               const double *b_values_h, cudssMatrixViewType_t mview) {
     std::vector<double> Ax(n, 0.0);
@@ -144,8 +142,11 @@ int main(int argc, char *argv[]) {
         fprintf(
             stderr,
             "Usage: %s <alg: 0|1|2|3> <mtype: general|symmetric|hermitian|spd|hpd> "
-            "<mview: full|lower|upper> <matrix_filename> [vector_filename (optional)]\n",
-            argv[0]);
+            "<mview: full|lower|upper> <matrix_filename> [vector_filename (optional)]\n"
+            "Suggested input to start with the sample .mtx files provided (from build folder):\n"
+            "    ./simple_matrix_market_example 0 spd upper ../matrix.mtx ../rhs.mtx\n",
+            argv[0]
+        );
         return EXIT_FAILURE;
     }
 
@@ -396,10 +397,22 @@ int main(int argc, char *argv[]) {
     printf("--- Solving complete ! --- \n");
     printf("cuDSS Total time: %.4f ms\n", total_ms);
 
-    double residual = compute_residual_error(n, csr_offsets_h, csr_columns_h,
+    /*
+     * Here we only compute the residual absolute norm. For estimating the accuracy
+     * of solving a linear system in practical cases, we recommend using a relative
+     * residual norm as demonstrated in a different sample called
+     * "simple_residual".
+     */
+    printf("\nComputing the residual (absolute) norm on the host for simplicity.\n");
+    printf("When using cuDSS in a production code, consider using a more standard approach\n");
+    printf("to estimate the accuracy of the solving. Please refer to the 'simple_residual' sample.\n");
+    printf("See: https://github.com/NVIDIA/CUDALibrarySamples/tree/main/cuDSS/simple_residual\n\n");
+
+    double residual = compute_residual_abs_norm(n, csr_offsets_h, csr_columns_h,
                                              csr_values_h, x_values_h, b_values_h, mview);
 
-    printf("Residual L2 error ||Ax - b|| = %e\n", residual);
+    printf("Residual L2 norm ||Ax - b|| = %e\n", residual);
+
     bool passed = (residual < 1e-5);
 
     /* Destroying opaque objects, matrix wrappers and the cuDSS library handle */
