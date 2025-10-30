@@ -62,7 +62,7 @@ $ Open cublas_examples.sln project in Visual Studio and build
 
 # Usage
 ```
-$  ./cublas_zgemm_example
+$  ./cublas_zgemm_fixed_example
 ```
 
 Sample example output:
