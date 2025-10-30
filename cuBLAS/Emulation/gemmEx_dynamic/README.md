@@ -62,7 +62,7 @@ $ Open cublas_examples.sln project in Visual Studio and build
 
 # Usage
 ```
-$  ./cublas_GemmEx_example
+$  ./cublas_gemmEx_example
 ```
 
 Sample example output:

@@ -110,8 +110,7 @@ int main(int argc, char *argv[]) {
      * If feasible, it is recommended to pre-allocate workspace memory for the cuBLAS
      * handle before running applications.
      */
-    workspaceSizeInBytes = getApproximateFixedPointEmulationWorkspaceSize(
-            CUDA_C_64F, m, n, k, 1, maxMantissaBitCount, mControl);
+    workspaceSizeInBytes = getFixedPointWorkspaceSizeInBytes(m, n, k, 1, true, mControl, maxMantissaBitCount);
 
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&workspace), workspaceSizeInBytes));
     CUBLAS_CHECK(cublasSetWorkspace(cublasH, workspace, workspaceSizeInBytes));
