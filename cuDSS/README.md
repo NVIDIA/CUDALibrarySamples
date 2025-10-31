@@ -15,6 +15,10 @@ For further details, please check the release notes in the official documentatio
 
     The sample demonstrates how to use cuDSS for solving a real sparse linear system without any advanced features
 
+* [Simple workflow for solving a real-valued sparse linear system from a matrix market file](simple_matrix_market/)
+
+    The sample demonstrates how to use cuDSS for solving a real sparse linear system read from a `.mtx` file without any advanced features
+
 * [Simple workflow for solving a complex-valued sparse linear system](simple_complex/)
 
     The sample demonstrates how to use cuDSS for solving a complex sparse linear system without any advanced features
