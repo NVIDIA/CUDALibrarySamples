@@ -1,30 +1,20 @@
 /*
- * Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *  * Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- *  * Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- *  * Neither the name of NVIDIA CORPORATION nor the names of its
- *    contributors may be used to endorse or promote products derived
- *    from this software without specific prior written permission.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS ``AS IS'' AND ANY
- * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
- * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
- * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
+
 
 #ifndef STRASSEN_HXX
 #define STRASSEN_HXX
@@ -36,8 +26,9 @@
 #include <iomanip>
 #include <cmath>
 #include <complex>
+#include <limits>
 
-// Regular matrix multiplication for base case (column-major)
+// Regular matrix multiplication for base case (column-major).
 template<typename T>
 void gemm_naive(T* C, const T* A, const T* B, int m, int n, int k, int ldA, int ldB, int ldC) {
     for (int j = 0; j < n; j++) {
@@ -51,7 +42,7 @@ void gemm_naive(T* C, const T* A, const T* B, int m, int n, int k, int ldA, int 
     }
 }
 
-// Matrix addition (column-major)
+// Matrix addition (column-major).
 template<typename T>
 void matrix_add(T* C, const T* A, const T* B, int m, int n, int ldA, int ldB, int ldC) {
     for (int j = 0; j < n; j++) {
@@ -61,7 +52,7 @@ void matrix_add(T* C, const T* A, const T* B, int m, int n, int ldA, int ldB, in
     }
 }
 
-// Matrix subtraction (column-major)
+// Matrix subtraction (column-major).
 template<typename T>
 void matrix_sub(T* C, const T* A, const T* B, int m, int n, int ldA, int ldB, int ldC) {
     for (int j = 0; j < n; j++) {
@@ -71,7 +62,7 @@ void matrix_sub(T* C, const T* A, const T* B, int m, int n, int ldA, int ldB, in
     }
 }
 
-// Strassen's algorithm implementation (column-major)
+// Strassen's algorithm implementation (column-major).
 template<typename T>
 void gemm_strassen(T* C, const T* A, const T* B, int m, int n, int k, int ldA, int ldB, int ldC) {
     if (m <= 16 || n <= 16 || k <= 16) {
@@ -94,7 +85,7 @@ void gemm_strassen(T* C, const T* A, const T* B, int m, int n, int k, int ldA, i
     T* tempA = new T[m2 * k2];
     T* tempB = new T[k2 * n2];
 
-    // Submatrix pointers (column-major)
+    // Submatrix pointers (column-major).
     const T* A11 = A;
     const T* A12 = A + k2 * ldA;
     const T* A21 = A + m2;
@@ -168,7 +159,7 @@ void gemm_strassen(T* C, const T* A, const T* B, int m, int n, int k, int ldA, i
     delete[] tempB;
 }
 
-// Check Strassen's implementation against naive implementation
+// Check Strassen's implementation against naive implementation.
 template<typename T>
 void check_strassen() {
     std::random_device rd;
@@ -177,13 +168,13 @@ void check_strassen() {
 
     // Test sizes: 2^1 to 2^9 (2 to 512)
     for (int size = 2; size <= 512; size *= 2) {
-        // Allocate matrices
+        // Allocate matrices.
         T* A = new T[size * size];
         T* B = new T[size * size];
         T* C_strassen = new T[size * size];
         T* C_naive = new T[size * size];
 
-        // Fill matrices with random values
+        // Fill matrices with random values.
         for (int j = 0; j < size; j++) {
             for (int i = 0; i < size; i++) {
                 if constexpr (std::is_same<T, std::complex<double>>::value) {
@@ -196,15 +187,15 @@ void check_strassen() {
             }
         }
 
-        // Initialize result matrices to zero
+        // Initialize result matrices to zero.
         std::memset(C_strassen, 0, size * size * sizeof(T));
         std::memset(C_naive, 0, size * size * sizeof(T));
 
-        // Run both implementations
+        // Run both implementations.
         gemm_strassen(C_strassen, A, B, size, size, size, size, size, size);
         gemm_naive(C_naive, A, B, size, size, size, size, size, size);
 
-        // Calculate residuals
+        // Calculate residuals.
         double abs_residual = 0.0;
         double rel_residual = 0.0;
         double norm_C = 0.0;
@@ -224,13 +215,13 @@ void check_strassen() {
         }
         rel_residual = abs_residual / (norm_C + 1e-16); // Add small epsilon to avoid division by zero
 
-        // Print results
+        // Print results.
         std::cout << "Size: " << std::setw(4) << size 
                   << " | Abs Residual: " << std::scientific << std::setprecision(2) << std::setw(10) << abs_residual
                   << " | Rel Residual: " << std::scientific << std::setprecision(2) << std::setw(10) << rel_residual
                   << std::endl;
 
-        // Clean up
+        // Clean up.
         delete[] A;
         delete[] B;
         delete[] C_strassen;
