@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2020-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,8 +22,9 @@ find_package(CUDAToolkit REQUIRED)
 
 find_library(NVJPEG2K_LIB
      NAMES nvjpeg2k
-     PATHS ${NVJPEG2K_PATH}/lib64/${CUDAToolkit_VERSION_MAJOR}
-           ${NVJPEG2K_PATH}/lib/${CUDAToolkit_VERSION_MAJOR})
+     HINTS ${NVJPEG2K_PATH}/lib64/${CUDAToolkit_VERSION_MAJOR}
+           ${NVJPEG2K_PATH}/lib/${CUDAToolkit_VERSION_MAJOR}
+           ${NVJPEG2K_PATH}/lib)
 
 if(NOT NVJPEG2K_LIB)
   message(FATAL_ERROR, " nvJPEG2000 library not found. Make sure the library is installed. If using the tar.xz/zip packages set -DNVJPEG2K_PATH")
