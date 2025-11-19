@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2020-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,7 +22,8 @@ find_package(CUDAToolkit REQUIRED)
 
 find_library(NVTIFF_LIB
      NAMES nvtiff
-     PATHS ${NVTIFF_PATH}/lib64/${CUDAToolkit_VERSION_MAJOR}
+     HINTS ${NVTIFF_PATH}/lib64/${CUDAToolkit_VERSION_MAJOR}
+           ${NVTIFF_PATH}/lib/${CUDAToolkit_VERSION_MAJOR}
            ${NVTIFF_PATH}/lib)
 
 
