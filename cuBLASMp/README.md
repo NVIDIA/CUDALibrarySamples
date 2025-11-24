@@ -6,15 +6,16 @@ This folder demonstrates cuBLASMp library API usage.
 
 ### Samples
 
-* [ PMATMUL ](pmatmul.cu)
-* [ PMATMUL_AG ](pmatmul_ag.cu)
-* [ PMATMUL_RS ](pmatmul_rs.cu)
-* [ PMATMUL_AR ](pmatmul_ar.cu)
-* [ PGEMM ](pgemm.cu)
-* [ PTRSM ](ptrsm.cu)
-* [ PSYRK ](psyrk.cu)
-* [ PGEADD ](pgeadd.cu)
-* [ PTRADD ](ptradd.cu)
+* [ TP_MATMUL ](tp_matmul.cu)
+* [ MATMUL_AG ](matmul_ag.cu)
+* [ MATMUL_RS ](matmul_rs.cu)
+* [ MATMUL_AR ](matmul_ar.cu)
+* [ GEMM ](gemm.cu)
+* [ TRSM ](trsm.cu)
+* [ SYRK ](syrk.cu)
+* [ GEADD ](geadd.cu)
+* [ TRADD ](tradd.cu)
+* [ GEMR2D ](gemr2d.cu)
 
 ### Supported OSes
 
@@ -71,20 +72,22 @@ cuBLASMp is distributed through [NVIDIA Developer Zone](https://developer.nvidia
 
 Run examples with mpirun command and number of processes according to process grid values, i.e.
 
-`mpirun -n 2 ./pmatmul`
+`mpirun -n 2 ./tp_matmul`
 
-`mpirun -n 2 ./pmatmul_ag -typeA fp16 -typeB fp16 -typeD fp16 -transA t -transB n`
+`mpirun -n 2 ./matmul_ag -typeA fp16 -typeB fp16 -typeD fp16 -transA t -transB n`
 
-`mpirun -n 2 ./pmatmul_rs -typeA fp16 -typeB fp16 -typeD fp16 -transA t -transB n`
+`mpirun -n 2 ./matmul_rs -typeA fp16 -typeB fp16 -typeD fp16 -transA t -transB n`
 
-`mpirun -n 2 ./pmatmul_ar -typeA fp16 -typeB fp16 -typeD fp16 -transA t -transB n`
+`mpirun -n 2 ./matmul_ar -typeA fp16 -typeB fp16 -typeD fp16 -transA t -transB n`
 
-`mpirun -n 2 ./pgemm -p 2 -q 1`
+`mpirun -n 2 ./gemm -p 2 -q 1`
 
-`mpirun -n 2 ./ptrsm -p 2 -q 1`
+`mpirun -n 2 ./trsm -p 2 -q 1`
 
-`mpirun -n 2 ./psyrk -p 2 -q 1`
+`mpirun -n 2 ./syrk -p 2 -q 1`
 
-`mpirun -n 2 ./pgeadd -p 2 -q 1`
+`mpirun -n 2 ./geadd -p 2 -q 1`
 
-`mpirun -n 2 ./ptradd -p 2 -q 1`
+`mpirun -n 2 ./tradd -p 2 -q 1`
+
+`mpirun -n 2 ./gemr2d -p 2 -q 1`

@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #include <assert.h>
 #include <cublasmp.h>
 #include <math.h>
@@ -31,12 +30,12 @@
 
 int main(int argc, char* argv[])
 {
-    using input_t = __half;
-    using output_t = __half;
+    using input_t = float;
+    using output_t = float;
     using compute_t = float;
-    const cudaDataType_t cuda_input_type = CUDA_R_16F;
-    const cudaDataType_t cuda_output_type = CUDA_R_16F;
-    const cublasComputeType_t cublas_compute_type = CUBLAS_COMPUTE_32F;
+    const cudaDataType_t cuda_input_type = CUDA_R_32F;
+    const cudaDataType_t cuda_output_type = CUDA_R_32F;
+    cublasComputeType_t cublas_compute_type = CUBLAS_COMPUTE_32F;
 
     Options opts = { .m = 10,
                      .n = 10,
@@ -175,6 +174,13 @@ int main(int argc, char* argv[])
         cublasMpMatrixDescriptorCreate(global_m_b, global_n_b, mbB, nbB, 0, 0, lldb, cuda_input_type, grid, &descB));
     CUBLASMP_CHECK(
         cublasMpMatrixDescriptorCreate(global_m_c, global_n_c, mbC, nbC, 0, 0, lldc, cuda_output_type, grid, &descC));
+
+    cublasMpEmulationStrategy_t emulationStrategy = string_to_emulation_strategy(opts.emulationStrategy);
+    if (emulationStrategy != cublasMpEmulationStrategy_t(-1))
+    {
+        CUBLASMP_CHECK(cublasMpSetEmulationStrategy(handle, emulationStrategy));
+        cublas_compute_type = CUBLAS_COMPUTE_32F_EMULATED_16BFX9;
+    }
 
     CUBLASMP_CHECK(cublasMpGemm_bufferSize(
         handle,

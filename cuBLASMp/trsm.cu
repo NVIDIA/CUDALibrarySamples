@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #include <assert.h>
 #include <cublasmp.h>
 #include <math.h>
@@ -61,12 +60,12 @@ int main(int argc, char* argv[])
     const int64_t n = opts.n;
     const int64_t ia = opts.ia;
     const int64_t ja = opts.ja;
-    const int64_t ic = opts.ic;
-    const int64_t jc = opts.jc;
+    const int64_t ib = opts.ib;
+    const int64_t jb = opts.jb;
     const int64_t mbA = opts.mbA;
     const int64_t nbA = opts.nbA;
-    const int64_t mbC = opts.mbC;
-    const int64_t nbC = opts.nbC;
+    const int64_t mbB = opts.mbB;
+    const int64_t nbB = opts.nbB;
 
     const int nprow = opts.p;
     const int npcol = opts.q;
@@ -103,41 +102,40 @@ int main(int argc, char* argv[])
     cublasMpGrid_t grid = nullptr;
 
     cublasMpMatrixDescriptor_t descA = nullptr;
-    cublasMpMatrixDescriptor_t descC = nullptr;
+    cublasMpMatrixDescriptor_t descB = nullptr;
 
     double* d_A = nullptr;
-    double* d_C = nullptr;
+    double* d_B = nullptr;
 
     double* d_work = nullptr;
 
     double alpha = 1.0;
-    double beta = 1.0;
 
     size_t workspaceInBytesOnDevice = 0;
     size_t workspaceInBytesOnHost = 0;
 
     const int64_t global_m_a = (ia - 1) + m;
-    const int64_t global_n_a = (ja - 1) + n;
-    const int64_t global_m_c = (ic - 1) + m;
-    const int64_t global_n_c = (jc - 1) + n;
+    const int64_t global_n_a = (ja - 1) + m;
+    const int64_t global_m_b = (ib - 1) + m;
+    const int64_t global_n_b = (jb - 1) + n;
 
     const int64_t llda = cublasMpNumroc(global_m_a, mbA, myprow, 0, nprow);
     const int64_t loc_n_a = cublasMpNumroc(global_n_a, nbA, mypcol, 0, npcol);
 
-    const int64_t lldc = cublasMpNumroc(global_m_c, mbC, myprow, 0, nprow);
-    const int64_t loc_n_c = cublasMpNumroc(global_n_c, nbC, mypcol, 0, npcol);
+    const int64_t lldb = cublasMpNumroc(global_m_b, mbB, myprow, 0, nprow);
+    const int64_t loc_n_b = cublasMpNumroc(global_n_b, nbB, mypcol, 0, npcol);
 
     std::vector<double> h_A(llda * loc_n_a, 0);
-    std::vector<double> h_C(lldc * loc_n_c, 0);
+    std::vector<double> h_B(lldb * loc_n_b, 0);
 
-    generate_random_matrix(m, n, h_A.data(), mbA, nbA, ia, ja, llda, nprow, npcol, myprow, mypcol);
-    generate_random_matrix(m, n, h_C.data(), mbC, nbC, ic, jc, lldc, nprow, npcol, myprow, mypcol);
+    generate_diag_matrix(m, m, h_A.data(), mbA, nbA, ia, ja, llda, nprow, npcol, myprow, mypcol);
+    generate_random_matrix(m, n, h_B.data(), mbB, nbB, ib, jb, lldb, nprow, npcol, myprow, mypcol);
 
     CUDA_CHECK(cudaMallocAsync(&d_A, llda * loc_n_a * sizeof(double), stream));
-    CUDA_CHECK(cudaMallocAsync(&d_C, lldc * loc_n_c * sizeof(double), stream));
+    CUDA_CHECK(cudaMallocAsync(&d_B, lldb * loc_n_b * sizeof(double), stream));
 
     CUDA_CHECK(cudaMemcpyAsync(d_A, h_A.data(), llda * loc_n_a * sizeof(double), cudaMemcpyHostToDevice, stream));
-    CUDA_CHECK(cudaMemcpyAsync(d_C, h_C.data(), lldc * loc_n_c * sizeof(double), cudaMemcpyHostToDevice, stream));
+    CUDA_CHECK(cudaMemcpyAsync(d_B, h_B.data(), lldb * loc_n_b * sizeof(double), cudaMemcpyHostToDevice, stream));
 
     CUBLASMP_CHECK(cublasMpGridCreate(
         nprow,
@@ -149,11 +147,14 @@ int main(int argc, char* argv[])
     CUBLASMP_CHECK(
         cublasMpMatrixDescriptorCreate(global_m_a, global_n_a, mbA, nbA, 0, 0, llda, CUDA_R_64F, grid, &descA));
     CUBLASMP_CHECK(
-        cublasMpMatrixDescriptorCreate(global_m_c, global_n_c, mbC, nbC, 0, 0, lldc, CUDA_R_64F, grid, &descC));
+        cublasMpMatrixDescriptorCreate(global_m_b, global_n_b, mbB, nbB, 0, 0, lldb, CUDA_R_64F, grid, &descB));
 
-    CUBLASMP_CHECK(cublasMpGeadd_bufferSize(
+    CUBLASMP_CHECK(cublasMpTrsm_bufferSize(
         handle,
+        CUBLAS_SIDE_LEFT,
+        CUBLAS_FILL_MODE_LOWER,
         CUBLAS_OP_N,
+        CUBLAS_DIAG_NON_UNIT,
         m,
         n,
         &alpha,
@@ -161,11 +162,11 @@ int main(int argc, char* argv[])
         ia,
         ja,
         descA,
-        &beta,
-        d_C,
-        ic,
-        jc,
-        descC,
+        d_B,
+        ib,
+        jb,
+        descB,
+        CUBLAS_COMPUTE_64F,
         &workspaceInBytesOnDevice,
         &workspaceInBytesOnHost));
 
@@ -177,9 +178,12 @@ int main(int argc, char* argv[])
 
     const double begin = MPI_Wtime();
 
-    CUBLASMP_CHECK(cublasMpGeadd(
+    CUBLASMP_CHECK(cublasMpTrsm(
         handle,
+        CUBLAS_SIDE_LEFT,
+        CUBLAS_FILL_MODE_LOWER,
         CUBLAS_OP_N,
+        CUBLAS_DIAG_NON_UNIT,
         m,
         n,
         &alpha,
@@ -187,11 +191,11 @@ int main(int argc, char* argv[])
         ia,
         ja,
         descA,
-        &beta,
-        d_C,
-        ic,
-        jc,
-        descC,
+        d_B,
+        ib,
+        jb,
+        descB,
+        CUBLAS_COMPUTE_64F,
         d_work,
         workspaceInBytesOnDevice,
         h_work.data(),
@@ -203,18 +207,21 @@ int main(int argc, char* argv[])
 
     if (rank == 0)
     {
-        printf("Duration: %lf\n", end - begin);
+        printf(
+            "Duration: %lf GFlops: %lf\n",
+            end - begin,
+            ((((0.5 * m * (m - 1)) + ((0.5 * m * (m + 1)))) * n) * 1e-9) / (end - begin));
     }
 
     CUBLASMP_CHECK(cublasMpMatrixDescriptorDestroy(descA));
-    CUBLASMP_CHECK(cublasMpMatrixDescriptorDestroy(descC));
+    CUBLASMP_CHECK(cublasMpMatrixDescriptorDestroy(descB));
 
     CUBLASMP_CHECK(cublasMpGridDestroy(grid));
 
     CUBLASMP_CHECK(cublasMpDestroy(handle));
 
     CUDA_CHECK(cudaFreeAsync(d_A, stream));
-    CUDA_CHECK(cudaFreeAsync(d_C, stream));
+    CUDA_CHECK(cudaFreeAsync(d_B, stream));
     CUDA_CHECK(cudaFreeAsync(d_work, stream));
 
     NCCL_CHECK(ncclCommFinalize(comm));

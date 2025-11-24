@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #pragma once
 
 #include <cuda_fp4.h>
@@ -86,21 +85,22 @@
 template <typename T>
 struct CudaTypeTraits;
 
-#define MAKE_TYPE_TRAITS(T, type_enum, type_size)                                                                      \
+#define MAKE_TYPE_TRAITS(T, type_enum)                                                                                 \
     template <>                                                                                                        \
     struct CudaTypeTraits<T>                                                                                           \
     {                                                                                                                  \
         static constexpr cudaDataType_t typeEnum = type_enum;                                                          \
-        static constexpr int typeSize = type_size;                                                                     \
+        static constexpr size_t typeSize = sizeof(T);                                                                  \
     };
 
-MAKE_TYPE_TRAITS(__nv_fp4_e2m1, CUDA_R_4F_E2M1, 1);
-MAKE_TYPE_TRAITS(__nv_fp8_e4m3, CUDA_R_8F_E4M3, 1);
-MAKE_TYPE_TRAITS(__nv_fp8_e5m2, CUDA_R_8F_E5M2, 1);
-MAKE_TYPE_TRAITS(__nv_fp8_e8m0, CUDA_R_8F_UE8M0, 1);
-MAKE_TYPE_TRAITS(__nv_bfloat16, CUDA_R_16BF, 2);
-MAKE_TYPE_TRAITS(__half, CUDA_R_16F, 2);
-MAKE_TYPE_TRAITS(float, CUDA_R_32F, 4);
+MAKE_TYPE_TRAITS(__nv_fp4_e2m1, CUDA_R_4F_E2M1);
+MAKE_TYPE_TRAITS(__nv_fp8_e4m3, CUDA_R_8F_E4M3);
+MAKE_TYPE_TRAITS(__nv_fp8_e5m2, CUDA_R_8F_E5M2);
+MAKE_TYPE_TRAITS(__nv_fp8_e8m0, CUDA_R_8F_UE8M0);
+MAKE_TYPE_TRAITS(__nv_bfloat16, CUDA_R_16BF);
+MAKE_TYPE_TRAITS(__half, CUDA_R_16F);
+MAKE_TYPE_TRAITS(float, CUDA_R_32F);
+MAKE_TYPE_TRAITS(double, CUDA_R_64F);
 
 #include "matrix_generator.hxx"
 
@@ -182,6 +182,29 @@ cublasMpMatmulMatrixScale_t string_to_scale_type(const char* scale)
     {
         throw std::runtime_error("unsupported scale type");
     }
+}
+
+cublasMpEmulationStrategy_t string_to_emulation_strategy(const char* strategy)
+{
+    if (strategy == nullptr || strcmp(strategy, " ") == 0)
+    {
+        return cublasMpEmulationStrategy_t(-1);
+    }
+
+    if (strcmp(strategy, "default") == 0)
+    {
+        return CUBLASMP_EMULATION_STRATEGY_DEFAULT;
+    }
+    else if (strcmp(strategy, "performant") == 0)
+    {
+        return CUBLASMP_EMULATION_STRATEGY_PERFORMANT;
+    }
+    else if (strcmp(strategy, "eager") == 0)
+    {
+        return CUBLASMP_EMULATION_STRATEGY_EAGER;
+    }
+
+    return cublasMpEmulationStrategy_t(-1);
 }
 
 inline int64_t roundup(int64_t x, int64_t y)
@@ -308,10 +331,13 @@ struct Options
     int cycles = 1;
     int warmup = 0;
 
-    // FP8 scaling options
+    // FP4/FP8 scaling options
     const char* scaleA = nullptr;
     const char* scaleB = nullptr;
     const char* scaleD = nullptr;
+    const char* scaleDOut = nullptr;
+
+    const char* emulationStrategy = " ";
 
     void printHelp()
     {
@@ -341,9 +367,11 @@ struct Options
             "    -scaleA <string> (scalar_fp32, vec16_ue4m3, vec32_ue8m0, outer_vec_fp32, vec128_fp32, blk128x128_fp32)\n"
             "    -scaleB <string> (scalar_fp32, vec16_ue4m3, vec32_ue8m0, outer_vec_fp32, vec128_fp32, blk128x128_fp32)\n"
             "    -scaleD <string> (scalar_fp32, vec16_ue4m3, vec32_ue8m0, outer_vec_fp32, vec128_fp32, blk128x128_fp32)\n"
+            "    -scaleDOut <string> (scalar_fp32, vec16_ue4m3, vec32_ue8m0, outer_vec_fp32, vec128_fp32, blk128x128_fp32)\n"
             "    -p <int>\n"
             "    -q <int>\n"
             "    -gridLayout <char> (c, r)\n"
+            "    -emulationStrategy <string> (default, performant, eager)\n"
             "    -cycles <int>\n"
             "    -warmup <int>\n"
             "    -verbose\n"
@@ -359,8 +387,9 @@ struct Options
             "ia=%d ja=%d ib=%d jb=%d ic=%d jc=%d "
             "typeA=%d typeB=%d typeC=%d typeD=%d "
             "transA=%d transB=%d "
-            "scaleA=%s scaleB=%s scaleD=%s "
+            "scaleA=%s scaleB=%s scaleD=%s scaleDOut=%s "
             "p=%d q=%d gridLayout=%c "
+            "emulationStrategy=%s "
             "cycles=%d warmup=%d "
             "verbose=%s\n",
             m,
@@ -387,9 +416,11 @@ struct Options
             scaleA,
             scaleB,
             scaleD,
+            scaleDOut,
             p,
             q,
             grid_layout,
+            emulationStrategy,
             cycles,
             warmup,
             verbose ? "true" : "false");
@@ -519,6 +550,14 @@ struct Options
             {
                 scaleD = argv[++i];
             }
+            else if (strcmp(argv[i], "-scaleDOut") == 0)
+            {
+                scaleDOut = argv[++i];
+            }
+            else if (strcmp(argv[i], "-emulationStrategy") == 0)
+            {
+                emulationStrategy = argv[++i];
+            }
             else if (strcmp(argv[i], "-help") == 0)
             {
                 printHelp();
@@ -586,4 +625,20 @@ static inline int getLocalDevice()
     CUDA_CHECK(cudaGetDeviceCount(&deviceCount));
 
     return localRank % deviceCount;
+}
+
+static bool deviceSupportsFp8()
+{
+    int local_device = getLocalDevice();
+    cudaDeviceProp prop;
+    CUDA_CHECK(cudaGetDeviceProperties(&prop, local_device));
+    return prop.major >= 9 || (prop.major == 8 && prop.minor == 9);
+}
+
+static bool deviceSupportsFp4()
+{
+    int local_device = getLocalDevice();
+    cudaDeviceProp prop;
+    CUDA_CHECK(cudaGetDeviceProperties(&prop, local_device));
+    return prop.major >= 10;
 }

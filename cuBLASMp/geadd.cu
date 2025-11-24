@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #include <assert.h>
 #include <cublasmp.h>
 #include <math.h>
@@ -57,8 +56,8 @@ int main(int argc, char* argv[])
 
     MPI_Init(nullptr, nullptr);
 
+    const int64_t m = opts.m;
     const int64_t n = opts.n;
-    const int64_t k = opts.k;
     const int64_t ia = opts.ia;
     const int64_t ja = opts.ja;
     const int64_t ic = opts.ic;
@@ -116,9 +115,9 @@ int main(int argc, char* argv[])
     size_t workspaceInBytesOnDevice = 0;
     size_t workspaceInBytesOnHost = 0;
 
-    const int64_t global_m_a = (ia - 1) + n;
-    const int64_t global_n_a = (ja - 1) + k;
-    const int64_t global_m_c = (ic - 1) + n;
+    const int64_t global_m_a = (ia - 1) + m;
+    const int64_t global_n_a = (ja - 1) + n;
+    const int64_t global_m_c = (ic - 1) + m;
     const int64_t global_n_c = (jc - 1) + n;
 
     const int64_t llda = cublasMpNumroc(global_m_a, mbA, myprow, 0, nprow);
@@ -130,8 +129,8 @@ int main(int argc, char* argv[])
     std::vector<double> h_A(llda * loc_n_a, 0);
     std::vector<double> h_C(lldc * loc_n_c, 0);
 
-    generate_random_matrix(n, k, h_A.data(), mbA, nbA, ia, ja, llda, nprow, npcol, myprow, mypcol);
-    generate_random_matrix(n, n, h_C.data(), mbC, nbC, ic, jc, lldc, nprow, npcol, myprow, mypcol);
+    generate_random_matrix(m, n, h_A.data(), mbA, nbA, ia, ja, llda, nprow, npcol, myprow, mypcol);
+    generate_random_matrix(m, n, h_C.data(), mbC, nbC, ic, jc, lldc, nprow, npcol, myprow, mypcol);
 
     CUDA_CHECK(cudaMallocAsync(&d_A, llda * loc_n_a * sizeof(double), stream));
     CUDA_CHECK(cudaMallocAsync(&d_C, lldc * loc_n_c * sizeof(double), stream));
@@ -151,12 +150,11 @@ int main(int argc, char* argv[])
     CUBLASMP_CHECK(
         cublasMpMatrixDescriptorCreate(global_m_c, global_n_c, mbC, nbC, 0, 0, lldc, CUDA_R_64F, grid, &descC));
 
-    CUBLASMP_CHECK(cublasMpSyrk_bufferSize(
+    CUBLASMP_CHECK(cublasMpGeadd_bufferSize(
         handle,
-        CUBLAS_FILL_MODE_LOWER,
         CUBLAS_OP_N,
+        m,
         n,
-        k,
         &alpha,
         d_A,
         ia,
@@ -167,7 +165,6 @@ int main(int argc, char* argv[])
         ic,
         jc,
         descC,
-        CUBLAS_COMPUTE_64F,
         &workspaceInBytesOnDevice,
         &workspaceInBytesOnHost));
 
@@ -179,12 +176,11 @@ int main(int argc, char* argv[])
 
     const double begin = MPI_Wtime();
 
-    CUBLASMP_CHECK(cublasMpSyrk(
+    CUBLASMP_CHECK(cublasMpGeadd(
         handle,
-        CUBLAS_FILL_MODE_LOWER,
         CUBLAS_OP_N,
+        m,
         n,
-        k,
         &alpha,
         d_A,
         ia,
@@ -195,7 +191,6 @@ int main(int argc, char* argv[])
         ic,
         jc,
         descC,
-        CUBLAS_COMPUTE_64F,
         d_work,
         workspaceInBytesOnDevice,
         h_work.data(),
@@ -207,7 +202,7 @@ int main(int argc, char* argv[])
 
     if (rank == 0)
     {
-        printf("Duration: %lf GFlops: %lf\n", end - begin, (n * n * k * 1e-9) / (end - begin));
+        printf("Duration: %lf\n", end - begin);
     }
 
     CUBLASMP_CHECK(cublasMpMatrixDescriptorDestroy(descA));
