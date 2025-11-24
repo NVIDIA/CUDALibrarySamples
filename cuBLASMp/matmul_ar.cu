@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #include <cublasmp.h>
 #include <mpi.h>
 #include <nvshmem.h>
@@ -153,10 +152,12 @@ int run_matmul_ar(const Options& opts)
     cublasMpMatmulMatrixScale_t a_scale_mode = string_to_scale_type(opts.scaleA);
     cublasMpMatmulMatrixScale_t b_scale_mode = string_to_scale_type(opts.scaleB);
     cublasMpMatmulMatrixScale_t d_scale_mode = string_to_scale_type(opts.scaleD);
+    cublasMpMatmulMatrixScale_t d_out_scale_mode = string_to_scale_type(opts.scaleDOut);
 
     void* d_a_scale = nullptr;
     void* d_b_scale = nullptr;
     void* d_d_scale = nullptr;
+    void* d_d_out_scale = nullptr;
 
     if (opts.scaleA)
     {
@@ -183,6 +184,21 @@ int run_matmul_ar(const Options& opts)
             matmulDesc, CUBLASMP_MATMUL_DESCRIPTOR_ATTRIBUTE_D_SCALE_MODE, &d_scale_mode, sizeof(d_scale_mode)));
         CUBLASMP_CHECK(cublasMpMatmulDescriptorAttributeSet(
             matmulDesc, CUBLASMP_MATMUL_DESCRIPTOR_ATTRIBUTE_D_SCALE_POINTER, &d_d_scale, sizeof(d_d_scale)));
+    }
+
+    if (opts.scaleDOut)
+    {
+        d_d_out_scale = allocate_and_init_scaling_factors(m, n, d_out_scale_mode);
+        CUBLASMP_CHECK(cublasMpMatmulDescriptorAttributeSet(
+            matmulDesc,
+            CUBLASMP_MATMUL_DESCRIPTOR_ATTRIBUTE_D_OUT_SCALE_MODE,
+            &d_out_scale_mode,
+            sizeof(d_out_scale_mode)));
+        CUBLASMP_CHECK(cublasMpMatmulDescriptorAttributeSet(
+            matmulDesc,
+            CUBLASMP_MATMUL_DESCRIPTOR_ATTRIBUTE_D_OUT_SCALE_POINTER,
+            &d_d_out_scale,
+            sizeof(d_d_out_scale)));
     }
 
     CUBLASMP_CHECK(cublasMpMatmulDescriptorAttributeSet(
@@ -297,6 +313,7 @@ int run_matmul_ar(const Options& opts)
     if (d_a_scale) CUDA_CHECK(cudaFree(d_a_scale));
     if (d_b_scale) CUDA_CHECK(cudaFree(d_b_scale));
     if (d_d_scale) CUDA_CHECK(cudaFree(d_d_scale));
+    if (d_d_out_scale) CUDA_CHECK(cudaFree(d_d_out_scale));
 
     nvshmem_free(d_work);
 
@@ -309,11 +326,6 @@ int run_matmul_ar(const Options& opts)
     NCCL_CHECK(ncclCommDestroy(comm));
 
     CUDA_CHECK(cudaStreamDestroy(stream));
-
-    if (rank == 0)
-    {
-        printf("[SUCCEEDED]\n");
-    }
 
     return 0;
 };
@@ -337,6 +349,9 @@ int main(int argc, char** argv)
 
     MPI_Init(&argc, &argv);
 
+    int rank;
+    MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &rank));
+
     if (opts.typeA == CUDA_R_16F && opts.typeB == CUDA_R_16F && opts.typeD == CUDA_R_16F)
     {
         run_matmul_ar<__half, __half, __half>(opts);
@@ -347,63 +362,110 @@ int main(int argc, char** argv)
     }
     else if (opts.typeA == CUDA_R_8F_E4M3 && opts.typeB == CUDA_R_8F_E4M3 && opts.typeD == CUDA_R_8F_E4M3)
     {
-        run_matmul_ar<__nv_fp8_e4m3, __nv_fp8_e4m3, __nv_fp8_e4m3>(opts);
+        if (deviceSupportsFp8())
+        {
+            run_matmul_ar<__nv_fp8_e4m3, __nv_fp8_e4m3, __nv_fp8_e4m3>(opts);
+        }
     }
     else if (opts.typeA == CUDA_R_8F_E4M3 && opts.typeB == CUDA_R_8F_E4M3 && opts.typeD == CUDA_R_16F)
     {
-        run_matmul_ar<__nv_fp8_e4m3, __nv_fp8_e4m3, __half>(opts);
+        if (deviceSupportsFp8())
+        {
+            run_matmul_ar<__nv_fp8_e4m3, __nv_fp8_e4m3, __half>(opts);
+        }
     }
     else if (opts.typeA == CUDA_R_8F_E4M3 && opts.typeB == CUDA_R_8F_E4M3 && opts.typeD == CUDA_R_16BF)
     {
-        run_matmul_ar<__nv_fp8_e4m3, __nv_fp8_e4m3, __nv_bfloat16>(opts);
+        if (deviceSupportsFp8())
+        {
+            run_matmul_ar<__nv_fp8_e4m3, __nv_fp8_e4m3, __nv_bfloat16>(opts);
+        }
     }
     else if (opts.typeA == CUDA_R_8F_E4M3 && opts.typeB == CUDA_R_8F_E4M3 && opts.typeD == CUDA_R_32F)
     {
-        run_matmul_ar<__nv_fp8_e4m3, __nv_fp8_e4m3, float>(opts);
+        if (deviceSupportsFp8())
+        {
+            run_matmul_ar<__nv_fp8_e4m3, __nv_fp8_e4m3, float>(opts);
+        }
     }
     else if (opts.typeA == CUDA_R_8F_E4M3 && opts.typeB == CUDA_R_8F_E5M2 && opts.typeD == CUDA_R_8F_E4M3)
     {
-        run_matmul_ar<__nv_fp8_e4m3, __nv_fp8_e5m2, __nv_fp8_e4m3>(opts);
+        if (deviceSupportsFp8())
+        {
+            run_matmul_ar<__nv_fp8_e4m3, __nv_fp8_e5m2, __nv_fp8_e4m3>(opts);
+        }
     }
     else if (opts.typeA == CUDA_R_8F_E4M3 && opts.typeB == CUDA_R_8F_E5M2 && opts.typeD == CUDA_R_8F_E5M2)
     {
-        run_matmul_ar<__nv_fp8_e4m3, __nv_fp8_e5m2, __nv_fp8_e5m2>(opts);
+        if (deviceSupportsFp8())
+        {
+            run_matmul_ar<__nv_fp8_e4m3, __nv_fp8_e5m2, __nv_fp8_e5m2>(opts);
+        }
     }
     else if (opts.typeA == CUDA_R_8F_E4M3 && opts.typeB == CUDA_R_8F_E5M2 && opts.typeD == CUDA_R_16F)
     {
-        run_matmul_ar<__nv_fp8_e4m3, __nv_fp8_e5m2, __half>(opts);
+        if (deviceSupportsFp8())
+        {
+            run_matmul_ar<__nv_fp8_e4m3, __nv_fp8_e5m2, __half>(opts);
+        }
     }
     else if (opts.typeA == CUDA_R_8F_E4M3 && opts.typeB == CUDA_R_8F_E5M2 && opts.typeD == CUDA_R_16BF)
     {
-        run_matmul_ar<__nv_fp8_e4m3, __nv_fp8_e5m2, __nv_bfloat16>(opts);
+        if (deviceSupportsFp8())
+        {
+            run_matmul_ar<__nv_fp8_e4m3, __nv_fp8_e5m2, __nv_bfloat16>(opts);
+        }
     }
     else if (opts.typeA == CUDA_R_8F_E4M3 && opts.typeB == CUDA_R_8F_E5M2 && opts.typeD == CUDA_R_32F)
     {
-        run_matmul_ar<__nv_fp8_e4m3, __nv_fp8_e5m2, float>(opts);
+        if (deviceSupportsFp8())
+        {
+            run_matmul_ar<__nv_fp8_e4m3, __nv_fp8_e5m2, float>(opts);
+        }
     }
     else if (opts.typeA == CUDA_R_8F_E5M2 && opts.typeB == CUDA_R_8F_E4M3 && opts.typeD == CUDA_R_8F_E4M3)
     {
-        run_matmul_ar<__nv_fp8_e5m2, __nv_fp8_e4m3, __nv_fp8_e4m3>(opts);
+        if (deviceSupportsFp8())
+        {
+            run_matmul_ar<__nv_fp8_e5m2, __nv_fp8_e4m3, __nv_fp8_e4m3>(opts);
+        }
     }
     else if (opts.typeA == CUDA_R_8F_E5M2 && opts.typeB == CUDA_R_8F_E4M3 && opts.typeD == CUDA_R_8F_E5M2)
     {
-        run_matmul_ar<__nv_fp8_e5m2, __nv_fp8_e4m3, __nv_fp8_e5m2>(opts);
+        if (deviceSupportsFp8())
+        {
+            run_matmul_ar<__nv_fp8_e5m2, __nv_fp8_e4m3, __nv_fp8_e5m2>(opts);
+        }
     }
     else if (opts.typeA == CUDA_R_8F_E5M2 && opts.typeB == CUDA_R_8F_E4M3 && opts.typeD == CUDA_R_16F)
     {
-        run_matmul_ar<__nv_fp8_e5m2, __nv_fp8_e4m3, __half>(opts);
+        if (deviceSupportsFp8())
+        {
+            run_matmul_ar<__nv_fp8_e5m2, __nv_fp8_e4m3, __half>(opts);
+        }
     }
     else if (opts.typeA == CUDA_R_8F_E5M2 && opts.typeB == CUDA_R_8F_E4M3 && opts.typeD == CUDA_R_16BF)
     {
-        run_matmul_ar<__nv_fp8_e5m2, __nv_fp8_e4m3, __nv_bfloat16>(opts);
+        if (deviceSupportsFp8())
+        {
+            run_matmul_ar<__nv_fp8_e5m2, __nv_fp8_e4m3, __nv_bfloat16>(opts);
+        }
     }
     else if (opts.typeA == CUDA_R_8F_E5M2 && opts.typeB == CUDA_R_8F_E4M3 && opts.typeD == CUDA_R_32F)
     {
-        run_matmul_ar<__nv_fp8_e5m2, __nv_fp8_e4m3, float>(opts);
+        if (deviceSupportsFp8())
+        {
+            run_matmul_ar<__nv_fp8_e5m2, __nv_fp8_e4m3, float>(opts);
+        }
     }
     else
     {
         throw std::runtime_error("The matmul_ar sample doesn't support the given datatype combination");
+    }
+
+    if (rank == 0)
+    {
+        printf("[SUCCEEDED]\n");
     }
 
     MPI_Barrier(MPI_COMM_WORLD);

@@ -47,8 +47,8 @@ function(build_sample sample_name)
         ${CUBLASMP_LIBRARIES}
         ${MPI_CXX_LIBRARIES}
         ${NCCL_LIBRARIES}
-        ${NVSHMEM_HOST_LIBRARIES}
         ${NVSHMEM_DEVICE_LIBRARIES}
+        ${NVSHMEM_HOST_LIBRARIES}
         nvidia-ml
         m
     )
@@ -58,12 +58,13 @@ function(build_sample sample_name)
     )
 endfunction(build_sample)
 
-build_sample("pgemm")
-build_sample("pmatmul")
-build_sample("pmatmul_ag")
-build_sample("pmatmul_rs")
-build_sample("pmatmul_ar")
-build_sample("ptrsm")
-build_sample("psyrk")
-build_sample("pgeadd")
-build_sample("ptradd")
+build_sample("gemm")
+build_sample("tp_matmul")
+build_sample("matmul_ag")
+build_sample("matmul_rs")
+build_sample("matmul_ar")
+build_sample("trsm")
+build_sample("syrk")
+build_sample("geadd")
+build_sample("tradd")
+build_sample("gemr2d")

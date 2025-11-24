@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #include <assert.h>
 #include <cublasmp.h>
 #include <cuda_fp8.h>
