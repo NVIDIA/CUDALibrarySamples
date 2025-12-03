@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #include "sample_cublasLt_LtSgemm.h"
 #include "helpers.h"
 

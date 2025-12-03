@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #include <cuda_bf16.h>
 #include <cuda_fp8.h>
 

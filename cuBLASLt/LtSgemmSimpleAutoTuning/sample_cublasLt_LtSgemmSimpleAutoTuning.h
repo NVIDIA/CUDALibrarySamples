@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #include <cublasLt.h>
 
 /// Sample wrapper executing single precision gemm algorithm auto tuning by querying cublasLt heuristics for best

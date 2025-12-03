@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #include <cublasLt.h>
 
 #include "sample_cublasLt_LtHSHgemmStridedBatchSimple.h"

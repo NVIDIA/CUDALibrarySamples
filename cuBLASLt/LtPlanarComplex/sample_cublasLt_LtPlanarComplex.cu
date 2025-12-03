@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #include <cublasLt.h>
 #include <cuda_runtime.h>
 

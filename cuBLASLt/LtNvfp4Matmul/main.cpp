@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #include <cuda_fp4.h>
 #include <cuda_bf16.h>
 

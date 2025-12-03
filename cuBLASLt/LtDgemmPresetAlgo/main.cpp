@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #include "sample_cublasLt_LtDgemmPresetAlgo.h"
 #include "helpers.h"
 

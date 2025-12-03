@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #include "LtMatmulCustomFind.h"
 #include "helpers.h"
 

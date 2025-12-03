@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #include <cuda_fp8.h>
 #include <cublasLt.h>
 

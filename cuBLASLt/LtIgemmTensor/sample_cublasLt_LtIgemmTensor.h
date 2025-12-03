@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #include <cublasLt.h>
 
 /// Use cublasLtMatmul to perform tensor-op Igemm with memory order transforms on all buffers

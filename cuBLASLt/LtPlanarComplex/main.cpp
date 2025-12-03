@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #include <cuComplex.h>
 
 #include "sample_cublasLt_LtPlanarComplex.h"
