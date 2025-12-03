@@ -31,14 +31,14 @@ void LtFp8Matmul(cublasLtHandle_t ltHandle,
                  int m,
                  int n,
                  int k,
-                 const float *alpha, /* host pointer */
+                 const float *alpha,   /* host pointer */
                  const float *a_scale, /* device pointer */
                  const __nv_fp8_e4m3 *A,
                  int lda,
                  const float *b_scale, /* device pointer */
                  const __nv_fp8_e4m3 *B,
                  int ldb,
-                 const float *beta, /* host pointer */
+                 const float *beta,    /* host pointer */
                  const float *c_scale, /* device pointer */
                  __nv_bfloat16 *C,
                  int ldc,

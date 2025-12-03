@@ -28,29 +28,10 @@ int main() {
         CUBLAS_OP_T, CUBLAS_OP_N, 64, 128, 256, 2.0f, beta, 32ULL * 1024 * 1024);
 
     props.run([&props] {
-        LtFp8Matmul(props.ltHandle,
-                    props.transa,
-                    props.transb,
-                    props.m,
-                    props.n,
-                    props.k,
-                    &props.alpha,
-                    props.AscaleDev,
-                    props.Adev,
-                    props.lda,
-                    props.BscaleDev,
-                    props.Bdev,
-                    props.ldb,
-                    &props.beta,
-                    props.CscaleDev,
-                    props.Cdev,
-                    props.ldc,
-                    props.DscaleDev,
-                    props.Ddev,
-                    props.ldd,
-                    props.DamaxDev,
-                    props.workspace,
-                    props.workspaceSize);
+        LtFp8Matmul(props.ltHandle, props.transa, props.transb, props.m, props.n, props.k, &props.alpha,
+                    props.AscaleDev, props.Adev, props.lda, props.BscaleDev, props.Bdev, props.ldb, &props.beta,
+                    props.CscaleDev, props.Cdev, props.ldc, props.DscaleDev, props.Ddev, props.ldd, props.DamaxDev,
+                    props.workspace, props.workspaceSize);
     });
 
     return 0;

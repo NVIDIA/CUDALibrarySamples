@@ -60,34 +60,25 @@ void LtPlanarCgemm(cublasLtHandle_t ltHandle,
     // ---------------------------------------------------------------------------------------------
     // create descriptors for planar complex matrices
 
-    checkCublasStatus(cublasLtMatrixLayoutCreate(&Adesc, CUDA_C_16F, transa == CUBLAS_OP_N ? m : k, transa == CUBLAS_OP_N ? k : m, lda));
-    checkCublasStatus(cublasLtMatrixLayoutSetAttribute(Adesc, CUBLASLT_MATRIX_LAYOUT_PLANE_OFFSET, &AplaneOffset, sizeof(AplaneOffset)));
+    checkCublasStatus(cublasLtMatrixLayoutCreate(&Adesc, CUDA_C_16F, transa == CUBLAS_OP_N ? m : k,
+                                                 transa == CUBLAS_OP_N ? k : m, lda));
+    checkCublasStatus(cublasLtMatrixLayoutSetAttribute(Adesc, CUBLASLT_MATRIX_LAYOUT_PLANE_OFFSET, &AplaneOffset,
+                                                       sizeof(AplaneOffset)));
 
-    checkCublasStatus(cublasLtMatrixLayoutCreate(&Bdesc, CUDA_C_16F, transb == CUBLAS_OP_N ? k : n, transb == CUBLAS_OP_N ? n : k, ldb));
-    checkCublasStatus(cublasLtMatrixLayoutSetAttribute(Bdesc, CUBLASLT_MATRIX_LAYOUT_PLANE_OFFSET, &BplaneOffset, sizeof(BplaneOffset)));
+    checkCublasStatus(cublasLtMatrixLayoutCreate(&Bdesc, CUDA_C_16F, transb == CUBLAS_OP_N ? k : n,
+                                                 transb == CUBLAS_OP_N ? n : k, ldb));
+    checkCublasStatus(cublasLtMatrixLayoutSetAttribute(Bdesc, CUBLASLT_MATRIX_LAYOUT_PLANE_OFFSET, &BplaneOffset,
+                                                       sizeof(BplaneOffset)));
 
     checkCublasStatus(cublasLtMatrixLayoutCreate(&Cdesc, CUDA_C_16F, m, n, ldc));
-    checkCublasStatus(cublasLtMatrixLayoutSetAttribute(Cdesc, CUBLASLT_MATRIX_LAYOUT_PLANE_OFFSET, &CplaneOffset, sizeof(CplaneOffset)));
+    checkCublasStatus(cublasLtMatrixLayoutSetAttribute(Cdesc, CUBLASLT_MATRIX_LAYOUT_PLANE_OFFSET, &CplaneOffset,
+                                                       sizeof(CplaneOffset)));
 
     // ---------------------------------------------------------------------------------------------
     // Launch computation
 
-    checkCublasStatus(cublasLtMatmul(ltHandle,
-                                     matmulDesc,
-                                     &alpha,
-                                     A_real,
-                                     Adesc,
-                                     B_real,
-                                     Bdesc,
-                                     &beta,
-                                     C_real,
-                                     Cdesc,
-                                     C_real,
-                                     Cdesc,
-                                     NULL,
-                                     NULL,
-                                     0,
-                                     0));
+    checkCublasStatus(cublasLtMatmul(ltHandle, matmulDesc, &alpha, A_real, Adesc, B_real, Bdesc, &beta, C_real, Cdesc,
+                                     C_real, Cdesc, NULL, NULL, 0, 0));
 
     // descriptors are no longer needed as all GPU work was already enqueued
     if (Cdesc) checkCublasStatus(cublasLtMatrixLayoutDestroy(Cdesc));

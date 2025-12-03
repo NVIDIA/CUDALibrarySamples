@@ -25,33 +25,16 @@
 
 int main() {
     TestBench<__nv_fp8_e4m3, __nv_bfloat16, float, float, float, __nv_bfloat16> props(
-        CUBLAS_OP_T, CUBLAS_OP_N,
-        64, 128, 256, 2.0f, 1.0f, 32ULL * 1024 * 1024, 1,
-        CUBLASLT_MATMUL_MATRIX_SCALE_VEC128_32F, CUBLASLT_MATMUL_MATRIX_SCALE_BLK128x128_32F, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F);
+        CUBLAS_OP_T, CUBLAS_OP_N, 64, 128, 256, 2.0f, 1.0f, 32ULL * 1024 * 1024, 1,
+        CUBLASLT_MATMUL_MATRIX_SCALE_VEC128_32F, CUBLASLT_MATMUL_MATRIX_SCALE_BLK128x128_32F,
+        CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
+        CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F);
 
     props.run([&props] {
-        LtBlk128x128Fp8Matmul(props.ltHandle,
-                    props.transa,
-                    props.transb,
-                    props.m,
-                    props.n,
-                    props.k,
-                    &props.alpha,
-                    props.AscaleDev,
-                    props.Adev,
-                    props.lda,
-                    props.BscaleDev,
-                    props.Bdev,
-                    props.ldb,
-                    &props.beta,
-                    props.Cdev,
-                    props.ldc,
-                    props.Ddev,
-                    props.ldd,
-                    props.workspace,
-                    props.workspaceSize,
-                    props.AScaleMode,
-                    props.BScaleMode);
+        LtBlk128x128Fp8Matmul(props.ltHandle, props.transa, props.transb, props.m, props.n, props.k, &props.alpha,
+                              props.AscaleDev, props.Adev, props.lda, props.BscaleDev, props.Bdev, props.ldb,
+                              &props.beta, props.Cdev, props.ldc, props.Ddev, props.ldd, props.workspace,
+                              props.workspaceSize, props.AScaleMode, props.BScaleMode);
     });
 
     return 0;

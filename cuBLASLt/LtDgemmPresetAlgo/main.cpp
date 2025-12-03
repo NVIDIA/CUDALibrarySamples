@@ -23,23 +23,9 @@ int main() {
     TestBench<double> props(CUBLAS_OP_T, CUBLAS_OP_N, 4, 4, 20000, 2.0f, 0.0f, 4 * 1024 * 1024);
 
     props.run([&props] {
-        LtDgemmPresetAlgo(props.ltHandle,
-                props.transa,
-                props.transb,
-                props.m,
-                props.n,
-                props.k,
-                &props.alpha,
-                props.Adev,
-                props.lda,
-                props.Bdev,
-                props.ldb,
-                &props.beta,
-                props.Cdev,
-                props.ldc,
-                props.workspace,
-                props.workspaceSize,
-                props.stream);
+        LtDgemmPresetAlgo(props.ltHandle, props.transa, props.transb, props.m, props.n, props.k, &props.alpha,
+                          props.Adev, props.lda, props.Bdev, props.ldb, &props.beta, props.Cdev, props.ldc,
+                          props.workspace, props.workspaceSize, props.stream);
     });
 
     return 0;
