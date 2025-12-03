@@ -80,7 +80,7 @@ void LtDgemmEmulated(cublasLtHandle_t ltHandle,
     checkCublasStatus(
         cublasLtMatmulDescSetAttribute(&operationDesc, CUBLASLT_MATMUL_DESC_TRANSA, &transa, sizeof(transa)));
     checkCublasStatus(
-        cublasLtMatmulDescSetAttribute(&operationDesc, CUBLASLT_MATMUL_DESC_TRANSB, &transb, sizeof(transa)));
+        cublasLtMatmulDescSetAttribute(&operationDesc, CUBLASLT_MATMUL_DESC_TRANSB, &transb, sizeof(transb)));
     checkCublasStatus(cublasLtMatmulDescSetAttribute(&operationDesc, CUBLASLT_MATMUL_DESC_EMULATION_DESCRIPTOR,
                                                      &emulationDesc, sizeof(emulationDesc)));
 
