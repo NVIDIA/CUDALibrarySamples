@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #include <cublasLt.h>
 
 /// Sample wrapper executing mixed precision gemm with cublasLtMatmul, nearly a drop-in replacement for cublasGemmEx,
@@ -24,21 +23,21 @@
 /// pointer mode is always host, to change it configure the appropriate matmul descriptor attribute
 /// matmul is not using cublas handle's configuration of math mode, here tensor ops are implicitly allowed
 void LtHSHgemmPointerArrayBatchSimple(cublasLtHandle_t ltHandle,
-                                 cublasOperation_t transa,
-                                 cublasOperation_t transb,
-                                 int m,
-                                 int n,
-                                 int k,
-                                 const float *alpha, /* host pointer */
-                                 const __half *const *A,
-                                 int lda,
-                                 const __half *const *B,
-                                 int ldb,
-                                 const float *beta, /* host pointer */
-                                 const __half *const *C,
-                                 int ldc,
-                                 __half *const *D,
-                                 int ldd,
-                                 int batchCount,
-                                 void *workspace,
-                                 size_t workspaceSize);
+                                      cublasOperation_t transa,
+                                      cublasOperation_t transb,
+                                      int m,
+                                      int n,
+                                      int k,
+                                      const float *alpha, /* host pointer */
+                                      const __half *const *A,
+                                      int lda,
+                                      const __half *const *B,
+                                      int ldb,
+                                      const float *beta, /* host pointer */
+                                      const __half *const *C,
+                                      int ldc,
+                                      __half *const *D,
+                                      int ldd,
+                                      int batchCount,
+                                      void *workspace,
+                                      size_t workspaceSize);

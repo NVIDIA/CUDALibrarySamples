@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #pragma once
 
 #include <cublasLt.h>
@@ -29,24 +28,24 @@
 ///
 /// NOTE: This sample may not work on all architectures or all problem sizes.
 void LtDgemmEmulated(cublasLtHandle_t ltHandle,
-        cublasOperation_t transa,
-        cublasOperation_t transb,
-        int m,
-        int n,
-        int k,
-        const double *alpha, /* host pointer */
-        const double *A,
-        int lda,
-        const double *B,
-        int ldb,
-        const double *beta, /* host pointer */
-        double *C,
-        int ldc,
-        void *workspace,
-        size_t workspaceSize,
-        cublasEmulationStrategy_t emulationStrategy,
-        cudaEmulationSpecialValuesSupport specialValuesSupport,
-        cudaEmulationMantissaControl mantissaControl,
-        int maxMantissaBitCount,
-        int mantissaBitOffset,
-        cudaStream_t stream);
+                     cublasOperation_t transa,
+                     cublasOperation_t transb,
+                     int m,
+                     int n,
+                     int k,
+                     const double *alpha, /* host pointer */
+                     const double *A,
+                     int lda,
+                     const double *B,
+                     int ldb,
+                     const double *beta, /* host pointer */
+                     double *C,
+                     int ldc,
+                     void *workspace,
+                     size_t workspaceSize,
+                     cublasEmulationStrategy_t emulationStrategy,
+                     cudaEmulationSpecialValuesSupport specialValuesSupport,
+                     cudaEmulationMantissaControl mantissaControl,
+                     int maxMantissaBitCount,
+                     int mantissaBitOffset,
+                     cudaStream_t stream);

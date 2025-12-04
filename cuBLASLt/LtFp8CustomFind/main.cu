@@ -18,19 +18,18 @@
 #include <cuda_bf16.h>
 #include <cuda_fp8.h>
 
-#include "sample_cublasLt_LtFp8Matmul.h"
+#include "LtMatmulCustomFind.h"
 #include "helpers.h"
 
 int main() {
-    float beta = cublasLtGetVersion() >= 12 * 10000 ? 1.0 : 0.0; // can be non-zero starting from 12.0
-    TestBench<__nv_fp8_e4m3, __nv_fp8_e4m3, float, float, float, __nv_bfloat16> props(
-        CUBLAS_OP_T, CUBLAS_OP_N, 64, 128, 256, 2.0f, beta, 32ULL * 1024 * 1024);
+    TestBench<__nv_fp8_e4m3, __nv_fp8_e4m3, float, float, float, __nv_fp8_e4m3> props(
+        CUBLAS_OP_T, CUBLAS_OP_N, 1024, 512, 4096, 2.0f, 0.0f, 1024 * 1024 * 16);
 
     props.run([&props] {
-        LtFp8Matmul(props.ltHandle, props.transa, props.transb, props.m, props.n, props.k, &props.alpha,
-                    props.AscaleDev, props.Adev, props.lda, props.BscaleDev, props.Bdev, props.ldb, &props.beta,
-                    props.CscaleDev, props.Cdev, props.ldc, props.DscaleDev, props.Ddev, props.ldd, props.DamaxDev,
-                    props.workspace, props.workspaceSize);
+        LtMatmulCustomFind(props.ltHandle, props.transa, props.transb, props.m, props.n, props.k, CUDA_R_32F,
+                           &props.alpha, CUDA_R_8F_E4M3, props.Adev, props.lda, CUDA_R_8F_E4M3, props.Bdev, props.ldb,
+                           &props.beta, CUDA_R_16BF, props.Cdev, props.ldc, CUDA_R_8F_E4M3, props.Ddev, props.ldd,
+                           props.workspace, props.workspaceSize);
     });
 
     return 0;

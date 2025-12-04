@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #include <cublasLt.h>
 
 /// Use cublasLtMatmul to perform tensor-op Cgemm using planar complex memory layout and half-precision inputs.

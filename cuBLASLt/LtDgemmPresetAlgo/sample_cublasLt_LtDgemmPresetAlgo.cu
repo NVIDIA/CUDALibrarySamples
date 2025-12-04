@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #include <cublasLt.h>
 
 #include "sample_cublasLt_LtDgemmPresetAlgo.h"
@@ -30,70 +29,62 @@
 ///
 /// NOTE: this sample may not work on all architectures or all problem sizes
 void LtDgemmPresetAlgo(cublasLtHandle_t ltHandle,
-        cublasOperation_t transa,
-        cublasOperation_t transb,
-        int m,
-        int n,
-        int k,
-        const double *alpha, /* host pointer */
-        const double *A,
-        int lda,
-        const double *B,
-        int ldb,
-        const double *beta, /* host pointer */
-        double *C,
-        int ldc,
-        void *workspace,
-        size_t workspaceSize,
-        cudaStream_t stream) {
+                       cublasOperation_t transa,
+                       cublasOperation_t transb,
+                       int m,
+                       int n,
+                       int k,
+                       const double *alpha, /* host pointer */
+                       const double *A,
+                       int lda,
+                       const double *B,
+                       int ldb,
+                       const double *beta, /* host pointer */
+                       double *C,
+                       int ldc,
+                       void *workspace,
+                       size_t workspaceSize,
+                       cudaStream_t stream) {
     cublasLtMatmulDescOpaque_t operationDesc = {};
     cublasLtMatrixLayoutOpaque_t Adesc = {}, Bdesc = {}, Cdesc = {};
     cublasLtMatmulAlgo_t algo = {};
 
     const int32_t algoId = 10;
-    const cublasLtMatmulTile_t tileId = CUBLASLT_MATMUL_TILE_16x16; // 5
+    const cublasLtMatmulTile_t tileId = CUBLASLT_MATMUL_TILE_16x16;                    // 5
     const cublasLtReductionScheme_t reductionMode = CUBLASLT_REDUCTION_SCHEME_INPLACE; // 1
     const int32_t splitKFactor = 256;
 
     // create operation desciriptor; see cublasLtMatmulDescAttributes_t for details about defaults; here we just need to
     // set the transforms for A and B
     checkCublasStatus(cublasLtMatmulDescInit(&operationDesc, CUBLAS_COMPUTE_64F, CUDA_R_64F));
-    checkCublasStatus(cublasLtMatmulDescSetAttribute(&operationDesc, CUBLASLT_MATMUL_DESC_TRANSA, &transa, sizeof(transa)));
-    checkCublasStatus(cublasLtMatmulDescSetAttribute(&operationDesc, CUBLASLT_MATMUL_DESC_TRANSB, &transb, sizeof(transb)));
+    checkCublasStatus(
+        cublasLtMatmulDescSetAttribute(&operationDesc, CUBLASLT_MATMUL_DESC_TRANSA, &transa, sizeof(transa)));
+    checkCublasStatus(
+        cublasLtMatmulDescSetAttribute(&operationDesc, CUBLASLT_MATMUL_DESC_TRANSB, &transb, sizeof(transb)));
 
     // create matrix descriptors, we are good with the details here so no need to set any extra attributes
-    checkCublasStatus(cublasLtMatrixLayoutInit(&Adesc, CUDA_R_64F, transa == CUBLAS_OP_N ? m : k, transa == CUBLAS_OP_N ? k : m, lda));
-    checkCublasStatus(cublasLtMatrixLayoutInit(&Bdesc, CUDA_R_64F, transb == CUBLAS_OP_N ? k : n, transb == CUBLAS_OP_N ? n : k, ldb));
+    checkCublasStatus(cublasLtMatrixLayoutInit(&Adesc, CUDA_R_64F, transa == CUBLAS_OP_N ? m : k,
+                                               transa == CUBLAS_OP_N ? k : m, lda));
+    checkCublasStatus(cublasLtMatrixLayoutInit(&Bdesc, CUDA_R_64F, transb == CUBLAS_OP_N ? k : n,
+                                               transb == CUBLAS_OP_N ? n : k, ldb));
     checkCublasStatus(cublasLtMatrixLayoutInit(&Cdesc, CUDA_R_64F, m, n, ldc));
 
-    checkCublasStatus(cublasLtMatmulAlgoInit(ltHandle,  //
-                                             CUBLAS_COMPUTE_64F,   // compute
-                                             CUDA_R_64F,   // scale
-                                             CUDA_R_64F,   // A
-                                             CUDA_R_64F,   // B
-                                             CUDA_R_64F,   // C
-                                             CUDA_R_64F,   // D
-                                             algoId,
-                                             &algo));
+    checkCublasStatus(cublasLtMatmulAlgoInit(ltHandle,           //
+                                             CUBLAS_COMPUTE_64F, // compute
+                                             CUDA_R_64F,         // scale
+                                             CUDA_R_64F,         // A
+                                             CUDA_R_64F,         // B
+                                             CUDA_R_64F,         // C
+                                             CUDA_R_64F,         // D
+                                             algoId, &algo));
 
-    checkCublasStatus(cublasLtMatmulAlgoConfigSetAttribute(&algo, CUBLASLT_ALGO_CONFIG_TILE_ID, &tileId, sizeof(tileId)));
-    checkCublasStatus(cublasLtMatmulAlgoConfigSetAttribute(&algo, CUBLASLT_ALGO_CONFIG_REDUCTION_SCHEME, &reductionMode, sizeof(reductionMode)));
-    checkCublasStatus(cublasLtMatmulAlgoConfigSetAttribute(&algo, CUBLASLT_ALGO_CONFIG_SPLITK_NUM, &splitKFactor, sizeof(splitKFactor)));
+    checkCublasStatus(
+        cublasLtMatmulAlgoConfigSetAttribute(&algo, CUBLASLT_ALGO_CONFIG_TILE_ID, &tileId, sizeof(tileId)));
+    checkCublasStatus(cublasLtMatmulAlgoConfigSetAttribute(&algo, CUBLASLT_ALGO_CONFIG_REDUCTION_SCHEME, &reductionMode,
+                                                           sizeof(reductionMode)));
+    checkCublasStatus(cublasLtMatmulAlgoConfigSetAttribute(&algo, CUBLASLT_ALGO_CONFIG_SPLITK_NUM, &splitKFactor,
+                                                           sizeof(splitKFactor)));
 
-    checkCublasStatus(cublasLtMatmul(ltHandle,
-                                     &operationDesc,
-                                     alpha,
-                                     A,
-                                     &Adesc,
-                                     B,
-                                     &Bdesc,
-                                     beta,
-                                     C,
-                                     &Cdesc,
-                                     C,
-                                     &Cdesc,
-                                     &algo,
-                                     workspace,
-                                     workspaceSize,
-                                     stream));
+    checkCublasStatus(cublasLtMatmul(ltHandle, &operationDesc, alpha, A, &Adesc, B, &Bdesc, beta, C, &Cdesc, C, &Cdesc,
+                                     &algo, workspace, workspaceSize, stream));
 }

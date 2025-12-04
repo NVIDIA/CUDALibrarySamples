@@ -15,11 +15,10 @@
  * limitations under the License.
  */
 
-
 #include <cublasLt.h>
 
-/// Sample wrapper executing single precision gemm algorithm auto tuning by querying cublasLt heuristics for best algorithms,
-/// iterate over the results and pick the algorithm that have the best performance for the given problem
+/// Sample wrapper executing single precision gemm algorithm auto tuning by querying cublasLt heuristics for best
+/// algorithms, iterate over the results and pick the algorithm that have the best performance for the given problem
 ///
 /// pointer mode is always host, to change it configure the appropriate matmul descriptor attribute
 /// matmul is not using cublas handle's configuration of math mode, here tensor ops are implicitly allowed; to change
@@ -40,4 +39,4 @@ void LtSgemmSimpleAutoTuning(cublasLtHandle_t ltHandle,
                              int ldc,
                              void *workspace,
                              size_t workspaceSize,
-                             cublasLtMatmulAlgo_t& algo);
+                             cublasLtMatmulAlgo_t &algo);

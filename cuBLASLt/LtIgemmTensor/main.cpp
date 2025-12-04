@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #include "sample_cublasLt_LtIgemmTensor.h"
 #include "helpers.h"
 
@@ -24,18 +23,8 @@ int main() {
     TestBench<int8_t, int32_t, float> props(CUBLAS_OP_N, CUBLAS_OP_T, 4, 4, 4);
 
     props.run([&props] {
-        LtIgemmTensor(props.ltHandle,
-                    props.transa,
-                    props.transb,
-                    props.m,
-                    props.n,
-                    props.k,
-                    props.Adev,
-                    props.lda,
-                    props.Bdev,
-                    props.ldb,
-                    props.Cdev,
-                    props.ldc);
+        LtIgemmTensor(props.ltHandle, props.transa, props.transb, props.m, props.n, props.k, props.Adev, props.lda,
+                      props.Bdev, props.ldb, props.Cdev, props.ldc);
     });
 
     return 0;

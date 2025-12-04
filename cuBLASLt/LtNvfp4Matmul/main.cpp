@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #include <cuda_fp4.h>
 #include <cuda_bf16.h>
 
@@ -25,37 +24,16 @@
 int main() {
     TestBench<__nv_fp4_e2m1, __nv_fp4_e2m1, float, __nv_fp8_e4m3, float, __nv_bfloat16> props(
         CUBLAS_OP_T, CUBLAS_OP_N, 64, 128, 256, 2.0f, 1.0f, 32ULL * 1024 * 1024, 1,
-        CUBLASLT_MATMUL_MATRIX_SCALE_VEC16_UE4M3, CUBLASLT_MATMUL_MATRIX_SCALE_VEC16_UE4M3, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_VEC16_UE4M3);
+        CUBLASLT_MATMUL_MATRIX_SCALE_VEC16_UE4M3, CUBLASLT_MATMUL_MATRIX_SCALE_VEC16_UE4M3,
+        CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
+        CUBLASLT_MATMUL_MATRIX_SCALE_VEC16_UE4M3);
 
     props.run([&props] {
-        LtNvfp4Matmul(props.ltHandle,
-                    props.transa,
-                    props.transb,
-                    props.m,
-                    props.n,
-                    props.k,
-                    &props.alpha,
-                    props.AscaleDev,
-                    props.Adev,
-                    props.lda,
-                    props.BscaleDev,
-                    props.Bdev,
-                    props.ldb,
-                    &props.beta,
-                    props.CscaleDev,
-                    props.Cdev,
-                    props.ldc,
-                    props.DscaleDev,
-                    props.Ddev,
-                    props.ldd,
-                    props.DOutscaleDev,
-                    props.workspace,
-                    props.workspaceSize,
-                    props.AScaleMode,
-                    props.BScaleMode,
-                    props.CScaleMode,
-                    props.DScaleMode,
-                    props.DOutScaleMode);
+        LtNvfp4Matmul(props.ltHandle, props.transa, props.transb, props.m, props.n, props.k, &props.alpha,
+                      props.AscaleDev, props.Adev, props.lda, props.BscaleDev, props.Bdev, props.ldb, &props.beta,
+                      props.CscaleDev, props.Cdev, props.ldc, props.DscaleDev, props.Ddev, props.ldd,
+                      props.DOutscaleDev, props.workspace, props.workspaceSize, props.AScaleMode, props.BScaleMode,
+                      props.CScaleMode, props.DScaleMode, props.DOutScaleMode);
     });
 
     return 0;

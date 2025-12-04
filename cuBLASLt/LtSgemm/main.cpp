@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #include "sample_cublasLt_LtSgemm.h"
 #include "helpers.h"
 
@@ -23,21 +22,8 @@ int main() {
     TestBench<float> props(CUBLAS_OP_N, CUBLAS_OP_N, 4, 4, 4, 2.0f, 0.0f);
 
     props.run([&props] {
-        LtSgemm(props.ltHandle,
-                props.transa,
-                props.transb,
-                props.m,
-                props.n,
-                props.k,
-                &props.alpha,
-                props.Adev,
-                props.lda,
-                props.Bdev,
-                props.ldb,
-                &props.beta,
-                props.Cdev,
-                props.ldc,
-                props.workspace,
+        LtSgemm(props.ltHandle, props.transa, props.transb, props.m, props.n, props.k, &props.alpha, props.Adev,
+                props.lda, props.Bdev, props.ldb, &props.beta, props.Cdev, props.ldc, props.workspace,
                 props.workspaceSize);
     });
 

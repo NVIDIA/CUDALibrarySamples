@@ -17,6 +17,7 @@
 
 #include "helpers.h"
 
+// clang-format off
 /* CAUTION : must match cublasLtMatmulTile_t */
 const char * const matmulTileName[] = {
     "UNDEF",
@@ -655,11 +656,12 @@ const char * const matmulTileName[] = {
     "512x512",
     "512x1024",
 };
+// clang-format on
 
 const char *tileToString(cublasLtMatmulTile_t tile) {
-  if (tile >= 0 && tile < sizeof(matmulTileName) / sizeof(matmulTileName[0])) {
-    return matmulTileName[tile];
-  } else {
-    return "UNKNOWN";
-  }
+    if (tile >= 0 && tile < sizeof(matmulTileName) / sizeof(matmulTileName[0])) {
+        return matmulTileName[tile];
+    } else {
+        return "UNKNOWN";
+    }
 }

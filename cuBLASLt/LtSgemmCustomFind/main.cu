@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #include "LtMatmulCustomFind.h"
 #include "helpers.h"
 
@@ -23,29 +22,10 @@ int main() {
     TestBench<float> props(CUBLAS_OP_N, CUBLAS_OP_N, 1024, 512, 4096, 2.0f, 0.0f, 1024 * 1024 * 16);
 
     props.run([&props] {
-        LtMatmulCustomFind(props.ltHandle,
-                        props.transa,
-                        props.transb,
-                        props.m,
-                        props.n,
-                        props.k,
-                        CUDA_R_32F,
-                        &props.alpha,
-                        CUDA_R_32F,
-                        props.Adev,
-                        props.lda,
-                        CUDA_R_32F,
-                        props.Bdev,
-                        props.ldb,
-                        &props.beta,
-                        CUDA_R_32F,
-                        props.Cdev,
-                        props.ldc,
-                        CUDA_R_32F,
-                        props.Cdev,
-                        props.ldc,
-                        props.workspace,
-                        props.workspaceSize);
+        LtMatmulCustomFind(props.ltHandle, props.transa, props.transb, props.m, props.n, props.k, CUDA_R_32F,
+                           &props.alpha, CUDA_R_32F, props.Adev, props.lda, CUDA_R_32F, props.Bdev, props.ldb,
+                           &props.beta, CUDA_R_32F, props.Cdev, props.ldc, CUDA_R_32F, props.Cdev, props.ldc,
+                           props.workspace, props.workspaceSize);
     });
 
     return 0;
