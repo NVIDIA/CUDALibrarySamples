@@ -66,7 +66,7 @@ max_reduce_kernel(cute::Tensor<InEngine, InLayout> in_tensor, cute::Tensor<OutEn
     using BlockReduce = cub::BlockReduce<datatype, BlockSize>;
     __shared__ typename BlockReduce::TempStorage temp_storage;
 
-    const auto tile_size = cute::size(out_tensor.layout());
+    const auto tile_size = cute::size<1>(in_tensor.layout());
     auto tid = threadIdx.x;
     auto bid = blockIdx.x;
 
