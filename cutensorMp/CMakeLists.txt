@@ -28,13 +28,21 @@
 # 
 
 # ---[ Check cmake version.
-cmake_minimum_required(VERSION 3.20.0 FATAL_ERROR)
-cmake_policy(SET CMP0104 NEW)
+cmake_minimum_required(VERSION 3.18 FATAL_ERROR)
 
 # ---[ Project specification.
-project(cutensor_example LANGUAGES C CXX CUDA)
+project(cutensormp_example LANGUAGES C CXX CUDA)
 
-include(GNUInstallDirs)
+# ---[ Platform support checks.
+if(WIN32)
+    message(FATAL_ERROR "Windows platform is not supported for cutensormp_example.")
+endif()
+
+# ---[ Include custom functions.
+include(cmake/functions.cmake)
+
+# Make custom find modules (e.g., FindNCCL.cmake) discoverable
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 # ##########################################
 # cuTENSOR_example build mode
@@ -51,8 +59,17 @@ endif()
 # ##########################################
 # cuTENSOR_example dependencies
 # ##########################################
+if(DEFINED ENV{NCCL_HOME})
+  set(NCCL_HOME $ENV{NCCL_HOME})
+endif()
 
-find_package(CUDA 12.0 REQUIRED)
+find_dependency_with_fallback("MPI" "MPI_HOME" "mpi.h" "mpi;mpi_cxx;mpicxx" "MPI_INCLUDE_DIR" "MPI_C_LIBRARY;MPI_CXX_LIBRARY")
+
+find_package(NCCL REQUIRED)
+set(NCCL_INCLUDE_DIR ${NCCL_INCLUDE_DIR} CACHE INTERNAL "NCCL include directory")
+set(NCCL_LIBRARY ${NCCL_LIBRARY} CACHE INTERNAL "NCCL library path")
+
+find_package(CUDA 12.9 REQUIRED)
 include_directories("${CUDA_INCLUDE_DIRS}")
 
 if(NOT DEFINED ENV{CUTENSOR_ROOT} AND NOT DEFINED CUTENSOR_ROOT)
@@ -67,18 +84,21 @@ else()
   endif()
 endif()
 
-if(NOT TARGET cutensor)
+if((NOT TARGET cutensor) AND (NOT TARGET cutensorMp))
+  add_library(cutensorMp SHARED IMPORTED)
   add_library(cutensor SHARED IMPORTED)
-  if(WIN32)
-    set(CUTENSOR_LIBRARY_NAME "cutensor.dll")
-    set(CUTENSOR_LIBRARY_DEF "cutensor.lib")
-  else()
-    set(CUTENSOR_LIBRARY_NAME "libcutensor.so")
-  endif()
+
+  set(CUTENSORMP_LIBRARY_NAME "libcutensorMp.so")
+  set(CUTENSOR_LIBRARY_NAME "libcutensor.so")
+
   set(LIB_DIR "/lib/${CUDA_VERSION_MAJOR}")
   if(NOT EXISTS "${CUTENSOR_ROOT}${LIB_DIR}")
       set(LIB_DIR "/lib")
   endif()
+  set_target_properties(cutensorMp PROPERTIES
+    IMPORTED_LOCATION "${CUTENSOR_ROOT}/${LIB_DIR}/${CUTENSORMP_LIBRARY_NAME}"
+    IMPORTED_IMPLIB "${CUTENSOR_ROOT}/${LIB_DIR}/${CUTENSORMP_LIBRARY_DEF}"
+    INTERFACE_INCLUDE_DIRECTORIES "${CUTENSOR_ROOT}/include")
   set_target_properties(cutensor PROPERTIES
     IMPORTED_LOCATION "${CUTENSOR_ROOT}/${LIB_DIR}/${CUTENSOR_LIBRARY_NAME}"
     IMPORTED_IMPLIB "${CUTENSOR_ROOT}/${LIB_DIR}/${CUTENSOR_LIBRARY_DEF}"
@@ -86,9 +106,9 @@ if(NOT TARGET cutensor)
 endif()
 
 # Installation directories
-if(NOT DEFINED CUTENSOR_EXAMPLE_BINARY_INSTALL_DIR)
-  message(WARNING "CUTENSOR_EXAMPLE_BINARY_INSTALL_DIR not set, setting to cutensor_example/bin")
-  set(CUTENSOR_EXAMPLE_BINARY_INSTALL_DIR "cutensor_example/bin")
+if(NOT DEFINED CUTENSORMP_EXAMPLE_BINARY_INSTALL_DIR)
+  message(WARNING "CUTENSORMP_EXAMPLE_BINARY_INSTALL_DIR not set, setting to cutensormp_example/bin")
+  set(CUTENSORMP_EXAMPLE_BINARY_INSTALL_DIR "cutensormp_example/bin")
 endif()
 
 # ##########################################
@@ -112,7 +132,7 @@ set(CMAKE_CUDA_EXTENSIONS OFF)
 # cuTENSOR_example target
 # ##########################################
 
-function(add_cutensor_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
+function(add_cutensormp_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
     list(GET EXAMPLE_SOURCES 0 EXAMPLE_MAIN_SOURCE)
     get_filename_component(EXAMPLE_TARGET ${EXAMPLE_MAIN_SOURCE} NAME_WE)
     add_executable(${EXAMPLE_TARGET} ${EXAMPLE_SOURCES})
@@ -120,12 +140,19 @@ function(add_cutensor_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
         PUBLIC
             ${CUDA_INCLUDE_DIRS}
             ${CUTENSOR_ROOT}/include
+            ${CUTENSOR_ROOT}/cutensorMp/include
+            ${MPI_INCLUDE_DIR}
+            ${NCCL_INCLUDE_DIR}
     )
     target_link_libraries(${EXAMPLE_TARGET}
         PUBLIC
-            cutensor
+            ${MPI_C_LIBRARY}
+            ${MPI_CXX_LIBRARY}
+            ${NCCL_LIBRARY}
             cudart
             cublasLt
+            cutensorMp
+            cutensor
     )
     set_target_properties(${EXAMPLE_TARGET} PROPERTIES
         POSITION_INDEPENDENT_CODE ON
@@ -143,19 +170,8 @@ function(add_cutensor_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
     add_dependencies(${GROUP_TARGET} ${EXAMPLE_TARGET})
 endfunction()
 
-add_custom_target(cutensor_examples)
-
-add_cutensor_example(cutensor_examples "cuTENSOR.example.einsum" einsum.cu)
-add_cutensor_example(cutensor_examples "cuTENSOR.example.contraction" contraction.cu)
-add_cutensor_example(cutensor_examples "cuTENSOR.example.contraction_jit" contraction_jit.cu)
-add_cutensor_example(cutensor_examples "cuTENSOR.example.contraction_plan_cache" contraction_plan_cache.cu)
-add_cutensor_example(cutensor_examples "cuTENSOR.example.contraction_trinary" contraction_trinary.cu)
-add_cutensor_example(cutensor_examples "cuTENSOR.example.block_sparse_contraction" blocksparse.cu)
-add_cutensor_example(cutensor_examples "cuTENSOR.example.elementwise_binary" elementwise_binary.cu)
-add_cutensor_example(cutensor_examples "cuTENSOR.example.elementwise_permute" elementwise_permute.cu)
-add_cutensor_example(cutensor_examples "cuTENSOR.example.elementwise_permute_padding" elementwise_permute_padding.cu)
-add_cutensor_example(cutensor_examples "cuTENSOR.example.elementwise_trinary" elementwise_trinary.cu)
-add_cutensor_example(cutensor_examples "cuTENSOR.example.reduction" reduction.cu)
+add_custom_target(cutensormp_examples)
+add_cutensormp_example(cutensormp_examples "cuTENSORMp.example.cutensorMp_contraction" cutensorMp_contraction.cu)
 
 # ##########################################
 # cuTENSOR_example directories
@@ -171,4 +187,3 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 IF(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
   SET(CMAKE_INSTALL_PREFIX ${CMAKE_BINARY_DIR} CACHE PATH "" FORCE)
 ENDIF()
-
