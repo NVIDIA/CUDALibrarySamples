@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,39 +13,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-cmake_minimum_required(VERSION 3.13 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.17 FATAL_ERROR)
+
+
+option(CROSS_COMPILE_AARCH64 "Cross compile for ARM64" OFF)
+
+if(CROSS_COMPILE_AARCH64)
+    set(CMAKE_SYSTEM_NAME Linux)
+    set(CMAKE_SYSTEM_PROCESSOR aarch64)
+    set(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
+    set(CMAKE_CXX_COMPILER aarch64-linux-gnu-g++)
+    set(CMAKE_CUDA_HOST_COMPILER aarch64-linux-gnu-g++)
+endif()
 
 project(nvJPEGDecMultipleInstances LANGUAGES CXX CUDA)
 
-# ---[ Project specIFication.
-SET(PROJECT_NAME nvJPEGDecMultipleInstances)
-PROJECT(${PROJECT_NAME} LANGUAGES CUDA CXX)
+find_package(Threads REQUIRED)
+find_package(CUDAToolkit REQUIRED)
 
-if(NOT DEFINED CMAKE_CUDA_STANDARD)
-    set(CMAKE_CUDA_STANDARD 11)
-    set(CMAKE_CUDA_STANDARD_REQUIRED ON)    
-endif()
+add_executable(nvJPEGDecMultipleInstances "nvJPEGDecMultipleInstances.cpp")
 
-set(CMAKE_CXX_STANDARD 11)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
+target_compile_features(nvJPEGDecMultipleInstances PRIVATE
+    cxx_std_20)
 
-
-include_directories(
-  SYSTEM ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
-)
-
-
-SET(EXAMPLES_DESCRIPTOR_SOURCES "nvJPEGDecMultipleInstances.cpp")
-
-add_executable(nvJPEGDecMultipleInstances ${EXAMPLES_DESCRIPTOR_SOURCES})
-
-find_library(NVJPEG_LIB
-    NAMES nvjpeg
-    PATHS ${CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES})
-
-find_library(CUDART_LIB 
-    NAMES cudart
-    PATHS ${CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES})
-
-target_link_libraries(nvJPEGDecMultipleInstances PUBLIC ${NVJPEG_LIB} ${CUDART_LIB} pthread)
+target_link_libraries(nvJPEGDecMultipleInstances PUBLIC
+    CUDA::nvjpeg
+    CUDA::cudart_static
+    Threads::Threads)

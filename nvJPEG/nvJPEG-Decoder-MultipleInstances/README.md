@@ -1,41 +1,47 @@
-# JPEG Image decoding Example using nvJPEG
+# nvJPEG Image decoding example using multiple decode states
 
 ## Description
 
-This code demonstrates how to use multiple instances of the nvJPEG library to achieve optimal performance.
-NVJPEG_BACKEND_HYBRID performans better for smaller images and NVJPEG_BACKEND_GPU_HYBRID for larger images.
+This example demonstrates how to use multiple decode states of the nvJPEG library to achieve optimal decode throughputs.
+The example unifies the following techniques in a single framework:
+- Host-side parallelization: assigning decode states to multiple threads
+- Device-side parallelization: submitting decode jobs on multiple CUDA streams
+- Hardware parallelization: utilizing all hardware decoder engines (with as few as a single CPU thread)
+- Host-device parallelization: double-buffering to optimally overlap host and device executions
+- Backend parallelization: utilizing hardware engines, the CUDA cores, and CPU threads concurrently
+- Overhead minimization: padding of buffer sizes to avoid frequent reallocations
+- Throughput optimization: automatic load balancing among backends
+- Throughput optimization: automatic search for the best number of CPU threads
 
-## Key Concepts
+This example can also be used for benchmarking purpose, to determine the maximum decode throughput that can be achieved with nvJPEG on any single GPU (with or without hardware decode engines).
 
-Image Decoding from NVJPEG Library
+Detailed information about nvJPEG's API can be found at
+[nvJPEG documentation](https://docs.nvidia.com/cuda/nvjpeg/index.html).
 
-## Supported SM Architectures
+## Supported platforms
 
-[SM 3.5 ](https://developer.nvidia.com/cuda-gpus)  [SM 3.7 ](https://developer.nvidia.com/cuda-gpus)  [SM 5.0 ](https://developer.nvidia.com/cuda-gpus)  [SM 5.2 ](https://developer.nvidia.com/cuda-gpus)  [SM 6.0 ](https://developer.nvidia.com/cuda-gpus)  [SM 6.1 ](https://developer.nvidia.com/cuda-gpus)  [SM 7.0 ](https://developer.nvidia.com/cuda-gpus)  [SM 7.2 ](https://developer.nvidia.com/cuda-gpus)  [SM 7.5 ](https://developer.nvidia.com/cuda-gpus)
+### GPU architectures
+- Turing (SM 7.5)
+- Ampere (SM 8.0, 8.6, and 8.7)
+- Ada Lovelace (SM 8.9)
+- Hopper (SM 9.0)
+- Blackwell (SM 10.0, 10.3, 11.0, 12.0 and 12.1)
 
-## Supported OSes
+More information about the architectures and compute capabilities can be found at [CUDA GPU Compute Capability](https://developer.nvidia.com/cuda-gpus).
 
-Linux Windows
+### Operating systems
 
-## Supported CPU Architecture
+- Linux (x64 and aarch64)
+- Windows (x64 and aarch64)
 
-x86_64
-
-## CUDA APIs involved
-[NPP](https://docs.nvidia.com/cuda/npp/group__image__resize.html)
-[NVJPEG](https://docs.nvidia.com/cuda/nvjpeg/index.html)
-
-
-# Architecture
-- JPEG decoding is handled by nvJPEG.
-
-# Building (make)
-
-# Prerequisites
+## Building the example
+### Prerequisites
 - A Linux/Windows system with recent NVIDIA drivers.
-- Install the [CUDA 11.0 toolkit](https://developer.nvidia.com/cuda-downloads).
+- The [CUDA toolkit](https://developer.nvidia.com/cuda-downloads).
+- A C++ compiler with C++ 20 support.
+- CMake 3.17 or later
 
-## Build command on Linux
+### Build command on Linux
 ```
 $ mkdir build
 $ cd build
@@ -43,127 +49,128 @@ $ cmake ..
 $ make
 ```
 
-## Build command on Windows
+### Build command on Windows
 ```
 $ mkdir build
 $ cd build
 $ cmake -DCMAKE_GENERATOR_PLATFORM=x64 ..
-$ Open imageResize.sln project in Visual Studio 15 2017 and build
+```
+Open the project in Visual Studio and build
+
+### Cross-compile to aarch64 (for Jetson Orin/Thor)
+```
+$ mkdir build
+$ cd build
+$ cmake -DCROSS_COMPILE_AARCH64=ON ..
+$ make
 ```
 
-
-
-
-# Usage
-./nvJPEGDecMultipleInstances -h
+## Usage
+Prior to running, prepare a directory with input JPEG files.
+For benchmarking purposes, it is recommended to use only one JPEG file in the input directory, so that buffers can be created once and cached, thus memory allocation and file I/O overheads are not taken into account.
 
 ```
-Usage: ./nvJPEGDecMultipleInstances -i images_dir [-b batch_size] [-t total_images] [-w warmup_iterations] [-o output_dir] [-pipelined] [-batched] [-fmt output_format]
-Parameters: 
-	images_dir	:	Path to single image or directory of images
-	batch_size	:	Decode images from input by batches of specified size
-	total_images	:	Decode this much images, if there are less images 
-					in the input than total images, decoder will loop over the input
-	warmup_iterations	:	Run this amount of batches first without measuring performance
-	output_dir	:	Write decoded images as BMPs to this directory
-	pipelined	:	Use decoding in phases
-	batched		:	Use batched interface
-	output_format	:	nvJPEG output format for decoding. One of [rgb, rgbi, bgr, bgri, yuv, y, unchanged]
+-i indir [-n nimages] [-s nstates] [-j nthreads] [-b backends] [-r nruns] [-o outdir]
+        
+(REQUIRED)  -i indir: Directory to take JPEG images from.
+(OPTIONAL)  -n nimages: Number of images to decode.
+             If not provided, decode all images in the input directory.
+             Will be automatically adjusted to be at least number of states.
+(OPTIONAL)  -s nstates: Number of states.
+             If not provided, use twice the number of hardware engines.
+             Will be automatically adjusted to be at least number of threads.
+(OPTIONAL)  -j nthreads: Number of CPU threads.
+             If not provided, automatically find the best number of threads to use.
+             Use 0 to set to the number of CPU cores on the system.
+(OPTIONAL)  -b backends: any of
+             cpu/gpu/hardware/cpu gpu/cpu hardware/gpu hardware/cpu gpu hardware.
+(OPTIONAL)  -r nruns: Run this many times and pick the one with the maximum throughput.
+(OPTIONAL)  -o outdir: Directory to write decoded images in BMP format.
+```
 
-```
-Example:
+### Example commands:
 
-Sample example output on GV100, Ubuntu 16.04, CUDA 11.5
+- Decode all images from directory "img"
+```
+-i img
+```
+- Decode all images from directory "img" using 1 thread 
+```
+-i img -j 1
+```
+- Decode 4000 images (with potential repetitions) from directory "img" (add -n).
+For benchmarking purposes, it is recommended to put just one image in the "img" directory.
+This image will be decoded 4000 times.
+```
+-i img -n 4000
+```
+- Write outputs to the current directory (add -o)
+```
+-i img -o .
+```
+- Use only the hardware backend (add -b)
+```
+-i img -b hardware
+```
+- Use both gpu and hardware backends (with automatic load-balancing)
+```
+-i img -b gpu hardware
+```
+- Use cpu, gpu and hardware backends (with automatic load-balancing)
+```
+-i img -b cpu gpu hardware
+```
+- Use all supported backends (omit -b)
+```
+-i img
+```
+- Use as many threads as CPU hardware threads (-j 0)
+```
+-i img -j 0
+```
+- Use two threads and 8 states (add -s)
+```
+-i img -j 2 -s 8
+```
+- Use one thread and twice as many states as hardware JPEG decode engines (provide -s 0 or just obmit it)
+```
+-i img -j 1
+-i img -j 1 -s 0
+```
+- Use one thread with all available hardware JPEG decode engines
+```
+-i img -j 1 -b hardware
+```
+- Automatically detect the best number of CPU threads to use (omit -j)
+```
+-i img
+```
+- Automatically detect the best number of CPU threads to use but start with 8 states
+```
+-i img -s 8
+```
+- Benchmark individual backends (add -r to run multiple times and pick the best)
+```
+-i img -n 4000 -b cpu -r 4
+-i img -n 4000 -b gpu -r 4
+-i img -n 4000 -b hardware -r 4
+```
+- Benchmark automatic load-balancing among backends
+```
+-i img -n 4000 -b cpu gpu hardware -r 4
+```
 
+### Example output
 ```
-$  ./nvJPEGDecMultipleInstances -i ../../nvJPEG-Decoder/input_images/ -o ~/tmp
-```
-```
-Decoding images in directory: ../../nvJPEG-Decoder/input_images/, total 12, batchsize 1
-Processing: ../../nvJPEG-Decoder/input_images/img3.jpg
-Image is 3 channels.
-Channel #0 size: 640 x 426
-Channel #1 size: 320 x 213
-Channel #2 size: 320 x 213
-YUV 4:2:0 chroma subsampling
-Done writing decoded image to file: /tmp/img3.bmp
-Processing: ../../nvJPEG-Decoder/input_images/img2.jpg
-Image is 3 channels.
-Channel #0 size: 480 x 640
-Channel #1 size: 240 x 320
-Channel #2 size: 240 x 320
-YUV 4:2:0 chroma subsampling
-Done writing decoded image to file: /tmp/img2.bmp
-Processing: ../../nvJPEG-Decoder/input_images/img4.jpg
-Image is 3 channels.
-Channel #0 size: 640 x 426
-Channel #1 size: 320 x 213
-Channel #2 size: 320 x 213
-YUV 4:2:0 chroma subsampling
-Done writing decoded image to file: /tmp/img4.bmp
-Processing: ../../nvJPEG-Decoder/input_images/img5.jpg
-Image is 3 channels.
-Channel #0 size: 640 x 480
-Channel #1 size: 320 x 240
-Channel #2 size: 320 x 240
-YUV 4:2:0 chroma subsampling
-Done writing decoded image to file: /tmp/img5.bmp
-Processing: ../../nvJPEG-Decoder/input_images/cat_grayscale.jpg
-Image is 1 channels.
-Channel #0 size: 64 x 64
-Grayscale JPEG 
-Done writing decoded image to file: /tmp/cat_grayscale.bmp
-Processing: ../../nvJPEG-Decoder/input_images/cat.jpg
-Image is 3 channels.
-Channel #0 size: 64 x 64
-Channel #1 size: 64 x 64
-Channel #2 size: 64 x 64
-YUV 4:4:4 chroma subsampling
-Done writing decoded image to file: /tmp/cat.bmp
-Processing: ../../nvJPEG-Decoder/input_images/img9.jpg
-Image is 3 channels.
-Channel #0 size: 640 x 480
-Channel #1 size: 320 x 240
-Channel #2 size: 320 x 240
-YUV 4:2:0 chroma subsampling
-Done writing decoded image to file: /tmp/img9.bmp
-Processing: ../../nvJPEG-Decoder/input_images/img7.jpg
-Image is 3 channels.
-Channel #0 size: 480 x 640
-Channel #1 size: 240 x 320
-Channel #2 size: 240 x 320
-YUV 4:2:0 chroma subsampling
-Done writing decoded image to file: /tmp/img7.bmp
-Processing: ../../nvJPEG-Decoder/input_images/img6.jpg
-Image is 3 channels.
-Channel #0 size: 640 x 480
-Channel #1 size: 320 x 240
-Channel #2 size: 320 x 240
-YUV 4:2:0 chroma subsampling
-Done writing decoded image to file: /tmp/img6.bmp
-Processing: ../../nvJPEG-Decoder/input_images/img1.jpg
-Image is 3 channels.
-Channel #0 size: 480 x 640
-Channel #1 size: 240 x 320
-Channel #2 size: 240 x 320
-YUV 4:2:0 chroma subsampling
-Done writing decoded image to file: /tmp/img1.bmp
-Processing: ../../nvJPEG-Decoder/input_images/cat_baseline.jpg
-Image is 3 channels.
-Channel #0 size: 64 x 64
-Channel #1 size: 64 x 64
-Channel #2 size: 64 x 64
-YUV 4:4:4 chroma subsampling
-Done writing decoded image to file: /tmp/cat_baseline.bmp
-Processing: ../../nvJPEG-Decoder/input_images/img8.jpg
-Image is 3 channels.
-Channel #0 size: 480 x 640
-Channel #1 size: 240 x 320
-Channel #2 size: 240 x 320
-YUV 4:2:0 chroma subsampling
-Done writing decoded image to file: /tmp/img8.bmp
-Total decoding time: 0.0139448 (s)
-Avg decoding time per image: 0.00116207 (s)
-Avg images per sec: 860.534
-Avg decoding time per batch: 0.00116207 (s)
+------------------------------------------------
+GPU: NVIDIA RTX 3500 Ada Generation Laptop GPU
+Num hardware decode engines: 4
+Input: img720x480_420
+Enabled backends: cpu gpu hardware
+Throughput: 6079.03 images/s
+Latency: 2.3015, 3.42781, 1.00983 ms
+Percentage: 0.925, 0.575, 97.95 %
+Num threads: 4
+Num states: 4
+Num runs: 4
 ```
