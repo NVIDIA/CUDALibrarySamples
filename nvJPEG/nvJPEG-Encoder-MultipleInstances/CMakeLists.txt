@@ -34,8 +34,7 @@ find_package(CUDAToolkit 12.9 REQUIRED)
 add_executable(nvJPEGEncMultipleInstances "nvJPEGEncMultipleInstances.cpp")
 
 target_compile_features(nvJPEGEncMultipleInstances PRIVATE
-    cxx_std_17
-    cuda_std_17)
+    cxx_std_20)
 
 target_link_libraries(nvJPEGEncMultipleInstances PUBLIC
     CUDA::nvjpeg

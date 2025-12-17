@@ -353,7 +353,7 @@ void backend_t::update(per_thread_decode_slot& ds)
 bool backend_t::isSupported(const img_t& img) const
 {
     if (backend == NVJPEG_BACKEND_HARDWARE) {
-        if (img.widths[0] >= 16384 || img.heights[0] >= 16384 ||
+        if (img.widths[0] > 16000 || img.heights[0] > 16000 ||
             (img.encoding != NVJPEG_ENCODING_BASELINE_DCT && 
              img.encoding != NVJPEG_ENCODING_EXTENDED_SEQUENTIAL_DCT_HUFFMAN) ||
             (img.ss != NVJPEG_CSS_444 && img.ss != NVJPEG_CSS_422 && img.ss != NVJPEG_CSS_420 && 
