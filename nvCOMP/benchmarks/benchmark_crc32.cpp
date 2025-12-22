@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -41,6 +40,8 @@
         exit(1); \
     } \
 } while(0)
+
+using nvcomp::cudaMallocSafe;
 
 size_t next_lower_power_of_two(size_t n)
 {
@@ -212,10 +213,10 @@ struct BenchmarkContext
 
         // Allocate chunk arrays
         CUDA_CHECK(cudaHostAlloc(&chunk_ptrs_h_, max_buf_count * sizeof(void*), cudaHostAllocDefault));
-        CUDA_CHECK(cudaMalloc(&chunk_ptrs_d_, max_buf_count * sizeof(void*)));
+        CUDA_CHECK(cudaMallocSafe(&chunk_ptrs_d_, max_buf_count * sizeof(void*)));
         CUDA_CHECK(cudaHostAlloc(&chunk_sizes_h_, max_buf_count * sizeof(size_t), cudaHostAllocDefault));
-        CUDA_CHECK(cudaMalloc(&chunk_sizes_d_, max_buf_count * sizeof(size_t)));
-        CUDA_CHECK(cudaMalloc(&crc_results_d_, max_buf_count * sizeof(uint32_t)));
+        CUDA_CHECK(cudaMallocSafe(&chunk_sizes_d_, max_buf_count * sizeof(size_t)));
+        CUDA_CHECK(cudaMallocSafe(&crc_results_d_, max_buf_count * sizeof(uint32_t)));
     }
 
     ~BenchmarkContext()
@@ -338,7 +339,7 @@ int main(int argc, char* argv[])
         ThroughputTable table = make_throughput_table(storage_size);
 
         void* storage_buf = nullptr;
-        CUDA_CHECK(cudaMalloc(&storage_buf, storage_size));
+        CUDA_CHECK(cudaMallocSafe(&storage_buf, storage_size));
 
         initialize_data(storage_buf, storage_size);
 

@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #pragma once
 
 // nvcc has a known issue with MSVC debug iterators, leading to a warning

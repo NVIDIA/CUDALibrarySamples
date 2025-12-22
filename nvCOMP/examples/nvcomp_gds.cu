@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 // Simple example of how to use GDS with nvcomp.
 // GDS (GPU Direct Storage) allows to read and write from/to NVMe drives
 // directly from the GPU, bypassing the CPU.
@@ -46,17 +45,9 @@
 #include "nvcomp.hpp"
 #include "nvcomp/lz4.hpp"
 
-using namespace nvcomp;
+#include "util.h"
 
-#define CUDA_CHECK(func)                                                       \
-  do {                                                                         \
-    cudaError_t rt = (func);                                                   \
-    if (rt != cudaSuccess) {                                                   \
-      std::cout << "API call failure \"" #func "\" with " << rt << " at "      \
-                << __FILE__ << ":" << __LINE__ << std::endl;                   \
-      std::exit(1);                                                            \
-    }                                                                          \
-  } while (0);
+using namespace nvcomp;
 
 // Kernel to initialize the input data with sequential bytes
 __global__ void initialize(uint8_t* data, size_t n)
@@ -108,8 +99,8 @@ int main(int argc, char** argv)
   // Device pointers for the data to be compressed / decompressed
   uint8_t *d_input, *d_output;
   cudaStream_t stream;
-  CUDA_CHECK(cudaMalloc(&d_input, n));
-  CUDA_CHECK(cudaMalloc(&d_output, n));
+  CUDA_CHECK(cudaMallocSafe(&d_input, n));
+  CUDA_CHECK(cudaMallocSafe(&d_output, n));
   CUDA_CHECK(cudaStreamCreate(&stream));
 
   // Initialize the input data (sequential bytes)
@@ -132,7 +123,7 @@ int main(int argc, char** argv)
   // memory copy (GDS's internal aligned registered buffer)
   lcompbuf = ((lcompbuf - 1) / 4096 + 1) * 4096;
   uint8_t* d_compressed;
-  CUDA_CHECK(cudaMalloc(&d_compressed, lcompbuf));
+  CUDA_CHECK(cudaMallocSafe(&d_compressed, lcompbuf));
 
   nvtxRangePop();
   nvtxRangePushA("GDS setup");

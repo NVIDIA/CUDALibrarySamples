@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #pragma once
 
 #include <fstream>
@@ -26,6 +25,7 @@
 #include <string.h>
 #include <string>
 #include <vector>
+
 #include <cuda_runtime.h>
 
 #ifndef CUDA_CHECK
@@ -84,6 +84,31 @@ std::vector<void*> get_input_ptrs(
           static_cast<const void*>(data[i].data() + j * chunk_size));
   }
   return input_ptrs;
+}
+
+template<typename T>
+static cudaError_t cudaMallocSafe(T** devPtr, size_t size)
+{
+  cudaError_t err = cudaMalloc(reinterpret_cast<void**>(devPtr), size);
+  if (err == cudaErrorMemoryAllocation)
+  {
+    // Attempt to get memory information
+    size_t gpu_bytes_free, gpu_bytes_total;
+    cudaError_t err_meminfo = cudaMemGetInfo(&gpu_bytes_free, &gpu_bytes_total);
+    if(err_meminfo != cudaSuccess)
+    {
+      return err_meminfo;
+    }
+
+    if (gpu_bytes_free < size)
+    {
+      std::cerr << "WARNING: Cannot fit data in GPU memory. Bytes requested: " << size
+                << " > bytes available: " << gpu_bytes_free << ". Could not run benchmark."
+                << std::endl;
+      std::exit(3);
+    }
+  }
+  return err;
 }
 
 std::vector<char> read_file(const std::string& filename)

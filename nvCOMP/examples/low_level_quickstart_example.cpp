@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #include <random>
 #include <assert.h>
 #include <iostream>
@@ -50,7 +49,7 @@ void execute_example(char* input_data, const size_t in_bytes)
   static_assert(chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize, "Chunk size must be less than the constant specified in the nvCOMP library");
 
   char* device_input_data;
-  CUDA_CHECK(cudaMalloc(&device_input_data, in_bytes));
+  CUDA_CHECK(cudaMallocSafe(&device_input_data, in_bytes));
   CUDA_CHECK(cudaMemcpyAsync(device_input_data, input_data, in_bytes, cudaMemcpyHostToDevice, stream));
 
   CUDA_CHECK(cudaMallocHost(&host_uncompressed_bytes, sizeof(size_t)*batch_size));
@@ -72,8 +71,8 @@ void execute_example(char* input_data, const size_t in_bytes)
 
   size_t* device_uncompressed_bytes;
   void ** device_uncompressed_ptrs;
-  CUDA_CHECK(cudaMalloc(&device_uncompressed_bytes, sizeof(size_t) * batch_size));
-  CUDA_CHECK(cudaMalloc(&device_uncompressed_ptrs, sizeof(size_t) * batch_size));
+  CUDA_CHECK(cudaMallocSafe(&device_uncompressed_bytes, sizeof(size_t) * batch_size));
+  CUDA_CHECK(cudaMallocSafe(&device_uncompressed_ptrs, sizeof(size_t) * batch_size));
 
   CUDA_CHECK(cudaMemcpyAsync(device_uncompressed_bytes, host_uncompressed_bytes, sizeof(size_t) * batch_size, cudaMemcpyHostToDevice, stream));
   CUDA_CHECK(cudaMemcpyAsync(device_uncompressed_ptrs, host_uncompressed_ptrs, sizeof(size_t) * batch_size, cudaMemcpyHostToDevice, stream));
@@ -82,7 +81,7 @@ void execute_example(char* input_data, const size_t in_bytes)
   size_t temp_bytes;
   nvcompBatchedLZ4CompressGetTempSizeAsync(batch_size, chunk_size, nvcompBatchedLZ4CompressDefaultOpts, &temp_bytes, batch_size * chunk_size);
   void* device_temp_ptr;
-  CUDA_CHECK(cudaMalloc(&device_temp_ptr, temp_bytes));
+  CUDA_CHECK(cudaMallocSafe(&device_temp_ptr, temp_bytes));
 
   // get the maxmimum output size for each chunk
   size_t max_out_bytes;
@@ -92,18 +91,18 @@ void execute_example(char* input_data, const size_t in_bytes)
   void ** host_compressed_ptrs;
   CUDA_CHECK(cudaMallocHost(&host_compressed_ptrs, sizeof(size_t) * batch_size));
   for(size_t ix_chunk = 0; ix_chunk < batch_size; ++ix_chunk) {
-      CUDA_CHECK(cudaMalloc(&host_compressed_ptrs[ix_chunk], max_out_bytes));
+      CUDA_CHECK(cudaMallocSafe(&host_compressed_ptrs[ix_chunk], max_out_bytes));
   }
 
   void** device_compressed_ptrs;
-  CUDA_CHECK(cudaMalloc(&device_compressed_ptrs, sizeof(size_t) * batch_size));
+  CUDA_CHECK(cudaMallocSafe(&device_compressed_ptrs, sizeof(size_t) * batch_size));
   CUDA_CHECK(cudaMemcpyAsync(
       device_compressed_ptrs, host_compressed_ptrs,
       sizeof(size_t) * batch_size,cudaMemcpyHostToDevice, stream));
 
   // allocate space for compressed chunk sizes to be written to
   size_t * device_compressed_bytes;
-  CUDA_CHECK(cudaMalloc(&device_compressed_bytes, sizeof(size_t) * batch_size));
+  CUDA_CHECK(cudaMallocSafe(&device_compressed_bytes, sizeof(size_t) * batch_size));
 
   // And finally, call the API to compress the data
   nvcompStatus_t comp_res = nvcompBatchedLZ4CompressAsync(
@@ -149,17 +148,17 @@ void execute_example(char* input_data, const size_t in_bytes)
       &decomp_temp_bytes,
       batch_size * chunk_size);
   void * device_decomp_temp;
-  CUDA_CHECK(cudaMalloc(&device_decomp_temp, decomp_temp_bytes));
+  CUDA_CHECK(cudaMallocSafe(&device_decomp_temp, decomp_temp_bytes));
 
   // allocate statuses
   nvcompStatus_t* device_statuses;
-  CUDA_CHECK(cudaMalloc(&device_statuses, sizeof(nvcompStatus_t)*batch_size));
+  CUDA_CHECK(cudaMallocSafe(&device_statuses, sizeof(nvcompStatus_t)*batch_size));
 
   // Also allocate an array to store the actual_uncompressed_bytes.
   // Note that we could use nullptr for this. We already have the 
   // actual sizes computed during the call to nvcompBatchedLZ4GetDecompressSizeAsync.
   size_t* device_actual_uncompressed_bytes;
-  CUDA_CHECK(cudaMalloc(&device_actual_uncompressed_bytes, sizeof(size_t)*batch_size));
+  CUDA_CHECK(cudaMallocSafe(&device_actual_uncompressed_bytes, sizeof(size_t)*batch_size));
 
   // And finally, call the decompression routine.
   // This decompresses each input, device_compressed_ptrs[i], and places the decompressed

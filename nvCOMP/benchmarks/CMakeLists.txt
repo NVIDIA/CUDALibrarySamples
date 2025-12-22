@@ -19,8 +19,25 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
   message(STATUS "Building standalone nvCOMP benchmarks.")
 
-  # Options
-  option(BUILD_STATIC "Use the static build of nvCOMP" OFF)
+  option(SKIP_LINKING_WITH_STATIC_NVCOMP
+    "By default, the executables are compiled once with the static and once with the dynamic nvCOMP library.\
+     If ON, don't create executables that are linked against the static nvCOMP library."
+    OFF
+  )
+
+  option(SKIP_LINKING_WITH_DYNAMIC_NVCOMP
+    "By default, the executables are compiled once with the static and once with the dynamic nvCOMP library.\
+     If ON, don't create executables that are linked against the dynamic nvCOMP library."
+    OFF
+  )
+
+  set(NVCOMP_LINK_LIBS "")
+  if (NOT SKIP_LINKING_WITH_STATIC_NVCOMP)
+    list(APPEND NVCOMP_LINK_LIBS "static")
+  endif()
+  if (NOT SKIP_LINKING_WITH_DYNAMIC_NVCOMP)
+    list(APPEND NVCOMP_LINK_LIBS "dynamic")
+  endif()
 
   # Compilation settings
   set(NVCOMP_NAMESPACE "nvcomp::")
@@ -36,9 +53,6 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
       set(GPU_ARCHS ${GPU_ARCHS} "101")
     endif()
   endif()
-  if (BUILD_STATIC)
-    add_compile_definitions("NVCOMP_STATIC_DEFINE")
-  endif()
 
   find_package(nvcomp REQUIRED)
 else()
@@ -50,54 +64,77 @@ endif()
 
 # Making the compilation consistent between standalone and library build modes
 if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "13")
-  set(CMAKE_CXX_STANDARD 11)
-  set(CMAKE_CUDA_STANDARD 11)
+  set(CMAKE_CXX_STANDARD 14)
+  set(CMAKE_CUDA_STANDARD 14)
 else()
   # Note: Thrust requires C++17
   set(CMAKE_CXX_STANDARD 17)
   set(CMAKE_CUDA_STANDARD 17)
 endif()
 set(CMAKE_CXX_EXTENSIONS OFF)
-
-if (BUILD_STATIC)
-  set(NVCOMP_LIBRARY_NAME "${NVCOMP_NAMESPACE}nvcomp_static")
-else()
-  set(NVCOMP_LIBRARY_NAME "${NVCOMP_NAMESPACE}nvcomp")
-endif()
-
-file(GLOB BENCHMARK_SOURCES *.cpp *.cu)
 set(CMAKE_BUILD_RPATH_USE_ORIGIN TRUE)
 
-foreach(BENCHMARK_SOURCE ${BENCHMARK_SOURCES})
-  # cut off suffixes
-  string(REPLACE ".cpp" "" BENCHMARK_NAME ${BENCHMARK_SOURCE})
-  string(REPLACE ".cu" "" BENCHMARK_NAME ${BENCHMARK_NAME})
-  get_filename_component(BARE_NAME ${BENCHMARK_NAME} NAME)
-  if (BARE_NAME STREQUAL "benchmark_crc32")
-    # Handle CRC32 benchmark separately
-    continue()
+file(GLOB BENCHMARK_SOURCES *.cpp *.cu)
+
+function(add_benchmark BENCHMARK_SOURCE NVCOMP_LIB_TYPE)
+  set(multiValueArgs LINK_LIBRARIES)
+  cmake_parse_arguments(PARSE_ARGV 2 OPTIONAL "" "" "${multiValueArgs}")
+
+  get_filename_component(BARE_NAME "${BENCHMARK_SOURCE}" NAME_WE)
+
+  if (NVCOMP_LIB_TYPE STREQUAL "static")
+    set(TARGET_NAME ${BARE_NAME}_static)
+    set(NVCOMP_LIB "${NVCOMP_NAMESPACE}nvcomp_static")
+  else()
+    set(TARGET_NAME ${BARE_NAME}_dynamic)
+    set(NVCOMP_LIB "${NVCOMP_NAMESPACE}nvcomp")
   endif()
-  add_executable(${BARE_NAME} ${BENCHMARK_SOURCE})
-  set_property(TARGET ${BARE_NAME} PROPERTY CUDA_ARCHITECTURES ${GPU_ARCHS})
-  target_link_libraries(${BARE_NAME} PRIVATE ${NVCOMP_LIBRARY_NAME} CUDA::cudart_static)
 
-  target_include_directories(${BARE_NAME} PRIVATE
-      "$<BUILD_INTERFACE:${nvcomp_SOURCE_DIR}/include>")
+  add_executable(${TARGET_NAME} ${BENCHMARK_SOURCE})
 
-  install(TARGETS ${BARE_NAME}
-    RUNTIME DESTINATION bin
-    COMPONENT tests 
-    EXCLUDE_FROM_ALL)
-endforeach(BENCHMARK_SOURCE ${BENCHMARK_SOURCES})
+  set_target_properties(${TARGET_NAME} PROPERTIES
+    CUDA_ARCHITECTURES "${GPU_ARCHS}"
+    OUTPUT_NAME ${BARE_NAME}
+  )
 
-if (TARGET CUDA::curand_static)
-  message(STATUS "Found CUDA::curand_static, building CRC32 benchmark")
-  # CRC32 benchmark requires curand
-  add_executable(benchmark_crc32 benchmark_crc32.cpp)
-  set_property(TARGET benchmark_crc32 PROPERTY CUDA_ARCHITECTURES ${GPU_ARCHS})
-  target_link_libraries(benchmark_crc32 PRIVATE ${NVCOMP_LIBRARY_NAME} CUDA::cudart_static CUDA::curand_static)
-  target_include_directories(benchmark_crc32 PRIVATE "$<BUILD_INTERFACE:${nvcomp_SOURCE_DIR}/include>")
-  install(TARGETS benchmark_crc32 RUNTIME DESTINATION bin COMPONENT tests EXCLUDE_FROM_ALL)
-else()
-  message(STATUS "Skipping CRC32 benchmark, CUDA::curand_static not found")
-endif()
+  # MSVC creates .exp, .lib and .pdb files for executables.
+  # They need to be stored in different directories
+  # for the dynamic and static builds.
+  if (NVCOMP_LIB_TYPE STREQUAL "static")
+    set_target_properties(${TARGET_NAME} PROPERTIES
+      RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/$<0:>"
+      ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib/$<0:>"
+      LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib/$<0:>"
+    )
+    set(INSTALL_DESTINATION bin)
+    target_compile_definitions(${TARGET_NAME} PRIVATE "NVCOMP_STATIC_DEFINE")
+  else()
+    set_target_properties(${TARGET_NAME} PROPERTIES
+      RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/dynamic_bin/$<0:>"
+      ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/dynamic_lib/$<0:>"
+      LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/dynamic_lib/$<0:>"
+    )
+    set(INSTALL_DESTINATION dynamic_bin)
+  endif()
+
+  target_link_libraries(${TARGET_NAME} PRIVATE ${NVCOMP_LIB} CUDA::cudart_static ${OPTIONAL_LINK_LIBRARIES})
+
+  install(TARGETS ${TARGET_NAME} DESTINATION ${INSTALL_DESTINATION} COMPONENT tests)
+endfunction()
+
+foreach(NVCOMP_LIB_TYPE ${NVCOMP_LINK_LIBS})
+  foreach(BENCHMARK_SOURCE ${BENCHMARK_SOURCES})
+    get_filename_component(BARE_NAME "${BENCHMARK_SOURCE}" NAME_WE)
+    if (BARE_NAME STREQUAL "benchmark_crc32")
+      if (TARGET CUDA::curand_static)
+        add_benchmark(${BENCHMARK_SOURCE} ${NVCOMP_LIB_TYPE}
+          LINK_LIBRARIES CUDA::curand_static
+        )
+      else()
+        message(STATUS "Skipping CRC32 benchmark, CUDA::curand_static not found")
+      endif()
+    else()
+      add_benchmark(${BENCHMARK_SOURCE} ${NVCOMP_LIB_TYPE})
+    endif()
+  endforeach(BENCHMARK_SOURCE)
+endforeach()

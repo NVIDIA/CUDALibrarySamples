@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #include "snappy.h"
 #include "nvcomp/snappy.h"
 #include "BatchData.h"
@@ -81,7 +80,7 @@ static void run_example(const std::vector<std::vector<char>>& data,
   }
 
   void* d_comp_temp;
-  CUDA_CHECK(cudaMalloc(&d_comp_temp, comp_temp_bytes));
+  CUDA_CHECK(cudaMallocSafe(&d_comp_temp, comp_temp_bytes));
 
   size_t max_out_bytes;
   status = nvcompBatchedSnappyCompressGetMaxOutputChunkSize(

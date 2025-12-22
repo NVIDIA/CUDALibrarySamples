@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #include "benchmark_template_chunked.cuh"
 #include "nvcomp/deflate.h"
 

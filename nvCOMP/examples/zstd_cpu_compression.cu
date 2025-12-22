@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #include "zstd.h"
 #include "nvcomp/zstd.h"
 #include "BatchData.h"
@@ -102,10 +101,10 @@ static void run_example(const std::vector<std::vector<char>>& data,
 
   // Allocate necessary buffers
   nvcompStatus_t* d_status_ptrs;
-  CUDA_CHECK(cudaMalloc(&d_status_ptrs, chunk_count * sizeof(nvcompStatus_t)));
+  CUDA_CHECK(cudaMallocSafe(&d_status_ptrs, chunk_count * sizeof(nvcompStatus_t)));
 
   size_t* d_decomp_sizes;
-  CUDA_CHECK(cudaMalloc(&d_decomp_sizes, chunk_count * sizeof(size_t)));
+  CUDA_CHECK(cudaMallocSafe(&d_decomp_sizes, chunk_count * sizeof(size_t)));
 
   // CUDA events to measure decompression time
   cudaEvent_t start, end;
@@ -143,7 +142,7 @@ static void run_example(const std::vector<std::vector<char>>& data,
   size_t decomp_temp_bytes = std::min(decomp_temp_bytes_sync, decomp_temp_bytes_async);
 
   void* d_decomp_temp;
-  CUDA_CHECK(cudaMalloc(&d_decomp_temp, decomp_temp_bytes));
+  CUDA_CHECK(cudaMallocSafe(&d_decomp_temp, decomp_temp_bytes));
 
   CUDA_CHECK(cudaStreamSynchronize(stream));
 

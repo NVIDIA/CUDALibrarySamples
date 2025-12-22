@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #include <nvcomp/native/gdeflate_cpu.h>
 #include <nvcomp/gdeflate.h>
 #include "BatchData.h"
@@ -114,13 +113,13 @@ static void run_example(const std::vector<std::vector<char>>& data,
   }
 
   void* d_decomp_temp;
-  CUDA_CHECK(cudaMalloc(&d_decomp_temp, decomp_temp_bytes));
+  CUDA_CHECK(cudaMallocSafe(&d_decomp_temp, decomp_temp_bytes));
 
   size_t* d_decomp_sizes;
-  CUDA_CHECK(cudaMalloc(&d_decomp_sizes, chunk_count * sizeof(size_t)));
+  CUDA_CHECK(cudaMallocSafe(&d_decomp_sizes, chunk_count * sizeof(size_t)));
 
   nvcompStatus_t* d_statuses;
-  CUDA_CHECK(cudaMalloc(&d_statuses, chunk_count * sizeof(nvcompStatus_t)));
+  CUDA_CHECK(cudaMallocSafe(&d_statuses, chunk_count * sizeof(nvcompStatus_t)));
 
   CUDA_CHECK(cudaStreamSynchronize(stream));
 

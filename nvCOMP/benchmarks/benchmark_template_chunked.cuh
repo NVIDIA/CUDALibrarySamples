@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #ifndef NVCOMP_BENCHMARKS_BENCHMARK_TEMPLATE_CHUNKED_CUH
 #define NVCOMP_BENCHMARKS_BENCHMARK_TEMPLATE_CHUNKED_CUH
 
@@ -35,6 +34,7 @@
 #include <memory>
 
 #include <thrust/device_vector.h>
+#include <cuda_fp16.h>
 
 #include "benchmark_common.h"
 
@@ -73,8 +73,9 @@ static thrust::device_vector<T> allocateThrustDeviceVectorSafe(size_t size)
     CUDA_CHECK(cudaMemGetInfo(&gpu_bytes_free, &gpu_bytes_total));
     if (gpu_bytes_free < size * sizeof(T))
     {
-      std::cerr << "WARNING: Cannot fit data in GPU memory. Bytes requested: " << size * sizeof(T) <<
-        " > bytes available: " << gpu_bytes_free << ". Could not run benchmark." << std::endl;
+      std::cerr << "WARNING: Cannot fit data in GPU memory. Bytes requested: " << size * sizeof(T)
+                << " > bytes available: " << gpu_bytes_free << ". Could not run benchmark."
+                << std::endl;
     }
     std::exit(3);
   }
@@ -93,8 +94,9 @@ static thrust::device_vector<T> allocateThrustDeviceVectorSafe(const std::vector
     CUDA_CHECK(cudaMemGetInfo(&gpu_bytes_free, &gpu_bytes_total));
     if (gpu_bytes_free < host_vector.size() * sizeof(T))
     {
-      std::cerr << "WARNING: Cannot fit data in GPU memory. Bytes requested: " << host_vector.size() * sizeof(T) <<
-        " > bytes available: " << gpu_bytes_free << ". Could not run benchmark." << std::endl;
+      std::cerr << "WARNING: Cannot fit data in GPU memory. Bytes requested: " << host_vector.size() * sizeof(T)
+                << " > bytes available: " << gpu_bytes_free << ". Could not run benchmark."
+                << std::endl;
     }
     std::exit(3);
   }
@@ -328,34 +330,6 @@ private:
   size_t m_size;
 };
 
-std::vector<char> readFile(const std::string& filename)
-{
-  std::ifstream fin(filename, std::ifstream::binary);
-  if (!fin) {
-    std::cerr << "ERROR: Unable to open \"" << filename << "\" for reading."
-              << std::endl;
-    throw std::runtime_error("Error opening file for reading.");
-  }
-
-  fin.exceptions(std::ifstream::failbit | std::ifstream::badbit);
-
-  fin.seekg(0, std::ios_base::end);
-  auto fileSize = static_cast<std::streamoff>(fin.tellg());
-  fin.seekg(0, std::ios_base::beg);
-
-  std::vector<char> host_data(fileSize);
-  fin.read(host_data.data(), fileSize);
-
-  if (!fin) {
-    std::cerr << "ERROR: Unable to read all of file \"" << filename << "\"."
-              << std::endl;
-    throw std::runtime_error("Error reading file.");
-  }
-
-  return host_data;
-}
-
-
 std::vector<std::vector<char>> readFileWithPageSizes(const std::string& filename)
 {
   std::vector<std::vector<char>> res;
@@ -375,58 +349,6 @@ std::vector<std::vector<char>> readFileWithPageSizes(const std::string& filename
 }
 
 
-std::vector<std::vector<char>>
-multi_file(const std::vector<std::string>& filenames,
-    const bool perform_chunking, const size_t chunk_size,
-    const size_t multiple_of, const size_t duplicate_count)
-{
-  std::vector<std::vector<char>> split_data;
-
-  for (auto const& filename : filenames) {
-    std::vector<char> filedata = readFile(filename);
-    const size_t filedata_original_size = filedata.size();
-    const size_t filedata_padding_size = (multiple_of - (filedata_original_size % multiple_of)) % multiple_of;
-    const size_t filedata_padded_size = filedata_original_size + filedata_padding_size;
-
-    if (perform_chunking) {
-      const size_t num_chunks
-          = (filedata_padded_size + chunk_size - 1) / chunk_size;
-      size_t offset = 0;
-      for (size_t c = 0; c < num_chunks; ++c) {
-        const size_t size_of_this_chunk = std::min(chunk_size, filedata_padded_size-offset);
-        std::vector<char> tmp(size_of_this_chunk, 0);
-        if(offset < filedata_original_size) {
-          std::copy(filedata.data() + offset,
-                    filedata.data() + offset + min(filedata_original_size-offset, size_of_this_chunk),
-                    tmp.begin());
-        }
-        split_data.emplace_back(std::move(tmp));
-
-        offset += size_of_this_chunk;
-        assert(offset <= filedata_padded_size);
-      }
-    } else {
-       split_data.emplace_back(filedata);
-    }
-  }
-
-  if (duplicate_count > 1) {
-    // Make duplicate_count copies of the contents of split_data,
-    // but copy into a separate std::vector, to avoid issues with the
-    // memory being reallocated while the contents are being copied.
-    std::vector<std::vector<char>> duplicated;
-    const size_t original_num_chunks = split_data.size();
-    duplicated.reserve(original_num_chunks * duplicate_count);
-    for (size_t d = 0; d < duplicate_count; ++d) {
-      duplicated.insert(duplicated.end(), split_data.begin(), split_data.end());
-    }
-    // Now that there are duplicate_count copies of split_data in
-    // duplicated, swap them, so that they're in split_data.
-    duplicated.swap(split_data);
-  }
-
-  return split_data;
-}
 }
 
 
@@ -469,7 +391,9 @@ run_benchmark_template(
     const bool compressed_inputs = false,
     const bool single_output_buffer = false,
     const std::string& output_compressed_filename = "",
-    const std::string& output_decompressed_filename = "")
+    const std::string& output_decompressed_filename = "",
+    const double lossy_delta = 0.0,
+    const int lossy_fp_bits = 0)
 {
   benchmark_assert(IsInputValid(data, compressed_inputs), "Invalid input data");
 
@@ -540,11 +464,11 @@ run_benchmark_template(
     }
 
     size_t* d_decomp_sizes;
-    cudaMallocSafe(
-        &d_decomp_sizes, batch_size*sizeof(*d_decomp_sizes));
+    CUDA_CHECK(cudaMallocSafe(
+        &d_decomp_sizes, batch_size*sizeof(*d_decomp_sizes)));
     size_t* d_uncomp_sizes;
-    cudaMallocSafe(
-        &d_uncomp_sizes, batch_size*sizeof(*d_uncomp_sizes));
+    CUDA_CHECK(cudaMallocSafe(
+        &d_uncomp_sizes, batch_size*sizeof(*d_uncomp_sizes)));
     std::vector<size_t> h_ucomp_sizes(batch_size);
 
     // Note:
@@ -563,10 +487,10 @@ run_benchmark_template(
           "BatchedCompressGetTempSizeAsync() failed.");
 
       void* d_comp_temp;
-      cudaMallocSafe(&d_comp_temp, comp_temp_bytes);
+      CUDA_CHECK(cudaMallocSafe(&d_comp_temp, comp_temp_bytes));
 
       nvcompStatus_t* d_comp_statuses;
-      cudaMallocSafe(&d_comp_statuses, batch_size * sizeof(nvcompStatus_t));
+      CUDA_CHECK(cudaMallocSafe(&d_comp_statuses, batch_size * sizeof(nvcompStatus_t)));
 
       CUDA_CHECK(cudaEventRecord(start, stream));
 
@@ -680,8 +604,8 @@ run_benchmark_template(
 
     // Decompression
     nvcompStatus_t* d_decomp_statuses;
-    cudaMallocSafe(
-        &d_decomp_statuses, batch_size * sizeof(nvcompStatus_t));
+    CUDA_CHECK(cudaMallocSafe(
+        &d_decomp_statuses, batch_size * sizeof(nvcompStatus_t)));
 
     status = BatchedDecompressGetTempSizeAsync(
         batch_size,
@@ -709,7 +633,7 @@ run_benchmark_template(
                                         decomp_temp_bytes_sync);
 
     void* d_decomp_temp;
-    cudaMallocSafe(&d_decomp_temp, decomp_temp_bytes);
+    CUDA_CHECK(cudaMallocSafe(&d_decomp_temp, decomp_temp_bytes));
 
     std::vector<void*> h_output_ptrs(batch_size);
     thrust::device_vector<void*> d_output_ptrs_tight;
@@ -757,9 +681,9 @@ run_benchmark_template(
       }
 
       for (size_t i = 0; i < batch_size; ++i) {
-          cudaMallocSafe(&h_output_ptrs[i], h_ucomp_sizes[i]);
+          CUDA_CHECK(cudaMallocSafe(&h_output_ptrs[i], h_ucomp_sizes[i]));
       }
-      cudaMallocSafe(&d_output_ptrs, sizeof(*d_output_ptrs)*batch_size);
+      CUDA_CHECK(cudaMallocSafe(&d_output_ptrs, sizeof(*d_output_ptrs)*batch_size));
       // Note:
       // output alignment requirements are implicitly met
       CUDA_CHECK(cudaMemcpy(d_output_ptrs, h_output_ptrs.data(),
@@ -813,19 +737,25 @@ run_benchmark_template(
     // only verify last iteration
     if (iter + 1 == count && !compressed_inputs) {
       std::vector<void*> h_input_ptrs(batch_size);
-      CUDA_CHECK(cudaMemcpy(h_input_ptrs.data(), input_data->ptrs(),
-          sizeof(void*)*batch_size, cudaMemcpyDeviceToHost));
-      for (size_t ix_chunk = 0; ix_chunk < batch_size; ++ix_chunk) {
-        std::vector<uint8_t> exp_data(h_input_sizes[ix_chunk]);
-        CUDA_CHECK(cudaMemcpy(exp_data.data(), h_input_ptrs[ix_chunk],
-            h_input_sizes[ix_chunk], cudaMemcpyDeviceToHost));
-        std::vector<uint8_t> act_data(h_decomp_sizes[ix_chunk]);
-        CUDA_CHECK(cudaMemcpy(act_data.data(), h_output_ptrs[ix_chunk],
-        h_decomp_sizes[ix_chunk], cudaMemcpyDeviceToHost));
-        for (size_t ix_byte = 0; ix_byte < h_input_sizes[ix_chunk]; ++ix_byte) {
-          if (act_data[ix_byte] != exp_data[ix_byte]) {
-            benchmark_assert(false, "Batch item decompressed output did not match input: ix_chunk="+std::to_string(ix_chunk) + ": ix_byte=" + std::to_string(ix_byte) + " act=" + std::to_string(act_data[ix_byte]) + " exp=" +
-            std::to_string(exp_data[ix_byte]));
+      CUDA_CHECK(cudaMemcpy(h_input_ptrs.data(), input_data->ptrs(), sizeof(void*)*batch_size, cudaMemcpyDeviceToHost));
+
+      if (lossy_delta > 0.0) {
+        // Use lossy tolerance verification
+        verify_lossy_tolerance(h_input_ptrs, h_output_ptrs, h_input_sizes, lossy_delta, lossy_fp_bits, true);
+      } else {
+        // Use exact byte comparison for lossless
+        for (size_t ix_chunk = 0; ix_chunk < batch_size; ++ix_chunk) {
+          std::vector<uint8_t> exp_data(h_input_sizes[ix_chunk]);
+          CUDA_CHECK(cudaMemcpy(exp_data.data(), h_input_ptrs[ix_chunk],
+              h_input_sizes[ix_chunk], cudaMemcpyDeviceToHost));
+          std::vector<uint8_t> act_data(h_decomp_sizes[ix_chunk]);
+          CUDA_CHECK(cudaMemcpy(act_data.data(), h_output_ptrs[ix_chunk],
+          h_decomp_sizes[ix_chunk], cudaMemcpyDeviceToHost));
+          for (size_t ix_byte = 0; ix_byte < h_input_sizes[ix_chunk]; ++ix_byte) {
+            if (act_data[ix_byte] != exp_data[ix_byte]) {
+              benchmark_assert(false, "Batch item decompressed output did not match input: ix_chunk="+std::to_string(ix_chunk) + ": ix_byte=" + std::to_string(ix_byte) + " act=" + std::to_string(act_data[ix_byte]) + " exp=" +
+              std::to_string(exp_data[ix_byte]));
+            }
           }
         }
       }
@@ -1027,6 +957,7 @@ args_type parse_args(int argc, char ** argv) {
   args.chunk_size = 65536;
   args.compressed_inputs = false;
   args.single_output_buffer = false;
+
 
   const std::vector<parameter_type> params{
     {"?", "help", "Show options.", ""},
