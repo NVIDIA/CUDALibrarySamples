@@ -143,7 +143,7 @@ struct img_t
     void copyFrom(const img_t& src);
 
     void readFromBmpFile(const std::string& fileName, const per_gpu& pg);
-    void uploadToDevice(per_thread& pt, const params& p);
+    void uploadToDevice(per_thread& pt);
 
     void allocateInputDeviceBuf(per_gpu& pg, per_thread& pt);
     void deallocateInputDeviceBuf(per_gpu& pg, per_thread& pt);
@@ -397,10 +397,9 @@ void img_t::encodeHost(per_thread_encode_slot& es, const params& p)
 }
 
 // Upload the raw image buffer to the device.
-void img_t::uploadToDevice(per_thread& pt, const params& p)
+void img_t::uploadToDevice(per_thread& pt)
 {
-    if (!p.preallocate)
-        CHECK_CUDA(cudaMemcpyAsync(dev_img.channel[0], input_host_buf, dev_buf_size, cudaMemcpyHostToDevice, pt.stream));
+    CHECK_CUDA(cudaMemcpyAsync(dev_img.channel[0], input_host_buf, dev_buf_size, cudaMemcpyHostToDevice, pt.stream));
 }
 
 // Encode the image on the device.
@@ -511,7 +510,7 @@ int per_thread::findEncodeSlot(const params& p, per_gpu& pg, const img_t& img, i
     for (int i = 0; i < NUM_BACKENDS - 1; ++i) {
         int b = pg.backend_order[i];
         backend_t& be = pg.backends[b];
-        if (be.enabled && (be.num_jobs_done - be.num_jobs_started < p.num_threads * 2) && be.isSupported(img, p)) {
+        if (be.enabled && (be.num_jobs_started - be.num_jobs_done < p.num_threads * 2) && be.isSupported(img, p)) {
             nextBackend = b;
             break;
         }
@@ -591,6 +590,10 @@ void per_gpu::create(params& p)
             }
         }
     }
+
+    // The hardware backend can get stuck if we don't retrieve bitstream
+    if (backends[NVJPEG_ENC_BACKEND_HARDWARE].enabled)
+        p.download_bitstream = true;
 }
 
 // Destroy all handles and buffers.
@@ -625,7 +628,7 @@ void per_gpu::preAllocateBuffers(const std::string& fileName, const params& p, c
             pt.img[i].copyFrom(templateImg);
             pt.img[i].allocateInputDeviceBuf(*this, pt);
             pt.img[i].allocateOutputHostBuf(pt.img[i].padded_dev_buf_size);
-            pt.img[i].uploadToDevice(pt, p);
+            pt.img[i].uploadToDevice(pt);
         }
     }
     CHECK_CUDA(cudaDeviceSynchronize());
@@ -743,7 +746,8 @@ encode_result encodeAllImages(params& p)
                 }
                 es.img = &img;
                 pt.prevEs = &es;
-                img.uploadToDevice(pt, p);
+                if (!p.preallocate)
+                    img.uploadToDevice(pt);
                 img.encodeDevice(es, p);
             }
 

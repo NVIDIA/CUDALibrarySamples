@@ -412,7 +412,7 @@ int per_thread::findDecodeSlot(const params& p, per_gpu& pg, const img_t& img, i
     for (int i = 0; i < NUM_BACKENDS; ++i) {
         int b = pg.backend_order[i];
         backend_t& be = pg.backends[b];
-        if (be.enabled && (be.num_jobs_done - be.num_jobs_started < p.num_threads * 2) && be.isSupported(img)) {
+        if (be.enabled && (be.num_jobs_started - be.num_jobs_done < p.num_threads * 2) && be.isSupported(img)) {
             nextBackend = b;
             break;
         }
