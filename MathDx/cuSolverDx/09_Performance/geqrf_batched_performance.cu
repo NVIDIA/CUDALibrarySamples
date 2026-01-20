@@ -25,7 +25,7 @@
 #include "../common/device_io.hpp"
 #include "../common/measure.hpp"
 #include "../common/print.hpp"
-#include "../common/cusolver_reference_qr.hpp"
+#include "../common/cublas_reference_geqrf_gels.hpp"
 
 // This example demonstrates how to use cuSolverDx API to compute and measure performance of QR factorization on a batched m x n matrix
 
@@ -70,19 +70,15 @@ __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(DataType
 }
 
 template<int Arch>
-int geqrf_batched() {
+int geqrf_batched_performance() {
 
     using namespace cusolverdx;
     using Base   = decltype(Size<128, 32>() + Precision<float>() + Type<type::real>() + Function<geqrf>() + SM<Arch>() + Block());
     using Solver = decltype(Base() + BatchesPerBlock<Base::suggested_batches_per_block>());
 
-#ifdef CUSOLVERDX_EXAMPLE_DETAIL_NVCC_12_2_BUG_WORKAROUND
-    using data_type      = typename example::a_data_type_t<Solver>;
-    using cuda_data_type = typename example::a_cuda_data_type_t<Solver>;
-#else
     using data_type      = typename Solver::a_data_type;
     using cuda_data_type = typename Solver::a_cuda_data_type;
-#endif
+
     constexpr unsigned bpb = Solver::batches_per_block;
     std::cout << "Using Suggested Batches per block = " << bpb << std::endl;
     std::cout << "Suggested BlockDim = " << Solver::suggested_block_dim.x << std::endl;
@@ -104,9 +100,7 @@ int geqrf_batched() {
     std::vector<data_type> A(input_size_a * padded_batches);
     common::fillup_random_matrix<data_type>(is_col_maj_a, m, n, A.data(), lda, false, false, 2, 4, batches); // not symmetric and not diagonally dominant
 
-    std::vector<data_type> L(input_size_a * padded_batches);
     std::vector<data_type> tau(min(m, n) * padded_batches, 0);
-    std::vector<data_type> tau_ref(min(m, n) * padded_batches, 0);
     data_type*             d_A     = nullptr;
     data_type*             d_A_out = nullptr;
     data_type*             d_tau   = nullptr;
@@ -135,6 +129,10 @@ int geqrf_batched() {
 
     common::print_perf("cuSolverDx-GEQRF", batches, m, n, 1, gflops, gb_s, ms, Solver::block_dim.x);
 
+    // Compare with cublas batched GEQRF
+    std::vector<data_type> dummyB;
+    common::reference_cublas_geqrf_gels<data_type, cuda_data_type, false /* do solver */, true /* check blas perf */>(A, dummyB, tau, m, n, 1, batches, is_col_maj_a);
+    
     /* free resources */
     CUDA_CHECK_AND_EXIT(cudaFree(d_A));
     CUDA_CHECK_AND_EXIT(cudaFree(d_A_out));
@@ -144,9 +142,9 @@ int geqrf_batched() {
 }
 
 template<int Arch>
-struct geqrf_batched_functor {
-    int operator()() { return geqrf_batched<Arch>(); }
+struct geqrf_batched_performance_functor {
+    int operator()() { return geqrf_batched_performance<Arch>(); }
 };
 
 
-int main() { return common::run_example_with_sm<geqrf_batched_functor>(); }
+int main() { return common::run_example_with_sm<geqrf_batched_performance_functor>(); }

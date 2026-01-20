@@ -16,7 +16,7 @@
 cmake_minimum_required(VERSION 3.18.0)
 
 # cuBLASDx Examples project
-project(cublasdx_examples VERSION 0.4.1 LANGUAGES CXX CUDA)
+project(cublasdx_examples VERSION 0.5.0 LANGUAGES CXX CUDA)
 
 # PROJECT_IS_TOP_LEVEL is available since 3.21
 if(CMAKE_VERSION VERSION_LESS 3.21)
@@ -111,7 +111,7 @@ if(PROJECT_IS_TOP_LEVEL OR CUBLASDX_TEST_PACKAGE)
     find_package(mathdx REQUIRED CONFIG
         PATHS
             "${PROJECT_SOURCE_DIR}/../.." # example/cublasdx
-            "/opt/nvidia/mathdx/25.06"
+            "/opt/nvidia/mathdx/25.12"
     )
 endif()
 
@@ -124,8 +124,6 @@ foreach(CUDA_ARCH ${CUBLASDX_CUDA_ARCHITECTURES})
     # Extract SM from SM-real/SM-virtual
     string(REPLACE "-" ";" CUDA_ARCH_LIST ${CUDA_ARCH})
     list(GET CUDA_ARCH_LIST 0 ARCH)
-    # Remove "a"
-    string(REPLACE "a" "" ARCH "${ARCH}")
     # Remove "f"
     string(REPLACE "f" "" ARCH "${ARCH}")
 
@@ -191,7 +189,7 @@ function(add_cufftdx_cublasdx_example GROUP_TARGET EXAMPLE_SOURCES)
             # Required to support std::tuple in device code
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--expt-relaxed-constexpr>"
             "--extended-lambda"
-             
+
     )
     set_tests_properties(${EXAMPLE_NAME}
         PROPERTIES
@@ -265,7 +263,7 @@ function(add_cublasdx_nvrtc_example GROUP_TARGET EXAMPLE_SOURCES)
     get_filename_component(EXAMPLE_DIR "${EXAMPLE_MAIN_SOURCE}" DIRECTORY)
     # Compose target name: dir_filename
     set(EXAMPLE_TARGET "${EXAMPLE_DIR}_${EXAMPLE_FILENAME}")
-    
+
     set(EXAMPLE_NAME "cuBLASDx.example.${EXAMPLE_DIR}.${EXAMPLE_FILENAME}")
      # Compose output directory: <build_dir>/<subdir>
     set(EXAMPLE_DIR "${CMAKE_CURRENT_BINARY_DIR}/${EXAMPLE_DIR}")
@@ -279,9 +277,19 @@ function(add_cublasdx_nvrtc_example GROUP_TARGET EXAMPLE_SOURCES)
             CUDA::nvrtc
             common_correctness_objects
     )
+
+    set(CUBLASDX_CUDA_INCLUDE_DIRS "${CUDAToolkit_INCLUDE_DIRS}")
+    list(LENGTH CUBLASDX_CUDA_INCLUDE_DIRS CUDA_INCLUDE_LENGTH)
+
+    if(${CUDA_INCLUDE_LENGTH} GREATER 1)
+        list(GET CUBLASDX_CUDA_INCLUDE_DIRS 0 CUBLASDX_CUDA_INCLUDE_DIR)
+    else()
+        set(CUBLASDX_CUDA_INCLUDE_DIR "${CUBLASDX_CUDA_INCLUDE_DIRS}")
+    endif()
+
     target_compile_definitions(${EXAMPLE_TARGET}
         PRIVATE
-            CUDA_INCLUDE_DIR="${CUDAToolkit_INCLUDE_DIRS}"
+            CUDA_INCLUDE_DIR="${CUBLASDX_CUDA_INCLUDE_DIR}"
             CUTLASS_INCLUDE_DIR="${cublasdx_cutlass_INCLUDE_DIR}"
             COMMONDX_INCLUDE_DIR="${cublasdx_commondx_INCLUDE_DIR}"
             CUBLASDX_INCLUDE_DIRS="${cublasdx_INCLUDE_DIRS}"
@@ -300,7 +308,7 @@ function(add_cublasdx_nvrtc_example GROUP_TARGET EXAMPLE_SOURCES)
         RUNTIME_OUTPUT_DIRECTORY "${EXAMPLE_DIR}"
         OUTPUT_NAME "${EXAMPLE_FILENAME}"
     )
-    
+
     set_target_properties(${EXAMPLE_TARGET}
         PROPERTIES
             CUDA_ARCHITECTURES "${CUBLASDX_CUDA_ARCHITECTURES}"
@@ -323,6 +331,7 @@ add_cublasdx_nvrtc_example(cublasdx_examples 15_gemm_nvrtc/nvrtc_gemm.cpp)
 
 # cuBLASDx introduction examples
 add_cublasdx_example(cublasdx_examples 01_gemm_introduction/introduction_example.cu)
+add_cublasdx_example(cublasdx_examples 01_gemm_introduction/introduction_pipeline.cu)
 
 # cuBLASDx simple examples
 add_cublasdx_example(cublasdx_examples 02_gemm_precisions/simple_gemm_mixed_precision.cu)
@@ -343,7 +352,13 @@ add_cublasdx_example(cublasdx_examples 12_gemm_device_partial_sums/gemm_device_p
 add_cublasdx_example(cublasdx_examples 14_gemm_fused/gemm_fusion.cu)
 add_cublasdx_example(cublasdx_examples 04_gemm_blockdim/blockdim_gemm_fp16.cu)
 add_cublasdx_example(cublasdx_examples 05_gemm_batched/batched_gemm_fp64.cu)
-add_cublasdx_example(cublasdx_examples 16_dgemm_emulation/dgemm_emulation.cu)
+
+if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.1)
+    message("Enabling example 16, dgemm_emulation, CTK is compatible")
+    add_cublasdx_example(cublasdx_examples 16_dgemm_emulation/dgemm_emulation.cu)
+else()
+    message("Disabling example 16, dgemm_emulation, due to incompatible CTK (13.1 required)")
+endif()
 
 # cuBLASDx performance examples
 # Examples which measure performance are enabled only for CUDA >=11.8.0 because of an NVCC bug

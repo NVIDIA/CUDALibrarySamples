@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #ifndef CUBLASDX_EXAMPLE_COMMON_NVRTC_HPP
 #define CUBLASDX_EXAMPLE_COMMON_NVRTC_HPP
 
@@ -33,14 +32,15 @@
     } while (0)
 
 #ifndef CU_CHECK_AND_EXIT
-#    define CU_CHECK_AND_EXIT(error)                                                                        \
-        {                                                                                                   \
-            auto status = static_cast<CUresult>(error);                                                     \
-            if (status != CUDA_SUCCESS) {                                                                   \
-                const char * pstr; cuGetErrorString(status, &pstr);                                         \
-                std::cout << pstr << " " << __FILE__ << ":" << __LINE__ << std::endl;                      \
-                std::exit(status);                                                                          \
-            }                                                                                               \
+#    define CU_CHECK_AND_EXIT(error)                                                  \
+        {                                                                             \
+            auto status = static_cast<CUresult>(error);                               \
+            if (status != CUDA_SUCCESS) {                                             \
+                const char* pstr;                                                     \
+                cuGetErrorString(status, &pstr);                                      \
+                std::cout << pstr << " " << __FILE__ << ":" << __LINE__ << std::endl; \
+                std::exit(status);                                                    \
+            }                                                                         \
         }
 #endif // CU_CHECK_AND_EXIT
 
@@ -49,7 +49,7 @@ namespace example {
         template<class Type>
         inline Type get_global_from_module(CUmodule module, const char* name) {
             CUdeviceptr value_ptr;
-            size_t value_size;
+            size_t      value_size;
             CU_CHECK_AND_EXIT(cuModuleGetGlobal(&value_ptr, &value_size, module, name));
             Type value_host;
             CU_CHECK_AND_EXIT(cuMemcpyDtoH(&value_host, value_ptr, value_size));
@@ -60,12 +60,13 @@ namespace example {
             std::vector<std::string> cublasdx_include_dirs_array;
 
             auto append_multiple_dirs = [](auto& container, const std::string& semicolon_separated_dirs) {
-                if (semicolon_separated_dirs.empty()) return;
-                
+                if (semicolon_separated_dirs.empty())
+                    return;
+
                 std::stringstream ss(semicolon_separated_dirs);
-                std::string dir;
+                std::string       dir;
                 while (std::getline(ss, dir, ';')) {
-                    if (!dir.empty()) {  // Skip empty directories
+                    if (!dir.empty()) { // Skip empty directories
                         container.push_back("--include-path=" + dir);
                     }
                 }
@@ -73,59 +74,57 @@ namespace example {
 
             {
                 const char* env_ptr = std::getenv("CUBLASDX_EXAMPLE_COMMONDX_INCLUDE_DIR");
-                if(env_ptr != nullptr) {
+                if (env_ptr != nullptr) {
                     cublasdx_include_dirs_array.push_back("--include-path=" + std::string(env_ptr));
                 } else {
-                    #ifdef COMMONDX_INCLUDE_DIR
-                    {
-                        cublasdx_include_dirs_array.push_back("--include-path=" + std::string(COMMONDX_INCLUDE_DIR));
-                    }
-                    #endif
+#ifdef COMMONDX_INCLUDE_DIR
+                    { cublasdx_include_dirs_array.push_back("--include-path=" + std::string(COMMONDX_INCLUDE_DIR)); }
+#endif
                 }
             }
             {
                 const char* env_ptr = std::getenv("CUBLASDX_EXAMPLE_CUTLASS_INCLUDE_DIR");
-                if(env_ptr != nullptr) {
+                if (env_ptr != nullptr) {
                     cublasdx_include_dirs_array.push_back("--include-path=" + std::string(env_ptr));
                 } else {
-                    #ifdef CUTLASS_INCLUDE_DIR
+#ifdef CUTLASS_INCLUDE_DIR
                     cublasdx_include_dirs_array.push_back("--include-path=" + std::string(CUTLASS_INCLUDE_DIR));
-                    #endif
+#endif
                 }
             }
             {
                 const char* env_ptr = std::getenv("CUBLASDX_EXAMPLE_CUBLASDX_INCLUDE_DIR");
-                if(env_ptr != nullptr) {
+                if (env_ptr != nullptr) {
                     cublasdx_include_dirs_array.push_back("--include-path=" + std::string(env_ptr));
                 } else {
-                    #ifdef CUBLASDX_INCLUDE_DIRS
-                    append_multiple_dirs(cublasdx_include_dirs_array, std::string(CUBLASDX_INCLUDE_DIRS)); 
-                    #endif
+#ifdef CUBLASDX_INCLUDE_DIRS
+                    append_multiple_dirs(cublasdx_include_dirs_array, std::string(CUBLASDX_INCLUDE_DIRS));
+#endif
                 }
             }
             {
                 const char* env_ptr = std::getenv("CUBLASDX_EXAMPLE_CUDA_INCLUDE_DIR");
-                if(env_ptr != nullptr) {
+                if (env_ptr != nullptr) {
                     cublasdx_include_dirs_array.push_back("--include-path=" + std::string(env_ptr));
-                    // CUDA 13 created a separate include folder for CCCL
-                    #if CUDA_VERSION >= 13000
+// CUDA 13 created a separate include folder for CCCL
+#if CUDA_VERSION >= 13000
                     cublasdx_include_dirs_array.push_back("--include-path=" + std::string(env_ptr) + "/cccl");
-                    #endif
+#endif
                 } else {
-                    #ifdef CUDA_INCLUDE_DIR
+#ifdef CUDA_INCLUDE_DIR
                     cublasdx_include_dirs_array.push_back("--include-path=" + std::string(CUDA_INCLUDE_DIR));
-                    // CUDA 13 created a separate include folder for CCCL
-                    #if CUDA_VERSION >= 13000
+// CUDA 13 created a separate include folder for CCCL
+#    if CUDA_VERSION >= 13000
                     cublasdx_include_dirs_array.push_back("--include-path=" + std::string(CUDA_INCLUDE_DIR) + "/cccl");
-                    #endif
-                    #endif
+#    endif
+#endif
                 }
             }
 
             {
                 const char* env_ptr = std::getenv("CUBLASDX_EXAMPLE_USER_DIRECTORIES");
-                if(env_ptr != nullptr) {
-                    append_multiple_dirs(cublasdx_include_dirs_array, std::string(env_ptr)); 
+                if (env_ptr != nullptr) {
+                    append_multiple_dirs(cublasdx_include_dirs_array, std::string(env_ptr));
                 }
             }
             return cublasdx_include_dirs_array;
@@ -142,7 +141,8 @@ namespace example {
         inline std::string get_device_architecture_option(int device) {
             // --gpus-architecture=compute_... will generate PTX, which means NVRTC must be at least as recent as the CUDA driver;
             // --gpus-architecture=sm_... will generate SASS, which will always run on any CUDA driver from the current major
-            std::string gpu_architecture_option = "--gpu-architecture=sm_" + std::to_string(get_device_architecture(device));
+            std::string gpu_architecture_option =
+                "--gpu-architecture=sm_" + std::to_string(get_device_architecture(device));
             return gpu_architecture_option;
         }
 

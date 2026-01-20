@@ -81,13 +81,9 @@ int simple_posv_batched() {
     std::cout << "Using Suggested BlockDim = " << POSV::suggested_block_dim.x << std::endl;
     std::cout << "Using Specified BlockDim = " << POSV::block_dim.x << std::endl;
 
-#ifdef CUSOLVERDX_EXAMPLE_DETAIL_NVCC_12_2_BUG_WORKAROUND
-    using data_type      = typename example::a_data_type_t<POSV>;
-    using cuda_data_type = typename example::a_cuda_data_type_t<POSV>;
-#else
     using data_type      = typename POSV::a_data_type;
     using cuda_data_type = typename POSV::a_cuda_data_type;
-#endif
+    
     constexpr auto m    = POSV::m_size;
     constexpr auto n    = POSV::n_size;
     constexpr auto nrhs = POSV::k_size;

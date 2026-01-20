@@ -138,7 +138,7 @@ int main(int, char**) {
 
     // Obtain compilation log from the program
     if (compileResult != NVRTC_SUCCESS) {
-        for(auto o : opts) {
+        for (auto o : opts) {
             std::cout << o << std::endl;
         }
         example::nvrtc::print_program_log(program);
@@ -162,11 +162,11 @@ int main(int, char**) {
     CU_CHECK_AND_EXIT(cuInit(0));
     CU_CHECK_AND_EXIT(cuDeviceGet(&cuDevice, current_device));
 
-    #if CUDA_VERSION >= 13000
-        CU_CHECK_AND_EXIT(cuCtxCreate(&context, (CUctxCreateParams*)0, 0, cuDevice));
-    #else
-        CU_CHECK_AND_EXIT(cuCtxCreate(&context, 0, cuDevice));
-    #endif
+#if CUDA_VERSION >= 13000
+    CU_CHECK_AND_EXIT(cuCtxCreate(&context, (CUctxCreateParams*)0, 0, cuDevice));
+#else
+    CU_CHECK_AND_EXIT(cuCtxCreate(&context, 0, cuDevice));
+#endif
 
     CU_CHECK_AND_EXIT(cuModuleLoadDataEx(&module, cubin.get(), 0, 0, 0));
     CU_CHECK_AND_EXIT(cuModuleGetFunction(&kernel, module, "test_kernel"));

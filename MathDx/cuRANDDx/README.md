@@ -22,7 +22,7 @@ This folder demonstrates cuRANDDx APIs usage.
 
 ```
 mkdir build && cd build
-cmake -DCURANDDX_CUDA_ARCHITECTURES=80-real -Dmathdx_ROOT=<path_of_mathdx>/nvidia-mathdx-25.06.1/nvidia/mathdx/25.06 ../example/cuRANDDx
+cmake -DCURANDDX_CUDA_ARCHITECTURES=80-real -Dmathdx_ROOT=<path_of_mathdx>/mathdx/XX.Y ..
 make
 // Run
 ctest
@@ -39,4 +39,4 @@ For the detailed descriptions of the examples please visit [Examples](https://do
 |                              | sobol_thread_api                    | Sobol quasi-random number generator                                                             |
 |                              | pcg_thread_api                      | PCG random number generator                                                                     |
 |                              | mrg_two_distributions_thread_api    | Multiple random number distributions using MRG32k3a generator                                   |
-| NVRTC Examples               | nvrtc_pcg_thread_api                | Using cuRANDDx with NVTRC runtime compilation and nvJitLink runtime linking                     |
+| NVRTC Examples               | nvrtc_pcg_thread_api                | Using cuRANDDx with NVRTC runtime compilation and nvJitLink runtime linking                     |

@@ -52,18 +52,17 @@ __global__ void gemm_kernel(GEMMShape  const  gemm_shape,
     // ================================
     // 1. PREPARE GLOBAL MEMORY TENSORS
 
-    // Handle row-major symmetrically to col-major
-    const auto block_coord = example::get_block_coord(gemm_arr);
-
     // Create tensors for global A / B / C corresponding to set MNK, arrangement and LDs
-    auto [global_a, global_b, global_c] = example::make_device_global_tensors(gemm_shape, gemm_arr, gemm_ld, a, b, c);
+    const auto [m, n, k] = gemm_shape;
+    const auto [lda, ldb, ldc] = gemm_ld;
+    auto global_a = cublasdx::make_gmem_tensor<cute::get<0>(gemm_arr)>(a, m, k, lda);
+    auto global_b = cublasdx::make_gmem_tensor<cute::get<1>(gemm_arr)>(b, k, n, ldb);
+    auto global_c = cublasdx::make_gmem_tensor<cute::get<2>(gemm_arr)>(c, m, n, ldc);
 
-    // Get a row of tiles from A, containing K / tile_k stages
-    const auto tile_slice_a_gmem = example::get_block_tile_slice_a<BLAS>(global_a, block_coord);
-    // Get a column of tiles from B containing K / tile_k stages
-    const auto tile_slice_b_gmem = example::get_block_tile_slice_b<BLAS>(global_b, block_coord);
-    // Get a single tile from C
-    auto tile_c_gmem = example::get_block_tile_c<BLAS>(global_c, block_coord);
+    // Get tile row of A, tile col of B and tile of C
+    const auto tile_slice_a_gmem = cublasdx::get_tile_row(global_a, BLAS::a_shape, blockIdx.x);
+    const auto tile_slice_b_gmem = cublasdx::get_tile_col(global_b, BLAS::b_shape, blockIdx.y);
+    auto tile_c_gmem = cublasdx::get_tile(global_c, BLAS::c_shape, blockIdx.x, blockIdx.y);
 
     // ================================
     // 2. PREPARE SHARED MEMORY TENSORS
@@ -85,20 +84,23 @@ __global__ void gemm_kernel(GEMMShape  const  gemm_shape,
     // GEMM stages, we can just use it for iteration
     const auto k_stages = cute::get<2>(cute::shape(tile_slice_a_gmem.layout()));
 
+    auto get_tile_from_slice = [](auto& slice, auto index) {
+        return slice(cublasdx::slice, cublasdx::slice, index);
+    };
+
     // Schedule first stage into memory pipeline queue
     // cute::Int<X> is a static integer similar to std::integral_constant
     constexpr auto static_first_stage_index = cute::Int<0>{};
-    cublasdx::copy<BLAS, alignment::a>(example::get_tile_from_slice(tile_slice_a_gmem, static_first_stage_index), s_a);
-    cublasdx::copy<BLAS, alignment::b>(example::get_tile_from_slice(tile_slice_b_gmem, static_first_stage_index), s_b);
+    cublasdx::copy<BLAS, alignment::a>(get_tile_from_slice(tile_slice_a_gmem, static_first_stage_index), s_a);
+    cublasdx::copy<BLAS, alignment::b>(get_tile_from_slice(tile_slice_b_gmem, static_first_stage_index), s_b);
 
     // ==============================================
     // 4. EXECUTE GEMM WITH ACCUMULATION IN REGISTERS
 
-    auto partitioner = BLAS().suggest_partitioner();
-    auto c_frag = partitioner.make_accumulator_fragment();
-    cublasdx::clear(c_frag);
+    auto accumulator = BLAS().suggest_accumulator();
 
-    auto c_frag_accumulator = cublasdx::make_fragment_like<CValueType>(c_frag);
+    // Prepare higher precision accumulator
+    auto c_frag_accumulator = cublasdx::make_fragment_like<CValueType>(accumulator.make_empty_fragment());
     cublasdx::clear(c_frag_accumulator);
 
     #pragma unroll 1
@@ -113,12 +115,12 @@ __global__ void gemm_kernel(GEMMShape  const  gemm_shape,
 
             // Load next stage of A and B
             if(next_stage < k_stages) {
-                cublasdx::copy<BLAS, alignment::a>(example::get_tile_from_slice(tile_slice_a_gmem, next_stage), s_a_n);
-                cublasdx::copy<BLAS, alignment::b>(example::get_tile_from_slice(tile_slice_b_gmem, next_stage), s_b_n);
+                cublasdx::copy<BLAS, alignment::a>(get_tile_from_slice(tile_slice_a_gmem, next_stage), s_a_n);
+                cublasdx::copy<BLAS, alignment::b>(get_tile_from_slice(tile_slice_b_gmem, next_stage), s_b_n);
             }
 
             // Accumulate results from this stage
-            BLAS().execute(s_a, s_b, c_frag);
+            BLAS().execute(s_a, s_b, accumulator);
 
             // Swap for next iteration
             example::swap(s_a_n, s_a);
@@ -126,18 +128,17 @@ __global__ void gemm_kernel(GEMMShape  const  gemm_shape,
         }
 
         // Accumulate partial sums in higher precision
-        cublasdx::transform(c_frag, c_frag_accumulator, c_frag_accumulator, [](auto a, auto b) { return a + b; } );
+        cublasdx::transform_fragment(accumulator.get_results(), c_frag_accumulator, c_frag_accumulator, [](auto a, auto b) { return a + b; } );
 
         // Clear fast accumulator for next iteration
-        cublasdx::clear(c_frag);
+        accumulator.clear();
     }
 
     // ===========
     // 5. EPILOGUE
-    auto d_frag = cublasdx::make_fragment_like<CValueType>(c_frag);
-    cublasdx::copy_fragment<alignment::c>(tile_c_gmem, d_frag, partitioner);
+    auto d_frag = accumulator.make_partition_and_copy(tile_c_gmem);
     cublasdx::axpby(static_cast<CValueType>(alpha), c_frag_accumulator, static_cast<CValueType>(beta), d_frag);
-    cublasdx::copy_fragment<alignment::c>(d_frag, tile_c_gmem, partitioner);
+    accumulator.partition_and_copy(d_frag, tile_c_gmem);
 }
 
 template<class BLAS,
@@ -214,7 +215,7 @@ auto measure_cublasdx(GEMMShape         gemm_shape,
 //
 // The partial accumulation is performed every N iterations of the K dimension of the GEMM, which can
 // be configured via the partial_sum_iterations template parameter.
-template<unsigned int Arch>
+template<unsigned int Arch, cublasdx::sm_modifier Modifier>
 int gemm_device_partial_sums() {
 
     // ===================================
@@ -239,7 +240,7 @@ int gemm_device_partial_sums() {
     using c_compute_precision = float;
 
     // Higher precision to perform partial sums in
-    // NOTE: either this type must be implicitly convertible to 
+    // NOTE: either this type must be implicitly convertible to
     // compute type, or converter should be provided in appropriate places.
     // please refer to simple_gemm_fp32_decoupled.cu example for more details.
     using c_accumulation_precision = double;
@@ -275,10 +276,11 @@ int gemm_device_partial_sums() {
     // - precision
     // - type (real / complex)
     // this will be either precision or cublasdx::complex<precision>
-    using a_compute_value_type = example::get_value_type_t<a_compute_precision, type>;
-    using b_compute_value_type = example::get_value_type_t<b_compute_precision, type>;
-    using c_compute_value_type = example::get_value_type_t<c_compute_precision, type>;
-    using c_accumulation_value_type = example::get_value_type_t<c_accumulation_precision, type>;
+    using a_compute_value_type = cute::conditional_t<type == cublasdx::type::real, a_compute_precision, cublasdx::complex<a_compute_precision>>;
+    using b_compute_value_type = cute::conditional_t<type == cublasdx::type::real, b_compute_precision, cublasdx::complex<b_compute_precision>>;
+    using c_compute_value_type = cute::conditional_t<type == cublasdx::type::real, c_compute_precision, cublasdx::complex<c_compute_precision>>;
+
+    using c_accumulation_value_type = cute::conditional_t<type == cublasdx::type::real, c_accumulation_precision, cublasdx::complex<c_accumulation_precision>>;
 
     // Scalar multipliers
     // C = alpha * A * B + beta * C
@@ -355,8 +357,9 @@ int gemm_device_partial_sums() {
     c_compute_value_type *c_cublas = nullptr;
 
     // Use nullptr tensors to make it easier to calculate memory requirements
-    auto [global_a, global_b, global_c] =
-        example::make_device_global_tensors(global_shape, global_arrangement, global_ld, a_cublas, b_cublas, c_cublas);
+    auto global_a = cublasdx::make_gmem_tensor<cute::get<0>(global_arrangement)>(a_cublas, m, k, global_lda);
+    auto global_b = cublasdx::make_gmem_tensor<cute::get<1>(global_arrangement)>(b_cublas, k, n, global_ldb);
+    auto global_c = cublasdx::make_gmem_tensor<cute::get<2>(global_arrangement)>(c_cublas, m, n, global_ldc);
 
     CUDA_CHECK_AND_EXIT(cudaMalloc(&a_cublasdx, cublasdx::cosize(global_a.layout()) * sizeof(a_io_value_type)));
     CUDA_CHECK_AND_EXIT(cudaMalloc(&a_cublas,   cublasdx::cosize(global_a.layout()) * sizeof(a_compute_value_type)));
@@ -369,9 +372,9 @@ int gemm_device_partial_sums() {
 
     // Fill the A, B, C matrices with random values.
     {
-        auto host_a_io = example::get_random_data<a_io_value_type>(-0.1f, 0.1f, m * k);
-        auto host_b_io = example::get_random_data<b_io_value_type>(-0.1f, 0.1f, k * n);
-        auto host_c_io = example::get_random_data<c_io_value_type>(-0.1f, 0.1f, m * n);
+        auto host_a_io = example::get_random_data<a_io_value_type>(m * k);
+        auto host_b_io = example::get_random_data<b_io_value_type>(k * n);
+        auto host_c_io = example::get_random_data<c_io_value_type>(m * n);
 
         static_assert(std::is_convertible_v<a_io_value_type, a_compute_value_type>);
         auto host_a_compute = std::vector<a_compute_value_type>(host_a_io.begin(), host_a_io.end());
@@ -402,9 +405,9 @@ int gemm_device_partial_sums() {
                           cublasdx::Function<cublasdx::function::MM>() +
                           cublasdx::Arrangement<tile_arr_a, tile_arr_b, tile_arr_c>() +
                           cublasdx::Block() +
-                          cublasdx::BlockDim<tile_threads>() +
+                          cublasdx::BlockDim<tile_threads>() + cublasdx::StaticBlockDim() +
                           cublasdx::Alignment<cublasdx_alignment, cublasdx_alignment, cublasdx_alignment>() +
-                          cublasdx::SM<Arch>());
+                          cublasdx::SM<Arch, Modifier>());
 
     // =============================
     // Execute cuBLASDx and cuBLASLt
@@ -427,7 +430,7 @@ int gemm_device_partial_sums() {
     std::cout << "Compute Type C: " << example::type_string<c_compute_value_type>() << std::endl;
     std::cout << "Accumulation Type: " << example::type_string<c_accumulation_value_type>() << std::endl;
     std::cout << "Accumulation Every N Iterations: " << partial_sum_iterations << std::endl;
-    
+
     std::cout << "Dx Input Precision A: " << example::precision_string<a_io_value_type>() << std::endl;
     std::cout << "Dx Input Precision B: " << example::precision_string<b_io_value_type>() << std::endl;
     std::cout << "Dx Input Precision C: " << example::precision_string<c_io_value_type>() << std::endl;
@@ -438,7 +441,7 @@ int gemm_device_partial_sums() {
 
     auto error = example::calculate_error(host_dx_results, host_blas_results);
     std::cout << "Error = " << error << "\n";
-    
+
     if(example::is_error_acceptable<a_compute_value_type, b_compute_value_type, c_compute_value_type>(error)) {
         std::cout << "Success!\n";
     } else {
@@ -459,9 +462,9 @@ int gemm_device_partial_sums() {
 
 struct gemm_device_partial_sums_functor {
 
-    template<int Arch>
-    int operator()(std::integral_constant<int, Arch>) {
-        return gemm_device_partial_sums<Arch>();
+    template<int Arch, cublasdx::sm_modifier Modifier>
+    int operator()(std::integral_constant<int, Arch>, std::integral_constant<cublasdx::sm_modifier, Modifier>) {
+        return gemm_device_partial_sums<Arch, Modifier>();
     }
 };
 

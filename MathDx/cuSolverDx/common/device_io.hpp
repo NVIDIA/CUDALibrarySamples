@@ -19,6 +19,7 @@
 #define CUSOLVERDX_EXAMPLE_COMMON_DEVICE_IO_HPP
 
 #include <cusolverdx.hpp>
+#include <cusolverdx_io.hpp>
 
 namespace common {
 
@@ -33,29 +34,31 @@ namespace common {
         static constexpr unsigned int nthreads = Operation::max_threads_per_block;
 
         //load BPB batches of A from global memory to shared memory
+        template<unsigned int M = m, unsigned int N = n, cusolverdx::arrangement Arr = cusolverdx::arrangement_of_v_a<Operation>>
         static inline __device__ void load_a(const data_type* A, const int lda, data_type* As, const int ldas) { 
-            cusolverdx::copy_2d<Operation, m, n, cusolverdx::arrangement_of_v_a<Operation>, BPB>(A, lda, As, ldas);
+            cusolverdx::copy_2d<Operation, M, N, Arr, BPB>(A, lda, As, ldas);
             __syncthreads();
         }
 
         //store BPB batches of A from shared memory to global memory
+        template<unsigned int M = m, unsigned int N = n, cusolverdx::arrangement Arr = cusolverdx::arrangement_of_v_a<Operation>>
         static inline __device__ void store_a(const data_type* As, const int ldas, data_type* A, const int lda) {
             __syncthreads();
-            cusolverdx::copy_2d<Operation, m, n, cusolverdx::arrangement_of_v_a<Operation>, BPB>(As, ldas, A, lda);
+            cusolverdx::copy_2d<Operation, M, N, Arr, BPB>(As, ldas, A, lda);
         }
 
         //load BPB batches of B from global memory to shared memory
-        //Note that the wrapper function cannot be used for unmlq/unmqr function with right size multiplication
+        template<unsigned int M = (m > n ? m : n), unsigned int N = nrhs, cusolverdx::arrangement Brr = cusolverdx::arrangement_of_v_b<Operation>>
         static inline __device__ void load_b(const data_type* B, const int ldb, data_type* Bs, const int ldbs) {
-            cusolverdx::copy_2d<Operation, (m > n ? m : n), nrhs, cusolverdx::arrangement_of_v_b<Operation>, BPB>(B, ldb, Bs, ldbs);
+            cusolverdx::copy_2d<Operation, M, N, Brr, BPB>(B, ldb, Bs, ldbs);
             __syncthreads();
         }
 
         //store BPB batches of B from shared memory to global memory
-        //Note that the wrapper function cannot be used for unmlq/unmqr function with right size multiplication
+        template<unsigned int M = (m > n ? m : n), unsigned int N = nrhs, cusolverdx::arrangement Brr = cusolverdx::arrangement_of_v_b<Operation>>
         static inline __device__ void store_b(const data_type* Bs, const int ldbs, data_type* B, const int ldb) {
             __syncthreads();
-            cusolverdx::copy_2d<Operation, (m > n ? m : n), nrhs, cusolverdx::arrangement_of_v_b<Operation>, BPB>(Bs, ldbs, B, ldb);
+            cusolverdx::copy_2d<Operation, M, N, Brr, BPB>(Bs, ldbs, B, ldb);
         }
     };
 

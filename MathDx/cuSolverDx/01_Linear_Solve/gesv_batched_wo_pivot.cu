@@ -89,13 +89,9 @@ int gesv_batched_wo_pivot() {
     std::cout << "Suggested BlockDim = " << Solver::suggested_block_dim.x << std::endl;
     std::cout << "BlockDim Used = " << Solver::block_dim.x << std::endl;
 
-#ifdef CUSOLVERDX_EXAMPLE_DETAIL_NVCC_12_2_BUG_WORKAROUND
-    using data_type      = typename example::a_data_type_t<Solver>;
-    using cuda_data_type = typename example::a_cuda_data_type_t<Solver>;
-#else
     using data_type = typename Solver::a_data_type;
     using cuda_data_type = typename Solver::a_cuda_data_type;
-#endif
+    
     constexpr auto m            = Solver::m_size;
     constexpr auto n            = Solver::n_size;
     constexpr auto k            = Solver::k_size;

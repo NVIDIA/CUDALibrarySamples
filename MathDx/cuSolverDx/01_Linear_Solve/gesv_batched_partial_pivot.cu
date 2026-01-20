@@ -84,13 +84,9 @@ int gesv_batched_partial_pivot() {
                           TransposeMode<non_trans>() + LeadingDimension<18, 20>() + SM<Arch>() + Block() + BlockDim<64>());
     using Solver = decltype(Base() + BatchesPerBlock<Base::suggested_batches_per_block>());
 
-#ifdef CUSOLVERDX_EXAMPLE_DETAIL_NVCC_12_2_BUG_WORKAROUND
-    using data_type      = typename example::a_data_type_t<Solver>;
-    using cuda_data_type = typename example::a_cuda_data_type_t<Solver>;
-#else
     using data_type      = typename Solver::a_data_type;
     using cuda_data_type = typename Solver::a_cuda_data_type;
-#endif
+    
     constexpr unsigned bpb = Solver::batches_per_block;
     std::cout << "Using Suggested Batches per block = " << bpb << std::endl;
     std::cout << "Suggested BlockDim = " << Solver::suggested_block_dim.x << std::endl;

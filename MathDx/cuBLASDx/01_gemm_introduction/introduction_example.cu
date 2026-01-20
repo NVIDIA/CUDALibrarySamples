@@ -22,14 +22,13 @@
 #include <cublasdx.hpp>
 
 #include "../common/common.hpp"
-#include "../reference/reference.hpp"
 
 template<class GEMM>
 __global__ void gemm_kernel_shared(const typename GEMM::c_value_type  alpha,
                                    const typename GEMM::a_value_type* a,
                                    const typename GEMM::b_value_type* b,
                                    const typename GEMM::c_value_type  beta,
-                                   typename GEMM::c_value_type* c) {
+                                   typename GEMM::c_value_type*       c) {
     extern __shared__ __align__(16) char smem[];
 
     // Make global memory tensor
@@ -39,9 +38,9 @@ __global__ void gemm_kernel_shared(const typename GEMM::c_value_type  alpha,
 
     // Make shared memory tensor
     auto [smem_a, smem_b, smem_c] = cublasdx::slice_shared_memory<GEMM>(smem);
-    auto a_shared_tensor = cublasdx::make_tensor(smem_a, GEMM::get_layout_smem_a());
-    auto b_shared_tensor = cublasdx::make_tensor(smem_b, GEMM::get_layout_smem_b());
-    auto c_shared_tensor = cublasdx::make_tensor(smem_c, GEMM::get_layout_smem_c());
+    auto a_shared_tensor          = cublasdx::make_tensor(smem_a, GEMM::get_layout_smem_a());
+    auto b_shared_tensor          = cublasdx::make_tensor(smem_b, GEMM::get_layout_smem_b());
+    auto c_shared_tensor          = cublasdx::make_tensor(smem_c, GEMM::get_layout_smem_c());
 
     // Load data from global memory tensor to shared memory tensor
     using alignment = cublasdx::alignment_of<GEMM>;
@@ -61,7 +60,7 @@ __global__ void gemm_kernel_shared(const typename GEMM::c_value_type  alpha,
 template<class GEMM>
 __global__ void gemm_kernel_registers_accumulation(const typename GEMM::a_value_type* a,
                                                    const typename GEMM::b_value_type* b,
-                                                   typename GEMM::c_value_type* c) {
+                                                   typename GEMM::c_value_type*       c) {
     extern __shared__ __align__(16) char smem[];
 
     // Make global memory tensor
@@ -71,8 +70,8 @@ __global__ void gemm_kernel_registers_accumulation(const typename GEMM::a_value_
 
     // Make shared memory tensor
     auto [smem_a, smem_b] = cublasdx::slice_shared_memory_ab<GEMM>(smem);
-    auto a_shared_tensor = cublasdx::make_tensor(smem_a, GEMM::get_layout_smem_a());
-    auto b_shared_tensor = cublasdx::make_tensor(smem_b, GEMM::get_layout_smem_b());
+    auto a_shared_tensor  = cublasdx::make_tensor(smem_a, GEMM::get_layout_smem_a());
+    auto b_shared_tensor  = cublasdx::make_tensor(smem_b, GEMM::get_layout_smem_b());
 
     // Load data from global memory tensor to shared memory tensor
     using alignment = cublasdx::alignment_of<GEMM>;
@@ -80,24 +79,26 @@ __global__ void gemm_kernel_registers_accumulation(const typename GEMM::a_value_
     cublasdx::copy<GEMM, alignment::b>(b_global_tensor, b_shared_tensor);
     cublasdx::copy_wait();
 
-    // Get default partitioner
-    auto partitioner = GEMM::get_partitioner();
-    // Create Register Fragment Accumulator
-    auto c_register_fragment = partitioner.make_accumulator_fragment();
-    // Partition Global C for GEMM and load appropriate elements into register fragment
-    cublasdx::copy_fragment<alignment::c>(c_global_tensor, c_register_fragment, partitioner);
+    // Get default accumulator
+    auto accumulator = GEMM::get_accumulator();
+
+    // Partition Global C for GEMM and load appropriate elements into accumulator
+    auto c_frag = accumulator.make_partition_and_copy(c_global_tensor);
 
     // Execute GEMM with accumulation
-    GEMM().execute(a_shared_tensor, b_shared_tensor, c_register_fragment);
+    GEMM().execute(a_shared_tensor, b_shared_tensor, accumulator);
+
+    auto results = accumulator.get_results();
+    cublasdx::axpby(1.0, results, 1.0, c_frag);
 
     // Partition Global C for GEMM and store appropriate elements to global memory
-    cublasdx::copy_fragment<alignment::c>(c_register_fragment, c_global_tensor, partitioner);
+    accumulator.partition_and_copy(c_frag, c_global_tensor);
 }
 
 template<class GEMM>
 __global__ void gemm_kernel_registers(const typename GEMM::a_value_type* a,
                                       const typename GEMM::b_value_type* b,
-                                      typename GEMM::c_value_type* c) {
+                                      typename GEMM::c_value_type*       c) {
     extern __shared__ __align__(16) char smem[];
 
     // Make global memory tensor
@@ -107,8 +108,8 @@ __global__ void gemm_kernel_registers(const typename GEMM::a_value_type* a,
 
     // Make shared memory tensor
     auto [smem_a, smem_b] = cublasdx::slice_shared_memory_ab<GEMM>(smem);
-    auto a_shared_tensor = cublasdx::make_tensor(smem_a, GEMM::get_layout_smem_a());
-    auto b_shared_tensor = cublasdx::make_tensor(smem_b, GEMM::get_layout_smem_b());
+    auto a_shared_tensor  = cublasdx::make_tensor(smem_a, GEMM::get_layout_smem_a());
+    auto b_shared_tensor  = cublasdx::make_tensor(smem_b, GEMM::get_layout_smem_b());
 
     // Load data from global memory tensor to shared memory tensor
     using alignment = cublasdx::alignment_of<GEMM>;
@@ -116,23 +117,20 @@ __global__ void gemm_kernel_registers(const typename GEMM::a_value_type* a,
     cublasdx::copy<GEMM, alignment::b>(b_global_tensor, b_shared_tensor);
     cublasdx::copy_wait();
 
-    // Execute GEMM and get register fragment results and data partitioner in return
-    auto [c_register_fragment, partitioner] = GEMM().execute(a_shared_tensor, b_shared_tensor);
+    // Execute GEMM and get accumulator in return
+    auto accumulator = GEMM().execute(a_shared_tensor, b_shared_tensor);
 
     // Partition Global C for GEMM and store appropriate elements to global memory
-    cublasdx::copy_fragment<alignment::c>(c_register_fragment, c_global_tensor, partitioner);
+    accumulator.partition_and_store(c_global_tensor);
 }
 
 template<unsigned int Arch>
 int introduction_example() {
-    using GEMM = decltype(cublasdx::Size<32, 32, 32>()
-                  + cublasdx::Precision<double>()
-                  + cublasdx::Type<cublasdx::type::real>()
-                  + cublasdx::Arrangement<cublasdx::row_major, cublasdx::col_major>()
-                  + cublasdx::Function<cublasdx::function::MM>()
-                  + cublasdx::SM<Arch>()
-                  + cublasdx::Block()
-                  + cublasdx::BlockDim<256>());
+    using GEMM =
+        decltype(cublasdx::Size<32, 32, 32>() + cublasdx::Precision<double>() + cublasdx::Type<cublasdx::type::real>() +
+                 cublasdx::Arrangement<cublasdx::row_major, cublasdx::col_major>() +
+                 cublasdx::Function<cublasdx::function::MM>() + cublasdx::SM<Arch>() + cublasdx::Block() +
+                 cublasdx::BlockDim<256>());
 
     using value_type = typename example::uniform_value_type_t<GEMM>;
 
@@ -162,7 +160,8 @@ int introduction_example() {
     CUDA_CHECK_AND_EXIT(cudaPeekAtLastError());
     // Register Fragment Accumulation API: C = A * B + C
     // Invokes kernel with GEMM::block_dim threads in CUDA block
-    gemm_kernel_registers_accumulation<GEMM><<<1, GEMM::block_dim, cublasdx::get_shared_storage_size_ab<GEMM>()>>>(a, b, c);
+    gemm_kernel_registers_accumulation<GEMM>
+        <<<1, GEMM::block_dim, cublasdx::get_shared_storage_size_ab<GEMM>()>>>(a, b, c);
     CUDA_CHECK_AND_EXIT(cudaPeekAtLastError());
     // Register Fragment API: C = A * B
     // Invokes kernel with GEMM::block_dim threads in CUDA block
@@ -177,12 +176,12 @@ int introduction_example() {
 }
 
 struct introduction_example_functor {
-    template<int Arch>
-    int operator()(std::integral_constant<int, Arch>) {
+    template<int Arch, cublasdx::sm_modifier Modifier>
+    int operator()(std::integral_constant<int, Arch>, std::integral_constant<cublasdx::sm_modifier, Modifier>) {
         return introduction_example<Arch>();
     }
 };
 
 int main(int, char**) {
-    return example::sm_runner(introduction_example_functor{});
+    return example::sm_runner(introduction_example_functor {});
 }

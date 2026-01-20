@@ -24,11 +24,14 @@ endif()
 # Trigger the configuration and build explicitly during the configuration phase
 function(build_cufft_lto_helper SRC_DIR BUILD_DIR)
     message(STATUS "Configuring and building 'lto_helper' immediately...")
-
     set(LTO_COMMAND_ARGS
-    -S ${SRC_DIR}
-    -B ${BUILD_DIR}
-    -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+        -S ${SRC_DIR}
+        -B ${BUILD_DIR}
+        -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+        -Dcufftdx_INCLUDE_DIRS=${cufftdx_INCLUDE_DIRS}
+        -Dcufftdx_commondx_INCLUDE_DIR=${cufftdx_commondx_INCLUDE_DIR}
+        -Dcufftdx_cufft_MODULE_PATH=${cufftdx_cufft_MODULE_PATH}
+        -DCUFFTDX_CUFFT_MIN_VERSION=${CUFFTDX_CUFFT_MIN_VERSION}
     )
 
     # Set Toolchain file or CXX compiler for lto_helper project
@@ -47,6 +50,8 @@ function(build_cufft_lto_helper SRC_DIR BUILD_DIR)
     # Add cufft_ROOT only if it's set
     if (DEFINED cufft_ROOT)
         list(APPEND LTO_COMMAND_ARGS -Dcufft_ROOT=${cufft_ROOT})
+    elseif(DEFINED cufftdx_cufft_HOME)
+        list(APPEND LTO_COMMAND_ARGS -Dcufftdx_cufft_HOME=${cufftdx_cufft_HOME})
     endif()
 
     # Execute the command
@@ -124,3 +129,4 @@ function(run_cufft_lto_helper SRC_DIR BUILD_DIR OUTPUT_NAME DESCS CUDA_ARCHITECT
     # Propagate the result to the caller
     set(CUFFT_LTO_HELPER_RESULT ${CUFFT_LTO_HELPER_RESULT} PARENT_SCOPE)
 endfunction()
+

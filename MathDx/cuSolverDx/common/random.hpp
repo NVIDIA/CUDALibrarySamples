@@ -86,9 +86,14 @@ namespace common {
                         // upper triangular matrix
                         T Areg = A[row * row_stride + col * col_stride + batch * m * n];
                         // conjugate and copy to lower triangular matrix
-                        A[row * row_stride + col * col_stride + batch * m * n]   = Areg;
-                        A[row * row_stride + col * col_stride + batch * m * n].y = -A[row * row_stride + col * col_stride + batch * m * n].y;
+                        A[col * row_stride + row * col_stride + batch * m * n]   = Areg;
+                        A[col * row_stride + row * col_stride + batch * m * n].y = -Areg.y;
                     }
+                    // Hermitian matrix has real diagonal elements, so we need to set the diagonal elements to be real
+                    // However, LAPACK routines do not reference the imaginary parts of diagonal elements in input and explicitly set them to zero upon output, 
+                    // so cuSolverDx functions follow the same LAPACK convention.
+                    // Uncomment below to set the imaginary parts of diagonal elements to zero if needed
+                    // A[col * row_stride + col * col_stride + batch * m * n].y = 0;
                 }
             }
             if (diag_dom) {

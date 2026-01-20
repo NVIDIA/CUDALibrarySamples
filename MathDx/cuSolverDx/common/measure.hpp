@@ -183,8 +183,23 @@ namespace common {
         }
     }
 
+    template<typename DataType>
+    constexpr double get_flops_ungqr(const unsigned int m, const unsigned int n, const unsigned int k) {
+        auto fmuls = k * (2 * m * n - (m + n) * k + 2./3. * k * k  + 2 * n - k - 5. / 3.);
+        auto fadds = k * (2 * m * n - (m + n) * k + 2./3. * k * k  + n - m + 1. / 3.);
+
+        if constexpr (common::is_complex<DataType>()) {
+            return 6. * fmuls + 2. * fadds;
+        } else {
+            return fmuls + fadds;
+        }
+    }
+
     inline void print_perf(const std::string msg, const unsigned int batches, const unsigned int M, const unsigned int N, const unsigned int nrhs, const double gflops, const double gb_s, const double ms, const unsigned int blockDim) {
-        printf("%-30s %10u %5u %5u %5u  %7.2f GFLOP/s, %7.2f GB/s, %7.2f ms, %d blockDim\n", msg.c_str(), batches, M, N, nrhs, gflops, gb_s, ms, blockDim);
+        printf("%-30s %10u %5u %5u %5u  %8.2f GFLOP/s, %7.2f GB/s, %7.4f ms, %d blockDim\n", msg.c_str(), batches, M, N, nrhs, gflops, gb_s, ms, blockDim);
+    }
+    inline void print_perf(const std::string msg, const unsigned int batches, const unsigned int M, const unsigned int N, const unsigned int nrhs, const double gflops, const double gb_s, const double ms, const unsigned int blockDim, const unsigned int bpb) {
+        printf("%-30s %10u %5u %5u %5u  %8.2f GFLOP/s, %7.2f GB/s, %7.4f ms, %d blockDim, %d bpb\n", msg.c_str(), batches, M, N, nrhs, gflops, gb_s, ms, blockDim, bpb);
     }
 } // namespace common
 

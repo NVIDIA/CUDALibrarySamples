@@ -42,6 +42,10 @@ namespace example {
 
     template<typename T>
     using a_cuda_data_type_t = typename T::a_cuda_data_type;
+
+    template<typename T>
+    using a_precision_type_t = typename T::a_precision;
+
 } // namespace example
 
 #endif

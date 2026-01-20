@@ -32,10 +32,10 @@
 // The measured operation runs multiple times and the average speed is reported.
 //
 // WARNING: FLOP/s reported by this example are effectively lower than those that can be achieved
-// by using those same tiles in fully pipelined and whole-device GEMMs. Please refer to the 
+// by using those same tiles in fully pipelined and whole-device GEMMs. Please refer to the
 // 11_gemm_device_performance example for more details.
 
-template<unsigned int Arch>
+template<unsigned int Arch, cublasdx::sm_modifier Modifier>
 int single_gemm_performance() {
     using namespace cublasdx;
 
@@ -68,26 +68,17 @@ int single_gemm_performance() {
     constexpr auto c_arrangement = cublasdx::row_major;
 
     // Define the matrix multiplication operation.
-    using GEMM = decltype(cublasdx::Size<m, n, k>() +
-                          cublasdx::Precision<PA, PB, PC>() +
-                          cublasdx::Type<type>() +
+    using GEMM = decltype(cublasdx::Size<m, n, k>() + cublasdx::Precision<PA, PB, PC>() + cublasdx::Type<type>() +
                           cublasdx::Function<cublasdx::function::MM>() +
                           cublasdx::Arrangement<a_arrangement, b_arrangement, c_arrangement>() +
-                          cublasdx::MaxAlignment() +
-                          cublasdx::Block() +
-                          cublasdx::SM<Arch>());
+                          cublasdx::MaxAlignment() + cublasdx::Block() + cublasdx::SM<Arch, Modifier>());
 
-    bool verbose = true;
+    bool         verbose = true;
     cudaStream_t stream;
     CUDA_CHECK_AND_EXIT(cudaStreamCreate(&stream))
-    int status = benchmark_mixed_precision_gemm<GEMM,
-                                                input_type_a,
-                                                input_type_b,
-                                                input_type_c,
-                                                Arch,
-                                                BlockSize,
-                                                UseSuggestedLD>
-                                                (stream, verbose);
+    int status =
+        benchmark_mixed_precision_gemm<GEMM, input_type_a, input_type_b, input_type_c, Arch, BlockSize, UseSuggestedLD>(
+            stream, verbose);
 
     CUDA_CHECK_AND_EXIT(cudaStreamDestroy(stream));
 
@@ -95,12 +86,12 @@ int single_gemm_performance() {
 }
 
 struct single_gemm_performance_functor {
-    template<int Arch>
-    int operator()(std::integral_constant<int, Arch>) {
-        return single_gemm_performance<Arch>();
+    template<int Arch, cublasdx::sm_modifier Modifier>
+    int operator()(std::integral_constant<int, Arch>, std::integral_constant<cublasdx::sm_modifier, Modifier>) {
+        return single_gemm_performance<Arch, Modifier>();
     }
 };
 
 int main(int, char**) {
-    return example::sm_runner(single_gemm_performance_functor{});
+    return example::sm_runner(single_gemm_performance_functor {});
 }

@@ -34,15 +34,15 @@ constexpr unsigned int batch_size = 2;
 // The source data is laid out in natural order, first for batch 1 and then for batch 2. The register memory layout follows
 // the interleaved format "(real1, real2), (imag1, imag2), ...", where 1 and 2 represent the first and second batch
 // respectively. This function is useful for performing half-precision FFTs using cuFFTDx.
-template<unsigned int EPT, unsigned int Size, unsigned int Stride, template <class> class T, template <class> class U>
+template<unsigned int EPT, unsigned int Size, unsigned int Stride, template<class> class T, template<class> class U>
 inline __device__ void fft_load(const T<__half>* A, U<__half2>* thread_data) {
     const unsigned int tid   = threadIdx.x + threadIdx.y * blockDim.x + threadIdx.z * (blockDim.x * blockDim.y);
     unsigned int       index = tid;
     for (unsigned int i = 0; i < EPT; i++) {
         if (index < Size) {
-            auto v1 = A[index].xy;
-            auto v2 = A[index + Size].xy;
-            thread_data[i] = {{v1.x, v2.x}, {v1.y,v2.y}};
+            auto v1        = A[index].xy;
+            auto v2        = A[index + Size].xy;
+            thread_data[i] = {{v1.x, v2.x}, {v1.y, v2.y}};
         }
         index += Stride;
     }
@@ -53,12 +53,12 @@ inline __device__ void fft_load(const T<__half>* A, U<__half2>* thread_data) {
 // size "Size". The register memory layout follows the interleaved format "(real1, real2), (imag1, imag2), ...", where
 // 1 and 2 represent the first and second batch respectively. The destination data is laid out in natural order, first for
 // batch 1 and then for batch 2. This function is useful for performing half-precision FFTs using cuFFTDx.
-template<unsigned int EPT, unsigned int Size, unsigned int Stride, template <class> class U, template <class> class T>
+template<unsigned int EPT, unsigned int Size, unsigned int Stride, template<class> class U, template<class> class T>
 inline __device__ void fft_store(U<__half2>* thread_data, T<__half>* A) {
     const unsigned int tid   = threadIdx.x + threadIdx.y * blockDim.x + threadIdx.z * (blockDim.x * blockDim.y);
     unsigned int       index = tid;
     for (unsigned int i = 0; i < EPT; i++) {
-        if(index < Size) {
+        if (index < Size) {
             A[index]        = __lows2half2(thread_data[i].x, thread_data[i].y);
             A[index + Size] = __highs2half2(thread_data[i].x, thread_data[i].y);
         }
@@ -68,8 +68,8 @@ inline __device__ void fft_store(U<__half2>* thread_data, T<__half>* A) {
 
 template<class FFT, class BLAS, class ValueType = cublasdx::complex<float>>
 void reference(const ValueType* a,
-               ValueType* b,
-               ValueType* c,
+               ValueType*       b,
+               ValueType*       c,
                const ValueType  alpha,
                const ValueType  beta,
                ValueType*       output,
@@ -95,9 +95,10 @@ void reference(const ValueType* a,
     CUBLAS_CHECK_AND_EXIT(cublasSetStream(handle, stream));
     constexpr bool is_a_transposed = (cublasdx::arrangement_of<BLAS>::a == cublasdx::row_major);
     constexpr bool is_b_transposed = (cublasdx::arrangement_of<BLAS>::b == cublasdx::row_major);
-    const auto a_transpose = example::get_cublas_transpose_mode(cublasdx::arrangement_of<BLAS>::a);
-    const auto b_transpose = example::get_cublas_transpose_mode(cublasdx::arrangement_of<BLAS>::b);
-    static_assert(cublasdx::arrangement_of<BLAS>::c == cublasdx::arrangement::col_major, "Only column-major C matrix supported");
+    const auto     a_transpose     = example::get_cublas_transpose_mode(cublasdx::arrangement_of<BLAS>::a);
+    const auto     b_transpose     = example::get_cublas_transpose_mode(cublasdx::arrangement_of<BLAS>::b);
+    static_assert(cublasdx::arrangement_of<BLAS>::c == cublasdx::arrangement::col_major,
+                  "Only column-major C matrix supported");
 
     // Run cuBLAS
     thrust::copy(c, c + m * n, output);
@@ -128,16 +129,16 @@ __launch_bounds__(FFT::max_threads_per_block) __global__ void gemm_fft_fp16_kern
                                                                                    const ValueType  alpha,
                                                                                    const ValueType  beta,
                                                                                    ValueType*       output) {
-    #if CUBLASDX_EXAMPLE_DETAIL_NVCC_12_2_BUG_WORKAROUND
+#if CUBLASDX_EXAMPLE_DETAIL_NVCC_12_2_BUG_WORKAROUND
     using blas_complex_type = example::uniform_value_type_t<BLAS>;
-    using fft_complex_type = example::value_type_t<FFT>;
-    #else
+    using fft_complex_type  = example::value_type_t<FFT>;
+#else
     using blas_complex_type = example::uniform_value_type_t<BLAS>;
     using fft_complex_type  = typename FFT::value_type;
-    #endif
+#endif
 
-    using complex_type = blas_complex_type;
-    using value_type = ValueType;
+    using complex_type                = blas_complex_type;
+    using value_type                  = ValueType;
     constexpr unsigned int block_size = BLAS::block_dim.x * BLAS::block_dim.y * BLAS::block_dim.z;
 
     extern __shared__ complex_type smem[];
@@ -152,7 +153,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__ void gemm_fft_fp16_kern
     __syncthreads();
 
     // Execute batched FFT on registers.
-    FFT().execute(thread_data, reinterpret_cast<fft_complex_type *>(smem));
+    FFT().execute(thread_data, reinterpret_cast<fft_complex_type*>(smem));
     __syncthreads();
 
     // Store register data into smem_b, converting back to RIRI form from RRII.
@@ -203,7 +204,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__ void gemm_fft_fp16_kern
 // * Shared memory required by the kernel is the max of the amount required by FFT and GEMM.
 template<unsigned int Arch>
 int gemm_fft_fp16() {
-    using precision_type = __half;
+    using precision_type     = __half;
     constexpr unsigned int m = 64;
     constexpr unsigned int n = batch_size;
     constexpr unsigned int k = m;
@@ -211,26 +212,22 @@ int gemm_fft_fp16() {
     static_assert(batch_size == 2, "This example only supports a batch size of 2.");
     static_assert(std::is_same_v<precision_type, __half>, "This example only supports half-precision.");
 
-    using FFT  = decltype(cufftdx::Block() + cufftdx::Size<k>() + cufftdx::Type<cufftdx::fft_type::c2c>() +
-                          cufftdx::Direction<cufftdx::fft_direction::forward>() + cufftdx::Precision<precision_type>() +
-                          cufftdx::ElementsPerThread<2>() + cufftdx::FFTsPerBlock<batch_size>() + cufftdx::SM<Arch>());
+    using FFT = decltype(cufftdx::Block() + cufftdx::Size<k>() + cufftdx::Type<cufftdx::fft_type::c2c>() +
+                         cufftdx::Direction<cufftdx::fft_direction::forward>() + cufftdx::Precision<precision_type>() +
+                         cufftdx::ElementsPerThread<2>() + cufftdx::FFTsPerBlock<batch_size>() + cufftdx::SM<Arch>());
 
-    using BLAS = decltype(cublasdx::Size<m, n, k>() +
-                          cublasdx::Precision<precision_type>() +
-                          cublasdx::Type<cublasdx::type::complex>() +
-                          cublasdx::Function<cublasdx::function::MM>() +
-                          cublasdx::Arrangement<cublasdx::col_major, cublasdx::col_major>() +
-                          cublasdx::Block() +
-                          cublasdx::BlockDim<FFT::block_dim.x>() +
-                          cublasdx::SM<Arch>());
+    using BLAS = decltype(cublasdx::Size<m, n, k>() + cublasdx::Precision<precision_type>() +
+                          cublasdx::Type<cublasdx::type::complex>() + cublasdx::Function<cublasdx::function::MM>() +
+                          cublasdx::Arrangement<cublasdx::col_major, cublasdx::col_major>() + cublasdx::Block() +
+                          cublasdx::BlockDim<FFT::block_dim.x>() + cublasdx::SM<Arch>());
 
-    #if CUBLASDX_EXAMPLE_DETAIL_NVCC_12_2_BUG_WORKAROUND
-    using fft_complex_type = example::value_type_t<FFT>;
+#if CUBLASDX_EXAMPLE_DETAIL_NVCC_12_2_BUG_WORKAROUND
+    using fft_complex_type  = example::value_type_t<FFT>;
     using blas_complex_type = example::uniform_value_type_t<BLAS>;
-    #else
-    using fft_complex_type = typename FFT::value_type;
+#else
+    using fft_complex_type  = typename FFT::value_type;
     using blas_complex_type = example::uniform_value_type_t<BLAS>;
-    #endif
+#endif
     using complex_type = blas_complex_type;
 
     // Check that FFT matches GEMM dimensions.
@@ -238,7 +235,7 @@ int gemm_fft_fp16() {
                   "FFT must have the same size as the GEMM k dimension");
     // Checking that block dims match
     static_assert((FFT::block_dim.x == BLAS::block_dim.x) && (FFT::block_dim.y == BLAS::block_dim.y) &&
-                  (FFT::block_dim.z == BLAS::block_dim.z),
+                      (FFT::block_dim.z == BLAS::block_dim.z),
                   "FFT must require the same CUDA block dimenions as GEMM");
 
     // Allocate managed memory.
@@ -252,17 +249,17 @@ int gemm_fft_fp16() {
     constexpr auto global_b_size = example::global_memory_size_of<BLAS>::b_size;
     constexpr auto global_c_size = example::global_memory_size_of<BLAS>::c_size;
 
-    auto          size = (global_a_size + // a
-                          global_b_size + // b
-                          global_c_size + // c
-                          global_c_size   // output
-                         );
-    auto          size_bytes = size * sizeof(complex_type);
+    auto size       = (global_a_size + // a
+                 global_b_size + // b
+                 global_c_size + // c
+                 global_c_size   // output
+    );
+    auto size_bytes = size * sizeof(complex_type);
     CUDA_CHECK_AND_EXIT(cudaMallocManaged(&buffer, size_bytes));
-    a                = buffer;
-    b                = a + global_a_size;
-    c                = b + global_b_size;
-    output           = c + global_c_size;
+    a      = buffer;
+    b      = a + global_a_size;
+    c      = b + global_b_size;
+    output = c + global_c_size;
 
     complex_type alpha = {float(1), float(0)};
     complex_type beta  = {float(0), float(0)};
@@ -289,11 +286,12 @@ int gemm_fft_fp16() {
     {
         int device;
         CUDA_CHECK_AND_EXIT(cudaGetDevice(&device));
-        #if CUDA_VERSION >= 13000
-        CUDA_CHECK_AND_EXIT(cudaMemPrefetchAsync(buffer, size_bytes, cudaMemLocation{cudaMemLocationTypeDevice, device}, 0, stream));
-        #else
+#if CUDA_VERSION >= 13000
+        CUDA_CHECK_AND_EXIT(
+            cudaMemPrefetchAsync(buffer, size_bytes, cudaMemLocation {cudaMemLocationTypeDevice, device}, 0, stream));
+#else
         CUDA_CHECK_AND_EXIT(cudaMemPrefetchAsync(buffer, size_bytes, device, stream));
-        #endif
+#endif
         CUDA_CHECK_AND_EXIT(cudaStreamSynchronize(stream));
         CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
     }
@@ -302,9 +300,7 @@ int gemm_fft_fp16() {
     constexpr auto shared_memory_size = std::max({FFT::shared_memory_size, cublasdx::get_shared_storage_size<BLAS>()});
     // Increase max shared memory if needed
     CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(
-        gemm_fft_fp16_kernel<FFT, BLAS>,
-        cudaFuncAttributeMaxDynamicSharedMemorySize,
-        shared_memory_size));
+        gemm_fft_fp16_kernel<FFT, BLAS>, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_memory_size));
 
     // Invokes cuBLASDx+cuFFTDx kernel with FFT::block_dim threads in CUDA block
     gemm_fft_fp16_kernel<FFT, BLAS><<<1, FFT::block_dim, shared_memory_size, stream>>>(a, b, c, alpha, beta, output);
@@ -313,7 +309,7 @@ int gemm_fft_fp16() {
 
     // Compute reference results using cuBLAS and cuFFT (with float32 precision).
     using reference_complex_type = cublasdx::complex<float>;
-    auto  reference_size_bytes   = size * sizeof(reference_complex_type);
+    auto reference_size_bytes    = size * sizeof(reference_complex_type);
 
     reference_complex_type* reference_buffer;
     reference_complex_type* reference_a;
@@ -322,13 +318,13 @@ int gemm_fft_fp16() {
     reference_complex_type* reference_output;
 
     CUDA_CHECK_AND_EXIT(cudaMallocManaged(&reference_buffer, reference_size_bytes));
-    reference_a                = reference_buffer;
-    reference_b                = reference_a + global_a_size;
-    reference_c                = reference_b + global_b_size;
-    reference_output           = reference_c + global_c_size;
+    reference_a      = reference_buffer;
+    reference_b      = reference_a + global_a_size;
+    reference_c      = reference_b + global_b_size;
+    reference_output = reference_c + global_c_size;
 
-    reference_complex_type reference_alpha{alpha.real(), alpha.imag()};
-    reference_complex_type reference_beta{beta.real(), beta.imag()};
+    reference_complex_type reference_alpha {alpha.real(), alpha.imag()};
+    reference_complex_type reference_beta {beta.real(), beta.imag()};
 
     // Copy a, b, and c to the corresponding reference data buffers.
     thrust::copy(a, a + global_a_size, reference_a);
@@ -336,7 +332,8 @@ int gemm_fft_fp16() {
     thrust::copy(c, c + global_c_size, reference_c);
 
     // cuBLAS+cuFFT
-    reference<FFT, BLAS>(reference_a, reference_b, reference_c, reference_alpha, reference_beta, reference_output, stream);
+    reference<FFT, BLAS>(
+        reference_a, reference_b, reference_c, reference_alpha, reference_beta, reference_output, stream);
     CUDA_CHECK_AND_EXIT(cudaPeekAtLastError());
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
@@ -344,7 +341,7 @@ int gemm_fft_fp16() {
     std::cout << std::fixed << std::showpos << std::setprecision(4);
     std::cout << "[cuBLASDx + cuFFTDx] (float16):\n";
     std::cout << "     Batch 1             Batch 2   \n";
-    for (size_t i = 0; i <  m; i++) {
+    for (size_t i = 0; i < m; i++) {
         for (size_t j = 0; j < n; j++) {
             auto index = i + j * m;
             std::cout << "[" << float(output[index].real()) << ", " << float(output[index].imag()) << "]  ";
@@ -353,7 +350,7 @@ int gemm_fft_fp16() {
     }
     std::cout << "[cuBLAS + cuFFT] (float32):\n";
     std::cout << "     Batch 1             Batch 2   \n";
-    for (size_t i = 0; i <  m; i++) {
+    for (size_t i = 0; i < m; i++) {
         for (size_t j = 0; j < n; j++) {
             auto index = i + j * m;
             std::cout << "[" << float(reference_output[index].x) << ", " << float(reference_output[index].y) << "]  ";
@@ -370,12 +367,12 @@ int gemm_fft_fp16() {
 }
 
 struct gemm_fft_fp16_functor {
-    template<int Arch>
-    int operator()(std::integral_constant<int, Arch>) {
+    template<int Arch, cublasdx::sm_modifier Modifier>
+    int operator()(std::integral_constant<int, Arch>, std::integral_constant<cublasdx::sm_modifier, Modifier>) {
         return gemm_fft_fp16<Arch>();
     }
 };
 
 int main(int, char**) {
-    return example::sm_runner(gemm_fft_fp16_functor{});
+    return example::sm_runner(gemm_fft_fp16_functor {});
 }

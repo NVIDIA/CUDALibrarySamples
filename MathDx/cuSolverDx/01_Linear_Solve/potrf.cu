@@ -54,13 +54,9 @@ int simple_potrf() {
     using Solver = decltype(Size<32, 32>() + Precision<double>() + Type<type::complex>() + Function<potrf>() + Block() + LeadingDimension<33>() + SM<Arch>() + BlockDim<256>() +
                             FillMode<fill_mode::upper>());
 
-#ifdef CUSOLVERDX_EXAMPLE_DETAIL_NVCC_12_2_BUG_WORKAROUND
-    using data_type      = typename example::a_data_type_t<Solver>;
-    using cuda_data_type = typename example::a_cuda_data_type_t<Solver>;
-#else
     using data_type      = typename Solver::a_data_type;
     using cuda_data_type = typename Solver::a_cuda_data_type;
-#endif
+
     constexpr auto m = Solver::m_size;
     constexpr auto n = Solver::n_size;
     static_assert(m == n, "potrf is for Hermitian positive-definite matrix matrix only");

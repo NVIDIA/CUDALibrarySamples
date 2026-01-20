@@ -1,2 +1,2 @@
-exec_op,size,type,precision,elements_per_thread,real_mode
-Block,128,fft_type::c2r,float,8,real_mode::normal
+execution_type,size,type,precision,elements_per_thread,real_mode
+execution_type::block,128,fft_type::c2r,float,8,real_mode::normal

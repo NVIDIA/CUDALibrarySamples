@@ -15,32 +15,7 @@
  * limitations under the License.
  */
 
-
 #include "common_lto.hpp"
-
-#include <vector>
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <string>
-#include <regex>
-#include <unordered_map>
-
-#include <cuda.h>
-#include <cufft_device.h>
-
-#ifndef CUFFT_CHECK_AND_EXIT
-#    define CUFFT_CHECK_AND_EXIT(error)                                                 \
-        {                                                                               \
-            auto status = static_cast<cufftResult>(error);                              \
-            if (status != CUFFT_SUCCESS) {                                              \
-                std::cerr << status << " " << __FILE__ << ":" << __LINE__ << std::endl; \
-                std::exit(status);                                                      \
-            }                                                                           \
-        }
-#endif // CUFFT_CHECK_AND_EXIT
-
-
 
 std::vector<std::string> parseCSVHeader(const std::string &header_line, const std::vector<std::string> &expected_fields) {
     std::vector<std::string> header_map;
@@ -56,25 +31,20 @@ std::vector<std::string> parseCSVHeader(const std::string &header_line, const st
         }
         column_index++;
     }
-
     return header_map;
 }
 
-std::pair<std::unordered_map<std::string, long long int>, bool> parseLineToTraits(const std::string& line, int line_number, const std::vector<std::string>& header_map) {
-    std::unordered_map<std::string, long long int> line_map;
+std::optional<cufftdx_traits> parseLineToTraits(const std::string& line, int line_number, const std::vector<std::string>& header_map) {
     std::stringstream ss(line);
     std::string token;
 
-    // Initially mark the line as valid
-    bool valid = true;
-
     int column_index = 0;
+    cufftdx_traits traits;
     while (std::getline(ss, token, ',')) {
         token = std::regex_replace(token, std::regex("^\\s+|\\s+$"), ""); // Trim spaces
         if (column_index >= header_map.size()) {
             std::cerr << "Error: Too many columns on line " << line_number << "\n";
-            valid = false;
-            return { line_map, valid };
+            return std::nullopt;
         }
         const std::string &field = header_map.at(column_index);
 
@@ -83,140 +53,76 @@ std::pair<std::unordered_map<std::string, long long int>, bool> parseLineToTrait
             column_index++;
             continue; // Skip further processing for this line
         }
-
-        if (field == "size" || field == "elements_per_thread") {
+        if (field == "execution_type") {
+            if (token == "execution_type::block") {
+                traits.set_execution_type(cufftdx::detail::execution_type::block);
+            } else if (token == "execution_type::thread") {
+                traits.set_execution_type(cufftdx::detail::execution_type::thread);
+            } else {
+                std::cerr << "Error: Invalid value for 'execution_type' on line " << line_number << ": " << token << "\n Valid values are: execution_type::block, execution_type::thread.\n";
+                return std::nullopt;
+            }
+        } else if (field == "size") {
             try {
-                line_map[field] = std::stoll(token);
+                traits.size = std::stoul(token);
             } catch (const std::invalid_argument&) {
-                std::cerr << "Error: Invalid value for " << field << " on line " << line_number << ": " << token << std::endl;
-                valid = false;
-            }
-        } else if (field == "direction") {
-            long long value = (token == "fft_direction::forward") ? CUFFT_DESC_FORWARD : (token == "fft_direction::inverse") ? CUFFT_DESC_INVERSE : -1;
-            if (value != -1) {
-                line_map[field] = value;
-            } else {
-                std::cerr << "Error: Invalid value for 'direction' on line " << line_number << ": " << token << "\n Valid values are: fft_direction::forward, fft_direction::inverse\n";
-                valid = false;
-            }
-        } else if (field == "precision") {
-            long long value = (token == "float") ? CUFFT_DESC_SINGLE : (token == "double") ? CUFFT_DESC_DOUBLE : -1;
-            if (value != -1) {
-                line_map[field] = value;
-            } else {
-                std::cerr << "Error: Invalid value for 'precision' on line " << line_number << ": " << token << "\n Valid values are: float, double\n";
-                valid = false;
+                std::cerr << "Error: Invalid value for 'size' on line " << line_number << ": " << token << std::endl;
+                return std::nullopt;
             }
         } else if (field == "type") {
-            long long value = (token == "fft_type::c2c") ? CUFFT_DESC_C2C : (token == "fft_type::r2c") ? CUFFT_DESC_R2C : (token == "fft_type::c2r") ? CUFFT_DESC_C2R : -1;
-            if (value != -1) {
-                line_map[field] = value;
+            if (token == "fft_type::c2c") {
+                traits.set_type(cufftdx::fft_type::c2c);
+            } else if (token == "fft_type::r2c") {
+                traits.set_type(cufftdx::fft_type::r2c);
+            } else if (token == "fft_type::c2r") {
+                traits.set_type(cufftdx::fft_type::c2r);
             } else {
                 std::cerr << "Error: Invalid value for 'type' on line " << line_number << ": " << token << "\n Valid values are: fft_type::c2c, fft_type::r2c, fft_type::c2r\n";
-                valid = false;
+                return std::nullopt;
+            }
+        } else if (field == "direction") {
+            if (token == "fft_direction::forward") {
+                traits.direction = cufftdx::fft_direction::forward;
+            } else if (token == "fft_direction::inverse") {
+                traits.direction = cufftdx::fft_direction::inverse;
+            } else {
+                std::cerr << "Error: Invalid value for 'direction' on line " << line_number << ": " << token << "\n Valid values are: fft_direction::forward, fft_direction::inverse\n";
+                return std::nullopt;
+            }
+        } else if (field == "precision") {
+            if (token == "__half") {
+                traits.precision = cufftdx::precision::f16;
+            } else if (token == "float") {
+                traits.precision = cufftdx::precision::f32;
+            } else if (token == "double") {
+                traits.precision = cufftdx::precision::f64;
+            } else {
+                std::cerr << "Error: Invalid value for 'precision' on line " << line_number << ": " << token << "\n Valid values are: float, double\n";
+                return std::nullopt;
             }
         } else if (field == "real_mode") {
-            long long value = (token == "real_mode::normal") ? CUFFT_DESC_NORMAL  : (token == "real_mode::folded") ? CUFFT_DESC_FOLDED : -1;
-            if (value != -1) {
-                line_map[field] = value;
+            if (token == "real_mode::normal") {
+                traits.real_mode = cufftdx::real_mode::normal;
+            } else if (token == "real_mode::folded") {
+                traits.real_mode = cufftdx::real_mode::folded;
             } else {
                 std::cerr << "Error: Invalid value for 'real_mode' on line " << line_number << ": " << token << "\n Valid values are: real_mode::normal, real_mode::folded\n";
-                valid = false;
+                return std::nullopt;
             }
-        } else if (field == "exec_op") {
-            long long value = (token == "Block") ? CUFFT_DESC_BLOCK : (token == "Thread") ? CUFFT_DESC_THREAD : -1;
-            if (value != -1) {
-                line_map[field] = value;
-            } else {
-                std::cerr << "Error: Invalid value for 'exec_op' on line " << line_number << ": " << token << "\n Valid values are: Block, Thread.\n";
-                valid = false;
+        } else if (field == "elements_per_thread") {
+            try {
+                traits.elements_per_thread = std::stoul(token);
+            } catch (const std::invalid_argument&) {
+                std::cerr << "Error: Invalid value for 'elements_per_thread' on line " << line_number << ": " << token << std::endl;
+                return std::nullopt;
             }
         } else {
             std::cerr << "Error: Unexpected field '" << field << "' on line " << line_number << "\n";
-            valid = false;
-            return { line_map, valid };
+            return std::nullopt;
         }
-
         column_index++;
     }
-
-
-    // Return traits object with valid set to true
-    return { line_map, valid };
-}
-
-// Function to create a cufftDescriptionHandle with the given traits (already parsed)
-cufftDescriptionHandle createDescriptionHandleWithTraits(const std::unordered_map<std::string, long long int>& traits) {
-    cufftDescriptionHandle desc_handle;
-    CUFFT_CHECK_AND_EXIT(cufftDescriptionCreate(&desc_handle));
-
-    // Dynamically check for each trait and set it if present in the map
-    if (traits.find("size") != traits.end()) {
-        CUFFT_CHECK_AND_EXIT(cufftDescriptionSetTraitInt64(desc_handle, CUFFT_DESC_TRAIT_SIZE, traits.at("size")));
-    }
-    if (traits.find("direction") != traits.end()) {
-        CUFFT_CHECK_AND_EXIT(cufftDescriptionSetTraitInt64(desc_handle, CUFFT_DESC_TRAIT_DIRECTION, traits.at("direction")));
-    }
-    if (traits.find("precision") != traits.end()) {
-        CUFFT_CHECK_AND_EXIT(cufftDescriptionSetTraitInt64(desc_handle, CUFFT_DESC_TRAIT_PRECISION, traits.at("precision")));
-    }
-    if (traits.find("type") != traits.end()) {
-        CUFFT_CHECK_AND_EXIT(cufftDescriptionSetTraitInt64(desc_handle, CUFFT_DESC_TRAIT_TYPE, traits.at("type")));
-    }
-    if (traits.find("sm") != traits.end()) {
-        CUFFT_CHECK_AND_EXIT(cufftDescriptionSetTraitInt64(desc_handle, CUFFT_DESC_TRAIT_SM, traits.at("sm")));
-    }
-    if (traits.find("real_mode") != traits.end()) {
-        CUFFT_CHECK_AND_EXIT(cufftDescriptionSetTraitInt64(desc_handle, CUFFT_DESC_TRAIT_REAL_MODE, traits.at("real_mode")));
-    }
-    if (traits.find("exec_op") != traits.end()) {
-        CUFFT_CHECK_AND_EXIT(cufftDescriptionSetTraitInt64(desc_handle, CUFFT_DESC_TRAIT_EXEC_OP, traits.at("exec_op")));
-    }
-    if (traits.find("elements_per_thread") != traits.end()) {
-        CUFFT_CHECK_AND_EXIT(cufftDescriptionSetTraitInt64(desc_handle, CUFFT_DESC_TRAIT_ELEMENTS_PER_THREAD, traits.at("elements_per_thread")));
-    }
-
-    return desc_handle;
-}
-
-void printDescriptionInfo(cufftDescriptionHandle desc) {
-    long long int value;
-
-    std::cout << "Description Handle Information:" << std::endl;
-
-    // Query CUFFT_DESC_TRAIT_SIZE
-    CUFFT_CHECK_AND_EXIT(cufftDescriptionGetTraitInt64(desc, CUFFT_DESC_TRAIT_SIZE, &value));
-    std::cout << "  CUFFT_DESC_TRAIT_SIZE: " << value << std::endl;
-
-    // Query CUFFT_DESC_TRAIT_DIRECTION
-    CUFFT_CHECK_AND_EXIT(cufftDescriptionGetTraitInt64(desc, CUFFT_DESC_TRAIT_DIRECTION, &value));
-    std::cout << "  CUFFT_DESC_TRAIT_DIRECTION: " << value << std::endl;
-
-    // Query CUFFT_DESC_TRAIT_PRECISION
-    CUFFT_CHECK_AND_EXIT(cufftDescriptionGetTraitInt64(desc, CUFFT_DESC_TRAIT_PRECISION, &value));
-    std::cout << "  CUFFT_DESC_TRAIT_PRECISION: " << value << std::endl;
-
-    // Query CUFFT_DESC_TRAIT_TYPE
-    CUFFT_CHECK_AND_EXIT(cufftDescriptionGetTraitInt64(desc, CUFFT_DESC_TRAIT_TYPE, &value));
-    std::cout << "  CUFFT_DESC_TRAIT_TYPE: " << value << std::endl;
-
-    // Query CUFFT_DESC_TRAIT_SM
-    CUFFT_CHECK_AND_EXIT(cufftDescriptionGetTraitInt64(desc, CUFFT_DESC_TRAIT_SM, &value));
-    std::cout << "  CUFFT_DESC_TRAIT_SM: " << value << std::endl;
-
-    // Query CUFFT_DESC_TRAIT_REAL_MODE
-    CUFFT_CHECK_AND_EXIT(cufftDescriptionGetTraitInt64(desc, CUFFT_DESC_TRAIT_REAL_MODE, &value));
-    std::cout << "  CUFFT_DESC_TRAIT_REAL_MODE: " << value << std::endl;
-
-    // Query CUFFT_DESC_TRAIT_EXEC_OP
-    CUFFT_CHECK_AND_EXIT(cufftDescriptionGetTraitInt64(desc, CUFFT_DESC_TRAIT_EXEC_OP, &value));
-    std::cout << "  CUFFT_DESC_TRAIT_EXEC_OP: " << value << std::endl;
-
-    // Query CUFFT_DESC_TRAIT_ELEMENTS_PER_THREAD
-    CUFFT_CHECK_AND_EXIT(cufftDescriptionGetTraitInt64(desc, CUFFT_DESC_TRAIT_ELEMENTS_PER_THREAD, &value));
-    std::cout << "  CUFFT_DESC_TRAIT_ELEMENTS_PER_THREAD: " << value << std::endl;
-
-    std::cout << "------------------------------------------------------" << std::endl;
+    return traits;
 }
 
 void showUsage(const std::string& program_name) {
@@ -231,6 +137,10 @@ void showUsage(const std::string& program_name) {
 
 int main(int argc, char *argv[]) {
 
+    if (!cufftdx::utils::check_cufft_device_api_version()) {
+        return EXIT_FAILURE;
+    }
+
     const int expected_args = 3;
     if (argc < expected_args) {
         std::cerr << "Error: Missing arguments.\n";
@@ -240,10 +150,10 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
     std::string output_dir = argv[1]; // First argument: Output directory
-    std::string csv_file = argv[2];  // Second argument: Path to the CSV file
+    std::string csv_file   = argv[2]; // Second argument: Path to the CSV file
 
     // Optional argument: CUDA architectures
-    std::vector<int> cuda_architectures = {700,720,750,800,860,870,890,900};
+    std::vector<int> cuda_architectures = supported_cuda_architectures;
     if (argc > 3) {
         std::string arg = argv[3];
         cuda_architectures.clear();
@@ -272,18 +182,17 @@ int main(int argc, char *argv[]) {
     }
 
     const std::vector<std::string> fields = {
+        "execution_type",
         "size",
+        "type",
         "direction",
         "precision",
-        "type",
         "real_mode",
-        "exec_op",
         "elements_per_thread"
     };
 
     // Dynamically parse the header
     auto header_map = parseCSVHeader(header, fields);
-
     if (header_map.empty()) {
         std::cerr << "Invalid CSV header. Aborting.\n";
         return EXIT_FAILURE;
@@ -292,25 +201,18 @@ int main(int argc, char *argv[]) {
     // Start reading lines from the CSV file
     while (std::getline(file, line)) {
         line_number++;
-
-        auto [traits, valid] = parseLineToTraits(line, line_number, header_map);
-        if (!valid) {
+        auto frontend_traits = parseLineToTraits(line, line_number, header_map);
+        if (frontend_traits.has_value()) {
+            for (int arch : cuda_architectures) {
+                frontend_traits.value().sm = arch;
+                cufftDescriptionHandle desc = createDescriptionHandleWithTraits(frontend_traits.value());
+                desc_handles.push_back(desc);
+            }
+        } else {
             std::cout << "Skipping invalid line " << line_number << "\n";
             continue;
         }
-
-        if (cuda_architectures.empty()) {
-            cufftDescriptionHandle desc = createDescriptionHandleWithTraits(traits);
-            desc_handles.push_back(desc);
-        } else {
-            for (int arch : cuda_architectures) {
-                traits["sm"] = static_cast<long long int>(arch);
-                cufftDescriptionHandle desc = createDescriptionHandleWithTraits(traits);
-                desc_handles.push_back(desc);
-            }
-        }
     }
-
     file.close(); // Close the CSV file
 
     // Create CUFFT device handle
@@ -319,18 +221,11 @@ int main(int argc, char *argv[]) {
 
     // For every description handle, check if it is valid / supported
     for (const auto& desc : desc_handles) {
-        auto status = cufftDeviceCheckDescription(device_handle, desc);
-        if (status != CUFFT_SUCCESS) {
+        bool is_supported = false;
+        CUFFT_CHECK_AND_EXIT(cufftDeviceIsSupported(device_handle, desc, &is_supported));
+        if (!is_supported) {
             printDescriptionInfo(desc);
-            if (status == CUFFT_NOT_SUPPORTED) {
-                std::cout << "Warning: Description handle (" << desc << ") is currently not supported.\n";
-            } else if (status == CUFFT_INVALID_VALUE) {
-                std::cerr << "Error: Description handle (" << desc << ") is not valid / complete.\n";
-                return EXIT_FAILURE;
-            } else {
-                std::cerr << "Error: cufftDeviceCheckDescription failed with status (" << status << ")\n";
-                return EXIT_FAILURE;
-            }
+            std::cout << "Warning: Description handle (" << desc << ") is currently not supported.\n";
         }
     }
 
@@ -359,14 +254,16 @@ int main(int argc, char *argv[]) {
         std::vector<std::vector<char>> codes;
         std::vector<char*> code_ptrs;
         for(auto size: code_sizes) {
-            codes.emplace_back(std::vector<char>(size));
-            code_ptrs.emplace_back(codes.back().data());
+            codes.push_back(std::vector<char>(size));
         }
-        std::vector<cufftDeviceCodeType> code_types(count);
-        CUFFT_CHECK_AND_EXIT(cufftDeviceGetLTOIRs(device_handle, code_ptrs.size(), code_ptrs.data(), code_types.data()));
+        for(auto& code: codes) {
+            code_ptrs.push_back(code.data());
+        }
+        std::vector<cufftDeviceCodeContainer> code_containers(count);
+        CUFFT_CHECK_AND_EXIT(cufftDeviceGetLTOIRs(device_handle, code_ptrs.size(), code_ptrs.data(), code_containers.data()));
         for(unsigned i = 0; i < count; i++) {
             std::string name = "cufft_generated_" + std::to_string(i);
-            std::string ext = parseFileExtension(code_types[i]);
+            std::string ext = parseFileExtension(code_containers[i]);
 
             if (!writeFile((output_dir + "/" + name + "." + ext).data(), code_ptrs[i], code_sizes[i])) {
                 return EXIT_FAILURE;

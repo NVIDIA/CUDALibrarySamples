@@ -27,8 +27,8 @@
 
 template<class BLAS1, class BLAS2, class ValueType = example::uniform_value_type_t<BLAS1>>
 __launch_bounds__(BLAS1::max_threads_per_block) //
-    __global__                                 //
-    void gemm_kernel(const ValueType alpha1,
+    __global__                                  //
+    void gemm_kernel(const ValueType  alpha1,
                      const ValueType* a,
                      const ValueType* b,
                      const ValueType  beta1,
@@ -41,7 +41,8 @@ __launch_bounds__(BLAS1::max_threads_per_block) //
     using value_type = ValueType;
     extern __shared__ __align__(16) char smem[];
 
-    static_assert(std::is_same_v<value_type, example::uniform_value_type_t<BLAS2>>, "BLAS1 and BLAS2 must have the same type and precision");
+    static_assert(std::is_same_v<value_type, example::uniform_value_type_t<BLAS2>>,
+                  "BLAS1 and BLAS2 must have the same type and precision");
     static_assert((BLAS1::c_dim == BLAS2::a_dim), "The dimensions of C matrix are different in BLAS1 and BLAS2");
 
     // Matrix C is the first in shared memory, because it's reused in the 2nd GEMM. Moreover,
@@ -113,15 +114,15 @@ __launch_bounds__(BLAS1::max_threads_per_block) //
 template<unsigned int Arch>
 int simple_gemm() {
     // Parameters m1, n1, k1 define the dimensions of matrices A, B, and C
-    constexpr unsigned int m1          = 64;
-    constexpr unsigned int n1          = 64;
-    constexpr unsigned int k1          = 64;
+    constexpr unsigned int m1 = 64;
+    constexpr unsigned int n1 = 64;
+    constexpr unsigned int k1 = 64;
 
     // Parameters m2, n2, k2 define the dimensions of matrices C, D and F
     // Note: (m1, n1) and (m2, k2) must be equal as describe the same matrix (matrix C)
-    constexpr unsigned int m2          = m1;
-    constexpr unsigned int n2          = 128;
-    constexpr unsigned int k2          = n1;
+    constexpr unsigned int m2 = m1;
+    constexpr unsigned int n2 = 128;
+    constexpr unsigned int k2 = n1;
 
     // The logical dimensions of matrix A are: [m1, k1] (m rows, k columns)
     // The logical dimensions of matrix B are: [k1, n1]
@@ -140,22 +141,14 @@ int simple_gemm() {
     // simplifies the example.
     constexpr unsigned int block_size = 128;
 
-    using BLAS1 = decltype(cublasdx::Size<m1, n1, k1>() +
-                           cublasdx::Precision<__half>() +
-                           cublasdx::Type<cublasdx::type::real>() +
-                           cublasdx::Function<cublasdx::function::MM>() +
-                           cublasdx::Arrangement<a_arrangement, b_arrangement, c_arrangement>() +
-                           cublasdx::Block() +
-                           cublasdx::BlockDim<block_size>() +
-                           cublasdx::SM<Arch>());
-    using BLAS2 = decltype(cublasdx::Size<m2, n2, k2>() +
-                           cublasdx::Precision<__half>() +
-                           cublasdx::Type<cublasdx::type::real>() +
-                           cublasdx::Function<cublasdx::function::MM>() +
-                           cublasdx::Arrangement<c_arrangement, d_arrangement, f_arrangement>() +
-                           cublasdx::Block() +
-                           cublasdx::BlockDim<block_size>() +
-                           cublasdx::SM<Arch>());
+    using BLAS1 = decltype(cublasdx::Size<m1, n1, k1>() + cublasdx::Precision<__half>() +
+                           cublasdx::Type<cublasdx::type::real>() + cublasdx::Function<cublasdx::function::MM>() +
+                           cublasdx::Arrangement<a_arrangement, b_arrangement, c_arrangement>() + cublasdx::Block() +
+                           cublasdx::BlockDim<block_size>() + cublasdx::SM<Arch>());
+    using BLAS2 = decltype(cublasdx::Size<m2, n2, k2>() + cublasdx::Precision<__half>() +
+                           cublasdx::Type<cublasdx::type::real>() + cublasdx::Function<cublasdx::function::MM>() +
+                           cublasdx::Arrangement<c_arrangement, d_arrangement, f_arrangement>() + cublasdx::Block() +
+                           cublasdx::BlockDim<block_size>() + cublasdx::SM<Arch>());
 
     using value_type = example::uniform_value_type_t<BLAS1>;
 
@@ -182,18 +175,19 @@ int simple_gemm() {
     CUDA_CHECK_AND_EXIT(cudaMalloc(&inputs, inputs_size_bytes));
     CUDA_CHECK_AND_EXIT(cudaMalloc(&output, global_c2_size * sizeof(value_type)));
 
-    value_type* a     = inputs;
-    value_type* b     = a + (global_a1_size);
-    value_type* c     = b + (global_b1_size); // C matrix for BLAS1, A matrix for BLAS2
-    value_type* d     = c + (global_c1_size); // D is B matrix for BLAS2
-    value_type* f     = d + (global_b2_size); // F is C matrix for BLAS2
+    value_type* a = inputs;
+    value_type* b = a + (global_a1_size);
+    value_type* c = b + (global_b1_size); // C matrix for BLAS1, A matrix for BLAS2
+    value_type* d = c + (global_c1_size); // D is B matrix for BLAS2
+    value_type* f = d + (global_b2_size); // F is C matrix for BLAS2
 
     // Fill the A, B, C matrices with random values
-    auto host_a = example::get_random_data<value_type>(0.1, 1.0, global_a1_size);
-    auto host_b = example::get_random_data<value_type>(0.1, 1.0, global_b1_size);
-    auto host_c = example::get_random_data<value_type>(0.1, 1.0, global_c1_size);
-    auto host_d = example::get_random_data<value_type>(1.0, 2.0, global_b2_size);
-    auto host_f = example::get_random_data<value_type>(1.0, 10.0, global_c2_size);
+    auto host_a = example::get_random_data<value_type>(global_a1_size);
+    auto host_b = example::get_random_data<value_type>(global_b1_size);
+    auto host_c = example::get_random_data<value_type>(global_c1_size);
+    auto host_d = example::get_random_data<value_type>(global_b2_size);
+    auto host_f = example::get_random_data<value_type>(global_c2_size);
+
     CUDA_CHECK_AND_EXIT(cudaMemcpy(a, host_a.data(), global_a1_size * sizeof(value_type), cudaMemcpyHostToDevice));
     CUDA_CHECK_AND_EXIT(cudaMemcpy(b, host_b.data(), global_b1_size * sizeof(value_type), cudaMemcpyHostToDevice));
     CUDA_CHECK_AND_EXIT(cudaMemcpy(c, host_c.data(), global_c1_size * sizeof(value_type), cudaMemcpyHostToDevice));
@@ -202,12 +196,14 @@ int simple_gemm() {
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     // Increase max dynamic shared memory for the kernel if needed
-    const auto shared_memory = std::max<size_t>(cublasdx::get_shared_storage_size<BLAS1>(), cublasdx::get_shared_storage_size<BLAS2>());
+    const auto shared_memory =
+        std::max<size_t>(cublasdx::get_shared_storage_size<BLAS1>(), cublasdx::get_shared_storage_size<BLAS2>());
     CUDA_CHECK_AND_EXIT(
         cudaFuncSetAttribute(gemm_kernel<BLAS1, BLAS2>, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_memory));
 
     // Execute kernel
-    gemm_kernel<BLAS1, BLAS2><<<1, BLAS1::block_dim, shared_memory>>>(alpha1, a, b, beta1, c, alpha2, d, beta2, f, output);
+    gemm_kernel<BLAS1, BLAS2>
+        <<<1, BLAS1::block_dim, shared_memory>>>(alpha1, a, b, beta1, c, alpha2, d, beta2, f, output);
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     // Copy results back to host
@@ -238,12 +234,12 @@ int simple_gemm() {
 }
 
 struct simple_gemm_functor {
-    template<int Arch>
-    int operator()(std::integral_constant<int, Arch>) {
+    template<int Arch, cublasdx::sm_modifier Modifier>
+    int operator()(std::integral_constant<int, Arch>, std::integral_constant<cublasdx::sm_modifier, Modifier>) {
         return simple_gemm<Arch>();
     }
 };
 
 int main(int, char**) {
-    return example::sm_runner(simple_gemm_functor{});
+    return example::sm_runner(simple_gemm_functor {});
 }

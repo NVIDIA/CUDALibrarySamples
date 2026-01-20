@@ -32,24 +32,25 @@ __launch_bounds__(BLAS::max_threads_per_block) //
                      const CValueType* c,
                      const CValueType  alpha,
                      const CValueType  beta,
-                           CValueType* output) {
+                     CValueType*       output) {
 
-    using a_value_type = AValueType;
-    using b_value_type = BValueType;
-    using c_value_type = CValueType;
+    using a_value_type   = AValueType;
+    using b_value_type   = BValueType;
+    using c_value_type   = CValueType;
     using c_compute_type = typename BLAS::c_value_type;
 
     extern __shared__ __align__(16) char smem[];
 
     // Create global tensors with input types
-    auto a_global_tensor = cublasdx::make_tensor(a, BLAS::get_layout_gmem_a());
-    auto b_global_tensor = cublasdx::make_tensor(b, BLAS::get_layout_gmem_b());
-    auto c_global_tensor = cublasdx::make_tensor(c, BLAS::get_layout_gmem_c());
+    auto a_global_tensor   = cublasdx::make_tensor(a, BLAS::get_layout_gmem_a());
+    auto b_global_tensor   = cublasdx::make_tensor(b, BLAS::get_layout_gmem_b());
+    auto c_global_tensor   = cublasdx::make_tensor(c, BLAS::get_layout_gmem_c());
+    auto out_global_tensor = cublasdx::make_tensor(output, BLAS::get_layout_gmem_c());
 
     // Create shared memory tensors with input types
     auto [smem_a, smem_b] = cublasdx::slice_shared_memory_ab<BLAS, AValueType, BValueType>(smem);
-    auto a_shared_tensor = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_a());
-    auto b_shared_tensor = cublasdx::make_tensor(smem_b, BLAS::get_layout_smem_b());
+    auto a_shared_tensor  = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_a());
+    auto b_shared_tensor  = cublasdx::make_tensor(smem_b, BLAS::get_layout_smem_b());
 
     using alignment = cublasdx::alignment_of<BLAS>;
 
@@ -62,26 +63,23 @@ __launch_bounds__(BLAS::max_threads_per_block) //
     // 1. Load input precision data from shared to registers
     // 2. Convert in registers to compute precision
     // 3. Perform MMA and accumulate in registers in compute precision
-    auto [c_frag, partitioner] =
-        BLAS().execute(a_shared_tensor, b_shared_tensor);
-
-    // Create output fragment with input precision
-    auto d_frag_io = cublasdx::make_fragment_like<c_value_type>(c_frag);
+    auto accumulator     = BLAS().execute(a_shared_tensor, b_shared_tensor);
+    auto result_fragment = accumulator.get_results();
     // Create accumulator fragment with compute precision
-    auto d_frag_compute = partitioner.make_accumulator_fragment();
+    auto d_frag_compute = cublasdx::make_fragment_like(result_fragment);
+    // Create output fragment with input precision
     // Copy input precision data from global to output fragment
-    cublasdx::copy_fragment<alignment::c>(c_global_tensor, d_frag_io, partitioner);
+    auto d_frag_io = accumulator.make_partition_and_copy(c_global_tensor);
     // Convert in registers to compute precision
-    cublasdx::transform(d_frag_io, d_frag_compute, example::converter<c_compute_type>{});
+    cublasdx::transform_fragment(d_frag_io, d_frag_compute, example::converter<c_compute_type> {});
     // Perform AXPBY and accumulate in registers in compute precision
     auto compute_alpha = static_cast<c_compute_type>(alpha);
-    auto compute_beta = static_cast<c_compute_type>(beta);
-    cublasdx::axpby(compute_alpha, c_frag, compute_beta, d_frag_compute);
+    auto compute_beta  = static_cast<c_compute_type>(beta);
+    cublasdx::axpby(compute_alpha, result_fragment, compute_beta, d_frag_compute);
     // Convert in registers to output precision
-    cublasdx::transform(d_frag_compute, d_frag_io, example::converter<c_value_type>{});
+    cublasdx::transform_fragment(d_frag_compute, d_frag_io, example::converter<c_value_type> {});
     // Copy output precision data from registers to global memory
-    auto out_global_tensor = cublasdx::make_tensor(output, BLAS::get_layout_gmem_c());
-    cublasdx::copy_fragment<alignment::c>(d_frag_io, out_global_tensor, partitioner);
+    accumulator.partition_and_copy(d_frag_io, out_global_tensor);
 }
 
 // This is an example of fp32 general matrix-matrix multiplication (GEMM) with fp16 inputs
@@ -124,14 +122,10 @@ int simple_gemm() {
     // 5. Targeted CUDA compute capability is selected with SM operator.
     //
     // NOTE: The alignment is adjusted to data_type not computation types from cublasdx::Precision
-    using BLAS = decltype(cublasdx::Size<m, n, k>() +
-                          cublasdx::Precision<compute_type>() +
-                          cublasdx::Type<cublasdx::type::real>() +
-                          cublasdx::Function<cublasdx::function::MM>() +
+    using BLAS = decltype(cublasdx::Size<m, n, k>() + cublasdx::Precision<compute_type>() +
+                          cublasdx::Type<cublasdx::type::real>() + cublasdx::Function<cublasdx::function::MM>() +
                           cublasdx::Alignment<sizeof(data_type), sizeof(data_type), sizeof(data_type)>() +
-                          cublasdx::Block() +
-                          cublasdx::BlockDim<block_size>() +
-                          cublasdx::SM<Arch>());
+                          cublasdx::Block() + cublasdx::BlockDim<block_size>() + cublasdx::SM<Arch>());
 
     // Allocate managed memory for a, b, c, and output
     data_type* inputs;
@@ -153,9 +147,9 @@ int simple_gemm() {
     data_type  beta  = data_type(2.0);
 
     // Fill the A, B, C matrices with random values
-    auto host_a = example::get_random_data<data_type>(0.01, 0.1, global_a_size);
-    auto host_b = example::get_random_data<data_type>(0.01, 0.1, global_b_size);
-    auto host_c = example::get_random_data<data_type>(0.01, 0.1, global_c_size);
+    auto host_a = example::get_random_data<data_type>(global_a_size);
+    auto host_b = example::get_random_data<data_type>(global_b_size);
+    auto host_c = example::get_random_data<data_type>(global_c_size);
     CUDA_CHECK_AND_EXIT(cudaMemcpy(a, host_a.data(), global_a_size * sizeof(data_type), cudaMemcpyHostToDevice));
     CUDA_CHECK_AND_EXIT(cudaMemcpy(b, host_b.data(), global_b_size * sizeof(data_type), cudaMemcpyHostToDevice));
     CUDA_CHECK_AND_EXIT(cudaMemcpy(c, host_c.data(), global_c_size * sizeof(data_type), cudaMemcpyHostToDevice));
@@ -163,8 +157,9 @@ int simple_gemm() {
 
     // Increase max dynamic shared memory for the kernel if needed
     auto shared_memory_size = cublasdx::get_shared_storage_size_ab<BLAS, data_type, data_type>();
-    CUDA_CHECK_AND_EXIT(
-        cudaFuncSetAttribute(gemm_kernel<BLAS, data_type, data_type, data_type>, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_memory_size));
+    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(gemm_kernel<BLAS, data_type, data_type, data_type>,
+                                             cudaFuncAttributeMaxDynamicSharedMemorySize,
+                                             shared_memory_size));
 
     // Execute kernel
     gemm_kernel<BLAS><<<1, BLAS::block_dim, shared_memory_size>>>(a, b, c, alpha, beta, output);
@@ -196,12 +191,12 @@ int simple_gemm() {
 }
 
 struct simple_gemm_functor {
-    template<int Arch>
-    int operator()(std::integral_constant<int, Arch>) {
+    template<int Arch, cublasdx::sm_modifier Modifier>
+    int operator()(std::integral_constant<int, Arch>, std::integral_constant<cublasdx::sm_modifier, Modifier>) {
         return simple_gemm<Arch>();
     }
 };
 
 int main(int, char**) {
-    return example::sm_runner(simple_gemm_functor{});
+    return example::sm_runner(simple_gemm_functor {});
 }

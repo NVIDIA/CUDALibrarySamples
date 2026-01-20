@@ -24,10 +24,10 @@
 #include "../common/example_sm_runner.hpp"
 #include "../common/device_io.hpp"
 #include "../common/print.hpp"
-#include "../common/cusolver_reference_qr.hpp"
+#include "../common/cublas_reference_geqrf_gels.hpp"
 
 // This example demonstrates how to use cuSolverDx API to compute the QR factorization on a batched m x n matrix A.
-// The results are compared with the reference values obtained with cuSolver host API.
+// The results are compared with the reference values obtained with cuBLAS batched API.
 
 template<class Solver, unsigned int BatchesPerBlock, typename DataType = typename Solver::a_data_type>
 __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(DataType* A, const int lda_gmem, DataType* tau, const unsigned batches) {
@@ -66,23 +66,19 @@ __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(DataType
     for (int i = thread_id; i < min(m, n) * BatchesPerBlock; i += Solver::max_threads_per_block) {
         tau_g[i] = tau_s[i];
     }
+    
 }
 
 template<int Arch>
 int geqrf_batched() {
 
     using namespace cusolverdx;
-    using Base   = decltype(Size<16, 20>() + Precision<float>() + Type<type::real>() + Function<geqrf>() + Arrangement<arrangement::row_major>() + TransposeMode<non_trans>() + SM<Arch>() + Block() +
-                          BlockDim<64>());
+    using Base   = decltype(Size<16, 20>() + Precision<float>() + Type<type::real>() + Function<geqrf>() + Arrangement<arrangement::row_major>() + SM<Arch>() + Block());
     using Solver = decltype(Base() + BatchesPerBlock<Base::suggested_batches_per_block>());
 
-#ifdef CUSOLVERDX_EXAMPLE_DETAIL_NVCC_12_2_BUG_WORKAROUND
-    using data_type      = typename example::a_data_type_t<Solver>;
-    using cuda_data_type = typename example::a_cuda_data_type_t<Solver>;
-#else
     using data_type      = typename Solver::a_data_type;
     using cuda_data_type = typename Solver::a_cuda_data_type;
-#endif
+
     constexpr unsigned bpb = Solver::batches_per_block;
     std::cout << "Using Suggested Batches per block = " << bpb << std::endl;
     std::cout << "Suggested BlockDim = " << Solver::suggested_block_dim.x << std::endl;
@@ -90,6 +86,7 @@ int geqrf_batched() {
 
     constexpr auto m = Solver::m_size;
     constexpr auto n = Solver::n_size;
+    constexpr auto min_mn = m > n ? n : m;
 
     constexpr bool is_col_maj_a = arrangement_of_v_a<Solver> == arrangement::col_major;
 
@@ -106,8 +103,8 @@ int geqrf_batched() {
     common::fillup_random_matrix<data_type>(is_col_maj_a, m, n, A.data(), lda, false, false, 2, 4, batches); // not symmetric and not diagonally dominant
 
     std::vector<data_type> L(input_size_a * padded_batches);
-    std::vector<data_type> tau(min(m, n) * padded_batches, 0);
-    std::vector<data_type> tau_ref(min(m, n) * padded_batches, 0);
+    std::vector<data_type> tau(min_mn * padded_batches);
+    std::vector<data_type> tau_ref(min_mn * padded_batches);
     data_type*             d_A   = nullptr;
     data_type*             d_tau = nullptr;
 
@@ -137,6 +134,8 @@ int geqrf_batched() {
     printf(" after cuSolverDx\n");
     printf("L = \n");
     common::print_matrix<data_type, m, n, lda, is_col_maj_a>(L.data(), batches);
+    printf("tau = \n");
+    common::print_matrix<data_type, min_mn, 1, min_mn, true>(tau.data(), batches);
 
 
     /* free resources */
@@ -144,40 +143,37 @@ int geqrf_batched() {
     CUDA_CHECK_AND_EXIT(cudaFree(d_tau));
 
     //=========================
-    // cuSolver reference
+    // cuBLAS reference
     //=========================
     std::vector<data_type> dummy_b;
-    common::reference_cusolver_qr<data_type, cuda_data_type, false>(A, dummy_b, tau_ref, m, n, 1, padded_batches, batches, is_col_maj_a);
+    common::reference_cublas_geqrf_gels<data_type, cuda_data_type>(A, dummy_b, tau_ref, m, n, 1, batches, is_col_maj_a);
 
-
-    // check A
+    // check A and tau
+    // Note that if M <= N, cuSolverDx GEQRF skips computing the last reflector and tau[min(m, n) - 1] is set to 0
+    // This could lead to different results from cuSolver reference for complex data type
     const auto total_relative_error_a = common::check_error<data_type, data_type>(L.data(), A.data(), batches * input_size_a);
-    std::cout << "GEQRF: relative error of A between cuSolverDx and cuSolver results: " << total_relative_error_a << std::endl;
-    const auto total_relative_error_tau = common::check_error<data_type, data_type>(tau.data(), tau_ref.data(), batches * min(m, n));
-    std::cout << "GEQRF: relative error of tau between cuSolverDx and cuSolver results: " << total_relative_error_tau << std::endl;
+    std::cout << "GEQRF: relative error of A between cuSolverDx and cuBLAS results: " << total_relative_error_a << std::endl;
+    const auto total_relative_error_tau = common::check_error<data_type, data_type>(tau.data(), tau_ref.data(), batches * min_mn);
+    std::cout << "GEQRF: relative error of tau between cuSolverDx and cuBLAS results: " << total_relative_error_tau << std::endl;
 
     // Comment below to remove printing results after cuSolver reference execute
     printf("Lref = \n");
     common::print_matrix<data_type, m, n, lda, is_col_maj_a>(A.data(), batches);
+    printf("tau_ref = \n");
+    common::print_matrix<data_type, min_mn, 1, min_mn, true>(tau_ref.data(), batches);
     printf("=====\n");
 
 
     if (!common::is_error_acceptable<data_type>(total_relative_error_a)) {
-        std::cout << "Failure compared with cuSolver API results A" << std::endl;
+        std::cout << "Failure compared with cuBLAS API results A" << std::endl;
         return 1;
     }
     if (!common::is_error_acceptable<data_type>(total_relative_error_tau)) {
-        std::cout << "Failure compared with cuSolver API results TAU" << std::endl;
-        //Print out tau for debugging. Do not delete
-        for (int i = 0; i < min(m, n) * batches; ++i) {
-            if (abs(tau[i] - tau_ref[i]) / abs(tau_ref[i]) > 1e-05) {
-                printf("tau[%d] = %10.3f, tau_ref[%d] = %10.3f  differ \n", i, tau[i], i, tau_ref[i]);
-            }
-        }
+        std::cout << "Failure compared with cuBLAS API results TAU" << std::endl;
         return 1;
     }
 
-    std::cout << "Success compared with cuSolver API results, A and tau" << std::endl;
+    std::cout << "Success compared with cuBLAS API results, A and tau" << std::endl;
     return 0;
 }
 

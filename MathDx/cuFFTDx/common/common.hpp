@@ -25,6 +25,7 @@
 #include <random>
 #include <algorithm>
 #include <sstream>
+#include <iostream>
 
 #include <cuda_runtime_api.h>
 #include <cufft.h>

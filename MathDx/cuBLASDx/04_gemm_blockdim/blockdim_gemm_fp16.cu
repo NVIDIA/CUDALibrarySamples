@@ -34,15 +34,15 @@ __global__ void gemm_kernel(const ValueType* a,
     using value_type = ValueType;
     extern __shared__ __align__(16) char smem[];
 
-    auto a_global_tensor = cublasdx::make_tensor(a, BLAS::get_layout_gmem_a());
-    auto b_global_tensor = cublasdx::make_tensor(b, BLAS::get_layout_gmem_b());
-    auto c_global_tensor = cublasdx::make_tensor(c, BLAS::get_layout_gmem_c());
+    auto a_global_tensor   = cublasdx::make_tensor(a, BLAS::get_layout_gmem_a());
+    auto b_global_tensor   = cublasdx::make_tensor(b, BLAS::get_layout_gmem_b());
+    auto c_global_tensor   = cublasdx::make_tensor(c, BLAS::get_layout_gmem_c());
     auto out_global_tensor = cublasdx::make_tensor(output, BLAS::get_layout_gmem_c());
 
     auto [smem_a, smem_b, smem_c] = cublasdx::slice_shared_memory<BLAS>(smem);
-    auto a_shared_tensor = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_a());
-    auto b_shared_tensor = cublasdx::make_tensor(smem_b, BLAS::get_layout_smem_b());
-    auto c_shared_tensor = cublasdx::make_tensor(smem_c, BLAS::get_layout_smem_c());
+    auto a_shared_tensor          = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_a());
+    auto b_shared_tensor          = cublasdx::make_tensor(smem_b, BLAS::get_layout_smem_b());
+    auto c_shared_tensor          = cublasdx::make_tensor(smem_c, BLAS::get_layout_smem_c());
 
     using alignment = cublasdx::alignment_of<BLAS>;
     // Kernel launched with block dimensions equal to BLAS::block_dim
@@ -103,26 +103,26 @@ __global__ void gemm_kernel(const ValueType* a,
 }
 
 constexpr dim3 get_blas_block_dim(unsigned int scenario) {
-    if(scenario == 0) {
+    if (scenario == 0) {
         return dim3(128);
-    } else if(scenario == 1) {
+    } else if (scenario == 1) {
         return dim3(128);
-    } else if(scenario == 2) {
+    } else if (scenario == 2) {
         return dim3(128);
-    } else if(scenario == 3) {
+    } else if (scenario == 3) {
         return dim3(32, 4);
     }
     return dim3(128);
 }
 
 constexpr dim3 get_kernel_block_dim(unsigned int scenario) {
-    if(scenario == 0) {
+    if (scenario == 0) {
         return dim3(128);
-    } else if(scenario == 1) {
+    } else if (scenario == 1) {
         return dim3(255);
-    } else if(scenario == 2) {
+    } else if (scenario == 2) {
         return dim3(196, 2);
-    } else if(scenario == 3) {
+    } else if (scenario == 3) {
         return dim3(32, 4, 2);
     }
     return dim3(128);
@@ -168,7 +168,7 @@ int simple_gemm() {
     constexpr unsigned int k = 64;
 
     // Selected CUDA block size (1D)
-    constexpr auto blas_block_dim = get_blas_block_dim(Scenario);
+    constexpr auto blas_block_dim   = get_blas_block_dim(Scenario);
     constexpr auto kernel_block_dim = get_kernel_block_dim(Scenario);
 
     // If matrix A is column-major (or not transposed in BLAS nomenclature) its logical dimensions are: [m, k] (m rows, k columns)
@@ -185,24 +185,21 @@ int simple_gemm() {
     // 3. Block operator informs that GEMM should be performed on CUDA block level.
     // 4. BlockDim operator sets layout and number of threads.
     // 5. Targeted CUDA compute capability is selected with SM operator.
-    using BLAS = decltype(cublasdx::Size<m, n, k>() +
-                          cublasdx::Precision<__half>() +
-                          cublasdx::Type<cublasdx::type::real>() +
-                          cublasdx::Function<cublasdx::function::MM>() +
-                          cublasdx::Arrangement<arrangement_a, arrangement_b>() +
-                          cublasdx::Block() +
-                          cublasdx::BlockDim<blas_block_dim.x, blas_block_dim.y, blas_block_dim.z>() +
-                          cublasdx::SM<Arch>());
+    using BLAS =
+        decltype(cublasdx::Size<m, n, k>() + cublasdx::Precision<__half>() + cublasdx::Type<cublasdx::type::real>() +
+                 cublasdx::Function<cublasdx::function::MM>() + cublasdx::Arrangement<arrangement_a, arrangement_b>() +
+                 cublasdx::Block() + cublasdx::BlockDim<blas_block_dim.x, blas_block_dim.y, blas_block_dim.z>() +
+                 cublasdx::SM<Arch>());
 
     using value_type = example::uniform_value_type_t<BLAS>;
 
     // Allocate managed memory for a, b, c, and output
-    value_type* inputs;
-    value_type* output;
+    value_type*    inputs;
+    value_type*    output;
     constexpr auto global_a_size = example::global_memory_size_of<BLAS>::a_size;
     constexpr auto global_b_size = example::global_memory_size_of<BLAS>::b_size;
     constexpr auto global_c_size = example::global_memory_size_of<BLAS>::c_size;
-    auto inputs_size       = global_a_size + global_b_size + global_c_size;
+    auto           inputs_size   = global_a_size + global_b_size + global_c_size;
 
     auto inputs_size_bytes = inputs_size * sizeof(value_type);
     CUDA_CHECK_AND_EXIT(cudaMallocManaged(&inputs, inputs_size_bytes));
@@ -215,20 +212,22 @@ int simple_gemm() {
     value_type  beta  = value_type(2.0);
 
     // Fill the A, B, C matrices with random values
-    auto host_a = example::get_random_data<value_type>(0.1, 1.0, global_a_size);
-    auto host_b = example::get_random_data<value_type>(0.1, 1.0, global_b_size);
-    auto host_c = example::get_random_data<value_type>(0.1, 1.0, global_c_size);
+    auto host_a = example::get_random_data<value_type>(global_a_size);
+    auto host_b = example::get_random_data<value_type>(global_b_size);
+    auto host_c = example::get_random_data<value_type>(global_c_size);
     CUDA_CHECK_AND_EXIT(cudaMemcpy(a, host_a.data(), global_a_size * sizeof(value_type), cudaMemcpyHostToDevice));
     CUDA_CHECK_AND_EXIT(cudaMemcpy(b, host_b.data(), global_b_size * sizeof(value_type), cudaMemcpyHostToDevice));
     CUDA_CHECK_AND_EXIT(cudaMemcpy(c, host_c.data(), global_c_size * sizeof(value_type), cudaMemcpyHostToDevice));
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     // Increase max dynamic shared memory for the kernel if needed
-    CUDA_CHECK_AND_EXIT(
-        cudaFuncSetAttribute(gemm_kernel<Scenario, BLAS>, cudaFuncAttributeMaxDynamicSharedMemorySize, cublasdx::get_shared_storage_size<BLAS>()));
+    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(gemm_kernel<Scenario, BLAS>,
+                                             cudaFuncAttributeMaxDynamicSharedMemorySize,
+                                             cublasdx::get_shared_storage_size<BLAS>()));
 
     // Execute kernel
-    gemm_kernel<Scenario, BLAS><<<1, kernel_block_dim, cublasdx::get_shared_storage_size<BLAS>()>>>(a, b, c, alpha, beta, output);
+    gemm_kernel<Scenario, BLAS>
+        <<<1, kernel_block_dim, cublasdx::get_shared_storage_size<BLAS>()>>>(a, b, c, alpha, beta, output);
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
     CUDA_CHECK_AND_EXIT(cudaGetLastError());
 
@@ -255,20 +254,23 @@ int simple_gemm() {
 }
 
 struct simple_gemm_functor {
-    template<int Arch>
-    int operator()(std::integral_constant<int, Arch>) {
+    template<int Arch, cublasdx::sm_modifier Modifier>
+    int operator()(std::integral_constant<int, Arch>, std::integral_constant<cublasdx::sm_modifier, Modifier>) {
         int status = 0;
-        status = simple_gemm<0, Arch>();
-        if(status) return status;
+        status     = simple_gemm<0, Arch>();
+        if (status)
+            return status;
         status = simple_gemm<1, Arch>();
-        if(status) return status;
+        if (status)
+            return status;
         status = simple_gemm<2, Arch>();
-        if(status) return status;
+        if (status)
+            return status;
         status = simple_gemm<3, Arch>();
         return status;
     }
 };
 
 int main(int, char**) {
-    return example::sm_runner(simple_gemm_functor{});
+    return example::sm_runner(simple_gemm_functor {});
 }

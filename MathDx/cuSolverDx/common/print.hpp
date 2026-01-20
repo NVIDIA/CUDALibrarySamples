@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,11 +20,15 @@
 
 #include <string>
 #include <stdio.h>
+#include "numeric.hpp"
 
 #include <cusolverdx.hpp>
 #include <numeric>
 
 namespace common {
+
+#define CUSOLVERDX_EXAMPLE_PRINTF_SPEC "%0.2f"
+#define CUSOLVERDX_EXAMPLE_PRINTF_COMPLEX_SUFFIX "j "
 
     template<typename T>
     void print_matrix(const unsigned int M, const unsigned int N, bool is_col_major, const T* A, const unsigned int lda, const int nbatches = 1) {
@@ -32,14 +36,14 @@ namespace common {
             if constexpr (!is_complex<T>()) {
                 for (int i = 0; i < M; i++) {
                     for (int j = 0; j < N * nbatches; j++) {
-                        std::printf("%0.2f ", A[j * lda + i]);
+                        std::printf(CUSOLVERDX_EXAMPLE_PRINTF_SPEC " ", A[j * lda + i]);
                     }
                     printf("\n");
                 }
             } else {
                 for (int i = 0; i < M; i++) {
                     for (int j = 0; j < N * nbatches; j++) {
-                        std::printf("%0.2f + %0.2fj ", A[j * lda + i].x, A[j * lda + i].y);
+                        std::printf(CUSOLVERDX_EXAMPLE_PRINTF_SPEC " + " CUSOLVERDX_EXAMPLE_PRINTF_SPEC CUSOLVERDX_EXAMPLE_PRINTF_COMPLEX_SUFFIX, A[j * lda + i].x, A[j * lda + i].y);
                     }
                     printf("\n");
                 }
@@ -48,14 +52,14 @@ namespace common {
             if constexpr (!is_complex<T>()) {
                 for (int i = 0; i < M; i++) {
                     for (int j = 0; j < N * nbatches; j++) {
-                        std::printf("%0.2f ", A[i * lda + j]);
+                        std::printf(CUSOLVERDX_EXAMPLE_PRINTF_SPEC " ", A[i * lda + j]);
                     }
                     printf("\n");
                 }
             } else {
                 for (int i = 0; i < M; i++) {
                     for (int j = 0; j < N * nbatches; j++) {
-                        std::printf("%0.2f + %0.2fj ", A[i * lda + j].x, A[i * lda + j].y);
+                        std::printf(CUSOLVERDX_EXAMPLE_PRINTF_SPEC " + " CUSOLVERDX_EXAMPLE_PRINTF_SPEC CUSOLVERDX_EXAMPLE_PRINTF_COMPLEX_SUFFIX, A[i * lda + j].x, A[i * lda + j].y);
                     }
                     printf("\n");
                 }

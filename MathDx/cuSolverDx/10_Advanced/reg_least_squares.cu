@@ -15,8 +15,8 @@
  * limitations under the License.
  */
 
-#include <cublasdx.hpp>
 #include <cusolverdx.hpp>
+#include <cublasdx.hpp>
 #include <cusolverDn.h>
 
 #include <type_traits>
@@ -67,7 +67,7 @@ __global__ __launch_bounds__(NT) void solve_normal_equations(const T* A, unsigne
     #ifdef __CUDA_ARCH__
         constexpr unsigned Arch = __CUDA_ARCH__;
     #else
-        constexpr unsigned Arch = 700;
+        constexpr unsigned Arch = 800;
     #endif
 
     using          prec = std::conditional_t<std::is_same_v<T, float> || std::is_same_v<T, commondx::complex<float>>, float, double>;
@@ -126,7 +126,7 @@ __global__ __launch_bounds__(NT) void solve_householder(const T* A, unsigned lda
     #ifdef __CUDA_ARCH__
         constexpr unsigned Arch = __CUDA_ARCH__;
     #else
-        constexpr unsigned Arch = 700;
+        constexpr unsigned Arch = 800;
     #endif
 
     using          prec = std::conditional_t<std::is_same_v<T, float> || std::is_same_v<T, commondx::complex<float>>, float, double>;

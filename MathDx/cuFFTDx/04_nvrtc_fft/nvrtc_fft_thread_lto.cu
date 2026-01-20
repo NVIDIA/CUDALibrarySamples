@@ -68,11 +68,11 @@ int main(int, char**) {
     // Get LTOIR and database from cuFFT
     auto [lto_db, ltoirs, block_dim, shared_memory_size] =
         cufftdx::utils::get_database_and_ltoir(fft_size,
-                                               CUFFT_DESC_INVERSE,
-                                               CUFFT_DESC_C2C,
+                                               cufftdx::fft_direction::inverse,
+                                               cufftdx::fft_type::c2c,
                                                example::nvrtc::get_device_architecture(current_device) * 10,
-                                               CUFFT_DESC_THREAD,
-                                               CUFFT_DESC_DOUBLE);
+                                               cufftdx::utils::execution_type::thread,
+                                               cufftdx::precision::f64);
 
     if (ltoirs.size() == 0 || lto_db.empty()) {
         std::cout << "LTOIR or database from cuFFT is empty. Exit.\n";
@@ -97,8 +97,7 @@ int main(int, char**) {
     // Prepare compilation options
     std::vector<const char*> opts = {
         "--std=c++17",
-        "--device-as-default-execution-space",
-        "--include-path=" CUDA_INCLUDE_DIR // Add path to CUDA include directory
+        "--device-as-default-execution-space"
     };
 
     // Parse cuFFTDx include dirs
@@ -175,7 +174,7 @@ int main(int, char**) {
     #if defined(CUDA_VERSION) && CUDA_VERSION >= 13000
         CU_CHECK_AND_EXIT(cuCtxCreate(&context, (CUctxCreateParams*)0, 0, cuDevice));
     #else
-    CU_CHECK_AND_EXIT(cuCtxCreate(&context, 0, cuDevice));
+        CU_CHECK_AND_EXIT(cuCtxCreate(&context, 0, cuDevice));
     #endif
     CU_CHECK_AND_EXIT(cuModuleLoadDataEx(&module, cubin.data(), 0, 0, 0));
     CU_CHECK_AND_EXIT(cuModuleGetFunction(&kernel, module, "test_kernel"));

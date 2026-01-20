@@ -39,14 +39,18 @@ namespace example {
 
         double tot_error_sq    = 0;
         double tot_norm_sq     = 0;
+        double tot_res_norm_sq = 0;
         double tot_ind_rel_err = 0;
         double max_ind_rel_err = 0;
+        double max_ind_abs_err = 0;
         for (std::size_t i = 0; i < data.size(); ++i) {
             error_type val = convert<error_type>(data[i]);
             error_type ref = convert<error_type>(reference[i]);
 
-            double aref      = detail::cbabs(ref);
-            double diff      = detail::cbabs(ref - error_type(val));
+            double aref = detail::cbabs(ref);
+            double aval = detail::cbabs(val);
+            double diff = std::abs(aref - aval);
+
             double rel_error = diff / (aref + eps);
 
             // Individual relative error
@@ -54,12 +58,16 @@ namespace example {
 
             // Maximum relative error
             max_ind_rel_err = std::max(max_ind_rel_err, rel_error);
+            max_ind_abs_err = std::max(max_ind_abs_err, diff);
 
             // Total relative error
             tot_error_sq += diff * diff;
             tot_norm_sq += aref * aref;
 
-            if (print && verbose) {
+            const double inc = detail::cbabs(val) * detail::cbabs(val);
+            tot_res_norm_sq += inc;
+
+            if ((print && verbose) and (detail::cbabs(diff) > 0.01)) {
                 if constexpr (is_complex<error_type>()) {
                     std::cout << i << ":\t" << '<' << val.real() << ',' << val.imag() << '>' << "\t" << '<'
                               << ref.real() << ',' << ref.imag() << '>' << "\t" << rel_error << "\n";
@@ -68,8 +76,12 @@ namespace example {
                 }
             }
         }
+
         if (print)
             printf("Vector reference  norm: [%.5e]\n", sqrt(tot_norm_sq));
+
+        if (print)
+            printf("Vector result  norm: [%.5e]\n", sqrt(tot_res_norm_sq));
 
         double tot_rel_err = sqrt(tot_error_sq / (tot_norm_sq + eps));
         if (print)
@@ -82,25 +94,28 @@ namespace example {
         if (print)
             printf("Maximum relative error: [%.5e]\n", max_ind_rel_err);
 
+        if (print)
+            printf("Maximum absolute error: [%.5e]\n", max_ind_abs_err);
+
         return tot_rel_err;
     }
 
-    #define CHECK_ERROR_FOR_PRECISION(Prec)                                  \
-    template<>                                                               \
-    double calculate_error<Prec, Prec>(const std::vector<Prec>& data,        \
-                                       const std::vector<Prec>& reference,   \
-                                       bool verbose, bool print) {           \
-        return calculate_error_impl(data, reference, verbose, print);        \
-    }                                                                        \
-    template<>                                                               \
-    double calculate_error<cublasdx::complex<Prec>, cublasdx::complex<Prec>> \
-        (const std::vector<cublasdx::complex<Prec>>& data,                   \
-         const std::vector<cublasdx::complex<Prec>>& reference,              \
-         bool verbose, bool print) {                                         \
-        return calculate_error_impl(data, reference, verbose, print);        \
+#define CHECK_ERROR_FOR_PRECISION(Prec)                                                                \
+    template<>                                                                                         \
+    double calculate_error<Prec, Prec>(                                                                \
+        const std::vector<Prec>& data, const std::vector<Prec>& reference, bool verbose, bool print) { \
+        return calculate_error_impl(data, reference, verbose, print);                                  \
+    }                                                                                                  \
+    template<>                                                                                         \
+    double calculate_error<cublasdx::complex<Prec>, cublasdx::complex<Prec>>(                          \
+        const std::vector<cublasdx::complex<Prec>>& data,                                              \
+        const std::vector<cublasdx::complex<Prec>>& reference,                                         \
+        bool                                        verbose,                                           \
+        bool                                        print) {                                                                                  \
+        return calculate_error_impl(data, reference, verbose, print);                                  \
     }
 
     CHECK_ERROR_FOR_PRECISION(double);
     CHECK_ERROR_FOR_PRECISION(int64_t);
     CHECK_ERROR_FOR_PRECISION(uint64_t);
-} // namespace test
+} // namespace example

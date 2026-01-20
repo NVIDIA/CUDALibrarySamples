@@ -51,7 +51,8 @@ __global__ void gemm_kernel(const ValueType* a,
 
     value_type* smem_a = reinterpret_cast<value_type*>(smem) + threadIdx.y * BLAS::a_size;
     value_type* smem_b = reinterpret_cast<value_type*>(smem) + (batches * BLAS::a_size) + threadIdx.y * BLAS::b_size;
-    value_type* smem_c = reinterpret_cast<value_type*>(smem) + (batches * BLAS::a_size) + (batches * BLAS::b_size) + threadIdx.y * BLAS::c_size;
+    value_type* smem_c = reinterpret_cast<value_type*>(smem) + (batches * BLAS::a_size) + (batches * BLAS::b_size) +
+                         threadIdx.y * BLAS::c_size;
 
     // Load all batches
     auto a_global_tensor = cublasdx::make_tensor(a, BLAS::get_layout_gmem_a());
@@ -116,15 +117,11 @@ int simple_gemm() {
     // 6. BlockDim operator sets layout and number of threads.
     //    - Optional
     // 7. Targeted CUDA compute capability is selected with SM operator.
-    using BLAS = decltype(cublasdx::Size<m, n, k>() +
-                          cublasdx::Precision<double>() +
-                          cublasdx::Type<cublasdx::type::real>() +
-                          cublasdx::Function<cublasdx::function::MM>() +
-                          cublasdx::Arrangement<cublasdx::row_major, cublasdx::col_major>() +
-                          cublasdx::Alignment<16, 16, 16>() +
-                          cublasdx::Block() +
-                          cublasdx::BlockDim<block_size>() +
-                          cublasdx::SM<Arch>());
+    using BLAS =
+        decltype(cublasdx::Size<m, n, k>() + cublasdx::Precision<double>() + cublasdx::Type<cublasdx::type::real>() +
+                 cublasdx::Function<cublasdx::function::MM>() +
+                 cublasdx::Arrangement<cublasdx::row_major, cublasdx::col_major>() + cublasdx::Alignment<16, 16, 16>() +
+                 cublasdx::Block() + cublasdx::BlockDim<block_size>() + cublasdx::SM<Arch>());
 
     using value_type = example::uniform_value_type_t<BLAS>;
 
@@ -135,7 +132,7 @@ int simple_gemm() {
     constexpr auto global_a_size = example::global_memory_size_of<BLAS>::a_size;
     constexpr auto global_b_size = example::global_memory_size_of<BLAS>::b_size;
     constexpr auto global_c_size = example::global_memory_size_of<BLAS>::c_size;
-    auto inputs_size       = batches * (global_a_size + global_b_size + global_c_size);
+    auto           inputs_size   = batches * (global_a_size + global_b_size + global_c_size);
 
     auto inputs_size_bytes = inputs_size * sizeof(value_type);
     CUDA_CHECK_AND_EXIT(cudaMallocManaged(&inputs, inputs_size_bytes));
@@ -148,15 +145,18 @@ int simple_gemm() {
     value_type  beta  = value_type(2.0);
 
     // Fill the A, B, C matrices with random values
-    auto host_a = example::get_random_data<value_type>(0.1, 1.0, batches * global_a_size);
-    auto host_b = example::get_random_data<value_type>(0.1, 1.0, batches * global_b_size);
-    auto host_c = example::get_random_data<value_type>(0.1, 1.0, batches * global_c_size);
-    CUDA_CHECK_AND_EXIT(cudaMemcpy(a, host_a.data(), batches * global_a_size * sizeof(value_type), cudaMemcpyHostToDevice));
-    CUDA_CHECK_AND_EXIT(cudaMemcpy(b, host_b.data(), batches * global_b_size * sizeof(value_type), cudaMemcpyHostToDevice));
-    CUDA_CHECK_AND_EXIT(cudaMemcpy(c, host_c.data(), batches * global_c_size * sizeof(value_type), cudaMemcpyHostToDevice));
+    auto host_a = example::get_random_data<value_type>(batches * global_a_size);
+    auto host_b = example::get_random_data<value_type>(batches * global_b_size);
+    auto host_c = example::get_random_data<value_type>(batches * global_c_size);
+    CUDA_CHECK_AND_EXIT(
+        cudaMemcpy(a, host_a.data(), batches * global_a_size * sizeof(value_type), cudaMemcpyHostToDevice));
+    CUDA_CHECK_AND_EXIT(
+        cudaMemcpy(b, host_b.data(), batches * global_b_size * sizeof(value_type), cudaMemcpyHostToDevice));
+    CUDA_CHECK_AND_EXIT(
+        cudaMemcpy(c, host_c.data(), batches * global_c_size * sizeof(value_type), cudaMemcpyHostToDevice));
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
-    const dim3 block_dim = dim3(block_size, batches);
+    const dim3 block_dim          = dim3(block_size, batches);
     const auto shared_memory_size = batches * cublasdx::get_shared_storage_size<BLAS>();
 
     // Increase max dynamic shared memory for the kernel if needed
@@ -173,8 +173,8 @@ int simple_gemm() {
         cudaMemcpy(host_output1.data(), output, global_c_size * sizeof(value_type), cudaMemcpyDeviceToHost));
     // Copy results of the 2nd batch back to host
     std::vector<value_type> host_output2(global_c_size);
-    CUDA_CHECK_AND_EXIT(
-        cudaMemcpy(host_output2.data(), output + global_c_size, global_c_size * sizeof(value_type), cudaMemcpyDeviceToHost));
+    CUDA_CHECK_AND_EXIT(cudaMemcpy(
+        host_output2.data(), output + global_c_size, global_c_size * sizeof(value_type), cudaMemcpyDeviceToHost));
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     // Free device memory
@@ -185,15 +185,16 @@ int simple_gemm() {
     decltype(host_a) host_a1(host_a.begin(), host_a.begin() + global_a_size);
     decltype(host_b) host_b1(host_b.begin(), host_b.begin() + global_b_size);
     decltype(host_c) host_c1(host_c.begin(), host_c.begin() + global_c_size);
-    auto reference_host_output1 = example::reference_gemm<BLAS>(alpha, host_a1, host_b1, beta, host_c1);
+    auto             reference_host_output1 = example::reference_gemm<BLAS>(alpha, host_a1, host_b1, beta, host_c1);
     // Calculate reference for the 2nd batch
     decltype(host_a) host_a2(host_a.begin() + global_a_size, host_a.begin() + 2 * global_a_size);
     decltype(host_b) host_b2(host_b.begin() + global_b_size, host_b.begin() + 2 * global_b_size);
     decltype(host_c) host_c2(host_c.begin() + global_c_size, host_c.begin() + 2 * global_c_size);
-    auto reference_host_output2 = example::reference_gemm<BLAS>(alpha, host_a2, host_b2, beta, host_c2);
+    auto             reference_host_output2 = example::reference_gemm<BLAS>(alpha, host_a2, host_b2, beta, host_c2);
 
     // Check against reference
-    if (example::check_error<BLAS>(host_output1, reference_host_output1) && example::check_error<BLAS>(host_output2, reference_host_output2)) {
+    if (example::check_error<BLAS>(host_output1, reference_host_output1) &&
+        example::check_error<BLAS>(host_output2, reference_host_output2)) {
         std::cout << "Success" << std::endl;
         return 0;
     }
@@ -202,12 +203,12 @@ int simple_gemm() {
 }
 
 struct simple_gemm_functor {
-    template<int Arch>
-    int operator()(std::integral_constant<int, Arch>) {
+    template<int Arch, cublasdx::sm_modifier Modifier>
+    int operator()(std::integral_constant<int, Arch>, std::integral_constant<cublasdx::sm_modifier, Modifier>) {
         return simple_gemm<Arch>();
     }
 };
 
 int main(int, char**) {
-    return example::sm_runner(simple_gemm_functor{});
+    return example::sm_runner(simple_gemm_functor {});
 }

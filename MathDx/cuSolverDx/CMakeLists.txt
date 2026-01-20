@@ -16,7 +16,7 @@
 cmake_minimum_required(VERSION 3.18)
 
 # cuSOLVERDx examples project
-project(cusolverdx_examples VERSION 0.2.1 LANGUAGES CXX CUDA)
+project(cusolverdx_examples VERSION 0.3.0 LANGUAGES CXX CUDA)
 
 # PROJECT_IS_TOP_LEVEL is available since 3.21
 if(CMAKE_VERSION VERSION_LESS 3.21)
@@ -131,7 +131,7 @@ if(PROJECT_IS_TOP_LEVEL)
     find_package(mathdx REQUIRED COMPONENTS cusolverdx cublasdx CONFIG
         PATHS
             "${PROJECT_SOURCE_DIR}/../.." # example/cusolverdx
-            "/opt/nvidia/mathdx/25.06"
+            "/opt/nvidia/mathdx/25.12"
     )
 endif()
 
@@ -190,9 +190,10 @@ function(link_lto_library_workaround EXAMPLE_TARGET LTO_LIBRARY LTO_FATBIN_FILE 
         # Extract SM from SM-real/SM-virtual
         string(REPLACE "-" ";" CUDA_ARCH_LIST ${CUDA_ARCH})
         list(GET CUDA_ARCH_LIST 0 ARCH)
-        if(${ARCH} STREQUAL "90a")
-            set(ARCH 90)
-        endif()
+        # Remove "a"
+        string(REPLACE "a" "" ARCH "${ARCH}")
+        # Remove "f"
+        string(REPLACE "f" "" ARCH "${ARCH}")
         target_compile_options(${EXAMPLE_TARGET}
             PRIVATE
                 "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--generate-code arch=compute_${ARCH},code=lto_${ARCH}>"
@@ -285,6 +286,7 @@ function(add_cusolverdx_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
     target_link_libraries(${EXAMPLE_TARGET}
         PRIVATE
             CUDA::cusolver
+            CUDA::cusparse
             common_example_objects
     )
     add_test(NAME ${EXAMPLE_NAME} COMMAND ${EXAMPLE_TARGET})
@@ -318,10 +320,19 @@ function(add_cusolverdx_nvrtc_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
             CUDA::nvrtc
             $<IF:$<TARGET_EXISTS:CUDA::nvJitLink>,CUDA::nvJitLink,${CUDAToolkit_LIBRARY_DIR}/libnvJitLink.so>
     )
+    # For compatibility with CUDA 13+ & CMAKE 4+
+    set(CUSOLVERDX_CUDA_INCLUDE_DIRS "${CUDAToolkit_INCLUDE_DIRS}")
+    list(LENGTH CUSOLVERDX_CUDA_INCLUDE_DIRS CUDA_INCLUDE_LENGTH)
+
+    if(${CUDA_INCLUDE_LENGTH} GREATER 1)
+        list(GET CUSOLVERDX_CUDA_INCLUDE_DIRS 0 CUSOLVERDX_CUDA_INCLUDE_DIRS)
+    else()
+        set(CUSOLVERDX_CUDA_INCLUDE_DIRS "${CUSOLVERDX_CUDA_INCLUDE_DIRS}")
+    endif()
     target_compile_definitions(${EXAMPLE_TARGET}
         PRIVATE
-            CUDA_INCLUDE_DIR="${CUDAToolkit_INCLUDE_DIRS}"
-            CUDA_CCCL_INCLUDE_DIR="${CUDAToolkit_INCLUDE_DIRS}/cccl/" # for CTK 13.0 support
+            CUDA_INCLUDE_DIR="${CUSOLVERDX_CUDA_INCLUDE_DIRS}"
+            CUDA_CCCL_INCLUDE_DIR="${CUSOLVERDX_CUDA_INCLUDE_DIRS}/cccl/" # for CTK 13.0 support
             CUTLASS_INCLUDE_DIR="${cusolverdx_cutlass_INCLUDE_DIR}"
             COMMONDX_INCLUDE_DIR="${cusolverdx_commondx_INCLUDE_DIR}"
             CUSOLVERDX_INCLUDE_DIRS="${cusolverdx_INCLUDE_DIRS}"
@@ -353,22 +364,36 @@ endfunction()
 add_custom_target(cusolverdx_examples)
 
 # cuSOLVERDx NVRTC examples
-add_cusolverdx_nvrtc_example(cusolverdx_examples "cusolverdx.example.nvrtc_potrs" 04_NVRTC/nvrtc_potrs.cpp)
+add_cusolverdx_nvrtc_example(cusolverdx_examples "cusolverdx.example.nvrtc_potrs" 08_NVRTC/nvrtc_potrs.cpp)
 
 # Compiling tests with NVCC is supported on AARCH64 only with CUDA 12.8+
 # This is because since CUDA 12.8 NVCC can link against fatbin libraries
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86)|(X86)|(amd64)|(AMD64)" OR (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8))
     # cuSOLVERDx introduction examples
     add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.posv_batched" 00_Introduction/posv_batched.cu)
-    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.potrf" 01_Cholesky/potrf.cu)
-    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.potrf_runtime_ld" 01_Cholesky/potrf_runtime_ld.cu)
-    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.getrf_wo_pivot" 02_LU/getrf_wo_pivot.cu)
-    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.gesv_batched_wo_pivot" 02_LU/gesv_batched_wo_pivot.cu)
-    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.getrf_partial_pivot" 02_LU/getrf_partial_pivot.cu)
-    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.gesv_batched_partial_pivot" 02_LU/gesv_batched_partial_pivot.cu)
-    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.geqrf_batched" 03_QR_GELS/geqrf_batched.cu)
-    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.gels_batched" 03_QR_GELS/gels_batched.cu)
-    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.geqrf_batched_performance" 05_Performance/geqrf_batched_performance.cu)
+    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.potrf" 01_Linear_Solve/potrf.cu)
+    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.potrf_runtime_ld" 01_Linear_Solve/potrf_runtime_ld.cu)
+    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.getrf_wo_pivot" 01_Linear_Solve/getrf_wo_pivot.cu)
+    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.getrf_partial_pivot" 01_Linear_Solve/getrf_partial_pivot.cu)
+    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.gesv_batched_wo_pivot" 01_Linear_Solve/gesv_batched_wo_pivot.cu)
+    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.gesv_batched_partial_pivot" 01_Linear_Solve/gesv_batched_partial_pivot.cu)
+    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.gtsv_batched_wo_pivot" 01_Linear_Solve/gtsv_batched_wo_pivot.cu)
+
+    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.gels_batched" 02_Least_Squares/gels_batched.cu)
+
+    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.geqrf_batched" 03_Orthogonal_Factors/geqrf_batched.cu)
+    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.unmqr_batched" 03_Orthogonal_Factors/unmqr_batched.cu)
+    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.ungqr_batched" 03_Orthogonal_Factors/ungqr_batched.cu)
+
+    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.htev_batched" 04_Symmetric_Eigenvalues/htev_batched.cu)
+    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.heev_batched" 04_Symmetric_Eigenvalues/heev_batched.cu)
+
+    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.bdsvd_batched" 05_Singular_Value_Decomposition/bdsvd_batched.cu)
+    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.gesvd_batched" 05_Singular_Value_Decomposition/gesvd_batched.cu)
+
+    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.trsm_batched" 07_BLAS/trsm_batched.cu)
+
+    add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.geqrf_batched_performance" 09_Performance/geqrf_batched_performance.cu)
     # cuBLASDx/cuSolverDx examples
     if(cublasdx_FOUND)
         message(STATUS "cuBLASDx was found, examples requiring cuBLASDx enabled")
@@ -377,7 +402,7 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86)|(X86)|(amd64)|(AMD64)" OR (CMAKE_CUDA_C
     endif()
     if(cublasdx_FOUND)
         # Example for handling larger matrices directly out of global memory
-        add_cublasdx_cusolverdx_example(cusolverdx_examples "cusolverdx.example.blocked_potrf" 06_Advanced/blocked_potrf.cu)
-        add_cublasdx_cusolverdx_example(cusolverdx_examples "cusolverdx.example.reg_least_squares" 06_Advanced/reg_least_squares.cu)
+        add_cublasdx_cusolverdx_example(cusolverdx_examples "cusolverdx.example.blocked_potrf" 10_Advanced/blocked_potrf.cu)
+        add_cublasdx_cusolverdx_example(cusolverdx_examples "cusolverdx.example.reg_least_squares" 10_Advanced/reg_least_squares.cu)
     endif()
 endif()

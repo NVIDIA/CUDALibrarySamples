@@ -1,6 +1,23 @@
-# MathDx Library - API Examples
+# MathDx Package
 
-This folder includes examples for cuFFTDx, cuBLASDx, cuSolverDx, cuRANDDx, and nvCOMPDx libraries available in the MathDx [package](https://developer.nvidia.com/mathdx) package. The examples are also shipped in the package.
+The **MathDx** package is a comprehensive collection of NVIDIA device extension libraries that empower CUDA developers to run
+advanced mathematical operations directly inside their GPU kernels, leveraging kernel fusion for maximum efficiency and flexibility.
+These libraries are crafted to work seamlessly together, providing a unified solution for high-performance computations, data processing,
+and random number generation — all without unnecessary host-device data transfers.
+MathDx delivers performance portability across hardware generations, abstracting low-level GPU architecture details
+so developers can focus on algorithms rather than hardware-specific tuning.
+
+* **cuBLASDx**: Device-side extensions for selected linear algebra routines, including efficient General Matrix Multiplication (GEMM) performed within kernels.
+* **cuFFTDx**: Device-side Fast Fourier Transform library, enabling in-kernel FFT calculations for signal processing and scientific computation.
+* **cuSolverDx**: Device-side matrix factorization, linear solve, least squares, eigenvalue solver, and singular value decomposition routines, supporting scientific and engineering workflows within a kernel.
+* **cuRANDDx**:  Random number generation library aiming to be a modern replacement for `cuRAND RNG device APIs <https://docs.nvidia.com/cuda/curand/device-api-overview.html#device-api-overview>`_.
+* **nvCOMPDx**: Compression and decompression capabilities built into device code, essential for high-throughput streaming and storage applications.
+
+**See [MathDx documentation](https://docs.nvidia.com/cuda/mathdx/index.html) for more details.**
+
+# MathDx Examples
+
+This folder includes examples for all libraries that are part of [MathDx package](https://docs.nvidia.com/cuda/mathdx/index.html): cuFFTDx, cuBLASDx, cuSolverDx, cuRANDDx, and nvCOMPDx. The examples are also shipped in the latest MathDx package, however, this repository may be updated more often, i.e., between MathDx releases.
 
 ## [cuBLASDx](cuBLASDx)
 
@@ -12,6 +29,7 @@ This folder includes examples for cuFFTDx, cuBLASDx, cuSolverDx, cuRANDDx, and n
 | Group                 | Subgroup       | Example                           | Description                                                                    |
 |-----------------------|----------------|-----------------------------------|--------------------------------------------------------------------------------|
 | Introduction Examples |                | 01_introduction_example           | cuBLASDx API introduction example                                              |
+| 			|                | 01_introduction_pipeline          | cuBLASDx Pipeline API introduction example                                     |
 | Simple GEMM Examples  | Basic Example  | 02_simple_gemm_fp32               | Performs fp32 GEMM                                                             |
 |                       |                | 02_simple_gemm_int8_int8_int32    | Performs integral GEMM using Tensor Cores                                      |
 |                       |                | 02_simple_gemm_fp8                | Performs fp8 GEMM                                                              |
@@ -101,15 +119,23 @@ This folder includes examples for cuFFTDx, cuBLASDx, cuSolverDx, cuRANDDx, and n
 |              Group           |            Example                |                                  Description                                                      |
 |------------------------------|-----------------------------------|---------------------------------------------------------------------------------------------------|
 | Introduction Examples        | posv_batched                      | Introduction example with Cholesky factorization and solve                                        |
-| Cholesky Examples            | potrf                             | Cholesky factorization                                                                            |
+| Linear Solve Examples        | potrf                             | Cholesky factorization                                                                            |
 |                              | potrf_runtime_ld                  | Cholesky factorization with runtime leading dimensions                                            |
-| LU Examples                  | getrf_wo_pivot                    | LU factorization without pivoting                                                                 |
+|                              | getrf_wo_pivot                    | LU factorization without pivoting                                                                 |
 |                              | getrf_partial_pivot               | LU factorization with partial pivoting                                                            |
 |                              | gesv_batched_wo_pivot             | Solves batched linear systems without pivoting                                                    |
 |                              | gesv_batched_partial_pivot        | Solves batched linear systems with partial pivoting                                               |
-| QR and Least Squares         | geqrf_batched                     | QR factorization for batched matrices                                                             |
-|                              | gels_batched                      | Solves batched least squares problems                                                             |
-| NVRTC Examples               | nvrtc_potrs                       | Using cuSolverDx with NVTRC runtime compilation and nvJitLink runtime linking                     |
+|                              | gtsv_batched_wo_pivot             | Solves batched tridiagonal linear systems without pivoting                                        |
+| Least Squares Examples       | gels_batched                      | Solves batched least squares problems                                                             |
+| Orthogonal Factors Examples  | geqrf_batched                     | QR factorization for batched matrices                                                             |
+|                              | ungqr_batched                     | Generates orthogonal/unitary matrix Q from QR factorization                                       |
+|                              | unmqr_batched                     | Multiplies matrix by orthogonal/unitary matrix Q from QR factorization                            |
+| Symmetric Eigenvalue Examples| heev_batched                      | Computes eigenvalues and eigenvectors of batched Hermitian matrices                               |
+|                              | htev_batched                      | Computes eigenvalues and eigenvectors of batched Hermitian tridiagonal matrices                   |
+| SVD Examples                 | gesvd_batched                     | Singular value decomposition for batched general matrices                                                 |
+|                              | bdsvd_batched                     | Singular value decomposition for batched bidiagonal matrices                                      |
+| BLAS Examples                | trsm_batched                      | Batched triangular solve with multiple right-hand sides                                           |
+| NVRTC Examples               | nvrtc_potrs                       | Using cuSolverDx with NVRTC runtime compilation and nvJitLink runtime linking                     |
 | Performance Examples         | geqrf_batched_performance         | Performance analysis of batched QR factorization                                                  |
 | Advanced Examples            | blocked_potrf                     | Cholesky factorization using blocked algorithm for large matrices                                 |
 |                              | reg_least_squares                 | Regularized least squares solver                                                                  |

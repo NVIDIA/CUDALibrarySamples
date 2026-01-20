@@ -40,14 +40,15 @@ __launch_bounds__(BLAS::max_threads_per_block) //
     auto b_global_tensor = cublasdx::make_tensor(b, BLAS::get_layout_gmem_b());
     auto c_global_tensor = cublasdx::make_tensor(c, BLAS::get_layout_gmem_c());
 
-    using a_engine = typename decltype(cublasdx::make_tensor(std::declval<decltype(a)>(), BLAS::get_layout_gmem_a()))::engine_type;
+    using a_engine =
+        typename decltype(cublasdx::make_tensor(std::declval<decltype(a)>(), BLAS::get_layout_gmem_a()))::engine_type;
     static_assert(std::is_same_v<a_engine, typename decltype(a_global_tensor)::engine_type>, "");
 
 
     auto [smem_a, smem_b, smem_c] = cublasdx::slice_shared_memory<BLAS>(smem);
-    auto a_shared_tensor = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_a());
-    auto b_shared_tensor = cublasdx::make_tensor(smem_b, BLAS::get_layout_smem_b());
-    auto c_shared_tensor = cublasdx::make_tensor(smem_c, BLAS::get_layout_smem_c());
+    auto a_shared_tensor          = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_a());
+    auto b_shared_tensor          = cublasdx::make_tensor(smem_b, BLAS::get_layout_smem_b());
+    auto c_shared_tensor          = cublasdx::make_tensor(smem_c, BLAS::get_layout_smem_c());
 
 
     using alignment = cublasdx::alignment_of<BLAS>;
@@ -95,13 +96,9 @@ int simple_gemm() {
     // 3. Block operator informs that GEMM should be performed on CUDA block level.
     // 4. BlockDim operator sets CUDA block dimensions that the kernel will be executed with.
     // 5. Targeted CUDA compute capability is selected with SM operator.
-    using BLAS = decltype(cublasdx::Size<m, n, k>() +
-                          cublasdx::Precision<float>() +
-                          cublasdx::Type<cublasdx::type::real>() +
-                          cublasdx::Function<cublasdx::function::MM>() +
-                          cublasdx::Block() +
-                          cublasdx::BlockDim<block_size>() +
-                          cublasdx::SM<Arch>());
+    using BLAS = decltype(cublasdx::Size<m, n, k>() + cublasdx::Precision<float>() +
+                          cublasdx::Type<cublasdx::type::real>() + cublasdx::Function<cublasdx::function::MM>() +
+                          cublasdx::Block() + cublasdx::BlockDim<block_size>() + cublasdx::SM<Arch>());
 
     using value_type = typename example::uniform_value_type_t<BLAS>;
 
@@ -125,17 +122,17 @@ int simple_gemm() {
     value_type  beta  = value_type(2.0);
 
     // Fill the A, B, C matrices with random values
-    auto host_a = example::get_random_data<value_type>(0.1, 1.0, global_a_size);
-    auto host_b = example::get_random_data<value_type>(0.1, 1.0, global_b_size);
-    auto host_c = example::get_random_data<value_type>(0.1, 1.0, global_c_size);
+    auto host_a = example::get_random_data<value_type>(global_a_size);
+    auto host_b = example::get_random_data<value_type>(global_b_size);
+    auto host_c = example::get_random_data<value_type>(global_c_size);
     CUDA_CHECK_AND_EXIT(cudaMemcpy(a, host_a.data(), global_a_size * sizeof(value_type), cudaMemcpyHostToDevice));
     CUDA_CHECK_AND_EXIT(cudaMemcpy(b, host_b.data(), global_b_size * sizeof(value_type), cudaMemcpyHostToDevice));
     CUDA_CHECK_AND_EXIT(cudaMemcpy(c, host_c.data(), global_c_size * sizeof(value_type), cudaMemcpyHostToDevice));
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     // Increase max dynamic shared memory for the kernel if needed
-    CUDA_CHECK_AND_EXIT(
-        cudaFuncSetAttribute(gemm_kernel<BLAS>, cudaFuncAttributeMaxDynamicSharedMemorySize, cublasdx::get_shared_storage_size<BLAS>()));
+    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(
+        gemm_kernel<BLAS>, cudaFuncAttributeMaxDynamicSharedMemorySize, cublasdx::get_shared_storage_size<BLAS>()));
 
     // Execute kernel
     gemm_kernel<BLAS><<<1, BLAS::block_dim, cublasdx::get_shared_storage_size<BLAS>()>>>(a, b, c, alpha, beta, output);
@@ -166,12 +163,12 @@ int simple_gemm() {
 }
 
 struct simple_gemm_functor {
-    template<int Arch>
-    int operator()(std::integral_constant<int, Arch>) {
+    template<int Arch, cublasdx::sm_modifier Modifier>
+    int operator()(std::integral_constant<int, Arch>, std::integral_constant<cublasdx::sm_modifier, Modifier>) {
         return simple_gemm<Arch>();
     }
 };
 
 int main(int, char**) {
-    return example::sm_runner(simple_gemm_functor{});
+    return example::sm_runner(simple_gemm_functor {});
 }

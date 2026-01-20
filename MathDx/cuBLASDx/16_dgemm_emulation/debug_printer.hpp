@@ -41,7 +41,7 @@ void print_slices(const Tensor& T, std::string msg) {
 
 void print_device_properties() {
     cudaDeviceProp prop;
-    int sm_clock, mem_clock;
+    int            sm_clock, mem_clock;
 
     int device_count = 0;
     CUDA_CHECK_AND_EXIT(cudaGetDeviceCount(&device_count));

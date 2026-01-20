@@ -1,6 +1,6 @@
 # cuFFTDx Library - API Examples
 
-> **_NOTE:_** For information about cuFFTDx + cuFFT LTO EA version, please visit [cuFFTDx + cuFFT LTO EA Library - API Examples](README_LTO_EA.md).
+> **_NOTE:_** For information about cuFFTDx + cuFFT LTO, please visit [cuFFTDx + cuFFT LTO EA Library - API Examples](README_LTO.md).
 
 All example, including more advanced onces, are shipped within [cuFFTDx package](https://developer.nvidia.com/cufftdx-downloads).
 
@@ -55,7 +55,7 @@ For the detailed descriptions of the examples please visit [Examples](https://do
             <td>cuFFTDx API introduction</td>
         </tr>
         <tr>
-            <td rowspan="11">Simple FFT Examples</td>
+            <td rowspan="12">Simple FFT Examples</td>
             <td rowspan="2">01_simple_fft_thread</td>
             <td>simple_fft_thread</td>
             <td>Complex-to-complex thread FFT</td>
@@ -65,7 +65,7 @@ For the detailed descriptions of the examples please visit [Examples](https://do
             <td>Complex-to-complex thread FFT half-precision</td>
         </tr>
         <tr>
-            <td rowspan="9">02_simple_fft_block</td>
+            <td rowspan="10">02_simple_fft_block</td>
             <td>simple_fft_block</td>
             <td>Complex-to-complex block FFT</td>
         </tr>
@@ -101,6 +101,10 @@ For the detailed descriptions of the examples please visit [Examples](https://do
             <td>simple_fft_block_r2c_fp16</td>
             <td>Real-to-complex block FFT half-precision</td>
         </tr>
+                <tr>
+            <td>simple_fft_block_block_dim</td>
+            <td>Complex-to-complex block FFT with BlockDim operator</td>
+        </tr>
         <tr>
             <td colspan="2" rowspan="2">03_block_fft_performance</td>
             <td>block_fft_performance</td>
@@ -120,7 +124,7 @@ For the detailed descriptions of the examples please visit [Examples](https://do
             <td>Complex-to-complex block FFT</td>
         </tr>
         <tr>
-            <td colspan="2" rowspan="6">05_fft_Xd</td>
+            <td colspan="2" rowspan="7">05_fft_Xd</td>
             <td>fft_2d</td>
             <td>Example showing how to perform 2D FP32 C2C FFT with cuFFTDx</td>
         </tr>
@@ -143,6 +147,10 @@ For the detailed descriptions of the examples please visit [Examples](https://do
         <tr>
             <td>fft_3d_cube_single_block</td>
             <td>Small 3D (equal dimensions) FP32 FFT that fits into a single block</td>
+        </tr>
+        <tr>
+            <td>fft_2d_single_kernel_block_dim</td>
+            <td>2D FP32 FFT in a single kernel using Cooperative Groups kernel launch and dimensions with different ept</td>
         </tr>
         <tr>
             <td colspan="2" rowspan="4">06_convolution</td>

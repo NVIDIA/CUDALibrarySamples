@@ -65,13 +65,9 @@ int simple_getrf() {
     using namespace cusolverdx;
     using Solver =
         decltype(Size<48, 32>() + Precision<float>() + Type<type::complex>() + Function<getrf_partial_pivot>() + Arrangement<arrangement::col_major>() + SM<Arch>() + Block() + BlockDim<33, 1, 1>());
-#ifdef CUSOLVERDX_EXAMPLE_DETAIL_NVCC_12_2_BUG_WORKAROUND
-    using data_type      = typename example::a_data_type_t<Solver>;
-    using cuda_data_type = typename example::a_cuda_data_type_t<Solver>;
-#else
+
     using data_type      = typename Solver::a_data_type;
     using cuda_data_type = typename Solver::a_cuda_data_type;
-#endif
 
     constexpr unsigned bpb = Solver::batches_per_block;
     std::cout << "Suggested Batches per block = " << bpb << std::endl;

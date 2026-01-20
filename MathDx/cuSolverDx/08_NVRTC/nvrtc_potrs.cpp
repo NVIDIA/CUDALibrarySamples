@@ -137,6 +137,7 @@ int main(int, char**) {
         "--device-as-default-execution-space",
         // specify that LTO IR should be generated for LTO operation
         "-dlto",
+        "--relocatable-device-code=true",
         "--include-path=" CUDA_INCLUDE_DIR, // Add path to CUDA include directory
         "--include-path=" CUDA_CCCL_INCLUDE_DIR // Add path to CCCL include directory for CTK 13.0
     };

@@ -27,13 +27,14 @@ using namespace cublasdx;
 #include <cub/block/block_reduce.cuh>
 
 #include "../common/common.hpp"
+#include "tensor_helpers.hpp"
 
 // This header contains the CUDA kernels implementing the Ozaki scheme for
 // emulating double precision GEMM using multiple lower precision operations.
 //
 // The Ozaki scheme consists of several stages:
 // 1. Preprocessing: Find maximum values to determine scaling factors
-// 2. Slicing: Decompose double precision values into int8_t slices  
+// 2. Slicing: Decompose double precision values into int8_t slices
 // 3. Matrix multiplication: Compute GEMM on slice combinations
 // 4. Reconstruction: Combine results back to double precision
 //
@@ -43,6 +44,13 @@ using namespace cublasdx;
 // OZAKI SCHEME KERNEL 1: PREPROCESSING - Maximum Value Reduction
 // ============================================================================
 
+
+enum class slice_matrix
+{
+    a,
+    b
+};
+
 // This kernel finds the maximum absolute value in each row/column of the input matrix.
 // This is needed to determine appropriate scaling factors for the slicing process.
 //
@@ -51,49 +59,51 @@ using namespace cublasdx;
 //
 // Template parameters:
 //   BlockSize: Number of threads per block for reduction
-//   InEngine: Input tensor engine type
-//   InLayout: Input tensor layout type  
-//   OutEngine: Output tensor engine type
-//   OutLayout: Output tensor layout type
+//   InTensor: Input tensor type
+//   OutTensor: Output tensor type
 //
 // Kernel arguments:
 //   in_tensor: Input matrix (double precision)
 //   out_tensor: Output shift values (one per row/column)
-template<int BlockSize, typename InEngine, class InLayout, class OutEngine, class OutLayout>
-__launch_bounds__(BlockSize, 2) __global__ void 
-max_reduce_kernel(cute::Tensor<InEngine, InLayout> in_tensor, cute::Tensor<OutEngine, OutLayout> out_tensor) {
-    using datatype = typename InEngine::value_type;
+template<int BlockSize, slice_matrix SliceMatrix, class InTensor, class OutTensor>
+__launch_bounds__(BlockSize, 2) __global__ void max_reduce_kernel(InTensor in_tensor, OutTensor out_tensor) {
+    using datatype    = example::tensor_value_type_t<InTensor>;
     using BlockReduce = cub::BlockReduce<datatype, BlockSize>;
     __shared__ typename BlockReduce::TempStorage temp_storage;
 
-    const auto tile_size = cute::size<1>(in_tensor.layout());
-    auto tid = threadIdx.x;
-    auto bid = blockIdx.x;
+    const auto [tile_size_x, tile_size_y] = in_tensor.layout().shape();
+    auto tid                              = threadIdx.x;
+    auto bid                              = blockIdx.x;
 
     // Assume that tensor is reduced along the last dimension
-    auto global_tile = in_tensor(bid, cute::_);
+    auto const row_index = example::conditional_return<SliceMatrix == slice_matrix::a>(bid, cublasdx::slice);
+    auto const col_index = example::conditional_return<SliceMatrix == slice_matrix::a>(cublasdx::slice, bid);
+
+    auto global_tile = in_tensor(row_index, col_index);
 
     // 1. Find local maximum absolute value for this thread
     double local_max = 0;
 
-    for(auto i = tid; i < tile_size; i += BlockSize) {
-        local_max = cute::max(local_max, cute::abs(global_tile(i)));
+    auto const length = (SliceMatrix == slice_matrix::a) ? tile_size_y : tile_size_x;
+    for (auto i = tid; i < length; i += BlockSize) {
+        local_max = cuda::std::max<double>(local_max, cuda::std::abs(global_tile(i)));
     }
 
     // 2. Compute block-wide reduction to find maximum across all threads
     __syncthreads();
-    const double block_max = BlockReduce(temp_storage).Reduce(local_max, 
-        [](const auto& a, const auto& b) { return cute::max(a, b);});
-    
+    const double block_max = BlockReduce(temp_storage).Reduce(local_max, [](const auto& a, const auto& b) {
+        return cuda::std::max<double>(a, b);
+    });
+
     // 3. Convert maximum value to exponent shift and store to global memory
     // This shift determines the scaling factor for slicing this row/column
-    if(tid == 0) {
+    if (tid == 0) {
         out_tensor(bid) = max_to_exponent_shift(block_max);
     }
 }
 
 // ============================================================================
-// OZAKI SCHEME KERNEL 2: SLICING - Double Precision to Int8 Decomposition  
+// OZAKI SCHEME KERNEL 2: SLICING - Double Precision to Int8 Decomposition
 // ============================================================================
 
 // This kernel decomposes each double precision value into multiple int8_t slices.
@@ -104,43 +114,40 @@ max_reduce_kernel(cute::Tensor<InEngine, InLayout> in_tensor, cute::Tensor<OutEn
 // Template parameters:
 //   BlockSize: Number of threads per block
 //   Slices: Number of slices per double precision value
-//   InEngine: Input tensor engine type (double precision)
-//   InLayout: Input tensor layout type
-//   ShiftEngine: Shift tensor engine type (int32_t)
-//   ShiftLayout: Shift tensor layout type
-//   OutEngine: Output tensor engine type (int8_t slices)
-//   OutLayout: Output tensor layout type
+//   InTensor: Input tensor container type
+//   ShiftTensor: Shift tensor container type
+//   OutTensor: Output tensor container type
 //
 // Kernel arguments:
 //   in_tensor: Input matrix (double precision)
 //   shift_tensor: Scaling factors computed by max_reduce_kernel
 //   out_tensor: Output slices [slices, rows, cols]
 //   reduction_dim_size: Size of the reduction dimension (for indexing)
-template<int BlockSize, int Slices, 
-         class InEngine, class InLayout, 
-         class ShiftEngine, class ShiftLayout,
-         class OutEngine, class OutLayout>
-__launch_bounds__(BlockSize, 2) __global__ void 
-slice_kernel(cute::Tensor<InEngine, InLayout> in_tensor, 
-             cute::Tensor<ShiftEngine, ShiftLayout> shift_tensor, 
-             cute::Tensor<OutEngine, OutLayout> out_tensor, 
-             int32_t reduction_dim_size) {
-    using in_datatype = typename InEngine::value_type;
-    using out_datatype = typename OutEngine::value_type;
+template<int BlockSize, int Slices, slice_matrix SliceMatrix, class InTensor, class ShiftTensor, class OutTensor>
+__launch_bounds__(BlockSize, 2) __global__
+    void slice_kernel(InTensor in_tensor, ShiftTensor shift_tensor, OutTensor out_tensor, int32_t reduction_dim_size) {
+    using in_datatype  = example::tensor_value_type_t<InTensor>;
+    using out_datatype = example::tensor_value_type_t<OutTensor>;
 
     const auto tid = threadIdx.x + blockIdx.x * BlockSize;
 
     // Calculate which matrix element this thread processes
-    auto semantic_dim = tid / reduction_dim_size;
-    auto reduction_dim = tid % reduction_dim_size;
+    auto slow_idx = tid / reduction_dim_size;
+    auto fast_idx = tid % reduction_dim_size;
+
+    auto const row_idx = (SliceMatrix == slice_matrix::a) ? slow_idx : fast_idx;
+    auto const col_idx = (SliceMatrix == slice_matrix::a) ? fast_idx : slow_idx;
 
     // Decompose the double precision value into multiple int8_t slices
     // using the appropriate scaling factor for this row/column
-    const auto slices = slices_from_fp64<out_datatype, Slices>(in_tensor(semantic_dim, reduction_dim), shift_tensor(semantic_dim));
-    const auto local_fragment = cute::make_tensor(slices.data(), cute::Layout<cute::Int<Slices>> {});
-    
-    // Store all slices for this matrix element
-    cute::copy(local_fragment, out_tensor(cute::_, semantic_dim, reduction_dim));
+    const cuda::std::array slices =
+        slices_from_fp64<out_datatype, Slices>(in_tensor(row_idx, col_idx), shift_tensor(slow_idx));
+
+// Store all slices for this matrix element
+#pragma unroll
+    for (int elem = 0; elem < Slices; ++elem) {
+        out_tensor(row_idx, col_idx, elem) = slices[elem];
+    }
 }
 
 // ============================================================================
@@ -151,7 +158,7 @@ slice_kernel(cute::Tensor<InEngine, InLayout> in_tensor,
 // It computes the product: C = A * B where A and B have been decomposed into slices.
 //
 // The algorithm iterates over slice combinations in a diagonal pattern:
-//   - diag = 0: A_slice[0] * B_slice[0] 
+//   - diag = 0: A_slice[0] * B_slice[0]
 //   - diag = 1: A_slice[0] * B_slice[1] + A_slice[1] * B_slice[0]
 //   - diag = 2: A_slice[0] * B_slice[2] + A_slice[1] * B_slice[1] + A_slice[2] * B_slice[0]
 //   - etc.
@@ -162,200 +169,153 @@ slice_kernel(cute::Tensor<InEngine, InLayout> in_tensor,
 // Template parameters:
 //   BLAS: cuBLASDx BLAS type defining tile size, precision, etc.
 //   Alpha: Alpha scalar type
-//   AEngine, ALayout: A matrix slice tensor types
-//   BEngine, BLayout: B matrix slice tensor types  
+//   ATensor: A matrix slice tensor types
+//   BTensor, BLayout: B matrix slice tensor types
 //   Beta: Beta scalar type
-//   CEngine, CLayout: C matrix tensor types (double precision)
-//   AShiftEngine, AShiftLayout: A scaling factor tensor types
-//   BShiftEngine, BShiftLayout: B scaling factor tensor types
+//   CTensor: C matrix tensor types (double precision)
+//   AShiftTensor: A scaling factor tensor types
+//   BShiftTensor: B scaling factor tensor types
 //   Slices: Number of slices in the decomposition
 //
 // Kernel arguments:
 //   alpha: Scalar multiplier for A*B
 //   gmem_a: A matrix slices [slices, m, k]
-//   gmem_b: B matrix slices [slices, k, n] 
+//   gmem_b: B matrix slices [slices, k, n]
 //   beta: Scalar multiplier for existing C values
 //   gmem_c_fp64: C matrix (double precision output)
 //   gmem_shift_a: A scaling factors (one per row)
 //   gmem_shift_b: B scaling factors (one per column)
 template<class BLAS,
+         class DevicePipeline,
          class Alpha,
-         class AEngine,
-         class ALayout,
-         class BEngine,
-         class BLayout,
          class Beta,
-         class CEngine,
-         class CLayout,
-         class AShiftEngine,
-         class AShiftLayout,
-         class BShiftEngine,
-         class BShiftLayout,
+         class CTensor,
+         class AShiftTensor,
+         class BShiftTensor,
          int32_t Slices>
-__launch_bounds__(BLAS::max_threads_per_block, 1) __global__ void fused_epilogue_kernel(Alpha                                          alpha,
-                                                                                        cute::Tensor<AEngine, ALayout>           const gmem_a,
-                                                                                        cute::Tensor<BEngine, BLayout>           const gmem_b,
-                                                                                        Beta                                           beta,
-                                                                                        cute::Tensor<CEngine, CLayout>                 gmem_c_fp64,
-                                                                                        cute::Tensor<AShiftEngine, AShiftLayout> const gmem_shift_a,
-                                                                                        cute::Tensor<BShiftEngine, BShiftLayout> const gmem_shift_b) {
-    extern __shared__ __align__(16) char smem[];
+__launch_bounds__(DevicePipeline::max_threads_per_block, 1) __global__
+    void fused_epilogue_kernel(__grid_constant__ DevicePipeline const device_pipeline,
+                               Alpha                                  alpha,
+                               Beta                                   beta,
+                               CTensor                                gmem_c_fp64,
+                               AShiftTensor const                     gmem_shift_a,
+                               BShiftTensor const                     gmem_shift_b) {
+#ifdef __CUDA_ARCH__
+    extern __shared__ __align__(device_pipeline.buffer_alignment()) char smem[];
+    if constexpr (cublasdx::sm_of_v<BLAS> == __CUDA_ARCH__) {
+        // ================================
+        // 1. SETUP AND TILE PREPARATION
+        // ================================
 
-    // ================================
-    // 1. SETUP AND TENSOR PREPARATION
-    // ================================
+        constexpr int tile_m = cublasdx::size_of_v_m<BLAS>;
+        constexpr int tile_n = cublasdx::size_of_v_n<BLAS>;
 
-    using alignment = cublasdx::alignment_of<BLAS>;
-    constexpr auto gemm_arr = cute::make_tuple(
-        std::integral_constant<cublasdx::arrangement, cublasdx::arrangement_of_v_a<BLAS>>{}, 
-        std::integral_constant<cublasdx::arrangement, cublasdx::arrangement_of_v_b<BLAS>>{}, 
-        std::integral_constant<cublasdx::arrangement, cublasdx::arrangement_of_v_c<BLAS>>{});
+        constexpr auto initial_diag = Slices - 1;
+        constexpr auto initial_term = 0;
 
-    // Determine which tile this thread block is responsible for
-    const auto block_coord = example::get_block_coord(gemm_arr);
+        auto const smem_shift_layout_a =
+            example::make_layout_from_tuples(cuda::std::make_tuple(cuda::std::integral_constant<int, tile_m> {}),
+                                             cuda::std::make_tuple(cuda::std::integral_constant<int, 1> {}));
 
-    // ================================
-    // 2. SHARED MEMORY ALLOCATION
-    // ================================
-    
-    // Slice shared memory into tensors for proper alignment in 2-stage pipelining
-    // We need space for:
-    //   - Current stage A and B tiles (s_a, s_b)
-    //   - Next stage A and B tiles (s_a_n, s_b_n) 
-    //   - Scaling factors for this tile (smem_shift_a, smem_shift_b)
-    constexpr int tile_m = cublasdx::size_of_v_m<BLAS>;
-    constexpr int tile_n = cublasdx::size_of_v_n<BLAS>;
+        auto const smem_shift_layout_b =
+            example::make_layout_from_tuples(cuda::std::make_tuple(cuda::std::integral_constant<int, tile_n> {}),
+                                             cuda::std::make_tuple(cuda::std::integral_constant<int, 1> {}));
 
-    auto [s_a, s_b, s_a_n, s_b_n, smem_shift_a, smem_shift_b] =
-        cublasdx::shared_memory::slice<typename AEngine::value_type, 
-                                       typename BEngine::value_type, 
-                                       typename AEngine::value_type, 
-                                       typename BEngine::value_type, 
-                                       typename AShiftEngine::value_type, 
-                                       typename BShiftEngine::value_type>(
-            smem,
-            cublasdx::alignment_of_v_a<BLAS>,
-            BLAS::suggest_layout_smem_a(),
-            cublasdx::alignment_of_v_b<BLAS>,
-            BLAS::suggest_layout_smem_b(),
-            cublasdx::alignment_of_v_a<BLAS>,
-            BLAS::suggest_layout_smem_a(),
-            cublasdx::alignment_of_v_b<BLAS>,
-            BLAS::suggest_layout_smem_b(),
-            cublasdx::alignment_of_v_a<BLAS>,
-            cute::make_layout(cute::Int<tile_m>()),
-            cublasdx::alignment_of_v_b<BLAS>,
-            cute::make_layout(cute::Int<tile_n>()));
+        auto [pipeline_smem, smem_shift_a, smem_shift_b] = cublasdx::shared_memory::
+            slice<char, example::tensor_value_type_t<AShiftTensor>, example::tensor_value_type_t<BShiftTensor>>(
+                smem,
+                device_pipeline.buffer_alignment(),
+                device_pipeline.buffer_size(),
+                cublasdx::alignment_of_v_a<BLAS>,
+                smem_shift_layout_a,
+                cublasdx::alignment_of_v_b<BLAS>,
+                smem_shift_layout_b);
 
-    // Load scaling factors for this tile into shared memory
-    cublasdx::copy<BLAS, 16>(gmem_shift_a(cute::_, cute::get<0>(block_coord)), smem_shift_a);
-    cublasdx::copy<BLAS, 16>(gmem_shift_b(cute::_, cute::get<1>(block_coord)), smem_shift_b);
-    cublasdx::copy_wait();
+        // Copy general purpose data
+        cublasdx::copy<BLAS, 16>(gmem_shift_a(cublasdx::slice, blockIdx.x), smem_shift_a);
+        cublasdx::copy<BLAS, 16>(gmem_shift_b(cublasdx::slice, blockIdx.y), smem_shift_b);
+        cublasdx::copy_wait();
 
-    // ================================
-    // 3. REGISTER FRAGMENT SETUP
-    // ================================
+        // Get pipeline tile
+        auto tile_pipeline = device_pipeline.get_tile(pipeline_smem,
+                                                      cublasdx::make_coord(blockIdx.x, initial_term),
+                                                      cublasdx::make_coord(blockIdx.y, initial_diag));
 
-    auto partitioner = BLAS().suggest_partitioner();
-    auto tile_c_fp64_gmem = example::get_block_tile_c<BLAS>(gmem_c_fp64, block_coord);
+        auto accumulator = tile_pipeline.get_accumulator();
 
-    // ============================================
-    // 4. OZAKI SCHEME DIAGONAL ITERATION
-    // ============================================
-    
-    // Iterate over diagonals in reverse order (highest power of 2 first)
-    // This ensures proper accumulation order for numerical stability
-#pragma unroll 1
-    for (auto diag = (Slices - 1); diag >= 0; --diag) {
+        // ================================
+        // 2. FP64 C INPUT / OUTPUT TILE SETUP
+        // ================================
 
-        // Initialize accumulator for this diagonal
-        auto d_frag = partitioner.make_accumulator_fragment();
-        cublasdx::clear(d_frag);
+        auto tile_c_fp64_gmem = cublasdx::get_tile(gmem_c_fp64, BLAS::c_shape, blockIdx.x, blockIdx.y);
 
-        // ==========================================
-        // 5. SLICE COMBINATION COMPUTATION
-        // ==========================================
-        
-        // Compute all slice combinations that contribute to this diagonal
-        // For diagonal d, we compute: A_slice[i] * B_slice[d-i] for i = 0 to d
-#pragma unroll 1
-        for (auto term = 0; term <= diag; ++term) {
-            const auto slice_row = term;         // A slice index
-            const auto slice_col = diag - term;  // B slice index
+        // ============================================
+        // 3. OZAKI SCHEME DIAGONAL ITERATION
+        // ============================================
 
-            // Get tiles for this slice combination
-            const auto tile_slice_a_gmem = example::get_block_tile_slice_a<BLAS>(gmem_a(slice_row, cute::_, cute::_), block_coord);
-            const auto tile_slice_b_gmem = example::get_block_tile_slice_b<BLAS>(gmem_b(slice_col, cute::_, cute::_), block_coord);
+        // Iterate over diagonals in reverse order (highest power of 2 first)
+        // This ensures proper accumulation order for numerical stability
+#    pragma unroll 1
+        for (auto diag = initial_diag; diag >= 0; --diag) {
 
-            // =========================================
-            // 6. 2-STAGE MEMORY PIPELINE FOR GEMM
-            // =========================================
-
-            const auto k_stages = cute::get<2>(cute::shape(tile_slice_a_gmem.layout()));
-
-            // Load first stage into shared memory pipeline
-            constexpr auto static_first_stage_index = cute::Int<0> {};
-            cublasdx::copy<BLAS, alignment::a>(
-                example::get_tile_from_slice(tile_slice_a_gmem, static_first_stage_index), s_a);
-            cublasdx::copy<BLAS, alignment::b>(
-                example::get_tile_from_slice(tile_slice_b_gmem, static_first_stage_index), s_b);
+            // Initialize accumulator for this diagonal
+            accumulator.clear();
 
             // ==========================================
-            // 7. EXECUTE GEMM WITH MEMORY PIPELINING
+            // 4. SLICE COMBINATION COMPUTATION
             // ==========================================
 
-#pragma unroll 1
-            for (int stage = 1; stage <= k_stages; stage++) {
-                // Wait for previous stage to complete
-                cublasdx::copy_wait();
+            // Compute all slice combinations that contribute to this diagonal
+            // For diagonal d, we compute: A_slice[i] * B_slice[d-i] for i = 0 to d
+#    pragma unroll 1
+            for (auto term = initial_term; term <= diag; ++term) {
+                // =========================================
+                // 5. N-STAGE MEMORY PIPELINE FOR GEMM
+                // =========================================
 
-                // Load next stage (if not the last iteration)  
-                if (stage < k_stages) {
-                    cublasdx::copy<BLAS, alignment::a>(example::get_tile_from_slice(tile_slice_a_gmem, stage), s_a_n);
-                    cublasdx::copy<BLAS, alignment::b>(example::get_tile_from_slice(tile_slice_b_gmem, stage), s_b_n);
+                tile_pipeline.execute(accumulator);
+
+                const auto next_slice_row = (term == diag) ? 0 : term + 1;                         // A slice index
+                const auto next_slice_col = (term == diag) ? (diag - 1) : (diag - next_slice_row); // B slice index
+                device_pipeline.reset_tile(tile_pipeline,
+                                           cublasdx::make_coord(blockIdx.x, next_slice_row),
+                                           cublasdx::make_coord(blockIdx.y, next_slice_col));
+            } /* end of slice combination loop */
+
+            // ========================================
+            // 6. RESULT RECONSTRUCTION AND EPILOGUE
+            // ========================================
+            // Convert accumulated int32_t results back to double precision
+            // and apply appropriate scaling based on slice positions
+	    if(accumulator.is_thread_active()) {
+                auto gemm_results = accumulator.get_results();
+    
+                // Load existing C values
+                auto d_fp64_frag = cublasdx::make_fragment_like<double>(gemm_results);
+                auto c_fp64_frag = accumulator.make_partition_and_copy(tile_c_fp64_gmem);
+    
+                // Process each element in the register fragment
+    #    pragma unroll
+                for (int i = 0; i < cublasdx::size(d_fp64_frag); ++i) {
+                    const auto [global_x, global_y] = accumulator.map_fragment_index(i);
+                    const auto shift_a_elem         = smem_shift_a(global_x);
+                    const auto shift_b_elem         = smem_shift_b(global_y);
+    
+                    // Convert int32_t slice result back to double precision
+                    // with appropriate scaling for this diagonal and element
+                    d_fp64_frag(i) = nth_slice_to_fp64<int32_t, int8_t>(diag, gemm_results(i), shift_a_elem + shift_b_elem);
                 }
-
-                // Perform GEMM on current stage data and accumulate results
-                BLAS().execute(s_a, s_b, d_frag);
-
-                // Swap buffers for next iteration
-                example::swap(s_a_n, s_a);
-                example::swap(s_b_n, s_b);
-            }
-        } /* end of slice combination loop */
-
-        // ========================================
-        // 8. RESULT RECONSTRUCTION AND EPILOGUE  
-        // ========================================
-        
-        // Convert accumulated int32_t results back to double precision
-        // and apply appropriate scaling based on slice positions
-        auto d_fp64_frag = cublasdx::make_fragment_like<double>(d_frag);
-        auto c_fp64_frag = cublasdx::make_fragment_like(d_fp64_frag);
-        
-        // Load existing C values
-        cublasdx::copy_fragment<alignment::c>(tile_c_fp64_gmem, c_fp64_frag, partitioner);
-
-        // Process each element in the register fragment
-#pragma unroll
-        for (int i = 0; i < cublasdx::size(d_frag); ++i) {
-            const auto [global_x, global_y] = partitioner.map_fragment_index(i);
-            const auto shift_a_elem = smem_shift_a(global_x);
-            const auto shift_b_elem = smem_shift_b(global_y);
-            
-            // Convert int32_t slice result back to double precision
-            // with appropriate scaling for this diagonal and element
-            d_fp64_frag(i) = nth_slice_to_fp64<int32_t, int8_t>(
-                diag, d_frag(i), shift_a_elem + shift_b_elem);
+    
+                // Apply alpha/beta scaling and accumulate into C
+                // Use beta only for the first diagonal (highest order), then just add (beta=1.0)
+                cublasdx::axpby(alpha, d_fp64_frag, (diag == Slices - 1) ? beta : 1.0, c_fp64_frag);
+    
+                // Store results back to global memory
+                accumulator.partition_and_copy(c_fp64_frag, tile_c_fp64_gmem);
+	    }
         }
-
-        // Apply alpha/beta scaling and accumulate into C
-        // Use beta only for the first diagonal (highest order), then just add (beta=1.0)
-        cublasdx::axpby(alpha, d_fp64_frag, (diag == Slices - 1) ? beta : 1.0, c_fp64_frag);
-        
-        // Store results back to global memory
-        cublasdx::copy_fragment<alignment::c>(c_fp64_frag, tile_c_fp64_gmem, partitioner);
     }
+#endif
 }
 
 // ============================================================================
@@ -367,7 +327,7 @@ __launch_bounds__(BLAS::max_threads_per_block, 1) __global__ void fused_epilogue
 //
 // The function handles:
 //   1. cuBLASDx type creation and configuration
-//   2. Grid and block dimension calculation  
+//   2. Grid and block dimension calculation
 //   3. Shared memory size calculation
 //   4. Kernel launch with timing
 //   5. Result collection and error checking
@@ -377,44 +337,39 @@ __launch_bounds__(BLAS::max_threads_per_block, 1) __global__ void fused_epilogue
 //   Params: Emulation parameters (tile shape, slices, etc.)
 //   GEMMShape: Shape of the GEMM operation
 //   GEMMArr: Memory layout arrangement
-//   Various tensor engine and layout types for inputs/outputs
 //
 // Returns:
 //   Tuple of (execution_time_ms, results_vector)
-template<int Arch,
+template<int                   Arch,
+         cublasdx::sm_modifier Modifier,
          class Params,
          class GEMMShape,
          class GEMMArr,
-         class AShiftEngine,
-         class AShiftLayout,
-         class BShiftEngine,
-         class BShiftLayout,
+         class AShiftTensor,
+         class BShiftTensor,
          class Alpha,
-         class ASliceEngine,
-         class ASliceLayout,
-         class BSliceEngine,
-         class BSliceLayout,
+         class ASliceTensor,
+         class BSliceTensor,
          class Beta,
-         class CEngine,
-         class CLayout>
-auto slice_matmul_and_epilogue(GEMMShape  gemm_shape,
-                               GEMMArr    gemm_arrangement,
-                               cute::Tensor<AShiftEngine, AShiftLayout> const d_tensor_shift_a,
-                               cute::Tensor<BShiftEngine, BShiftLayout> const d_tensor_shift_b,
-                               Alpha      alpha,
-                               cute::Tensor<ASliceEngine, ASliceLayout> const d_tensor_slice_a,
-                               cute::Tensor<BSliceEngine, BSliceLayout> const d_tensor_slice_b,
-                               Beta       beta,
-                               cute::Tensor<CEngine, CLayout> const d_tensor_c,
-                               cudaStream_t stream) {
+         class CTensor>
+auto slice_matmul_and_epilogue(GEMMShape          gemm_shape,
+                               GEMMArr            gemm_arrangement,
+                               AShiftTensor const d_tensor_shift_a,
+                               BShiftTensor const d_tensor_shift_b,
+                               Alpha              alpha,
+                               ASliceTensor const d_tensor_slice_a,
+                               BSliceTensor const d_tensor_slice_b,
+                               Beta               beta,
+                               CTensor const      d_tensor_c,
+                               cudaStream_t       stream) {
     // ================================
     // Type definitions and validation
     // ================================
-    
-    using SliceAValueType = typename ASliceEngine::value_type;  // int8_t
-    using SliceBValueType = typename BSliceEngine::value_type;  // int8_t  
-    using AccValueType    = typename AShiftEngine::value_type;  // int32_t
-    using OutputType      = typename CEngine::value_type;       // double
+
+    using SliceAValueType = example::tensor_value_type_t<ASliceTensor>; // int8_t
+    using SliceBValueType = example::tensor_value_type_t<BSliceTensor>; // int8_t
+    using AccValueType    = example::tensor_value_type_t<AShiftTensor>; // int32_t
+    using OutputType      = example::tensor_value_type_t<CTensor>;      // double
 
     static_assert(std::is_same_v<SliceAValueType, SliceBValueType>, "A and B slices must be of the same type");
 
@@ -427,47 +382,49 @@ auto slice_matmul_and_epilogue(GEMMShape  gemm_shape,
     CUDA_CHECK_AND_EXIT(cudaEventCreate(&stop));
 
     // Extract problem dimensions
-    const unsigned m = cute::get<0>(gemm_shape);
-    const unsigned n = cute::get<1>(gemm_shape);
-    const unsigned k = cute::get<2>(gemm_shape);
+    const unsigned m = cuda::std::get<0>(gemm_shape);
+    const unsigned n = cuda::std::get<1>(gemm_shape);
+    const unsigned k = cuda::std::get<2>(gemm_shape);
 
     /* ===================================================================== */
     /*                        Prepare cuBLASDx kernel                        */
     /* ===================================================================== */
 
     // Extract memory layout arrangements
-    constexpr auto global_arrangement_a       = cute::get<0>(gemm_arrangement);
-    constexpr auto global_arrangement_b       = cute::get<1>(gemm_arrangement);
-    constexpr auto global_arrangement_c       = cute::get<2>(gemm_arrangement);
+    constexpr auto global_arrangement_a = cuda::std::get<0>(gemm_arrangement);
+    constexpr auto global_arrangement_b = cuda::std::get<1>(gemm_arrangement);
+    constexpr auto global_arrangement_c = cuda::std::get<2>(gemm_arrangement);
 
     // ================================
     // cuBLASDx precision configuration
     // ================================
 
     // Compute precision (use Tensor Cores of this precision)
-    using a_compute_precision = SliceAValueType;  // int8_t for slices
-    using b_compute_precision = SliceBValueType;  // int8_t for slices
-    using c_compute_precision = AccValueType;     // int32_t for accumulation
+    using a_compute_precision = SliceAValueType; // int8_t for slices
+    using b_compute_precision = SliceBValueType; // int8_t for slices
+    using c_compute_precision = AccValueType;    // int32_t for accumulation
 
     // Number type, either real or complex
     constexpr auto type = cublasdx::type::real;
 
     // Create data type, based on precision and type (real / complex)
-    using a_compute_value_type = example::get_value_type_t<a_compute_precision, type>;
-    using b_compute_value_type = example::get_value_type_t<b_compute_precision, type>;
-    using c_compute_value_type = example::get_value_type_t<c_compute_precision, type>;
+    using a_compute_value_type = example::get_value_type_t<a_compute_precision>;
+    using b_compute_value_type = example::get_value_type_t<b_compute_precision>;
+    using c_compute_value_type = example::get_value_type_t<c_compute_precision>;
 
     // ======================================
     // Configurable cuBLASDx tile properties
     // ======================================
 
     // Extract tile dimensions from parameters
-    constexpr unsigned int tile_m = cute::get<0>(tile_shape);
-    constexpr unsigned int tile_n = cute::get<1>(tile_shape);
-    constexpr unsigned int tile_k = cute::get<2>(tile_shape);
+    constexpr unsigned int tile_m = cuda::std::get<0>(tile_shape);
+    constexpr unsigned int tile_n = cuda::std::get<1>(tile_shape);
+    constexpr unsigned int tile_k = cuda::std::get<2>(tile_shape);
 
     // Number of threads to compute the tile
-    constexpr unsigned int tile_threads = cute::size(cta_shape);
+    constexpr unsigned int cta_threads_x = cuda::std::get<0>(cta_shape);
+    constexpr unsigned int cta_threads_y = cuda::std::get<1>(cta_shape);
+    constexpr unsigned int cta_threads_z = cuda::std::get<2>(cta_shape);
 
     // Arrangement of data in per-threadblock tiles
     constexpr auto tile_arr_a      = global_arrangement_a;
@@ -492,69 +449,73 @@ auto slice_matmul_and_epilogue(GEMMShape  gemm_shape,
     // cuBLASDx type creation
     // ================================
 
-    using BLAS = decltype(cublasdx::Size<tile_m, tile_n, tile_k>() +
-                          cublasdx::Precision<SliceAValueType, SliceBValueType, AccValueType>() +
-                          cublasdx::Type<type>() + cublasdx::Function<cublasdx::function::MM>() +
-                          cublasdx::Arrangement<tile_arr_a, tile_arr_b, tile_arr_c_fp64>() + cublasdx::Block() +
-                          cublasdx::BlockDim<tile_threads>() +
-                          cublasdx::Alignment<cublasdx_alignment, cublasdx_alignment, cublasdx_alignment>() +
-                          cublasdx::experimental::StaticBlockDim() + // Experimental: Runtime block dim is equal to operator block dim
-                          cublasdx::SM<Arch>());
+    using BLAS =
+        decltype(cublasdx::Size<tile_m, tile_n, tile_k>() +
+                 cublasdx::Precision<SliceAValueType, SliceBValueType, AccValueType>() + cublasdx::Type<type>() +
+                 cublasdx::Function<cublasdx::function::MM>() +
+                 cublasdx::Arrangement<tile_arr_a, tile_arr_b, tile_arr_c_fp64>() + cublasdx::Block() +
+                 cublasdx::BlockDim<cta_threads_x, cta_threads_y, cta_threads_z>() + cublasdx::StaticBlockDim() +
+                 cublasdx::Alignment<cublasdx_alignment, cublasdx_alignment, cublasdx_alignment>() +
+                 cublasdx::WithPipeline() + cublasdx::EnableInputStreaming() + cublasdx::SM<Arch, Modifier>());
 
     // ================================
-    // Grid configuration
+    // Pipeline configuration
     // ================================
 
-    constexpr bool reverse_block_coord =
-        (global_arrangement_a == cublasdx::row_major) and (global_arrangement_b == cublasdx::row_major);
+    static constexpr int  manual_pipeline_depth   = 0;
+    static constexpr bool override_pipeline_depth = (manual_pipeline_depth != 0);
 
-    dim3 grid_dim = cute::conditional_return<reverse_block_coord>(dim3 {n / tile_n, m / tile_m, 1},
-                                                                  dim3 {(m / tile_m), (n / tile_n), 1});
+    constexpr unsigned stage_shared_req = tile_m * tile_k * sizeof(SliceAValueType) +
+                                          tile_k * tile_n * sizeof(SliceBValueType) +
+                                          sizeof(cublasdx::pipeline_stage_scratch_t);
+
+    constexpr unsigned available_shared_memory =
+        commondx::device_info<Arch>::shared_memory() - (tile_m + tile_n) * sizeof(int32_t);
+    constexpr unsigned maximal_pipeline_depth =
+        cuda::std::min<unsigned>(16, (available_shared_memory - 32) / stage_shared_req);
+    constexpr unsigned pipeline_depth = override_pipeline_depth ? manual_pipeline_depth : maximal_pipeline_depth;
+
+    auto opt_device_pipeline = cublasdx::suggest_device_pipeline<pipeline_depth, BLAS, cublasdx::external_accumulation>(
+        d_tensor_slice_a, d_tensor_slice_b);
+
+    if (not opt_device_pipeline) {
+        std::cout << "Incorrect pipeline configuration, please ensure global tensors are divisible by tile"
+                  << std::endl;
+        exit(1);
+    }
+
+    auto k_stages = k / tile_k;
+
+    if (k_stages < pipeline_depth) {
+        std::cerr << "PipelineDepth must be less or equal to GEMM k stages, please adjust manual_pipeline_depth"
+                  << std::endl;
+        exit(1);
+    }
+
+    auto device_pipeline    = opt_device_pipeline.value();
+    using device_pipeline_t = cuda::std::remove_cvref_t<decltype(device_pipeline)>;
 
     // ================================
     // Shared memory size calculation
     // ================================
 
-    // Calculate shared memory requirements for all tensors
-    auto shared_memory_size =
-        cublasdx::make_shared_storage_calculator()
-            .add(cublasdx::alignment_of_v_a<BLAS>, sizeof(SliceAValueType), BLAS::suggest_layout_smem_a())
-            .add(cublasdx::alignment_of_v_b<BLAS>, sizeof(SliceBValueType), BLAS::suggest_layout_smem_b())
-            .add(cublasdx::alignment_of_v_a<BLAS>, sizeof(SliceAValueType), BLAS::suggest_layout_smem_a())
-            .add(cublasdx::alignment_of_v_b<BLAS>, sizeof(SliceBValueType), BLAS::suggest_layout_smem_b())
-            .add(maximal_alignment, sizeof(int32_t), tile_m)  // shift_a
-            .add(maximal_alignment, sizeof(int32_t), tile_n)  // shift_b
-            .get();
+    auto shared_memory_size = cublasdx::make_shared_storage_calculator()
+                                  .add(device_pipeline.buffer_alignment(), device_pipeline.buffer_size())
+                                  .add(maximal_alignment, sizeof(int32_t), tile_m) // shift_a
+                                  .add(maximal_alignment, sizeof(int32_t), tile_n) // shift_b
+                                  .get();
 
     // ================================
     // Kernel preparation
     // ================================
 
-    // Extract tensor types for kernel template instantiation
-    using a_engine = cute::remove_cvref_t<decltype(d_tensor_slice_a.engine())>;
-    using a_layout = cute::remove_cvref_t<decltype(d_tensor_slice_a.layout())>;
-    using b_engine = cute::remove_cvref_t<decltype(d_tensor_slice_b.engine())>;
-    using b_layout = cute::remove_cvref_t<decltype(d_tensor_slice_b.layout())>;
-    using c_engine = cute::remove_cvref_t<decltype(d_tensor_c.engine())>;
-    using c_layout = cute::remove_cvref_t<decltype(d_tensor_c.layout())>;
-    using a_shift_engine = cute::remove_cvref_t<decltype(d_tensor_shift_a.engine())>;
-    using a_shift_layout = cute::remove_cvref_t<decltype(d_tensor_shift_a.layout())>;
-    using b_shift_engine = cute::remove_cvref_t<decltype(d_tensor_shift_b.engine())>;
-    using b_shift_layout = cute::remove_cvref_t<decltype(d_tensor_shift_b.layout())>;
-    
     auto kernel = fused_epilogue_kernel<BLAS,
-                                        Alpha,  /* alpha */
-                                        a_engine, /* AEngine */
-                                        a_layout, /* ALayout */
-                                        b_engine, /* BEngine */
-                                        b_layout, /* BLayout */
-                                        Beta,    /* beta */
-                                        c_engine, /* CEngine */
-                                        c_layout, /* CLayout */
-                                        a_shift_engine, /* AShiftEngine */
-                                        a_shift_layout, /* AShiftLayout */
-                                        b_shift_engine, /* BShiftEngine */
-                                        b_shift_layout, /* BShiftLayout */
+                                        device_pipeline_t,
+                                        Alpha,        /* alpha */
+                                        Beta,         /* beta */
+                                        CTensor,      /* CLayout */
+                                        AShiftTensor, /* AShiftLayout */
+                                        BShiftTensor, /* BShiftLayout */
                                         Params::slices>;
 
     // Set dynamic shared memory size
@@ -563,20 +524,19 @@ auto slice_matmul_and_epilogue(GEMMShape  gemm_shape,
     // =======================================
     // Execute kernel for correctness results
     // =======================================
+    //
+    dim3 grid_dim = dim3 {(m / tile_m), (n / tile_n), 1};
+
 
     // First run to get correct results
-    kernel<<<grid_dim, BLAS::block_dim, shared_memory_size, stream>>>(alpha,
-                                                                        d_tensor_slice_a,
-                                                                        d_tensor_slice_b,
-                                                                        beta,
-                                                                        d_tensor_c,
-                                                                        d_tensor_shift_a,
-                                                                        d_tensor_shift_b);
+    kernel<<<grid_dim, device_pipeline.get_block_dim(), shared_memory_size, stream>>>(
+        device_pipeline, alpha, beta, d_tensor_c, d_tensor_shift_a, d_tensor_shift_b);
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
-    
+
     // Copy results to host
-    std::vector<OutputType> results (cute::cosize(d_tensor_c.layout()));
-    CUDA_CHECK_AND_EXIT(cudaMemcpy(results.data(), d_tensor_c.data().get(), results.size() * sizeof(OutputType), cudaMemcpyDeviceToHost));
+    std::vector<OutputType> results(m * n);
+    CUDA_CHECK_AND_EXIT(cudaMemcpy(
+        results.data(), d_tensor_c.data().get(), results.size() * sizeof(OutputType), cudaMemcpyDeviceToHost));
 
     /* ===================================================================== */
     /*                           Performance measurement                      */
@@ -584,13 +544,8 @@ auto slice_matmul_and_epilogue(GEMMShape  gemm_shape,
 
     // Warm-up runs
     for (auto warm_up = 0; warm_up < Params::kernel_warm_up_repeats; ++warm_up) {
-        kernel<<<grid_dim, BLAS::block_dim, shared_memory_size, stream>>>(alpha,
-                                                                          d_tensor_slice_a,
-                                                                          d_tensor_slice_b,
-                                                                          beta,
-                                                                          d_tensor_c,
-                                                                          d_tensor_shift_a,
-                                                                          d_tensor_shift_b);
+        kernel<<<grid_dim, device_pipeline.get_block_dim(), shared_memory_size, stream>>>(
+            device_pipeline, alpha, beta, d_tensor_c, d_tensor_shift_a, d_tensor_shift_b);
     }
 
     CUDA_CHECK_AND_EXIT(cudaStreamSynchronize(stream));
@@ -598,13 +553,8 @@ auto slice_matmul_and_epilogue(GEMMShape  gemm_shape,
 
     // Performance measurement runs
     for (auto perf_run = 0; perf_run < Params::kernel_repeats; ++perf_run) {
-        kernel<<<grid_dim, BLAS::block_dim, shared_memory_size, stream>>>(alpha,
-                                                                          d_tensor_slice_a,
-                                                                          d_tensor_slice_b,
-                                                                          beta,
-                                                                          d_tensor_c,
-                                                                          d_tensor_shift_a,
-                                                                          d_tensor_shift_b);
+        kernel<<<grid_dim, device_pipeline.get_block_dim(), shared_memory_size, stream>>>(
+            device_pipeline, alpha, beta, d_tensor_c, d_tensor_shift_a, d_tensor_shift_b);
     }
 
     CUDA_CHECK_AND_EXIT(cudaEventRecord(stop, stream));

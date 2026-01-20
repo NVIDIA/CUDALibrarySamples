@@ -26,7 +26,7 @@
 
 template<class BLAS, class TA, class TB, class TC>
 __launch_bounds__(BLAS::max_threads_per_block) __global__
-void gemm_kernel(const TA* a, const TB* b, const TC* c, const TC alpha, const TC beta, TC* output) {
+    void gemm_kernel(const TA* a, const TB* b, const TC* c, const TC alpha, const TC beta, TC* output) {
 
     extern __shared__ __align__(16) char smem[];
 
@@ -35,9 +35,9 @@ void gemm_kernel(const TA* a, const TB* b, const TC* c, const TC alpha, const TC
     auto c_global_tensor = cublasdx::make_tensor(c, BLAS::get_layout_gmem_c());
 
     auto [smem_a, smem_b, smem_c] = cublasdx::slice_shared_memory<BLAS>(smem);
-    auto a_shared_tensor = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_a());
-    auto b_shared_tensor = cublasdx::make_tensor(smem_b, BLAS::get_layout_smem_b());
-    auto c_shared_tensor = cublasdx::make_tensor(smem_c, BLAS::get_layout_smem_c());
+    auto a_shared_tensor          = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_a());
+    auto b_shared_tensor          = cublasdx::make_tensor(smem_b, BLAS::get_layout_smem_b());
+    auto c_shared_tensor          = cublasdx::make_tensor(smem_c, BLAS::get_layout_smem_c());
 
     using alignment = cublasdx::alignment_of<BLAS>;
     cublasdx::copy<BLAS, alignment::a>(a_global_tensor, a_shared_tensor);
@@ -78,14 +78,11 @@ int simple_gemm_mixed_precision() {
 
     constexpr unsigned int block_size = 256;
 
-    using BLAS = decltype(cublasdx::Size<m, n, k>() +
-                          cublasdx::Precision<PA, PB, PC>() +
-                          cublasdx::Type<cublasdx::type::complex>() +
-                          cublasdx::Function<cublasdx::function::MM>() +
-                          cublasdx::Arrangement<cublasdx::row_major, cublasdx::col_major>() +
-                          cublasdx::Alignment<16, 16, 16>()+
-                          cublasdx::Block() +
-                          cublasdx::BlockDim<block_size>() + cublasdx::SM<Arch>());
+    using BLAS =
+        decltype(cublasdx::Size<m, n, k>() + cublasdx::Precision<PA, PB, PC>() +
+                 cublasdx::Type<cublasdx::type::complex>() + cublasdx::Function<cublasdx::function::MM>() +
+                 cublasdx::Arrangement<cublasdx::row_major, cublasdx::col_major>() + cublasdx::Alignment<16, 16, 16>() +
+                 cublasdx::Block() + cublasdx::BlockDim<block_size>() + cublasdx::SM<Arch>());
 
 #ifdef CUBLASDX_EXAMPLE_DETAIL_NVCC_12_2_BUG_WORKAROUND
     using TA = typename example::a_value_type_t<BLAS>;
@@ -98,8 +95,8 @@ int simple_gemm_mixed_precision() {
 #endif
 
     std::cout << "Precisions: A is " << example::precision_string<TA>() << ", B is " << example::precision_string<TB>()
-              << " and C is " << example::precision_string<TC>() << " \nType: A/B/C is "
-              << example::type_string<TA>() << "\n";
+              << " and C is " << example::precision_string<TC>() << " \nType: A/B/C is " << example::type_string<TA>()
+              << "\n";
 
     static_assert(std::is_same<typename cublasdx::precision_of<BLAS>::a_type, PA>::value, "TA and PA do not match");
     static_assert(std::is_same<typename cublasdx::precision_of<BLAS>::b_type, PB>::value, "TB and PB do not match");
@@ -124,9 +121,9 @@ int simple_gemm_mixed_precision() {
     TC beta  = TC(2.0, 0.0);
 
     // Fill the A, B, C matrices with random values
-    auto host_a = example::get_random_data<TA>(0.1, 1.0, global_a_size);
-    auto host_b = example::get_random_data<TB>(0.1, 1.0, global_b_size);
-    auto host_c = example::get_random_data<TC>(0.1, 1.0, global_c_size);
+    auto host_a = example::get_random_data<TA>(global_a_size);
+    auto host_b = example::get_random_data<TB>(global_b_size);
+    auto host_c = example::get_random_data<TC>(global_c_size);
     CUDA_CHECK_AND_EXIT(cudaMemcpy(a, host_a.data(), global_a_size * sizeof(TA), cudaMemcpyDefault));
     CUDA_CHECK_AND_EXIT(cudaMemcpy(b, host_b.data(), global_b_size * sizeof(TB), cudaMemcpyDefault));
     CUDA_CHECK_AND_EXIT(cudaMemcpy(c, host_c.data(), global_c_size * sizeof(TC), cudaMemcpyDefault));
@@ -166,12 +163,12 @@ int simple_gemm_mixed_precision() {
 }
 
 struct simple_gemm_functor {
-    template<int Arch>
-    int operator()(std::integral_constant<int, Arch>) {
+    template<int Arch, cublasdx::sm_modifier Modifier>
+    int operator()(std::integral_constant<int, Arch>, std::integral_constant<cublasdx::sm_modifier, Modifier>) {
         return simple_gemm_mixed_precision<Arch>();
     }
 };
 
 int main(int, char**) {
-    return example::sm_runner(simple_gemm_functor{});
+    return example::sm_runner(simple_gemm_functor {});
 }

@@ -37,6 +37,7 @@ For the detailed descriptions of the examples please visit [Examples](https://do
 | Group                 | Subgroup       | Example                           | Description                                                                    |
 |-----------------------|----------------|-----------------------------------|--------------------------------------------------------------------------------|
 | Introduction Examples |                | 01_introduction_example           | cuBLASDx API introduction example                                              |
+| 			|                | 01_introduction_pipeline          | cuBLASDx Pipeline API introduction example                                     |
 | Simple GEMM Examples  | Basic Example  | 02_simple_gemm_fp32               | Performs fp32 GEMM                                                             |
 |                       |                | 02_simple_gemm_int8_int8_int32    | Performs integral GEMM using Tensor Cores                                      |
 |                       |                | 02_simple_gemm_fp8                | Performs fp8 GEMM                                                              |

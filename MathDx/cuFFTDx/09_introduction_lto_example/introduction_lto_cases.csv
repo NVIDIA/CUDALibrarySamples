@@ -1,2 +1,2 @@
-size,direction,exec_op
-128,fft_direction::forward,Block
+size,direction,execution_type
+128,fft_direction::forward,execution_type::block

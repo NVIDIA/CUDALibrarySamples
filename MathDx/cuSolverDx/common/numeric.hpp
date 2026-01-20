@@ -103,7 +103,7 @@ namespace common {
         if constexpr (is_complex<T1>() && is_complex<T2>()) {
             result = T1(v);
         } else if constexpr (is_complex<T1>()) {
-            result = T1(v, v);
+            result = T1(v, 0);
         } else if constexpr (is_complex<T2>()) {
             result = v.real();
         } else {

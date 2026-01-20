@@ -43,6 +43,7 @@ namespace example {
         }
     } // namespace __io
 
+
     template<class FFT>
     struct io {
         using complex_type = typename FFT::value_type;
@@ -77,15 +78,21 @@ namespace example {
             return FFT::output_length * global_fft_id;
         }
 
+        static inline __device__ unsigned int computing_threads_y() {
+            return FFT::working_group::block_dim().y;
+        }
+
         template<unsigned int EPT, typename DataType>
         static inline __device__ void copy(const DataType* source, DataType* target, unsigned int n) {
-            unsigned int stride = blockDim.x * blockDim.y;
-            unsigned int index  = threadIdx.y * blockDim.x + threadIdx.x;
-            for (int i = 0; i < EPT; i++) {
-                if (index < n) {
-                    target[index] = source[index];
+            unsigned int stride = FFT::stride * computing_threads_y();
+            unsigned int index  = threadIdx.y * FFT::stride + threadIdx.x;
+            if (FFT::working_group::is_thread_active()) {
+                for (int i = 0; i < EPT; i++) {
+                    if (index < n) {
+                        target[index] = source[index];
+                    }
+                    index += stride;
                 }
-                index += stride;
             }
         }
 
@@ -94,7 +101,7 @@ namespace example {
             using input_t = typename FFT::input_type;
             copy<FFT::input_ept>(reinterpret_cast<const input_t*>(global),
                                 reinterpret_cast<input_t*>(shared),
-                                blockDim.y * FFT::input_length);
+                                computing_threads_y() * FFT::input_length);
             __syncthreads();
         }
 
@@ -104,7 +111,7 @@ namespace example {
             using output_t = typename FFT::output_type;
             copy<FFT::output_ept>(reinterpret_cast<const output_t*>(shared),
                                  reinterpret_cast<output_t*>(global),
-                                 blockDim.y * FFT::output_length);
+                                 computing_threads_y() * FFT::output_length);
         }
 
 
@@ -128,15 +135,17 @@ namespace example {
             // Get stride, this shows how elements from batch should be split between threads
             const unsigned int stride = FFT::stride;
             unsigned int       index  = offset + threadIdx.x;
-            for (unsigned int i = 0; i < FFT::input_ept; i++) {
-                if ((i * stride + threadIdx.x) < FFT::input_length) {
-                    if constexpr (needs_half2_format_conversion) {
-                        reinterpret_cast<input_t*>(thread_data)[i] =
-                            op(__io::convert_to_rrii<InputInRRIILayout>(reinterpret_cast<const input_t*>(input)[index]));
-                    } else {
-                        reinterpret_cast<input_t*>(thread_data)[i] = op(reinterpret_cast<const input_t*>(input)[index]);
+            if (FFT::working_group::is_thread_active()) {
+                for (unsigned int i = 0; i < FFT::input_ept; i++) {
+                    if ((i * stride + threadIdx.x) < FFT::input_length) {
+                        if constexpr (needs_half2_format_conversion) {
+                            reinterpret_cast<input_t*>(thread_data)[i] =
+                                op(__io::convert_to_rrii<InputInRRIILayout>(reinterpret_cast<const input_t*>(input)[index]));
+                        } else {
+                            reinterpret_cast<input_t*>(thread_data)[i] = op(reinterpret_cast<const input_t*>(input)[index]);
+                        }
+                        index += stride;
                     }
-                    index += stride;
                 }
             }
         }
@@ -157,16 +166,17 @@ namespace example {
             const unsigned int offset = output_batch_offset(local_fft_id);
             const unsigned int stride = FFT::stride;
             unsigned int       index  = offset + threadIdx.x;
-
-            for (int i = 0; i < FFT::output_ept; ++i) {
-                if ((i * stride + threadIdx.x) < FFT::output_length) {
-                    if constexpr (needs_half2_format_conversion) {
-                        reinterpret_cast<output_t*>(output)[index] =
-                            op(__io::convert_to_riri<OutputInRRIILayout>(reinterpret_cast<const output_t*>(thread_data)[i]));
-                    } else {
-                        reinterpret_cast<output_t*>(output)[index] = op(reinterpret_cast<const output_t*>(thread_data)[i]);
+            if (FFT::working_group::is_thread_active()) {
+                for (int i = 0; i < FFT::output_ept; ++i) {
+                    if ((i * stride + threadIdx.x) < FFT::output_length) {
+                        if constexpr (needs_half2_format_conversion) {
+                            reinterpret_cast<output_t*>(output)[index] =
+                                op(__io::convert_to_riri<OutputInRRIILayout>(reinterpret_cast<const output_t*>(thread_data)[i]));
+                        } else {
+                            reinterpret_cast<output_t*>(output)[index] = op(reinterpret_cast<const output_t*>(thread_data)[i]);
+                        }
+                        index += stride;
                     }
-                    index += stride;
                 }
             }
         }
@@ -192,11 +202,13 @@ namespace example {
             // Get stride, this shows how elements from batch should be split between threads
             const unsigned int stride = FFT::stride;
             unsigned int       index  = offset + threadIdx.x;
-            // We bundle __half2 data of X-th and X+(FFT::ffts_per_block/2) batches together.
-            const unsigned int batch_stride = (FFT::ffts_per_block / 2) * cufftdx::size_of<FFT>::value;
-            for (unsigned int i = 0; i < FFT::elements_per_thread; i++) {
-                thread_data[i] = to_rrii(input[index], input[index + batch_stride]);
-                index += stride;
+            if (FFT::working_group::is_thread_active()) {
+                // We bundle __half2 data of X-th and X+(FFT::ffts_per_block/2) batches together.
+                const unsigned int batch_stride = (FFT::ffts_per_block / 2) * cufftdx::size_of<FFT>::value;
+                for (unsigned int i = 0; i < FFT::elements_per_thread; i++) {
+                    thread_data[i] = to_rrii(input[index], input[index + batch_stride]);
+                    index += stride;
+                }
             }
         }
 
@@ -207,10 +219,12 @@ namespace example {
             const unsigned int stride       = FFT::stride;
             unsigned int       index        = offset + threadIdx.x;
             const unsigned int batch_stride = (FFT::ffts_per_block / 2) * cufftdx::size_of<FFT>::value;
-            for (unsigned int i = 0; i < FFT::elements_per_thread; i++) {
-                output[index]                = to_ri1(thread_data[i]);
-                output[index + batch_stride] = to_ri2(thread_data[i]);
-                index += stride;
+            if (FFT::working_group::is_thread_active()) {
+                for (unsigned int i = 0; i < FFT::elements_per_thread; i++) {
+                    output[index]                = to_ri1(thread_data[i]);
+                    output[index + batch_stride] = to_ri2(thread_data[i]);
+                    index += stride;
+                }
             }
         }
     };

@@ -84,14 +84,19 @@ int main(int, char**) {
     int current_device;
     CUDA_CHECK_AND_EXIT(cudaGetDevice(&current_device));
 
+    if (!cufftdx::utils::check_cufft_device_api_version()) {
+        return 1;
+    }
+
     auto [lto_db, ltoirs, block_dim, shared_memory_size] =
         cufftdx::utils::get_database_and_ltoir(fft_size,
-                                               CUFFT_DESC_INVERSE,
-                                               CUFFT_DESC_C2C,
+                                               cufftdx::fft_direction::inverse,
+                                               cufftdx::fft_type::c2c,
                                                example::nvrtc::get_device_architecture(current_device) * 10,
-                                               CUFFT_DESC_BLOCK,
-                                               CUFFT_DESC_DOUBLE,
-                                               CUFFT_DESC_NORMAL,
+                                               cufftdx::utils::execution_type::block,
+                                               cufftdx::precision::f64,
+                                               cufftdx::complex_layout::natural,
+                                               cufftdx::real_mode::normal,
                                                fft_ept);
 
     if (ltoirs.size() == 0 || lto_db.empty()) {
@@ -117,10 +122,8 @@ int main(int, char**) {
     // Prepare compilation options
     std::vector<const char*> opts = {
         "--std=c++17",
-        "--device-as-default-execution-space",
-        "--include-path=" CUDA_INCLUDE_DIR // Add path to CUDA include directory
+        "--device-as-default-execution-space"
     };
-
     // Parse cuFFTDx include dirs
     std::vector<std::string> cufftdx_include_dirs = example::nvrtc::get_cufftdx_include_dirs();
     // Add cuFFTDx include dirs to opts
@@ -201,7 +204,7 @@ int main(int, char**) {
     CU_CHECK_AND_EXIT(cuInit(0));
     CU_CHECK_AND_EXIT(cuDeviceGet(&cuDevice, current_device));
     #if defined(CUDA_VERSION) && CUDA_VERSION >= 13000
-        CU_CHECK_AND_EXIT(cuCtxCreate(&context, (CUctxCreateParams*)0, 0, cuDevice));
+    CU_CHECK_AND_EXIT(cuCtxCreate(&context, (CUctxCreateParams*)0, 0, cuDevice));
     #else
         CU_CHECK_AND_EXIT(cuCtxCreate(&context, 0, cuDevice));
     #endif

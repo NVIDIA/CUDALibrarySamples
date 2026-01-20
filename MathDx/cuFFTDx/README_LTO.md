@@ -1,19 +1,17 @@
-# cuFFTDx + cuFFT LTO EA Library - API Examples
+# cuFFTDx + cuFFT LTO Library - API Examples
 
-All examples are shipped within [cuFFTDx + cuFFT LTO EA package](https://developer.nvidia.com/cufftea).
 
 ## Description
 
 This folder demonstrates cuFFTDx API usage and provides examples showing how to integrate LTO features into existing cuFFTDx projects.
 
-* [cuFFTDx + cuFFT LTO EA download page](https://developer.nvidia.com/cufftea)
-* [cuFFTDx + cuFFT LTO EA documentation](https://docs.nvidia.com/cuda/cufftdx/1.4.0-ea/index.html)
+* [cuFFTDx + cuFFT LTO documentation](https://docs.nvidia.com/cuda/cufftdx/cufft_lto/index.html)
 
 ## Requirements
 
-* [cuFFTDx + cuFFT LTO EA package](https://developer.nvidia.com/cufftea)
-* [See cuFFTDx + cuFFT LTO EA requirements](https://docs.nvidia.com/cuda/cufftdx/1.4.0-ea/requirements_func.html)
-* CUDA Toolkit 12.8 or newer
+* [cuFFTDx package](https://developer.nvidia.com/cufftdx-downloads)
+* [See cuFFTDx + cuFFT LTO requirements](https://docs.nvidia.com/cuda/cufftdx/requirements_func.html#requirements-for-cufftdx-with-cufft-lto)
+* CUDA Toolkit 13.1 or newer
 * CMake 3.26 or newer
 * Linux system with installed NVIDIA drivers
 * NVIDIA GPU of Volta (SM70) or newer architecture
@@ -21,14 +19,14 @@ This folder demonstrates cuFFTDx API usage and provides examples showing how to 
 ## Build
 
 * You may specify `CUFFTDX_CUDA_ARCHITECTURES` to limit CUDA architectures used for compilation (see [CMake:CUDA_ARCHITECTURES](https://cmake.org/cmake/help/latest/prop_tgt/CUDA_ARCHITECTURES.html#prop_tgt:CUDA_ARCHITECTURES))
-* `cufftdx_ROOT` - path to `cufftdx` directory in the cuFFTDx + cuFFT LTO EA package
-* `cufft_ROOT` - path to `cufftd` directory in the cuFFTDx + cuFFT LTO EA package
+* `cufftdx_ROOT` - path to `cufftdx` directory
+* `cufft_ROOT` - path to `cufft` directory. If not specified, teh version of cuFFT used will be the one included in your default CUDA Toolkit.
 
 ```
 mkdir build && cd build
 cmake -DCUFFTDX_CUDA_ARCHITECTURES=70-real
-      -Dcufftdx_ROOT=/opt/nvidia-cufft-11.5.0-cufftdx-1.4.0-<x86_64,aarch64>
-      -Dcufft_ROOT=/opt/nvidia-cufft-11.5.0-cufftdx-1.4.0-<x86_64,aarch64> ..
+      -Dmathdx_ROOT="<your_directory>/nvidia/mathdx/yy.mm/"
+      -Dcufft_ROOT="<your_cufft_installation>" ..
 make
 // Run
 ctest
@@ -36,7 +34,7 @@ ctest
 
 ## LTO Examples
 
-For the detailed descriptions of the examples please visit [Examples](https://docs.nvidia.com/cuda/cufftdx/1.4.0-ea/examples.html) section of the cuFFTDx + cuFFT LTO EA documentation.
+For the detailed descriptions of the examples please visit [Examples](https://docs.nvidia.com/cuda/cufftdx/lto_examples.html) section of the cuFFTDx documentation.
 
 <table>
     <thead>

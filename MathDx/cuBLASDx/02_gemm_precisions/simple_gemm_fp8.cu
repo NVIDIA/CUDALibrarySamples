@@ -77,7 +77,7 @@ int simple_gemm() {
     // Parameters m, n, k define the dimensions of matrices A, B, and C
     constexpr unsigned int m = 64;
     constexpr unsigned int n = 64;
-    constexpr unsigned int k = 64;
+    constexpr unsigned int k = 32;
 
     // GEMM definition using cuBLASDx operators:
     // 1. The size, the precision, and the type (real or complex) are set.
@@ -94,15 +94,15 @@ int simple_gemm() {
                           cublasdx::Alignment<2, 2, 8>() + cublasdx::Block() + cublasdx::SM<Arch>());
 
     // Allocate managed memory for a, b, c
-#ifdef CUBLASDX_EXAMPLE_DETAIL_NVCC_12_2_BUG_WORKAROUND
+#    ifdef CUBLASDX_EXAMPLE_DETAIL_NVCC_12_2_BUG_WORKAROUND
     using TA = typename example::a_value_type_t<BLAS>;
     using TB = typename example::b_value_type_t<BLAS>;
     using TC = typename example::c_value_type_t<BLAS>;
-#else
+#    else
     using TA = typename BLAS::a_value_type;
     using TB = typename BLAS::b_value_type;
     using TC = typename BLAS::c_value_type;
-#endif
+#    endif
     TA* a;
     TB* b;
     TC* c;
@@ -119,17 +119,17 @@ int simple_gemm() {
     auto beta  = TC(2.0, 1.0);
 
     // Fill the A, B, C matrices with random values
-    auto host_a = example::get_random_data<TA>(0.1, 1.0, global_a_size);
-    auto host_b = example::get_random_data<TB>(0.1, 1.0, global_b_size);
-    auto host_c = example::get_random_data<TC>(0.1, 1.0, global_c_size);
+    auto host_a = example::get_random_data<TA>(global_a_size);
+    auto host_b = example::get_random_data<TB>(global_b_size);
+    auto host_c = example::get_random_data<TC>(global_c_size);
     CUDA_CHECK_AND_EXIT(cudaMemcpy(a, host_a.data(), global_a_size * sizeof(TA), cudaMemcpyHostToDevice));
-    CUDA_CHECK_AND_EXIT(cudaMemcpy(b, host_b.data(), global_a_size * sizeof(TB), cudaMemcpyHostToDevice));
-    CUDA_CHECK_AND_EXIT(cudaMemcpy(c, host_c.data(), global_a_size * sizeof(TC), cudaMemcpyHostToDevice));
+    CUDA_CHECK_AND_EXIT(cudaMemcpy(b, host_b.data(), global_b_size * sizeof(TB), cudaMemcpyHostToDevice));
+    CUDA_CHECK_AND_EXIT(cudaMemcpy(c, host_c.data(), global_c_size * sizeof(TC), cudaMemcpyHostToDevice));
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     // Increase max dynamic shared memory for the kernel if needed
-    CUDA_CHECK_AND_EXIT(
-        cudaFuncSetAttribute(gemm_kernel<BLAS>, cudaFuncAttributeMaxDynamicSharedMemorySize, cublasdx::get_shared_storage_size<BLAS>()));
+    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(
+        gemm_kernel<BLAS>, cudaFuncAttributeMaxDynamicSharedMemorySize, cublasdx::get_shared_storage_size<BLAS>()));
 
     // Execute kernel
     gemm_kernel<BLAS><<<1, BLAS::block_dim, cublasdx::get_shared_storage_size<BLAS>()>>>(a, b, c, alpha, beta);
@@ -162,12 +162,12 @@ int simple_gemm() {
 }
 
 struct simple_gemm_functor {
-    template<int Arch>
-    int operator()(std::integral_constant<int, Arch>) {
+    template<int Arch, cublasdx::sm_modifier Modifier>
+    int operator()(std::integral_constant<int, Arch>, std::integral_constant<cublasdx::sm_modifier, Modifier>) {
         return simple_gemm<Arch>();
     }
 };
 
 int main(int, char**) {
-    return example::sm_runner(simple_gemm_functor{});
+    return example::sm_runner(simple_gemm_functor {});
 }

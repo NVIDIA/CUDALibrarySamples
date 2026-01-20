@@ -29,7 +29,7 @@
 template<class FFT, class GEMM, class ValueType = example::uniform_value_type_t<GEMM>>
 void reference(const ValueType* a,
                const ValueType* b,
-               ValueType* c,
+               ValueType*       c,
                const ValueType  alpha,
                const ValueType  beta,
                ValueType*       output,
@@ -44,12 +44,13 @@ void reference(const ValueType* a,
     CUBLAS_CHECK_AND_EXIT(cublasSetStream(handle, stream));
     constexpr bool is_a_transposed = (cublasdx::arrangement_of<GEMM>::a == cublasdx::row_major);
     constexpr bool is_b_transposed = (cublasdx::arrangement_of<GEMM>::b == cublasdx::row_major);
-    const auto a_transpose = example::get_cublas_transpose_mode(cublasdx::arrangement_of<GEMM>::a);
-    const auto b_transpose = example::get_cublas_transpose_mode(cublasdx::arrangement_of<GEMM>::b);
-    static_assert(cublasdx::arrangement_of<GEMM>::c == cublasdx::arrangement::col_major, "Only column-major C matrix supported");
+    const auto     a_transpose     = example::get_cublas_transpose_mode(cublasdx::arrangement_of<GEMM>::a);
+    const auto     b_transpose     = example::get_cublas_transpose_mode(cublasdx::arrangement_of<GEMM>::b);
+    static_assert(cublasdx::arrangement_of<GEMM>::c == cublasdx::arrangement::col_major,
+                  "Only column-major C matrix supported");
 
     // Prepare cuFFT
-    const unsigned int fft_size = cublasdx::size_of<GEMM>::m * cublasdx::size_of<GEMM>::n;
+    const unsigned int fft_size   = cublasdx::size_of<GEMM>::m * cublasdx::size_of<GEMM>::n;
     const unsigned int batch_size = 1;
 
     cufftHandle plan;
@@ -94,18 +95,18 @@ __launch_bounds__(FFT::max_threads_per_block) __global__ void gemm_fft_kernel(co
                                                                               const ValueType  alpha,
                                                                               const ValueType  beta,
                                                                               ValueType*       output) {
-    #if CUBLASDX_EXAMPLE_DETAIL_NVCC_12_2_BUG_WORKAROUND
-    using fft_complex_type = example::value_type_t<FFT>;
+#if CUBLASDX_EXAMPLE_DETAIL_NVCC_12_2_BUG_WORKAROUND
+    using fft_complex_type  = example::value_type_t<FFT>;
     using blas_complex_type = example::uniform_value_type_t<GEMM>;
-    #else
-    using fft_complex_type = typename FFT::value_type;
+#else
+    using fft_complex_type  = typename FFT::value_type;
     using blas_complex_type = example::uniform_value_type_t<GEMM>;
-    #endif
+#endif
 
     static_assert(std::is_same_v<fft_complex_type, blas_complex_type>, "BLAS and FFT complex type should match");
 
-    using complex_type = blas_complex_type;
-    using value_type = ValueType;
+    using complex_type                = blas_complex_type;
+    using value_type                  = ValueType;
     constexpr unsigned int block_size = GEMM::block_dim.x * GEMM::block_dim.y * GEMM::block_dim.z;
 
     extern __shared__ complex_type smem[];
@@ -122,9 +123,9 @@ __launch_bounds__(FFT::max_threads_per_block) __global__ void gemm_fft_kernel(co
     auto c_global_tensor = cublasdx::make_tensor(c, GEMM::get_layout_gmem_c());
 
     auto [smem_a, smem_b, smem_c] = cublasdx::slice_shared_memory<GEMM>(reinterpret_cast<char*>(smem));
-    auto a_shared_tensor = cublasdx::make_tensor(smem_a, GEMM::get_layout_smem_a());
-    auto b_shared_tensor = cublasdx::make_tensor(smem_b, GEMM::get_layout_smem_b());
-    auto c_shared_tensor = cublasdx::make_tensor(smem_c, GEMM::get_layout_smem_c());
+    auto a_shared_tensor          = cublasdx::make_tensor(smem_a, GEMM::get_layout_smem_a());
+    auto b_shared_tensor          = cublasdx::make_tensor(smem_b, GEMM::get_layout_smem_b());
+    auto c_shared_tensor          = cublasdx::make_tensor(smem_c, GEMM::get_layout_smem_c());
 
     using alignment = cublasdx::alignment_of<GEMM>;
     cublasdx::copy<GEMM, alignment::a>(a_global_tensor, a_shared_tensor);
@@ -193,22 +194,18 @@ int gemm_fft() {
                          cufftdx::ElementsPerThread<2>() + cufftdx::FFTsPerBlock<1>() + cufftdx::SM<Arch>());
 
     using GEMM =
-        decltype(cublasdx::Size<8, 8, 8>() +
-                 cublasdx::Precision<precision_type>() +
-                 cublasdx::Type<cublasdx::type::complex>() +
-                 cublasdx::Function<cublasdx::function::MM>() +
-                 cublasdx::Arrangement<cublasdx::col_major, cublasdx::col_major>() +
-                 cublasdx::Block() +
-                 cublasdx::BlockDim<FFT::block_dim.x, FFT::block_dim.y, FFT::block_dim.z>() +
-                 cublasdx::SM<Arch>());
+        decltype(cublasdx::Size<8, 8, 8>() + cublasdx::Precision<precision_type>() +
+                 cublasdx::Type<cublasdx::type::complex>() + cublasdx::Function<cublasdx::function::MM>() +
+                 cublasdx::Arrangement<cublasdx::col_major, cublasdx::col_major>() + cublasdx::Block() +
+                 cublasdx::BlockDim<FFT::block_dim.x, FFT::block_dim.y, FFT::block_dim.z>() + cublasdx::SM<Arch>());
 
-    #if CUBLASDX_EXAMPLE_DETAIL_NVCC_12_2_BUG_WORKAROUND
+#if CUBLASDX_EXAMPLE_DETAIL_NVCC_12_2_BUG_WORKAROUND
     using blas_complex_type = example::uniform_value_type_t<GEMM>;
-    using fft_complex_type = example::value_type_t<FFT>;
-    #else
+    using fft_complex_type  = example::value_type_t<FFT>;
+#else
     using blas_complex_type = example::uniform_value_type_t<GEMM>;
-    using fft_complex_type = typename FFT::value_type;
-    #endif
+    using fft_complex_type  = typename FFT::value_type;
+#endif
 
     static_assert(std::is_same_v<blas_complex_type, fft_complex_type>, "BLAS and FFT complex types should be the same");
     using complex_type = blas_complex_type;
@@ -234,7 +231,7 @@ int gemm_fft() {
     constexpr auto global_b_size = example::global_memory_size_of<GEMM>::b_size;
     constexpr auto global_c_size = example::global_memory_size_of<GEMM>::c_size;
 
-    auto size = (global_a_size + // a
+    auto size       = (global_a_size + // a
                  global_b_size + // b
                  global_c_size + // c
                  global_c_size + // output
@@ -273,11 +270,12 @@ int gemm_fft() {
     {
         int device;
         CUDA_CHECK_AND_EXIT(cudaGetDevice(&device));
-        #if CUDA_VERSION >= 13000
-        CUDA_CHECK_AND_EXIT(cudaMemPrefetchAsync(buffer, size_bytes, cudaMemLocation{cudaMemLocationTypeDevice, device}, 0, stream));
-        #else
+#if CUDA_VERSION >= 13000
+        CUDA_CHECK_AND_EXIT(
+            cudaMemPrefetchAsync(buffer, size_bytes, cudaMemLocation {cudaMemLocationTypeDevice, device}, 0, stream));
+#else
         CUDA_CHECK_AND_EXIT(cudaMemPrefetchAsync(buffer, size_bytes, device, stream));
-        #endif
+#endif
         CUDA_CHECK_AND_EXIT(cudaStreamSynchronize(stream));
         CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
     }
@@ -286,9 +284,7 @@ int gemm_fft() {
     constexpr auto shared_memory_size = std::max({FFT::shared_memory_size, cublasdx::get_shared_storage_size<GEMM>()});
     // Increase max shared memory if needed
     CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(
-        gemm_fft_kernel<FFT, GEMM>,
-        cudaFuncAttributeMaxDynamicSharedMemorySize,
-        shared_memory_size));
+        gemm_fft_kernel<FFT, GEMM>, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_memory_size));
 
     // Invokes cuBLASDx+cuFFTDx kernel with FFT::block_dim threads in CUDA block
     gemm_fft_kernel<FFT, GEMM><<<1, FFT::block_dim, shared_memory_size, stream>>>(a, b, c, alpha, beta, output);
@@ -325,12 +321,12 @@ int gemm_fft() {
 }
 
 struct gemm_fft_functor {
-    template<int Arch>
-    int operator()(std::integral_constant<int, Arch>) {
+    template<int Arch, cublasdx::sm_modifier Modifier>
+    int operator()(std::integral_constant<int, Arch>, std::integral_constant<cublasdx::sm_modifier, Modifier>) {
         return gemm_fft<Arch>();
     }
 };
 
 int main(int, char**) {
-    return example::sm_runner(gemm_fft_functor{});
+    return example::sm_runner(gemm_fft_functor {});
 }

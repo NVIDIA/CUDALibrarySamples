@@ -40,6 +40,17 @@
         }
 #endif // CUSOLVER_CHECK
 
+#ifndef CUSPARSE_CHECK_AND_EXIT
+#    define CUSPARSE_CHECK_AND_EXIT(error)                                              \
+        {                                                                               \
+            auto status = static_cast<cusparseStatus_t>(error);                         \
+            if (status != CUSPARSE_STATUS_SUCCESS) {                                    \
+                std::cout << status << " " << __FILE__ << ":" << __LINE__ << std::endl; \
+                std::exit(status);                                                      \
+            }                                                                           \
+        }
+#endif // CUSPARSE_CHECK_AND_EXIT
+
 #ifndef CUBLAS_CHECK_AND_EXIT
 #    define CUBLAS_CHECK_AND_EXIT(error)                                              \
         {                                                                               \

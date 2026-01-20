@@ -59,7 +59,8 @@ namespace common {
         typedef float T;
         typedef T     S;
 
-        static constexpr T            zero           = 0.f;
+        static constexpr T            zero          = 0.f;
+        static constexpr T            one           = 1.f;
         static constexpr cudaDataType cuda_data_type = CUDA_R_32F;
 #if CUDART_VERSION >= 11000
         static constexpr cusolverPrecType_t cusolver_precision_type = CUSOLVER_R_32F;
@@ -90,6 +91,7 @@ namespace common {
         typedef T      S;
 
         static constexpr T            zero           = 0.;
+        static constexpr T            one            = 1.;
         static constexpr cudaDataType cuda_data_type = CUDA_R_64F;
 #if CUDART_VERSION >= 11000
         static constexpr cusolverPrecType_t cusolver_precision_type = CUSOLVER_R_64F;
@@ -120,6 +122,7 @@ namespace common {
         typedef cuFloatComplex T;
 
         static constexpr T            zero           = {0.f, 0.f};
+        static constexpr T            one            = {1.f, 0.f};
         static constexpr cudaDataType cuda_data_type = CUDA_C_32F;
 #if CUDART_VERSION >= 11000
         static constexpr cusolverPrecType_t cusolver_precision_type = CUSOLVER_C_32F;
@@ -153,6 +156,7 @@ namespace common {
         typedef cuDoubleComplex T;
 
         static constexpr T            zero           = {0., 0.};
+        static constexpr T            one            = {1., 0.};
         static constexpr cudaDataType cuda_data_type = CUDA_C_64F;
 #if CUDART_VERSION >= 11000
         static constexpr cusolverPrecType_t cusolver_precision_type = CUSOLVER_C_64F;

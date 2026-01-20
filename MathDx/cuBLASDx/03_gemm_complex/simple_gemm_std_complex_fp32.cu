@@ -21,16 +21,17 @@
 #include <cuda/std/complex>
 #if _LIBCUDACXX_CUDA_API_VERSION < 001007000
 int main(int, char**) {
-    std::cout << "Example disabled, cuBLASDx requires cuda::std::complex from libcu++ 1.7.0 (CTK 11.6) or newer" << std::endl;
+    std::cout << "Example disabled, cuBLASDx requires cuda::std::complex from libcu++ 1.7.0 (CTK 11.6) or newer"
+              << std::endl;
     return 0;
 }
 #else
 
-#include <cuda_runtime_api.h>
-#include <cublasdx.hpp>
+#    include <cuda_runtime_api.h>
+#    include <cublasdx.hpp>
 
-#include "../common/common.hpp"
-#include "../reference/reference.hpp"
+#    include "../common/common.hpp"
+#    include "../reference/reference.hpp"
 
 template<class BLAS, class ValueType = typename example::uniform_value_type_t<BLAS>>
 __launch_bounds__(BLAS::max_threads_per_block) __global__ void gemm_kernel(const ValueType* a,
@@ -88,9 +89,9 @@ __launch_bounds__(BLAS::max_threads_per_block) __global__ void gemm_kernel(const
 template<unsigned int Arch>
 int simple_gemm() {
     // Parameters m, n, k define the dimensions of matrices A, B, and C
-    constexpr unsigned int m          = 32;
-    constexpr unsigned int n          = 32;
-    constexpr unsigned int k          = 32;
+    constexpr unsigned int m = 32;
+    constexpr unsigned int n = 32;
+    constexpr unsigned int k = 32;
 
     // Specify the precision for the complex type.
     using precision = float;
@@ -111,13 +112,10 @@ int simple_gemm() {
     // 2. The BLAS function is selected: MM (matrix multiplication).
     // 3. Block operator informs that GEMM should be performed on CUDA block level.
     // 4. Targeted CUDA compute capability is selected with SM operator.
-    using BLAS = decltype(cublasdx::Size<m, n, k>() +
-                          cublasdx::Precision<precision>() +
-                          cublasdx::Type<cublasdx::type::complex>() +
-                          cublasdx::Function<cublasdx::function::MM>() +
-                          cublasdx::Arrangement<arrangement_a, arrangement_b>() +
-                          cublasdx::Block() +
-                          cublasdx::SM<Arch>());
+    using BLAS =
+        decltype(cublasdx::Size<m, n, k>() + cublasdx::Precision<precision>() +
+                 cublasdx::Type<cublasdx::type::complex>() + cublasdx::Function<cublasdx::function::MM>() +
+                 cublasdx::Arrangement<arrangement_a, arrangement_b>() + cublasdx::Block() + cublasdx::SM<Arch>());
 
     // Allocate managed memory for a, b, c, and output
     value_type* inputs;
@@ -139,20 +137,22 @@ int simple_gemm() {
     value_type  beta  = value_type(2.0, 2.0);
 
     // Fill the A, B, C matrices with random values
-    auto host_a = example::get_random_data<value_type>(0.1, 1.0, global_a_size);
-    auto host_b = example::get_random_data<value_type>(0.1, 1.0, global_b_size);
-    auto host_c = example::get_random_data<value_type>(0.1, 1.0, global_c_size);
+    auto host_a = example::get_random_data<value_type>(global_a_size);
+    auto host_b = example::get_random_data<value_type>(global_b_size);
+    auto host_c = example::get_random_data<value_type>(global_c_size);
     CUDA_CHECK_AND_EXIT(cudaMemcpy(a, host_a.data(), global_a_size * sizeof(value_type), cudaMemcpyHostToDevice));
     CUDA_CHECK_AND_EXIT(cudaMemcpy(b, host_b.data(), global_b_size * sizeof(value_type), cudaMemcpyHostToDevice));
     CUDA_CHECK_AND_EXIT(cudaMemcpy(c, host_c.data(), global_c_size * sizeof(value_type), cudaMemcpyHostToDevice));
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     // Increase max dynamic shared memory for the kernel if needed
-    CUDA_CHECK_AND_EXIT(
-        cudaFuncSetAttribute(gemm_kernel<BLAS, value_type>, cudaFuncAttributeMaxDynamicSharedMemorySize, cublasdx::get_shared_storage_size<BLAS>()));
+    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(gemm_kernel<BLAS, value_type>,
+                                             cudaFuncAttributeMaxDynamicSharedMemorySize,
+                                             cublasdx::get_shared_storage_size<BLAS>()));
 
     // Execute kernel
-    gemm_kernel<BLAS, value_type><<<1, BLAS::block_dim, cublasdx::get_shared_storage_size<BLAS>()>>>(a, b, c, alpha, beta, output);
+    gemm_kernel<BLAS, value_type>
+        <<<1, BLAS::block_dim, cublasdx::get_shared_storage_size<BLAS>()>>>(a, b, c, alpha, beta, output);
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     // Copy results back to host
@@ -178,13 +178,13 @@ int simple_gemm() {
 }
 
 struct simple_gemm_functor {
-    template<int Arch>
-    int operator()(std::integral_constant<int, Arch>) {
+    template<int Arch, cublasdx::sm_modifier Modifier>
+    int operator()(std::integral_constant<int, Arch>, std::integral_constant<cublasdx::sm_modifier, Modifier>) {
         return simple_gemm<Arch>();
     }
 };
 
 int main(int, char**) {
-    return example::sm_runner(simple_gemm_functor{});
+    return example::sm_runner(simple_gemm_functor {});
 }
 #endif

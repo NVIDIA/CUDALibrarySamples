@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #ifndef CUSOLVERDX_EXAMPLE_COMMON_NVRTC_HELPER_HPP
 #define CUSOLVERDX_EXAMPLE_COMMON_NVRTC_HELPER_HPP
 

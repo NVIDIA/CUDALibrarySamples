@@ -41,9 +41,9 @@ __launch_bounds__(BLAS::max_threads_per_block) //
     auto c_global_tensor = cublasdx::make_tensor(c, BLAS::get_layout_gmem_c());
 
     auto [smem_a, smem_b, smem_c] = cublasdx::slice_shared_memory<BLAS>(smem);
-    auto a_shared_tensor = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_a());
-    auto b_shared_tensor = cublasdx::make_tensor(smem_b, BLAS::get_layout_smem_b());
-    auto c_shared_tensor = cublasdx::make_tensor(smem_c, BLAS::get_layout_smem_c());
+    auto a_shared_tensor          = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_a());
+    auto b_shared_tensor          = cublasdx::make_tensor(smem_b, BLAS::get_layout_smem_b());
+    auto c_shared_tensor          = cublasdx::make_tensor(smem_c, BLAS::get_layout_smem_c());
 
     using alignment = cublasdx::alignment_of<BLAS>;
     cublasdx::copy<BLAS, alignment::a>(a_global_tensor, a_shared_tensor);
@@ -61,16 +61,16 @@ __launch_bounds__(BLAS::max_threads_per_block) //
 
 template<class BLASWithoutLD, class ValueType = typename example::uniform_value_type_t<BLASWithoutLD>>
 __launch_bounds__(BLASWithoutLD::max_threads_per_block) //
-    __global__                                 //
-    void gemm_kernel_dynamic_ld(const ValueType  alpha,
-                                const ValueType* a,
+    __global__                                          //
+    void gemm_kernel_dynamic_ld(const ValueType    alpha,
+                                const ValueType*   a,
                                 const unsigned int lda,
-                                const ValueType* b,
+                                const ValueType*   b,
                                 const unsigned int ldb,
-                                const ValueType  beta,
-                                const ValueType* c,
+                                const ValueType    beta,
+                                const ValueType*   c,
                                 const unsigned int ldc,
-                                ValueType*       output) {
+                                ValueType*         output) {
     using value_type = ValueType;
     extern __shared__ __align__(16) char smem[];
 
@@ -83,9 +83,9 @@ __launch_bounds__(BLASWithoutLD::max_threads_per_block) //
     auto c_global_tensor = cublasdx::make_tensor(c, BLASWithoutLD::get_layout_gmem_c());
 
     auto [smem_a, smem_b, smem_c] = cublasdx::slice_shared_memory<BLASWithoutLD>(smem, lda, ldb, ldc);
-    auto ta = cublasdx::make_tensor(smem_a, BLASWithoutLD::get_layout_smem_a(lda));
-    auto tb = cublasdx::make_tensor(smem_b, BLASWithoutLD::get_layout_smem_b(ldb));
-    auto tc = cublasdx::make_tensor(smem_c, BLASWithoutLD::get_layout_smem_c(ldc));
+    auto ta                       = cublasdx::make_tensor(smem_a, BLASWithoutLD::get_layout_smem_a(lda));
+    auto tb                       = cublasdx::make_tensor(smem_b, BLASWithoutLD::get_layout_smem_b(ldb));
+    auto tc                       = cublasdx::make_tensor(smem_c, BLASWithoutLD::get_layout_smem_c(ldc));
 
     using alignment = cublasdx::alignment_of<BLASWithoutLD>;
     cublasdx::copy<BLASWithoutLD, alignment::a>(a_global_tensor, ta);
@@ -161,16 +161,12 @@ int simple_gemm_with_leading_dimensions() {
     // 6. BlockDim operator sets CUDA block dimensions (in this cases 2D) that the kernel will be executed with.
     // 7. Targeted CUDA compute capability is selected with SM operator.
     using BLASWithoutLD =
-        decltype(cublasdx::Size<m, n, k>() +
-                 cublasdx::Precision<double>() +
-                 cublasdx::Type<cublasdx::type::real>() +
+        decltype(cublasdx::Size<m, n, k>() + cublasdx::Precision<double>() + cublasdx::Type<cublasdx::type::real>() +
                  cublasdx::Function<cublasdx::function::MM>() +
-                 cublasdx::Arrangement<a_arrangement, b_arrangement, c_arrangement>() +
-                 cublasdx::Block() +
-                 cublasdx::BlockDim<block_dim.x, block_dim.y, block_dim.z>() +
-                 cublasdx::SM<Arch>());
+                 cublasdx::Arrangement<a_arrangement, b_arrangement, c_arrangement>() + cublasdx::Block() +
+                 cublasdx::BlockDim<block_dim.x, block_dim.y, block_dim.z>() + cublasdx::SM<Arch>());
     // 6. Leading dimensions for matrices A, B, C
-    using BLAS = decltype(BLASWithoutLD() + cublasdx::LeadingDimension<lda, ldb, ldc>());
+    using BLAS       = decltype(BLASWithoutLD() + cublasdx::LeadingDimension<lda, ldb, ldc>());
     using value_type = typename example::uniform_value_type_t<BLAS>;
 
     // Allocate managed memory for a, b, c, and output
@@ -193,17 +189,17 @@ int simple_gemm_with_leading_dimensions() {
     value_type  beta  = value_type(2.0);
 
     // Fill the A, B, C matrices with random values
-    auto host_a = example::get_random_data<value_type>(0.1, 1.0, global_a_size);
-    auto host_b = example::get_random_data<value_type>(0.1, 1.0, global_b_size);
-    auto host_c = example::get_random_data<value_type>(0.1, 1.0, global_c_size);
+    auto host_a = example::get_random_data<value_type>(global_a_size);
+    auto host_b = example::get_random_data<value_type>(global_b_size);
+    auto host_c = example::get_random_data<value_type>(global_c_size);
     CUDA_CHECK_AND_EXIT(cudaMemcpy(a, host_a.data(), global_a_size * sizeof(value_type), cudaMemcpyHostToDevice));
     CUDA_CHECK_AND_EXIT(cudaMemcpy(b, host_b.data(), global_b_size * sizeof(value_type), cudaMemcpyHostToDevice));
     CUDA_CHECK_AND_EXIT(cudaMemcpy(c, host_c.data(), global_c_size * sizeof(value_type), cudaMemcpyHostToDevice));
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     // Increase max dynamic shared memory for the kernel if needed
-    CUDA_CHECK_AND_EXIT(
-        cudaFuncSetAttribute(gemm_kernel<BLAS>, cudaFuncAttributeMaxDynamicSharedMemorySize, cublasdx::get_shared_storage_size<BLAS>()));
+    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(
+        gemm_kernel<BLAS>, cudaFuncAttributeMaxDynamicSharedMemorySize, cublasdx::get_shared_storage_size<BLAS>()));
 
     // Execute kernel with GEMM with defined leading dimensions (known at compile time)
     gemm_kernel<BLAS><<<1, BLAS::block_dim, cublasdx::get_shared_storage_size<BLAS>()>>>(alpha, a, b, beta, c, output);
@@ -211,7 +207,8 @@ int simple_gemm_with_leading_dimensions() {
 
     // Copy results back to host
     std::vector<value_type> host_output(global_c_size);
-    CUDA_CHECK_AND_EXIT(cudaMemcpy(host_output.data(), output, global_c_size * sizeof(value_type), cudaMemcpyDeviceToHost));
+    CUDA_CHECK_AND_EXIT(
+        cudaMemcpy(host_output.data(), output, global_c_size * sizeof(value_type), cudaMemcpyDeviceToHost));
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     // Perform same GEMM but without defined leading dimensions, instead use dynamic leading dimensions.
@@ -223,8 +220,9 @@ int simple_gemm_with_leading_dimensions() {
                                              cublasdx::get_shared_storage_size<BLASWithoutLD>(lda, ldb, ldc)));
 
     // Execute kernel
-    gemm_kernel_dynamic_ld<BLASWithoutLD><<<1, BLASWithoutLD::block_dim, cublasdx::get_shared_storage_size<BLASWithoutLD>(lda, ldb, ldc)>>>(
-        alpha, a, lda, b, ldb, beta, c, ldc, output);
+    gemm_kernel_dynamic_ld<BLASWithoutLD>
+        <<<1, BLASWithoutLD::block_dim, cublasdx::get_shared_storage_size<BLASWithoutLD>(lda, ldb, ldc)>>>(
+            alpha, a, lda, b, ldb, beta, c, ldc, output);
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     // Copy results back to host
@@ -253,12 +251,12 @@ int simple_gemm_with_leading_dimensions() {
 }
 
 struct simple_gemm_with_leading_dimensions_functor {
-    template<int Arch>
-    int operator()(std::integral_constant<int, Arch>) {
+    template<int Arch, cublasdx::sm_modifier Modifier>
+    int operator()(std::integral_constant<int, Arch>, std::integral_constant<cublasdx::sm_modifier, Modifier>) {
         return simple_gemm_with_leading_dimensions<Arch>();
     }
 };
 
 int main(int, char**) {
-    return example::sm_runner(simple_gemm_with_leading_dimensions_functor{});
+    return example::sm_runner(simple_gemm_with_leading_dimensions_functor {});
 }

@@ -15,8 +15,8 @@
  * limitations under the License.
  */
 
-#include <cublasdx.hpp>
 #include <cusolverdx.hpp>
+#include <cublasdx.hpp>
 
 #include "../common/common.hpp"
 #include "../common/cudart.hpp"
@@ -133,7 +133,7 @@ __global__ __launch_bounds__(NT) void potrf_kernel(T* A, unsigned lda, int* info
     #ifdef __CUDA_ARCH__
         constexpr unsigned Arch = __CUDA_ARCH__;
     #else
-        constexpr unsigned Arch = 700;
+        constexpr unsigned Arch = 800;
     #endif
 
     using POTRF = decltype(cusolverdx::Function<cusolverdx::function::potrf>() + cusolverdx::FillMode<cusolverdx::fill_mode::upper>() + cusolverdx::Size<NB>() +

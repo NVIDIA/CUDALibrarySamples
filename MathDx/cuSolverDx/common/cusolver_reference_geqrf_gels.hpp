@@ -15,33 +15,35 @@
  * limitations under the License.
  */
 
-#ifndef CUSOLVERDX_EXAMPLE_CUSOLVERDX_COMMON_CUSOLVER_REFERENCE_QR_HPP
-#define CUSOLVERDX_EXAMPLE_CUSOLVERDX_COMMON_CUSOLVER_REFERENCE_QR_HPP
+#ifndef CUSOLVERDX_EXAMPLE_CUSOLVERDX_COMMON_CUSOLVER_REFERENCE_GEQRF_GELS_HPP
+#define CUSOLVERDX_EXAMPLE_CUSOLVERDX_COMMON_CUSOLVER_REFERENCE_GEQRF_GELS_HPP
 
 #include <cublas_v2.h>
+#include <cusolverDn.h>
+#include "measure.hpp"
 
 namespace common {
-    template<typename T, typename cuda_data_type, bool do_solver = false>
-    bool reference_cusolver_qr(std::vector<T>&    A,
-                               std::vector<T>&    B,
-                               std::vector<T>&    tau,
-                               const unsigned int m,
-                               const unsigned int n,
-                               const unsigned int nrhs           = 1,
-                               const unsigned int padded_batches = 1,
-                               const unsigned int actual_batches = 0,
-                               const bool         is_col_major_a = true,
-                               const bool         is_col_major_b = true,
-                               const bool         is_trans_a     = false) {
+    template<typename T, typename cuda_data_type, bool do_solver = false, bool check_cusolver_geqrfperf = false>
+    bool reference_cusolver_geqrf_gels(std::vector<T>&    A,
+                                       std::vector<T>&    B,
+                                       std::vector<T>&    tau,
+                                       const unsigned int m,
+                                       const unsigned int n,
+                                       const unsigned int nrhs           = 1,
+                                       const unsigned int padded_batches = 1,
+                                       const bool is_col_major_a = true,
+                                       const bool is_col_major_b = true,
+                                       const bool is_trans_a     = false,
+                                       const unsigned int actual_batches = 0) {
 
         if (m < n && do_solver) {
             std::cout << "Comparing cuSolverDx GELS for m <= n cases with cuSolver and cuBlas APIs are not implemented in the example." << std::endl;
             return false;
         }
 
-        const unsigned int                  a_size = A.size() / padded_batches;
-        const unsigned int                  mn     = min(m, n);
-        [[maybe_unused]] const unsigned int b_size = B.size() / padded_batches;
+        const unsigned int                  a_size = m * n;
+        const unsigned int                  mn     = std::min(m, n);
+        [[maybe_unused]] const unsigned int b_size = std::max(m, n) * nrhs;
 
         // lda and ldb are the leading dimensions of A and B to be used in cuSolver, which uses column major storage only
         [[maybe_unused]] const unsigned int lda = m;
@@ -139,26 +141,44 @@ namespace common {
         for (unsigned int batch = 0; batch < batches; batch++) {
             CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(d_A, &(A[a_size * batch]), sizeof(T) * a_size, cudaMemcpyHostToDevice, stream));
 
-            CUSOLVER_CHECK_AND_EXIT(cusolverDnXgeqrf(cusolverH,
-                                                     params,
-                                                     int64_t(m),
-                                                     int64_t(n),
-                                                     common::traits<cuda_data_type>::cuda_data_type,
-                                                     d_A,
-                                                     int64_t(m),
-                                                     common::traits<cuda_data_type>::cuda_data_type,
-                                                     d_tau,
-                                                     common::traits<cuda_data_type>::cuda_data_type,
-                                                     d_work,
-                                                     workspaceInBytesOnDevice,
-                                                     h_work.data(),
-                                                     workspaceInBytesOnHost,
-                                                     d_info));
+            auto execute_geqrf = [&](cudaStream_t str) {
+                CUSOLVER_CHECK_AND_EXIT(cusolverDnXgeqrf(cusolverH,
+                                                         params,
+                                                         int64_t(m),
+                                                         int64_t(n),
+                                                         common::traits<cuda_data_type>::cuda_data_type,
+                                                         d_A,
+                                                         int64_t(m),
+                                                         common::traits<cuda_data_type>::cuda_data_type,
+                                                         d_tau,
+                                                         common::traits<cuda_data_type>::cuda_data_type,
+                                                         d_work,
+                                                         workspaceInBytesOnDevice,
+                                                         h_work.data(),
+                                                         workspaceInBytesOnHost,
+                                                         d_info));
+                CUDA_CHECK_AND_EXIT(cudaStreamSynchronize(str));
+            };
 
-            CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(&(A[a_size * batch]), d_A, sizeof(T) * a_size, cudaMemcpyDeviceToHost, stream));
-            CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(&tau[mn * batch], d_tau, sizeof(T) * mn, cudaMemcpyDeviceToHost, stream));
+            if constexpr (check_cusolver_geqrfperf) {
+                const unsigned int warmup_repeats = 1;
+                const unsigned int repeats        = 5;
+                auto   execute_reset_a = [&](cudaStream_t str) { CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(d_A, &(A[a_size * batch]), sizeof(T) * a_size, cudaMemcpyHostToDevice, str)); };
+                double ms_geqrf        = common::measure::execution(execute_geqrf, execute_reset_a, warmup_repeats, repeats, stream) / repeats;
+                // report the timing
+                double seconds_per_giga_batch = ms_geqrf / 1e3 / batches * 1e9;
+                double gb_s                   = a_size * 2 * sizeof(T) / seconds_per_giga_batch; // A read and write
+                double gflops                 = common::get_flops_geqrf<T>(m, n) / seconds_per_giga_batch;
+                common::print_perf("cusolverDnXgeqrf", batches, m, n, 0, gflops, gb_s, ms_geqrf, 0); // dummy 0 for k andblockDim
+            } else {
+                execute_geqrf(stream);
+
+                CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(&(A[a_size * batch]), d_A, sizeof(T) * a_size, cudaMemcpyDeviceToHost, stream));
+                CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(&tau[mn * batch], d_tau, sizeof(T) * mn, cudaMemcpyDeviceToHost, stream));
+            }
             CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(&info, d_info, sizeof(int), cudaMemcpyDeviceToHost, stream));
             CUDA_CHECK_AND_EXIT(cudaStreamSynchronize(stream));
+
             if (0 > info) {
                 printf("cuSolverDnXgeqrf %d-th parameter is wrong \n", info);
                 return false;
@@ -282,4 +302,4 @@ namespace common {
 
 } // namespace common
 
-#endif // CUSOLVERDX_EXAMPLE_CUSOLVERDX_COMMON_CUSOLVER_REFERENCE_QR_HPP
+#endif // CUSOLVERDX_EXAMPLE_CUSOLVERDX_COMMON_CUSOLVER_REFERENCE_GEQRF_GELS_HPP

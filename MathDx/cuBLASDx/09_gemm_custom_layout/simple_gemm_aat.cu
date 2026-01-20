@@ -27,12 +27,12 @@
 template<class BLAS, class ValueType = typename example::uniform_value_type_t<BLAS>>
 __launch_bounds__(BLAS::max_threads_per_block) //
     __global__                                 //
-    void gemm_kernel(const ValueType* a,
-                     ValueType*       output) {
+    void gemm_kernel(const ValueType* a, ValueType* output) {
     using value_type = ValueType;
     extern __shared__ __align__(16) char smem[];
 
-    auto a_global_tensor = cublasdx::make_tensor(a, BLAS::get_layout_gmem_a());
+    auto a_global_tensor   = cublasdx::make_tensor(a, BLAS::get_layout_gmem_a());
+    auto out_global_tensor = cublasdx::make_tensor(output, BLAS::get_layout_gmem_c());
 
     ValueType* smem_a = reinterpret_cast<ValueType*>(smem);
     /// A, column major arrangement
@@ -45,10 +45,9 @@ __launch_bounds__(BLAS::max_threads_per_block) //
     cublasdx::copy_wait();
 
     // C = A * A^T
-    auto [c_register_fragment, partitioner] = BLAS().execute(a_shared_tensor, at_shared_tensor);
+    auto accumulator = BLAS().execute(a_shared_tensor, at_shared_tensor);
 
-    auto out_global_tensor = cublasdx::make_tensor(output, BLAS::get_layout_gmem_c());
-    cublasdx::copy_fragment<alignment::c>(c_register_fragment, out_global_tensor, partitioner);
+    accumulator.partition_and_store(out_global_tensor);
 }
 
 // This example demonstrates a special case of matrix multiplication where an input matrix is multiplied
@@ -87,14 +86,10 @@ int simple_gemm() {
     // 4. Block operator informs that GEMM should be performed on CUDA block level.
     // 5. BlockDim operator sets CUDA block dimensions that the kernel will be executed with.
     // 6. Targeted CUDA compute capability is selected with SM operator.
-    using BLAS = decltype(cublasdx::Size<m, n, k>() +
-                          cublasdx::Precision<precision>() +
-                          cublasdx::Type<cublasdx::type::real>() +
-                          cublasdx::Function<cublasdx::function::MM>() +
+    using BLAS = decltype(cublasdx::Size<m, n, k>() + cublasdx::Precision<precision>() +
+                          cublasdx::Type<cublasdx::type::real>() + cublasdx::Function<cublasdx::function::MM>() +
                           cublasdx::Arrangement<cublasdx::col_major, cublasdx::row_major, cublasdx::col_major>() +
-                          cublasdx::Block() +
-                          cublasdx::BlockDim<block_size>() +
-                          cublasdx::SM<Arch>());
+                          cublasdx::Block() + cublasdx::BlockDim<block_size>() + cublasdx::SM<Arch>());
 
     using value_type = typename example::uniform_value_type_t<BLAS>;
 
@@ -111,11 +106,12 @@ int simple_gemm() {
     CUDA_CHECK_AND_EXIT(cudaMallocManaged(&output, global_c_size * sizeof(value_type)));
 
     // Fill the input matrix
-    auto host_a = example::get_random_data<value_type>(0.5, 1.0, global_a_size);
-    for(size_t i = 0; i < host_a.size(); i++) {
-        host_a[i] = i+1;
+    auto host_a = example::get_random_data<value_type>(global_a_size);
+    for (size_t i = 0; i < host_a.size(); i++) {
+        host_a[i] = i + 1;
     }
-    CUDA_CHECK_AND_EXIT(cudaMemcpy(a_matrix, host_a.data(), global_a_size * sizeof(value_type), cudaMemcpyHostToDevice));
+    CUDA_CHECK_AND_EXIT(
+        cudaMemcpy(a_matrix, host_a.data(), global_a_size * sizeof(value_type), cudaMemcpyHostToDevice));
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     // Increase max dynamic shared memory for the kernel if needed
@@ -133,7 +129,8 @@ int simple_gemm() {
 
     // Copy results back to host
     std::vector<value_type> host_output(global_c_size);
-    CUDA_CHECK_AND_EXIT(cudaMemcpy(host_output.data(), output, global_c_size * sizeof(value_type), cudaMemcpyDeviceToHost));
+    CUDA_CHECK_AND_EXIT(
+        cudaMemcpy(host_output.data(), output, global_c_size * sizeof(value_type), cudaMemcpyDeviceToHost));
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     // Free device memory
@@ -141,10 +138,10 @@ int simple_gemm() {
     CUDA_CHECK_AND_EXIT(cudaFree(output));
 
     // Calculate reference
-    const value_type alpha { 1.0 };
-    const value_type beta  { 0.0 };
-    auto host_c  = std::vector<value_type>(host_a.size(), beta);
-    auto reference_host_output = example::reference_gemm<BLAS>(alpha, host_a, host_a, beta, host_c);
+    const value_type alpha {1.0};
+    const value_type beta {0.0};
+    auto             host_c                = std::vector<value_type>(host_a.size(), beta);
+    auto             reference_host_output = example::reference_gemm<BLAS>(alpha, host_a, host_a, beta, host_c);
     CUDA_CHECK_AND_EXIT(cudaPeekAtLastError());
 
     // Check against reference
@@ -157,12 +154,12 @@ int simple_gemm() {
 }
 
 struct simple_gemm_functor {
-    template<int Arch>
-    int operator()(std::integral_constant<int, Arch>) {
+    template<int Arch, cublasdx::sm_modifier Modifier>
+    int operator()(std::integral_constant<int, Arch>, std::integral_constant<cublasdx::sm_modifier, Modifier>) {
         return simple_gemm<Arch>();
     }
 };
 
 int main(int, char**) {
-    return example::sm_runner(simple_gemm_functor{});
+    return example::sm_runner(simple_gemm_functor {});
 }

@@ -1,6 +1,6 @@
-# cuBLASDx DGEMM Emulation using Ozaki Scheme
+#cuBLASDx DGEMM Emulation using Ozaki Scheme
 
-This example demonstrates how to emulate double precision GEMM (DGEMM) operations using multiple lower precision GEMM operations through the **Ozaki scheme**. This technique allows achieving double precision accuracy while leveraging the performance benefits of lower precision tensor operations.
+This example demonstrates how to emulate double precision GEMM(DGEMM) operations using multiple lower precision GEMM operations through the **Ozaki scheme**. This technique allows achieving double precision accuracy while leveraging the performance benefits of lower precision tensor operations.
 
 The code closely follows the implementation described in "DGEMM on Integer Matrix Multiplication Unit" and introduces a more efficient slicing algorithm. Our approach uses unsigned magnitudes for the slices and encodes the sign of the double-precision values in the leading slice, thereby saving (slices-1) bits of storage compared to the reference implementation and reducing the total number of operations required to compute the matrix product.
 
@@ -92,18 +92,18 @@ This allows computing the double precision result using multiple int8 GEMM opera
 constexpr int slices = 7;  // Number of slices (more = higher precision, more computation)
 ```
 
-### Tile Configuration
+    ## #Tile Configuration
 ```cpp
 
-using tile_shape = cute::Shape<cute::Int<128>, cute::Int<128>, cute::Int<64>>;
-using cta_shape  = cute::Shape<cute::Int<128>, cute::Int<1>, cute::Int<1>>;
+    using tile_shape = cute::Shape<cute::Int<128>, cute::Int<128>, cute::Int<64>>;
+    using cta_shape  = cute::Shape<cute::Int<128>, cute::Int<1>, cute::Int<1>>;
 ```
 
-### Problem Sizes
-```cpp
-std::vector<problem_shape> problems = {
-    {1024, 1024, 1024},   // Small problem for quick testing
-    {2048, 2048, 2048}    // Larger problem for performance evaluation
+    ## #Problem Sizes
+```cpp std::vector<problem_shape>
+        problems = {
+            {1024, 1024, 1024}, // Small problem for quick testing
+            {2048, 2048, 2048}  // Larger problem for performance evaluation
 };
 ```
 

@@ -21,18 +21,33 @@ project(lto_helper LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+if(NOT DEFINED CUFFTDX_CUFFT_MIN_VERSION)
+    set(CUFFTDX_CUFFT_MIN_VERSION "12.1" CACHE STRING "Minimum required cuFFT library version")
+endif()
+
 # Possible variables that can be set externally
 # cufft_ROOT: points to the cuFFT library root directory
+list(APPEND CMAKE_MODULE_PATH "${cufftdx_cufft_MODULE_PATH}")
 
-find_package(cufft 11.5.0 EXACT REQUIRED CONFIG
-    PATHS
-        "${PROJECT_SOURCE_DIR}/../../../../cufft"
-        "/opt/cufft"
-)
+find_package(cufft ${CUFFTDX_CUFFT_MIN_VERSION} REQUIRED)
 
 # Define the helper executable
 add_executable(cufftdx_cufft_lto_helper cufftdx_cufft_lto_helper.cpp)
+target_compile_definitions(cufftdx_cufft_lto_helper
+    PRIVATE
+        CUFFT_ENABLE_EXPERIMENTAL_API
+)
+target_compile_definitions(cufftdx_cufft_lto_helper
+    PRIVATE
+        CUFFTDX_ENABLE_CUFFT_DEPENDENCY # To include cufftdx::utils::check_cufft_device_api_version helper function
+)
 target_link_libraries(cufftdx_cufft_lto_helper
     PRIVATE
         cufft::cufft_static
+)
+
+target_include_directories(cufftdx_cufft_lto_helper
+    PRIVATE
+        "${cufftdx_INCLUDE_DIRS}"
+        "${cufftdx_commondx_INCLUDE_DIR}"
 )

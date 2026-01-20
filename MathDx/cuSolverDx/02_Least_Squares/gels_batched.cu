@@ -24,10 +24,10 @@
 #include "../common/example_sm_runner.hpp"
 #include "../common/device_io.hpp"
 #include "../common/print.hpp"
-#include "../common/cusolver_reference_qr.hpp"
+#include "../common/cusolver_reference_geqrf_gels.hpp"
 
 // This example demonstrates how to use cuSolverDx API to solve a batched least squares problem.
-// The results are compared with the reference values obtained with cuSolver host API, cuSolverDnXgeqrf + cuSolverDnXormqr + cuBlasXtrsm.
+// The results are compared with reference values obtained with the cuSolver and cuBLAS APIs.
 
 template<class Solver, unsigned int BatchesPerBlock, typename DataType = typename Solver::a_data_type>
 __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(DataType* A, const int lda_gmem, DataType* tau, DataType* B, const int ldb_gmem, const unsigned batches) {
@@ -35,13 +35,14 @@ __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(DataType
     constexpr auto m = Solver::m_size;
     constexpr auto n = Solver::n_size;
     constexpr auto k = Solver::k_size;
+    constexpr auto max_mn = m >= n ? m : n;
 
     const auto     one_batch_size_a_gmem = (cusolverdx::arrangement_of_v_a<Solver> == cusolverdx::col_major) ? lda_gmem * n : m * lda_gmem;
-    const auto     one_batch_size_b_gmem = (cusolverdx::arrangement_of_v_b<Solver> == cusolverdx::col_major) ? ldb_gmem * k : m * ldb_gmem;
+    const auto     one_batch_size_b_gmem = (cusolverdx::arrangement_of_v_b<Solver> == cusolverdx::col_major) ? ldb_gmem * k : max_mn * ldb_gmem;
     constexpr auto lda_smem              = Solver::lda;
     constexpr auto ldb_smem              = Solver::ldb;
     constexpr auto one_batch_size_a_smem = (cusolverdx::arrangement_of_v_a<Solver> == cusolverdx::col_major) ? lda_smem * n : m * lda_smem;
-    constexpr auto one_batch_size_b_smem = (cusolverdx::arrangement_of_v_b<Solver> == cusolverdx::col_major) ? ldb_smem * k : m * ldb_smem;
+    constexpr auto one_batch_size_b_smem = (cusolverdx::arrangement_of_v_b<Solver> == cusolverdx::col_major) ? ldb_smem * k : max_mn * ldb_smem;
 
     extern __shared__ __align__(16) unsigned char shared_mem[];
     // Slice shared memory into pointers
@@ -60,14 +61,14 @@ __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(DataType
     auto tau_g = tau + min(m, n) * batch_idx;
 
     // Load data from global memory to shared memory
-    common::io<Solver, BatchesPerBlock>::load_a(Ag, lda_gmem, As, lda_smem);
-    common::io<Solver, BatchesPerBlock>::load_b(Bg, ldb_gmem, Bs, ldb_smem);
-
+    common::io<Solver, BatchesPerBlock>::load_a<m, n>(Ag, lda_gmem, As, lda_smem);
+    common::io<Solver, BatchesPerBlock>::load_b<max_mn, k>(Bg, ldb_gmem, Bs, ldb_smem);
+    
     Solver().execute(As, lda_smem, tau_s, Bs, ldb_smem);
 
     // Store results back to global memory
-    common::io<Solver, BatchesPerBlock>::store_a(As, lda_smem, Ag, lda_gmem);
-    common::io<Solver, BatchesPerBlock>::store_b(Bs, ldb_smem, Bg, ldb_gmem);
+    common::io<Solver, BatchesPerBlock>::store_a<m, n>(As, lda_smem, Ag, lda_gmem);
+    common::io<Solver, BatchesPerBlock>::store_b<max_mn, k>(Bs, ldb_smem, Bg, ldb_gmem);
 
     // store tau from shared memory to global memory
     int thread_id = threadIdx.x + Solver::block_dim.x * (threadIdx.y + Solver::block_dim.y * threadIdx.z);
@@ -80,16 +81,12 @@ template<int Arch>
 int gels_batched() {
 
     using namespace cusolverdx;
-    using Base   = decltype(Size<20, 16, 1>() + Precision<double>() + Type<type::complex>() + Function<gels>() + Arrangement<arrangement::col_major, arrangement::row_major>() + TransposeMode<conj_trans>() + SM<Arch>() + Block() + BlockDim<64>());
+    using Base   = decltype(Size<20, 16, 5>() + Precision<double>() + Type<type::complex>() + Function<gels>() + Arrangement<arrangement::col_major, arrangement::row_major>() + TransposeMode<conj_trans>() + SM<Arch>() + Block());
     using Solver = decltype(Base() + BatchesPerBlock<Base::suggested_batches_per_block>());
 
-#ifdef CUSOLVERDX_EXAMPLE_DETAIL_NVCC_12_2_BUG_WORKAROUND
-    using data_type      = typename example::a_data_type_t<Solver>;
-    using cuda_data_type = typename example::a_cuda_data_type_t<Solver>;
-#else
     using data_type      = typename Solver::a_data_type;
     using cuda_data_type = typename Solver::a_cuda_data_type;
-#endif
+
     constexpr unsigned bpb = Solver::batches_per_block;
     std::cout << "Using Suggested Batches per block = " << bpb << std::endl;
     std::cout << "Suggested BlockDim = " << Solver::suggested_block_dim.x << std::endl;
@@ -172,12 +169,13 @@ int gels_batched() {
     CUDA_CHECK_AND_EXIT(cudaFree(d_A));
     CUDA_CHECK_AND_EXIT(cudaFree(d_B));
     CUDA_CHECK_AND_EXIT(cudaFree(d_tau));
+    CUDA_CHECK_AND_EXIT(cudaStreamDestroy(stream));
 
-    //=========================
-    // cuSolver reference
-    //=========================
+    //==================================================================================================================
+    // cuSolver/cuBLAS reference using cusolverDnXgeqrf, cusolverDnunmqr, and cublas<t>trsm. 
+    //=================================================================================================================
     if (m >= n) {
-        common::reference_cusolver_qr<data_type, cuda_data_type, true>(A, B, tau_ref, m, n, k, padded_batches, batches, is_col_maj_a, is_col_maj_b, (transpose_mode_of_v<Solver> == trans || transpose_mode_of_v<Solver> == conj_trans));
+        common::reference_cusolver_geqrf_gels<data_type, cuda_data_type, true, false>(A, B, tau_ref, m, n, k, padded_batches, is_col_maj_a, is_col_maj_b, (transpose_mode_of_v<Solver> != non_trans), batches);
 
         // check A, tau and X
         const auto total_relative_error_a = common::check_error<data_type, data_type>(L.data(), A.data(), batches * input_size_a);
@@ -209,7 +207,8 @@ int gels_batched() {
             return 1;
         }
 
-        std::cout << "Success compared with cuSolver API results, A and tau" << std::endl;
+
+        std::cout << "Success compared with cuSolver/cuBLAS API results, A and tau" << std::endl;
     } else {
         std::cout << "Comparing cuSolverDx GELS for m <= n cases with cuSolver and cuBlas APIs are not implemented in the example." << std::endl;
     }

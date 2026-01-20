@@ -24,9 +24,10 @@
 #include "../common/common.hpp"
 #include "../reference/reference.hpp"
 
-template<class BLAS, class AValueType = typename BLAS::a_value_type,
-                     class BValueType = typename BLAS::b_value_type,
-                     class CValueType = typename BLAS::c_value_type>
+template<class BLAS,
+         class AValueType = typename BLAS::a_value_type,
+         class BValueType = typename BLAS::b_value_type,
+         class CValueType = typename BLAS::c_value_type>
 __launch_bounds__(BLAS::max_threads_per_block) //
     __global__                                 //
     void gemm_kernel(const AValueType* a,
@@ -37,17 +38,19 @@ __launch_bounds__(BLAS::max_threads_per_block) //
                      CValueType*       output) {
     extern __shared__ __align__(16) char smem[];
 
-    auto a_global_tensor = cublasdx::make_tensor(a, BLAS::get_layout_gmem_a());
-    auto b_global_tensor = cublasdx::make_tensor(b, BLAS::get_layout_gmem_b());
-    auto c_global_tensor = cublasdx::make_tensor(c, BLAS::get_layout_gmem_c());
+    auto a_global_tensor   = cublasdx::make_tensor(a, BLAS::get_layout_gmem_a());
+    auto b_global_tensor   = cublasdx::make_tensor(b, BLAS::get_layout_gmem_b());
+    auto c_global_tensor   = cublasdx::make_tensor(c, BLAS::get_layout_gmem_c());
+    auto out_global_tensor = cublasdx::make_tensor(output, BLAS::get_layout_gmem_c());
 
-    using a_engine = typename decltype(cublasdx::make_tensor(std::declval<decltype(a)>(), BLAS::get_layout_gmem_a()))::engine_type;
+    using a_engine =
+        typename decltype(cublasdx::make_tensor(std::declval<decltype(a)>(), BLAS::get_layout_gmem_a()))::engine_type;
     static_assert(std::is_same_v<a_engine, typename decltype(a_global_tensor)::engine_type>, "");
 
 
     auto [smem_a, smem_b] = cublasdx::slice_shared_memory_ab<BLAS>(smem);
-    auto a_shared_tensor = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_a());
-    auto b_shared_tensor = cublasdx::make_tensor(smem_b, BLAS::get_layout_smem_b());
+    auto a_shared_tensor  = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_a());
+    auto b_shared_tensor  = cublasdx::make_tensor(smem_b, BLAS::get_layout_smem_b());
 
 
     using alignment = cublasdx::alignment_of<BLAS>;
@@ -55,14 +58,12 @@ __launch_bounds__(BLAS::max_threads_per_block) //
     cublasdx::copy<BLAS, alignment::b>(b_global_tensor, b_shared_tensor);
     cublasdx::copy_wait();
 
-    auto [c_frag, partitioner] = BLAS().execute(a_shared_tensor, b_shared_tensor);
+    auto accumulator     = BLAS().execute(a_shared_tensor, b_shared_tensor);
+    auto result_fragment = accumulator.get_results();
 
-    auto d_frag = partitioner.make_accumulator_fragment();
-    cublasdx::copy_fragment<alignment::c>(c_global_tensor, d_frag, partitioner);
-    cublasdx::axpby(alpha, c_frag, beta, d_frag);
-
-    auto out_global_tensor = cublasdx::make_tensor(output, BLAS::get_layout_gmem_c());
-    cublasdx::copy_fragment<alignment::c>(d_frag, out_global_tensor, partitioner);
+    auto d_frag = accumulator.make_partition_and_copy(c_global_tensor);
+    cublasdx::axpby(alpha, result_fragment, beta, d_frag);
+    accumulator.partition_and_copy(d_frag, out_global_tensor);
 }
 
 // This is an example of int8 / int8 / int32 general matrix-matrix multiplication (GEMM) performed
@@ -99,13 +100,9 @@ int simple_gemm() {
     // 3. Block operator informs that GEMM should be performed on CUDA block level.
     // 4. BlockDim operator sets CUDA block dimensions that the kernel will be executed with.
     // 5. Targeted CUDA compute capability is selected with SM operator.
-    using BLAS = decltype(cublasdx::Size<m, n, k>() +
-                          cublasdx::Precision<int8_t, int8_t, int32_t>() +
-                          cublasdx::Type<cublasdx::type::real>() +
-                          cublasdx::Function<cublasdx::function::MM>() +
-                          cublasdx::Block() +
-                          cublasdx::BlockDim<block_size>() +
-                          cublasdx::SM<Arch>());
+    using BLAS = decltype(cublasdx::Size<m, n, k>() + cublasdx::Precision<int8_t, int8_t, int32_t>() +
+                          cublasdx::Type<cublasdx::type::real>() + cublasdx::Function<cublasdx::function::MM>() +
+                          cublasdx::Block() + cublasdx::BlockDim<block_size>() + cublasdx::SM<Arch>());
 
     using a_value_type = example::a_value_type_t<BLAS>;
     using b_value_type = example::b_value_type_t<BLAS>;
@@ -121,30 +118,34 @@ int simple_gemm() {
     constexpr auto global_b_size = example::global_memory_size_of<BLAS>::b_size;
     constexpr auto global_c_size = example::global_memory_size_of<BLAS>::c_size;
 
-    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&input_a,  global_a_size * sizeof(a_value_type)));
-    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&input_b,  global_b_size * sizeof(b_value_type)));
-    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&input_c,  global_c_size * sizeof(c_value_type)));
+    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&input_a, global_a_size * sizeof(a_value_type)));
+    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&input_b, global_b_size * sizeof(b_value_type)));
+    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&input_c, global_c_size * sizeof(c_value_type)));
     CUDA_CHECK_AND_EXIT(cudaMallocManaged(&output_c, global_c_size * sizeof(c_value_type)));
 
-    c_value_type  alpha = c_value_type(1.0);
-    c_value_type  beta  = c_value_type(2.0);
+    c_value_type alpha = c_value_type(1.0);
+    c_value_type beta  = c_value_type(2.0);
 
     // Fill the A, B, C matrices with random values
-    auto host_a = example::get_random_data<a_value_type>(-10, 10, global_a_size);
-    auto host_b = example::get_random_data<b_value_type>(-10, 10, global_b_size);
-    auto host_c = example::get_random_data<c_value_type>(-100, 100, global_c_size);
+    auto host_a = example::get_random_data<a_value_type>(global_a_size);
+    auto host_b = example::get_random_data<b_value_type>(global_b_size);
+    auto host_c = example::get_random_data<c_value_type>(global_c_size);
 
-    CUDA_CHECK_AND_EXIT(cudaMemcpy(input_a, host_a.data(), global_a_size * sizeof(a_value_type), cudaMemcpyHostToDevice));
-    CUDA_CHECK_AND_EXIT(cudaMemcpy(input_b, host_b.data(), global_b_size * sizeof(b_value_type), cudaMemcpyHostToDevice));
-    CUDA_CHECK_AND_EXIT(cudaMemcpy(input_c, host_c.data(), global_c_size * sizeof(c_value_type), cudaMemcpyHostToDevice));
+    CUDA_CHECK_AND_EXIT(
+        cudaMemcpy(input_a, host_a.data(), global_a_size * sizeof(a_value_type), cudaMemcpyHostToDevice));
+    CUDA_CHECK_AND_EXIT(
+        cudaMemcpy(input_b, host_b.data(), global_b_size * sizeof(b_value_type), cudaMemcpyHostToDevice));
+    CUDA_CHECK_AND_EXIT(
+        cudaMemcpy(input_c, host_c.data(), global_c_size * sizeof(c_value_type), cudaMemcpyHostToDevice));
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     // Increase max dynamic shared memory for the kernel if needed
-    CUDA_CHECK_AND_EXIT(
-        cudaFuncSetAttribute(gemm_kernel<BLAS>, cudaFuncAttributeMaxDynamicSharedMemorySize, cublasdx::get_shared_storage_size<BLAS>()));
+    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(
+        gemm_kernel<BLAS>, cudaFuncAttributeMaxDynamicSharedMemorySize, cublasdx::get_shared_storage_size<BLAS>()));
 
     // Execute kernel
-    gemm_kernel<BLAS><<<1, BLAS::block_dim, cublasdx::get_shared_storage_size<BLAS>()>>>(input_a, input_b, input_c, alpha, beta, output_c);
+    gemm_kernel<BLAS><<<1, BLAS::block_dim, cublasdx::get_shared_storage_size<BLAS>()>>>(
+        input_a, input_b, input_c, alpha, beta, output_c);
     CUDA_CHECK_AND_EXIT(cudaPeekAtLastError());
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
@@ -174,12 +175,12 @@ int simple_gemm() {
 }
 
 struct simple_gemm_functor {
-    template<int Arch>
-    int operator()(std::integral_constant<int, Arch>) {
+    template<int Arch, cublasdx::sm_modifier Modifier>
+    int operator()(std::integral_constant<int, Arch>, std::integral_constant<cublasdx::sm_modifier, Modifier>) {
         return simple_gemm<Arch>();
     }
 };
 
 int main(int, char**) {
-    return example::sm_runner(simple_gemm_functor{});
+    return example::sm_runner(simple_gemm_functor {});
 }

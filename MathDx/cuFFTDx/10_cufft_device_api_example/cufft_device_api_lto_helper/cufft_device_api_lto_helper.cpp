@@ -18,7 +18,10 @@
 #include "../../lto_helper/common_lto.hpp"
 
 int main(int argc, char* argv[]) {
-    cufftResult result = CUFFT_SUCCESS;
+
+    if (!cufftdx::utils::check_cufft_device_api_version()) {
+        return EXIT_FAILURE;
+    }
 
     const int expected_args = 2;
     if (argc < expected_args) {
@@ -31,7 +34,7 @@ int main(int argc, char* argv[]) {
     // Path where header + ltoir/fatbins should be placed
     std::string output_dir = argv[1];
 
-    std::vector<int> cuda_archs = {700,720,750,800,860,870,890,900};
+    std::vector<int> cuda_archs = supported_cuda_architectures;
     if (argc > expected_args) {
         std::string arg = argv[2];
         cuda_archs.clear();
@@ -45,20 +48,27 @@ int main(int argc, char* argv[]) {
     // Handles describing the properties of entries that should be included in the database
     std::vector<cufftDescriptionHandle> desc_handles;
     for (int cuda_arch : cuda_archs) {
-        cufftDescriptionHandle desc_handle;
-        CUFFT_CHECK_AND_EXIT(cufftDescriptionCreate(&desc_handle));
-        CUFFT_CHECK_AND_EXIT(cufftDescriptionSetTraitInt64(desc_handle, CUFFT_DESC_TRAIT_SIZE,      static_cast<long long int>(128)));
-        CUFFT_CHECK_AND_EXIT(cufftDescriptionSetTraitInt64(desc_handle, CUFFT_DESC_TRAIT_DIRECTION, static_cast<long long int>(CUFFT_DESC_FORWARD)));
-        CUFFT_CHECK_AND_EXIT(cufftDescriptionSetTraitInt64(desc_handle, CUFFT_DESC_TRAIT_EXEC_OP,   static_cast<long long int>(CUFFT_DESC_BLOCK)));
-        CUFFT_CHECK_AND_EXIT(cufftDescriptionSetTraitInt64(desc_handle, CUFFT_DESC_TRAIT_SM,        static_cast<long long int>(cuda_arch)));
-
+        cufftdx_traits traits;
+        traits.size = 128;
+        traits.direction = cufftdx::fft_direction::forward;
+        traits.set_execution_type(cufftdx::utils::execution_type::block);
+        traits.sm = cuda_arch;
+        cufftDescriptionHandle desc_handle = createDescriptionHandleWithTraits(traits);
         desc_handles.push_back(desc_handle);
     }
 
     cufftDeviceHandle device_handle;
     CUFFT_CHECK_AND_EXIT(cufftDeviceCreate(&device_handle, desc_handles.size(), desc_handles.data()));
 
-    CUFFT_CHECK_AND_EXIT(checkDescriptions(device_handle, desc_handles.size(), desc_handles.data()));
+    // For every description handle, check if it is valid / supported
+    for (const auto& desc : desc_handles) {
+        bool is_supported = false;
+        CUFFT_CHECK_AND_EXIT(cufftDeviceIsSupported(device_handle, desc, &is_supported));
+        if (!is_supported) {
+            printDescriptionInfo(desc);
+            std::cout << "Warning: Description handle (" << desc << ") is currently not supported.\n";
+        }
+    }
 
     size_t database_str_size = 0;
     CUFFT_CHECK_AND_EXIT(cufftDeviceGetDatabaseStrSize(device_handle, &database_str_size));
@@ -85,22 +95,22 @@ int main(int argc, char* argv[]) {
 
     std::vector<std::vector<char>> code_ptrs_vec(count);
     std::vector<char*> code_ptrs(count);
-    std::vector<cufftDeviceCodeType> code_types(count);
+    std::vector<cufftDeviceCodeContainer> code_containers(count);
     for (size_t n = 0; n < count; ++n) {
         code_ptrs_vec[n].resize(code_sizes[n]);
         code_ptrs[n] = code_ptrs_vec[n].data();
     }
 
-    CUFFT_CHECK_AND_EXIT(cufftDeviceGetLTOIRs(device_handle, count, code_ptrs.data(), code_types.data()));
+    CUFFT_CHECK_AND_EXIT(cufftDeviceGetLTOIRs(device_handle, count, code_ptrs.data(), code_containers.data()));
 
     for (size_t n = 0; n < count; ++n) {
         std::string database_artifact_name = "cufft_generated_" + std::to_string(n);
-        std::string ext = parseFileExtension(code_types[n]);
+        std::string ext = parseFileExtension(code_containers[n]);
 
         if (!writeFile((output_dir + "/" + database_artifact_name + "." + ext).data(), code_ptrs[n], code_sizes[n])) {
             return EXIT_FAILURE;
         }
     }
 
-    CUFFT_CHECK_AND_EXIT(cufftDeviceDestroy(device_handle));    
+    CUFFT_CHECK_AND_EXIT(cufftDeviceDestroy(device_handle));
 }

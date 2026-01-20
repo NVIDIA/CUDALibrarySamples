@@ -1,0 +1,112 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include <iostream>
+#include <vector>
+
+#include <cuda_runtime_api.h>
+
+// To be able to compile on nvcc <= 13.1.0
+#define CUFFTDX_IGNORE_BLOCK_DIM_UNSUPPORTED
+
+#include <cufftdx.hpp>
+
+#include "../common/block_io.hpp"
+#include "../common/common.hpp"
+
+template<class FFT>
+__launch_bounds__(FFT::max_threads_per_block) __global__ void block_fft_kernel(typename FFT::value_type* data) {
+    using complex_type = typename FFT::value_type;
+
+    // Local array for thread
+    complex_type thread_data[FFT::storage_size];
+
+    // ID of FFT in CUDA block, in range [0; FFT::ffts_per_block)
+    const unsigned int local_fft_id = threadIdx.y;
+    // Load data from global memory to registers
+    // This io already takes care of predication and correct loading in the threads, See common/block_io.hpp
+    example::io<FFT>::load(data, thread_data, local_fft_id);
+
+    // Execute FFT
+    extern __shared__ __align__(alignof(float4)) complex_type shared_mem[];
+    FFT().execute(thread_data, shared_mem);
+
+    // Save results
+    example::io<FFT>::store(thread_data, data, local_fft_id);
+}
+
+// In this example a one-dimensional complex-to-complex transform is performed by a CUDA block.
+//
+// One block is run, it calculates two 128-point C2C float precision FFTs.
+// Data is generated on host, copied to device buffer, and then results are copied back to host.
+template<unsigned int Arch>
+void simple_block_fft() {
+    using namespace cufftdx;
+
+    // FFT is defined, its: size, type, direction, precision. Block() operator informs that FFT
+    // will be executed on block level. Shared memory is required for co-operation between threads.
+    // Additionally, block dim is set to 32x16x1. This is done to test the block dim functionality.
+    using FFT          = decltype(Block() + Size<128>() + Type<fft_type::c2c>() + Direction<fft_direction::forward>() +
+                         Precision<float>() + ElementsPerThread<8>() + FFTsPerBlock<2>() + BlockDim<32, 16, 1>() + SM<Arch>());
+    #if CUFFTDX_EXAMPLE_DETAIL_NVCC_12_2_BUG_WORKAROUND
+    using complex_type = example::value_type_t<FFT>;
+    #else
+    using complex_type = typename FFT::value_type;
+    #endif
+
+    // Allocate managed memory for input/output
+    complex_type* data;
+    auto          size       = FFT::ffts_per_block * cufftdx::size_of<FFT>::value;
+    auto          size_bytes = size * sizeof(complex_type);
+    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&data, size_bytes));
+    for (size_t i = 0; i < size; i++) {
+        data[i] = complex_type {float(i), -float(i)};
+    }
+
+    std::cout << "input [1st FFT]:\n";
+    for (size_t i = 0; i < FFT::input_length; i++) {
+        std::cout << data[i].x << " " << data[i].y << std::endl;
+    }
+
+    // Increase max shared memory if needed
+    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(
+        block_fft_kernel<FFT>,
+        cudaFuncAttributeMaxDynamicSharedMemorySize,
+        FFT::shared_memory_size));
+
+    // Invokes kernel with FFT::block_dim threads in CUDA block
+    block_fft_kernel<FFT><<<1, FFT::block_dim, FFT::shared_memory_size>>>(data);
+    CUDA_CHECK_AND_EXIT(cudaPeekAtLastError());
+    CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
+
+    std::cout << "output [1st FFT]:\n";
+    for (size_t i = 0; i < FFT::output_length; i++) {
+        std::cout << data[i].x << " " << data[i].y << std::endl;
+    }
+
+    CUDA_CHECK_AND_EXIT(cudaFree(data));
+    std::cout << "Success" << std::endl;
+}
+
+template<unsigned int Arch>
+struct simple_block_fft_functor {
+    void operator()() { return simple_block_fft<Arch>(); }
+};
+
+int main(int, char**) {
+    return example::sm_runner<simple_block_fft_functor>();
+}
