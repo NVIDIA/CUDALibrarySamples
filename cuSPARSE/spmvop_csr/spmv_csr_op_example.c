@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 #include <cuda_runtime_api.h> // cudaMalloc, cudaMemcpy, etc.
 #ifndef CUSPARSE_ENABLE_EXPERIMENTAL_API
 #define CUSPARSE_ENABLE_EXPERIMENTAL_API
@@ -24,6 +23,7 @@
 #include <stdio.h>            // printf
 #include <stdlib.h>           // EXIT_FAILURE
 #include <string.h>           // strcpy, strcat
+#include <stdbool.h>
 
 #define CHECK_CUDA(func)                                                       \
     {                                                                          \
@@ -113,8 +113,8 @@ typedef struct {
     double b;
 } epilogue_data_t;
 
-// device source code for epilogue 
-const char epilogue_src_code[] = 
+// device source code for epilogue
+const char epilogue_src_code[] =
 "struct epilogue_data_t {                                               \n\
     double a = 0;                                                       \n\
     double b = 0;                                                       \n\
@@ -156,7 +156,12 @@ char* get_cuda_header_path_from_envs(void) {
 
 //------------------------------------------------------------------------------
 
-int main(void) {
+int main(int argc, char** argv) {
+    bool is_default_epilogue = false;
+    if (argc >= 2) {
+        is_default_epilogue = (bool)(atoi(argv[1]));
+    }
+
     // Host problem definition
     int   A_num_rows       = 4;
     int   A_num_cols       = 4;
@@ -168,6 +173,7 @@ int main(void) {
     double hY[]            = { 5.0f, 6.0f, 7.0f, 8.0f };
     double hZ_result[]     = { 0.0f, 0.0f, 0.0f, 0.0f };    // host result
     double hZ_dev_result[] = { 0.0f, 0.0f, 0.0f, 0.0f };    // device result copied to host
+
     //--------------------------------------------------------------------------
     // Device memory management
     int*  dA_offsets, *dA_columns;
@@ -217,8 +223,8 @@ int main(void) {
     CHECK_CUSPARSE( cusparseCreateDnVec(&vecY, A_num_rows, dY, CUDA_R_64F) )
     CHECK_CUSPARSE( cusparseCreateDnVec(&vecZ, A_num_rows, dZ, CUDA_R_64F) )
     //--------------------------------------------------------------------------
-    char * lto_buffer;
-    size_t lto_buffer_size;
+    char * lto_buffer = NULL;
+    size_t lto_buffer_size = 0;
     // extra options can be useful for providing cuda header location
     // (e.g. cuComplex.h)
     char* cuda_header_path = get_cuda_header_path_from_envs();
@@ -230,33 +236,51 @@ int main(void) {
                                  ? cuda_header_path
                                  : "-I/usr/local/cuda/include"};
 #endif
-    nvrtc_compile(sm, epilogue_src_code, options, 1, &lto_buffer, &lto_buffer_size);
+    if (!is_default_epilogue) {
+        nvrtc_compile(sm, epilogue_src_code, options, 1, &lto_buffer, &lto_buffer_size);
+    }
 
+    // For the following bufferSize() and createDescr() we can use vecX/Y/Z constructed
+    // above but it's not necessary. Dummy descriptors is currently sufficient to detect
+    // their accidental use.
+    size_t buffer_size;
+    void* d_buffer;
     cusparseSpMVOpDescr_t descr;
     {
-        // The SpMVOp descriptor does not require the "real" X/Y/Z vectors.
-        // Use dummy descriptors to detect their accidental use.
         void* dummy_ptr = (void*)(0x100);
         cusparseDnVecDescr_t dummyX, dummyY, dummyZ;
         CHECK_CUSPARSE( cusparseCreateDnVec(&dummyX, A_num_rows, dummy_ptr, CUDA_R_64F) )
         CHECK_CUSPARSE( cusparseCreateDnVec(&dummyY, A_num_cols, dummy_ptr, CUDA_R_64F) )
         CHECK_CUSPARSE( cusparseCreateDnVec(&dummyZ, A_num_rows, dummy_ptr, CUDA_R_64F) )
+
+        CHECK_CUSPARSE(cusparseSpMVOp_bufferSize(handle,
+                                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                                 matA,
+                                                 dummyX,
+                                                 dummyY,
+                                                 dummyZ,
+                                                 CUDA_R_64F,
+                                                 &buffer_size));
+        CHECK_CUDA(cudaMalloc(&d_buffer, buffer_size));
         CHECK_CUSPARSE(cusparseSpMVOp_createDescr(handle, &descr,
                                                   CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                                  matA, dummyX, dummyY, dummyZ,
-                                                  CUDA_R_64F));
+                                                  matA, vecX, vecY, vecZ,
+                                                  CUDA_R_64F,
+                                                  d_buffer));
     }
 
     cusparseSpMVOpPlan_t plan;
     CHECK_CUSPARSE(cusparseSpMVOp_createPlan(handle, descr, &plan, lto_buffer, lto_buffer_size));
 
     epilogue_data_t epilogue_data;
-    epilogue_data.a = 2.0f;
-    epilogue_data.b = 4.0f;
+    if (!is_default_epilogue) {
+        epilogue_data.a = 2.0f;
+        epilogue_data.b = 4.0f;
 
-    CHECK_CUSPARSE(cusparseSpMVOp_setGlobalUserData(
-            handle, plan, epilogue_data_symbol, &epilogue_data,
-            sizeof(epilogue_data_t)));
+        CHECK_CUSPARSE(cusparseSpMVOp_setGlobalUserData(
+                handle, plan, epilogue_data_symbol, &epilogue_data,
+                sizeof(epilogue_data_t)));
+    }
 
     // execute SpMV
     double alpha = 1.0f;
@@ -285,7 +309,11 @@ int main(void) {
             sum += alpha * hA_values[j] * hX[k];
         }
         sum += beta * hY[i];
-        hZ_result[i] = epilogue(epilogue_data, i, sum);
+        if (!is_default_epilogue) {
+            hZ_result[i] = epilogue(epilogue_data, i, sum);
+        } else {
+            hZ_result[i] = sum;
+        }
 
         double err = fabs(hZ_dev_result[i] - hZ_result[i]);
         if (err > tol) {
@@ -310,6 +338,7 @@ int main(void) {
     CHECK_CUDA(cudaFree(dA_values))
     CHECK_CUDA(cudaFree(dX))
     CHECK_CUDA(cudaFree(dY))
+    CHECK_CUDA(cudaFree(d_buffer))
     if (!alias_Y_Z) CHECK_CUDA(cudaFree(dZ))
     return EXIT_SUCCESS;
 }
