@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,7 +17,6 @@
 
 #include <cublasmp.h>
 #include <mpi.h>
-#include <nvshmem.h>
 #include <stdio.h>
 
 #include <vector>
@@ -117,7 +116,7 @@ int run_matmul_ag(const Options& opts)
     TypeD* d_D = nullptr;
 
     CUDA_CHECK(cudaMalloc((void**)&d_A, loc_a_m * loc_a_n * sizeof(TypeA)));
-    // To achieve better performance, we can use nvshmem_malloc to allocate d_B
+    // To achieve better performance, we can use cublasMpMalloc or ncclMemAlloc + cublasMpBufferRegister to allocate d_B
     CUDA_CHECK(cudaMalloc((void**)&d_B, loc_b_m * loc_b_n * sizeof(TypeB)));
     CUDA_CHECK(cudaMalloc((void**)&d_D, loc_d_m * loc_d_n * nranks * sizeof(TypeD)));
 
@@ -155,16 +154,16 @@ int run_matmul_ag(const Options& opts)
     CUBLASMP_CHECK(cublasMpMatrixDescriptorCreate(
         m, n, loc_d_m, loc_d_n, 0, 0, loc_d_m, CudaTypeTraits<TypeD>::typeEnum, grid_col_major, &descD));
 
-    const cublasMpMatmulAlgoType_t algoType = CUBLASMP_MATMUL_ALGO_TYPE_SPLIT_P2P;
+    const cublasMpMatmulAlgoType_t algoType = CUBLASMP_MATMUL_ALGO_TYPE_DEFAULT;
 
     cublasMpMatmulDescriptor_t matmulDesc = nullptr;
 
     CUBLASMP_CHECK(cublasMpMatmulDescriptorCreate(&matmulDesc, CUBLAS_COMPUTE_32F));
-    CUBLASMP_CHECK(cublasMpMatmulDescriptorAttributeSet(
+    CUBLASMP_CHECK(cublasMpMatmulDescriptorSetAttribute(
         matmulDesc, CUBLASMP_MATMUL_DESCRIPTOR_ATTRIBUTE_TRANSA, &transA, sizeof(transA)));
-    CUBLASMP_CHECK(cublasMpMatmulDescriptorAttributeSet(
+    CUBLASMP_CHECK(cublasMpMatmulDescriptorSetAttribute(
         matmulDesc, CUBLASMP_MATMUL_DESCRIPTOR_ATTRIBUTE_TRANSB, &transB, sizeof(transB)));
-    CUBLASMP_CHECK(cublasMpMatmulDescriptorAttributeSet(
+    CUBLASMP_CHECK(cublasMpMatmulDescriptorSetAttribute(
         matmulDesc, CUBLASMP_MATMUL_DESCRIPTOR_ATTRIBUTE_ALGO_TYPE, &algoType, sizeof(algoType)));
 
     // Allocate and set scaling factors if provided
@@ -181,39 +180,39 @@ int run_matmul_ag(const Options& opts)
     if (opts.scaleA)
     {
         d_a_scale = allocate_and_init_scaling_factors(k, m, a_scale_mode);
-        CUBLASMP_CHECK(cublasMpMatmulDescriptorAttributeSet(
+        CUBLASMP_CHECK(cublasMpMatmulDescriptorSetAttribute(
             matmulDesc, CUBLASMP_MATMUL_DESCRIPTOR_ATTRIBUTE_A_SCALE_MODE, &a_scale_mode, sizeof(a_scale_mode)));
-        CUBLASMP_CHECK(cublasMpMatmulDescriptorAttributeSet(
+        CUBLASMP_CHECK(cublasMpMatmulDescriptorSetAttribute(
             matmulDesc, CUBLASMP_MATMUL_DESCRIPTOR_ATTRIBUTE_A_SCALE_POINTER, &d_a_scale, sizeof(d_a_scale)));
     }
 
     if (opts.scaleB)
     {
         d_b_scale = allocate_and_init_scaling_factors(k, n, b_scale_mode);
-        CUBLASMP_CHECK(cublasMpMatmulDescriptorAttributeSet(
+        CUBLASMP_CHECK(cublasMpMatmulDescriptorSetAttribute(
             matmulDesc, CUBLASMP_MATMUL_DESCRIPTOR_ATTRIBUTE_B_SCALE_MODE, &b_scale_mode, sizeof(b_scale_mode)));
-        CUBLASMP_CHECK(cublasMpMatmulDescriptorAttributeSet(
+        CUBLASMP_CHECK(cublasMpMatmulDescriptorSetAttribute(
             matmulDesc, CUBLASMP_MATMUL_DESCRIPTOR_ATTRIBUTE_B_SCALE_POINTER, &d_b_scale, sizeof(d_b_scale)));
     }
 
     if (opts.scaleD)
     {
         d_d_scale = allocate_and_init_scaling_factors(m, n, d_scale_mode);
-        CUBLASMP_CHECK(cublasMpMatmulDescriptorAttributeSet(
+        CUBLASMP_CHECK(cublasMpMatmulDescriptorSetAttribute(
             matmulDesc, CUBLASMP_MATMUL_DESCRIPTOR_ATTRIBUTE_D_SCALE_MODE, &d_scale_mode, sizeof(d_scale_mode)));
-        CUBLASMP_CHECK(cublasMpMatmulDescriptorAttributeSet(
+        CUBLASMP_CHECK(cublasMpMatmulDescriptorSetAttribute(
             matmulDesc, CUBLASMP_MATMUL_DESCRIPTOR_ATTRIBUTE_D_SCALE_POINTER, &d_d_scale, sizeof(d_d_scale)));
     }
 
     if (opts.scaleDOut)
     {
         d_d_out_scale = allocate_and_init_scaling_factors(m, n, d_out_scale_mode);
-        CUBLASMP_CHECK(cublasMpMatmulDescriptorAttributeSet(
+        CUBLASMP_CHECK(cublasMpMatmulDescriptorSetAttribute(
             matmulDesc,
             CUBLASMP_MATMUL_DESCRIPTOR_ATTRIBUTE_D_OUT_SCALE_MODE,
             &d_out_scale_mode,
             sizeof(d_out_scale_mode)));
-        CUBLASMP_CHECK(cublasMpMatmulDescriptorAttributeSet(
+        CUBLASMP_CHECK(cublasMpMatmulDescriptorSetAttribute(
             matmulDesc,
             CUBLASMP_MATMUL_DESCRIPTOR_ATTRIBUTE_D_OUT_SCALE_POINTER,
             &d_d_out_scale,
@@ -250,8 +249,8 @@ int run_matmul_ag(const Options& opts)
         &workspaceInBytesOnDevice,
         &workspaceInBytesOnHost));
 
-    // NVSHMEM is initialized as part of cublasMpGridCreate.
-    void* d_work = nvshmem_malloc(workspaceInBytesOnDevice);
+    void* d_work;
+    CUBLASMP_CHECK(cublasMpMalloc(grid_col_major, &d_work, workspaceInBytesOnDevice));
 
     std::vector<int8_t> h_work(workspaceInBytesOnHost);
 
@@ -331,7 +330,7 @@ int run_matmul_ag(const Options& opts)
     if (d_d_scale) CUDA_CHECK(cudaFree(d_d_scale));
     if (d_d_out_scale) CUDA_CHECK(cudaFree(d_d_out_scale));
 
-    nvshmem_free(d_work);
+    CUBLASMP_CHECK(cublasMpFree(grid_col_major, d_work));
 
     CUBLASMP_CHECK(cublasMpGridDestroy(grid_col_major));
     CUBLASMP_CHECK(cublasMpGridDestroy(grid_row_major));

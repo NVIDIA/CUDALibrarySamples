@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,17 +34,6 @@
         if (status != MPI_SUCCESS)                                                                                     \
         {                                                                                                              \
             fprintf(stderr, "MPI error at %s:%d : %d\n", __FILE__, __LINE__, status);                                  \
-            exit(EXIT_FAILURE);                                                                                        \
-        }                                                                                                              \
-    } while (0)
-
-#define NVSHMEM_CHECK(call)                                                                                            \
-    do                                                                                                                 \
-    {                                                                                                                  \
-        int status = call;                                                                                             \
-        if (status != 0)                                                                                               \
-        {                                                                                                              \
-            fprintf(stderr, "NVSHMEM error at %s:%d : %d\n", __FILE__, __LINE__, status);                              \
             exit(EXIT_FAILURE);                                                                                        \
         }                                                                                                              \
     } while (0)

@@ -51,7 +51,7 @@ This folder demonstrates cuBLASMp library API usage.
 
 ### Prerequisites
 
-cuBLASMp is distributed through [NVIDIA Developer Zone](https://developer.nvidia.com/cublasmp-downloads), PyPI ([CUDA 12](https://pypi.org/project/nvidia-cublasmp-cu12/), [CUDA 13](https://pypi.org/project/nvidia-cublasmp-cu13/)), [Conda](https://anaconda.org/nvidia/libcublasmp) and [HPC SDK](https://developer.nvidia.com/hpc-sdk). cuBLASMp requires CUDA Toolkit, NCCL and NVSHMEM to be installed on the system. The samples require C++11 compatible compiler and MPI (used from HPC-X in the Build Steps).
+cuBLASMp is distributed through [NVIDIA Developer Zone](https://developer.nvidia.com/cublasmp-downloads), PyPI ([CUDA 12](https://pypi.org/project/nvidia-cublasmp-cu12/), [CUDA 13](https://pypi.org/project/nvidia-cublasmp-cu13/)), [Conda](https://anaconda.org/nvidia/libcublasmp) and [HPC SDK](https://developer.nvidia.com/hpc-sdk). cuBLASMp requires CUDA Toolkit and NCCL to be installed on the system. The samples require C++11 compatible compiler and MPI (used from HPC-X in the Build Steps).
 
 ### Build Steps
 
@@ -62,10 +62,9 @@ cuBLASMp is distributed through [NVIDIA Developer Zone](https://developer.nvidia
     export HPCXROOT=<path/to/hpcx>
     export CUBLASMP_HOME=<path/to/cublasmp>
     export NCCL_HOME=<path/to/nccl>
-    export NVSHMEM_HOME=<path/to/nvshmem>
     source ${HPCXROOT}/hpcx-mt-init-ompi.sh
     hpcx_load
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_ARCHITECTURES="75;80;90;100;120" -DCUBLASMP_INCLUDE_DIRECTORIES=${CUBLASMP_HOME}/include -DCUBLASMP_LIBRARIES=${CUBLASMP_HOME}/lib/libcublasmp.so -DNCCL_INCLUDE_DIRECTORIES=${NCCL_HOME}/include -DNCCL_LIBRARIES=${NCCL_HOME}/lib/libnccl.so -DNVSHMEM_INCLUDE_DIRECTORIES=${NVSHMEM_HOME}/include -DNVSHMEM_HOST_LIBRARIES=${NVSHMEM_HOME}/lib/libnvshmem_host.so -DNVSHMEM_DEVICE_LIBRARIES=${NVSHMEM_HOME}/lib/libnvshmem_device.a
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_ARCHITECTURES="75;80;90;100;120" -DCUBLASMP_INCLUDE_DIRECTORIES=${CUBLASMP_HOME}/include -DCUBLASMP_LIBRARIES=${CUBLASMP_HOME}/lib/libcublasmp.so -DNCCL_INCLUDE_DIRECTORIES=${NCCL_HOME}/include -DNCCL_LIBRARIES=${NCCL_HOME}/lib/libnccl.so
     make -j
 
 ### Running

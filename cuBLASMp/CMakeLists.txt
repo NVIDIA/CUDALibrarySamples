@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,15 +26,12 @@ set(CUDA_RUNTIME_LIBRARY shared)
 function(build_sample sample_name)
     add_executable(${sample_name} ${sample_name}.cu)
 
-    set_target_properties(${sample_name} PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
-
     target_include_directories(${sample_name} PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
         ${MPI_CXX_INCLUDE_DIRS}
         ${CUBLASMP_INCLUDE_DIRECTORIES}
         ${NCCL_INCLUDE_DIRECTORIES}
-        ${NVSHMEM_INCLUDE_DIRECTORIES}
     )
 
     target_link_directories(${sample_name} PUBLIC
@@ -47,8 +44,6 @@ function(build_sample sample_name)
         ${CUBLASMP_LIBRARIES}
         ${MPI_CXX_LIBRARIES}
         ${NCCL_LIBRARIES}
-        ${NVSHMEM_DEVICE_LIBRARIES}
-        ${NVSHMEM_HOST_LIBRARIES}
         nvidia-ml
         m
     )

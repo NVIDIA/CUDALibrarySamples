@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,7 +20,6 @@
 #include <cuda_fp8.h>
 #include <math.h>
 #include <mpi.h>
-#include <nvshmem.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -157,14 +156,14 @@ int main(int argc, char* argv[])
         CUBLASMP_CHECK(cublasMpMatrixDescriptorCreate(
             m, n, loc_c_m, loc_c_n, 0, 0, loc_c_m, cuda_output_type, grid_col_major, &descC));
 
-        const cublasMpMatmulAlgoType_t algoType = CUBLASMP_MATMUL_ALGO_TYPE_SPLIT_P2P;
+        const cublasMpMatmulAlgoType_t algoType = CUBLASMP_MATMUL_ALGO_TYPE_DEFAULT;
 
         CUBLASMP_CHECK(cublasMpMatmulDescriptorCreate(&matmulDesc, cublas_compute_type));
-        CUBLASMP_CHECK(cublasMpMatmulDescriptorAttributeSet(
+        CUBLASMP_CHECK(cublasMpMatmulDescriptorSetAttribute(
             matmulDesc, CUBLASMP_MATMUL_DESCRIPTOR_ATTRIBUTE_TRANSA, &transA, sizeof(transA)));
-        CUBLASMP_CHECK(cublasMpMatmulDescriptorAttributeSet(
+        CUBLASMP_CHECK(cublasMpMatmulDescriptorSetAttribute(
             matmulDesc, CUBLASMP_MATMUL_DESCRIPTOR_ATTRIBUTE_TRANSB, &transB, sizeof(transB)));
-        CUBLASMP_CHECK(cublasMpMatmulDescriptorAttributeSet(
+        CUBLASMP_CHECK(cublasMpMatmulDescriptorSetAttribute(
             matmulDesc, CUBLASMP_MATMUL_DESCRIPTOR_ATTRIBUTE_ALGO_TYPE, &algoType, sizeof(algoType)));
 
         CUBLASMP_CHECK(cublasMpMatmul_bufferSize(
@@ -194,8 +193,7 @@ int main(int argc, char* argv[])
             &workspaceInBytesOnDevice,
             &workspaceInBytesOnHost));
 
-        // NVSHMEM is initialized as part of cublasMpGridCreate.
-        d_work = nvshmem_malloc(workspaceInBytesOnDevice);
+        CUBLASMP_CHECK(cublasMpMalloc(grid_col_major, &d_work, workspaceInBytesOnDevice));
 
         std::vector<int8_t> h_work(workspaceInBytesOnHost);
 
@@ -249,7 +247,7 @@ int main(int argc, char* argv[])
 
         CUDA_CHECK(cudaFree(d_X0));
         CUDA_CHECK(cudaFree(d_W0));
-        nvshmem_free(d_work);
+        CUBLASMP_CHECK(cublasMpFree(grid_col_major, d_work));
     }
 
     // Matmul + RS
@@ -309,14 +307,14 @@ int main(int argc, char* argv[])
         CUBLASMP_CHECK(cublasMpMatrixDescriptorCreate(
             m, n, loc_c_m, loc_c_n, 0, 0, loc_c_m, cuda_output_type, grid_row_major, &descC));
 
-        const cublasMpMatmulAlgoType_t algoType = CUBLASMP_MATMUL_ALGO_TYPE_SPLIT_P2P;
+        const cublasMpMatmulAlgoType_t algoType = CUBLASMP_MATMUL_ALGO_TYPE_DEFAULT;
 
         CUBLASMP_CHECK(cublasMpMatmulDescriptorCreate(&matmulDesc, cublas_compute_type));
-        CUBLASMP_CHECK(cublasMpMatmulDescriptorAttributeSet(
+        CUBLASMP_CHECK(cublasMpMatmulDescriptorSetAttribute(
             matmulDesc, CUBLASMP_MATMUL_DESCRIPTOR_ATTRIBUTE_TRANSA, &transA, sizeof(transA)));
-        CUBLASMP_CHECK(cublasMpMatmulDescriptorAttributeSet(
+        CUBLASMP_CHECK(cublasMpMatmulDescriptorSetAttribute(
             matmulDesc, CUBLASMP_MATMUL_DESCRIPTOR_ATTRIBUTE_TRANSB, &transB, sizeof(transB)));
-        CUBLASMP_CHECK(cublasMpMatmulDescriptorAttributeSet(
+        CUBLASMP_CHECK(cublasMpMatmulDescriptorSetAttribute(
             matmulDesc, CUBLASMP_MATMUL_DESCRIPTOR_ATTRIBUTE_ALGO_TYPE, &algoType, sizeof(algoType)));
 
         CUBLASMP_CHECK(cublasMpMatmul_bufferSize(
@@ -346,7 +344,7 @@ int main(int argc, char* argv[])
             &workspaceInBytesOnDevice,
             &workspaceInBytesOnHost));
 
-        d_work = nvshmem_malloc(workspaceInBytesOnDevice);
+        CUBLASMP_CHECK(cublasMpMalloc(grid_row_major, &d_work, workspaceInBytesOnDevice));
 
         std::vector<int8_t> h_work(workspaceInBytesOnHost);
 
@@ -401,7 +399,7 @@ int main(int argc, char* argv[])
         CUDA_CHECK(cudaFree(d_X1));
         CUDA_CHECK(cudaFree(d_W1));
         CUDA_CHECK(cudaFree(d_X2));
-        nvshmem_free(d_work);
+        CUBLASMP_CHECK(cublasMpFree(grid_row_major, d_work));
     }
 
     CUBLASMP_CHECK(cublasMpGridDestroy(grid_col_major));
