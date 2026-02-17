@@ -33,8 +33,8 @@ x86_64, aarch64
 
 # Prerequisites
 - A Linux or Windows system with recent NVIDIA drivers.
-- CUDA 11.x, CUDA 12.x, or CUDA 13.x [toolkit](https://developer.nvidia.com/cuda-downloads).
+- CUDA 12.x or CUDA 13.x [toolkit](https://developer.nvidia.com/cuda-downloads)
 - CMake 3.18 or above
-- gcc-8 or above on aarch64 (with C++11 support)
-- gcc-9 or above on x86-64 (with C++11 support)
+- gcc-8 or above on aarch64 (with C++14 support)
+- gcc-9 or above on x86-64 (with C++14 support)
 - The latest nvCOMP release from the NVIDIA [developer zone](https://developer.nvidia.com/nvcomp).
