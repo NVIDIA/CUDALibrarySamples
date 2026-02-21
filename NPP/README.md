@@ -11,22 +11,26 @@ This repository showcases example applications that utilize the NVIDIA Performan
 - Watershed segmentation
 - Contour detection
 - Distance transform
+- 3-channel edge detection
 
 ## Examples Included
 
-- [Batched Label Markers and Compression](batchedLabelMarkersAndCompression/)  
+- [3-Channel Canny Edge Detection](nppCanny/)
+  High-performance color edge detection using NPP's unified 3-channel Canny algorithm. 
+
+- [Batched Label Markers and Compression](batchedLabelMarkersAndCompression/)
   Demonstrates how to perform connected region labeling and compress marker labels across a batch of images.
 
-- [Watershed Segmentation](watershedSegmentation/)  
+- [Watershed Segmentation](watershedSegmentation/)
   Applies the watershed segmentation algorithm for image segmentation using NPP utilities.
 
-- [Euclidean Distance Transform](distanceTransform/)  
+- [Euclidean Distance Transform](distanceTransform/)
   Computes the Euclidean distance transform for binary images.
 
-- [Find Contour](findContour/)  
+- [Find Contour](findContour/)
   Extracts contours from labeled image regions using NPP primitives.
 
-## Latest Developments in NPP (12.4.0.0)
+## Latest Developments in NPP (13.0.3.9)
 
 ### Deprecations
 
@@ -45,7 +49,7 @@ This repository showcases example applications that utilize the NVIDIA Performan
 
 - **Operating Systems**: Linux, Windows  
 - **CPU Architectures**: x86_64  
-- **Required Toolkit**: [CUDA 12.0 or newer](https://developer.nvidia.com/cuda-downloads)
+- **Required Toolkit**: [CUDA 13.0 or newer](https://developer.nvidia.com/cuda-downloads)
 
 ## CUDA API Reference
 
