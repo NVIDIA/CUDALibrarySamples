@@ -80,13 +80,8 @@ class RHF(object):
         pcm_convergence_tol: float = 1e-10,
         pcm_num_angular_points_per_hydrogen_atom: int = 110,
         pcm_num_angular_points_per_heavy_atom: int = 194,
-        benchmark: bool = False,
-        ): 
+        ):
 
-        self.benchmark=benchmark
-        if self.benchmark:
-            import cuest_core as ce
-            self.timer = ce.Timer()
 
         self.cuest_handle = cuest_handle
 
@@ -625,8 +620,6 @@ class RHF(object):
     
     def solve(self):
 
-        if self.benchmark:
-            self.timer.start("SCF Energy")
         self.is_solved = False
         self.is_converged = False
 
@@ -635,80 +628,36 @@ class RHF(object):
         # Plan initializations (to cleanly separate from iterations).  The orthogonalization
         # calls for S, so most of these are automatically instantiated in that routine.  Build
         # them here to get an idea of how long they take.
-        if self.benchmark:
-            self.timer.start("init cuest_ao_pair_list")
         _ = self.cuest_ao_pair_list
-        if self.benchmark:
-            self.timer.stop("init cuest_ao_pair_list")
 
-        if self.benchmark:
-            self.timer.start("init cuest_oe_int_plan")
         _ = self.cuest_oe_int_plan
-        if self.benchmark:
-            self.timer.stop("init cuest_oe_int_plan")
 
-        if self.benchmark:
-            self.timer.start("init cuest_xc_int_plan")
         _ = self.cuest_xc_int_plan
-        if self.benchmark:
-            self.timer.stop("init cuest_xc_int_plan")
 
-        if self.benchmark:
-            self.timer.start("init cuest_df_int_plan")
         start = time.time()
         _ = self.cuest_df_int_plan
         stop = time.time()
-        if self.benchmark:
-            self.timer.stop("init cuest_df_int_plan")
         
-        if self.benchmark:
-            self.timer.start("init cuest_nlc_int_plan")
         _ = self.cuest_nlc_int_plan
-        if self.benchmark:
-            self.timer.stop("init cuest_nlc_int_plan")
 
-        if self.benchmark:
-            self.timer.start("init cuest_pcm_int_plan")
         _ = self.cuest_pcm_int_plan
-        if self.benchmark:
-            self.timer.stop("init cuest_pcm_int_plan")
 
-        if self.benchmark:
-            self.timer.start("compute_guess")
         self.compute_guess()
-        if self.benchmark:
-            self.timer.stop("compute_guess")
 
-        if self.benchmark:
-            self.timer.start("compute_orthogonalization")
         self.compute_orthogonalization()
-        if self.benchmark:
-            self.timer.stop("compute_orthogonalization")
 
-        if self.benchmark:
-            self.timer.start("occupations")
         self.compute_occupations()
-        if self.benchmark:
-            self.timer.stop("occupations")
 
         if self.print_level > 0:
             print('DFIntPlan Initialize Time: %11.3E [s]' % (stop - start))
             print('')
 
-        if self.benchmark:
-            self.timer.start("solve_diis")
         self.solve_diis()
-        if self.benchmark:
-            self.timer.stop("solve_diis")
 
         self.trailer()
 
         self.is_solved = True
 
-        if self.benchmark:
-            self.timer.stop("SCF Energy")
-            print(self.timer)
-        
     def header(self):
     
         self.start_time = time.time()
@@ -925,16 +874,8 @@ class RHF(object):
 
         # Core Hamiltonian
 
-        if self.benchmark:
-            self.timer.start("compute_kinetic")
         T = self.compute_kinetic()
-        if self.benchmark:
-            self.timer.stop("compute_kinetic")
-        if self.benchmark:
-            self.timer.start("compute_potential")
         V = self.compute_potential()
-        if self.benchmark:
-            self.timer.stop("compute_potential")
 
         # NOTE: This is typically where other static external potential terms
         # are added, e.g., ECP, QM/MM electrostatics, external perturbations,
@@ -968,16 +909,12 @@ class RHF(object):
         E = 0.0
         dG = 1.0
         print('%-4s: %24s %11s %11s %8s' % ('Iter', 'Energy', 'dE', 'dG', 'Time[s]'))
-        if self.benchmark:
-            self.timer.start("iterations")
         for iteration in range(self.maxiter):
 
             D = self.tensors['D'] 
             Cocc = self.tensors['Cocc']
 
             # Find slice count
-            if self.benchmark:
-                self.timer.start("find slice counts")
             dfk_int8_slice_count = self.find_slice_count(
                 slice_start=self.dfk_int8_slice_count_start,
                 slice_end=self.dfk_int8_slice_count_end,
@@ -992,38 +929,20 @@ class RHF(object):
                 dG_end=self.g_convergence,
                 dG=dG,
                 )
-            if self.benchmark:
-               self.timer.stop("find slice counts")
 
             # Fock Matrix
 
-            if self.benchmark:
-                self.timer.start("J")
             J = self.compute_coulomb(D=D)
-            if self.benchmark:
-                self.timer.stop("J")
 
-            if self.benchmark:
-                self.timer.start("K")
             K = self.compute_exchange(
                 Cocc=Cocc,
                 dfk_int8_slice_count=dfk_int8_slice_count,
                 dfk_int8_modulus_count=dfk_int8_modulus_count,
                 )
-            if self.benchmark:
-                self.timer.stop("K")
 
-            if self.benchmark:
-                self.timer.start("Vxc")
             Exc, Vxc = self.compute_local_exchange_correlation(Cocc=Cocc)
-            if self.benchmark:
-                self.timer.stop("Vxc")
 
-            if self.benchmark:
-                self.timer.start("NLC")
             Enlc, Vnlc = self.compute_nonlocal_exchange_correlation(Cocc=Cocc)
-            if self.benchmark:
-                self.timer.stop("NLC")
 
             # NOTE: This is typically where other electron-dependent Fock
             # matrix terms are added, e.g., PCM, wK.
@@ -1054,8 +973,6 @@ class RHF(object):
                 )
 
             # Include PCM
-            if self.benchmark:
-                self.timer.start("PCM")
             if self.do_pcm:
                 # PCM expects the total density, so temporarily scale by 2.0
                 GPUMatrixUtility.scale(
@@ -1078,8 +995,6 @@ class RHF(object):
                     x=Vpcm,
                     y=F,
                     )
-            if self.benchmark:
-                self.timer.stop("PCM")
 
             E += Exc
             E += Enlc
@@ -1109,8 +1024,6 @@ class RHF(object):
             # G = np.dot(np.dot(np.dot(np.dot(X, S), D), F), X.T)
             # Faster in large basis sets
 
-            if self.benchmark:
-                self.timer.start("Orbital gradient")
             L1 = GPUMatrixUtility.matrix_multiply(
                 mat1=Cocc,
                 mat2=S,
@@ -1150,8 +1063,6 @@ class RHF(object):
                 beta=-1.0,
                 transpose2=True,
                 )
-            if self.benchmark:
-                self.timer.stop("Orbital gradient")
 
             G_np = G.to_numpy()
 
@@ -1176,16 +1087,12 @@ class RHF(object):
 
             # DIIS Extrapolation (also updates DIIS history)
 
-            if self.benchmark:
-                self.timer.start("DIIS extrapolate")
 
             if iteration > 0:
                 F = diis.iterate(
                     state_vector=F,
                     error_vector=G,
                     )
-            if self.benchmark:
-                self.timer.stop("DIIS extrapolate")
 
             # Fock Matrix Diagonalization
 
@@ -1202,11 +1109,7 @@ class RHF(object):
                 transpose2=True,
                 )
 
-            if self.benchmark:
-                self.timer.start("eigh")
             eps, U2 = GPUMatrixUtility.eigh(matrix=F2)
-            if self.benchmark:
-                self.timer.stop("eigh")
 
             C = GPUMatrixUtility.matrix_multiply(
                 mat1=U2,
@@ -1217,8 +1120,6 @@ class RHF(object):
 
             # New Occupied Orbitals and Density Matrix
 
-            if self.benchmark:
-                self.timer.start("Form D")
             C_np = C.to_numpy()
             Cocc_np = C_np[:self.sizes['nocc'], :]
             Cocc = GPUMatrix.from_numpy(Cocc_np)
@@ -1229,8 +1130,6 @@ class RHF(object):
                 transpose1=True,
                 transpose2=False,
                 )
-            if self.benchmark:
-                self.timer.stop("Form D")
             
             self.tensors['D'] = D
             self.tensors['Cocc'] = Cocc
@@ -1253,8 +1152,6 @@ class RHF(object):
 
         if self.print_level > 0:
             print('=> End Solve DIIS <=\n')
-        if self.benchmark:
-            self.timer.stop("iterations")
 
     def compute_energy(self):
 

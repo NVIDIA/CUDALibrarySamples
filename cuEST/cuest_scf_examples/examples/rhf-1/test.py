@@ -78,16 +78,15 @@ rhf = cuest_scf.RHF(
     xc_grid_level=1,
     xc_threshold_collocation=1.0e-18,  # Collocation threshold for local XC potential
     nlc_threshold_collocation=1.0e-18, # Collocation threshold for nonlocal (VV10) potential
-    dfk_int8_modulus_count_start=4,
-    dfk_int8_modulus_count_end=10,
-    dfk_int8_slice_count_start=3,
-    dfk_int8_slice_count_end=6,
+    dfk_int8_modulus_count_start=8,
+    dfk_int8_modulus_count_end=8,
+    dfk_int8_slice_count_start=5,
+    dfk_int8_slice_count_end=5,
     pcm_num_angular_points_per_hydrogen_atom=110,
     pcm_num_angular_points_per_heavy_atom=194,
     pcm_epsilon=1.0,
     pcm_cutoff=1e-10,
     pcm_convergence_tol=1e-10,
-    benchmark=True,
     )
 
 rhf.solve()
