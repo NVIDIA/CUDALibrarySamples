@@ -1,0 +1,27 @@
+set(CUEST_INSTALL ../../../../)
+get_filename_component(CUEST_INSTALL_ABSOLUTE ${CUEST_INSTALL} ABSOLUTE)
+
+cmake_minimum_required(VERSION 3.20)
+
+project(cuest_example LANGUAGES C)
+
+find_package(CUDAToolkit REQUIRED)
+find_package(Threads REQUIRED)
+
+set(CMAKE_CUDA_ARCHITECTURES 80 90)
+
+# Source file
+add_executable(cuest_example main.c)
+
+# Include directories and libraries
+target_include_directories(cuest_example PRIVATE ${CUEST_INSTALL_ABSOLUTE}/include)
+target_include_directories(cuest_example PRIVATE ${CUEST_INSTALL_ABSOLUTE}/examples/c_api/common)
+target_include_directories(cuest_example PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
+
+target_link_libraries(cuest_example PRIVATE m
+    ${CUEST_INSTALL_ABSOLUTE}/lib/${CUDAToolkit_VERSION_MAJOR}/libcuest.so
+    CUDA::cudart
+    CUDA::cublas
+    CUDA::cusolver
+    Threads::Threads
+)

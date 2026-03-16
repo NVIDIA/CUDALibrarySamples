@@ -1,0 +1,119 @@
+THIRD-PARTY NOTICES
+===================
+
+This package includes or depends on the following third-party software
+and data.  Each component is governed by its own license terms,
+reproduced below.
+
+
+-----------------------------------------------------------------------
+1. Basis Set Exchange (bundled data)
+-----------------------------------------------------------------------
+
+The Gaussian basis set files in data/basis_set/ were downloaded from
+the Basis Set Exchange (https://www.basissetexchange.org), version 0.11,
+with data taken from Turbomole 7.3.
+
+Basis Set Exchange is developed by the Molecular Sciences Software
+Institute (MolSSI) and is licensed under the BSD 3-Clause License:
+
+  Copyright (c) 2019, The Molecular Sciences Software Institute
+  All rights reserved.
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions
+  are met:
+
+  1. Redistributions of source code must retain the above copyright
+     notice, this list of conditions and the following disclaimer.
+  2. Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in
+     the documentation and/or other materials provided with the
+     distribution.
+  3. Neither the name of the copyright holder nor the names of its
+     contributors may be used to endorse or promote products derived
+     from this software without specific prior written permission.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+  FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+  COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+  BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+  POSSIBILITY OF SUCH DAMAGE.
+
+Please cite the following publications when using data from the Basis
+Set Exchange:
+
+  [1] D. Feller, J. Comput. Chem. 17, 1571 (1996).
+      https://doi.org/10.1002/(SICI)1096-987X(199610)17:13<1571::AID-JCC9>3.0.CO;2-P
+  [2] K. L. Schuchardt et al., J. Chem. Inf. Model. 47, 1045 (2007).
+      https://doi.org/10.1021/ci600510j
+  [3] B. P. Pritchard, D. Altarawy, B. Didier, T. D. Gibson, T. L. Windus,
+      J. Chem. Inf. Model. 59, 4814 (2019).
+      https://doi.org/10.1021/acs.jcim.9b00725
+
+The individual basis sets used by these examples, and their primary
+literature references, are:
+
+def2-SVP  (data/basis_set/def2-svp.gbs)
+def2-SVP-ECP  (data/basis_set/def2-svp-ecp.gbs)
+
+  F. Weigend and R. Ahlrichs,
+  Phys. Chem. Chem. Phys. 7, 3297 (2005).
+  https://doi.org/10.1039/B508541A
+
+  D. Andrae, U. Häußermann, M. Dolg, H. Stoll, H. Preuß,
+  Theor. Chim. Acta 77, 123 (1990).  [ECPs for 4th/5th row elements]
+  https://doi.org/10.1007/BF01114537
+
+  B. Metz, H. Stoll, M. Dolg,
+  J. Chem. Phys. 113, 2563 (2000).  [Small-core ECPs, including I]
+  https://doi.org/10.1063/1.1305880
+
+def2-universal-JKFIT  (data/basis_set/def2-universal-jkfit.gbs)
+
+  F. Weigend,
+  J. Comput. Chem. 29, 167 (2008).
+  https://doi.org/10.1002/jcc.20702
+
+
+-----------------------------------------------------------------------
+2. NumPy
+-----------------------------------------------------------------------
+
+The Python API examples depend on NumPy (https://numpy.org).
+
+Copyright (c) 2005-2024, NumPy Developers.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+  * Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+  * Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer in
+    the documentation and/or other materials provided with the
+    distribution.
+  * Neither the name of the NumPy Developers nor the names of any
+    contributors may be used to endorse or promote products derived
+    from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.

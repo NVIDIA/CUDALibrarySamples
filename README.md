@@ -31,6 +31,7 @@ Explore the examples of each CUDA library included in this repository:
 - [cuBLASMp - Multi-process BLAS library](cuBLASMp/)
 - [cuBLASDx - Device-side BLAS extensions](MathDx/cuBLASDx/)
 - [cuDSS - GPU-accelerated linear solvers](cuDSS/)
+- [cuEST - GPU-accelerated quantum chemistry](cuEST/)
 - [cuFFT - Fast Fourier Transforms](cuFFT/)
 - [cuFFTMp - Multi-process FFT](cuFFTMp/)
 - [cuFFTDx - Device-side FFT extensions](MathDx/cuFFTDx/)

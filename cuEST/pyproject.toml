@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cuest-examples"
+version = "0.1.0"
+description = "cuEST Python API examples and SCF library"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+]
+
+[project.optional-dependencies]
+cu12 = ["nvidia-cuest-cu12==0.1.*", "nvmath-python[cu12]==0.7.*"]
+cu13 = ["nvidia-cuest-cu13==0.1.*", "nvmath-python[cu13]==0.7.*"]
+
+[tool.setuptools.packages.find]
+where = [
+    "python_examples",
+    "cuest_scf_examples",
+]
