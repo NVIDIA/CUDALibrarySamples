@@ -2,11 +2,13 @@
 # Run all cuEST C API examples.
 #
 # Usage:
-#   ./run_all.sh [BUILD_DIR] [CUEST_INSTALL_DIR]
+#   ./run_all.sh [BUILD_DIR]
 #
 # Defaults:
-#   BUILD_DIR         ./build
-#   CUEST_INSTALL_DIR (auto-detected from BUILD_DIR/CMakeCache.txt)
+#   BUILD_DIR  ./build
+#
+# Environment variables:
+#   CUEST_LIB_DIR  Path to cuEST libraries (auto-detected from BUILD_DIR/CMakeCache.txt)
 
 set -euo pipefail
 
@@ -16,7 +18,7 @@ DATA_DIR="$(cd "$SCRIPT_DIR/../data" 2>/dev/null && pwd || true)"
 
 if [ ! -d "$BUILD_DIR" ]; then
     echo "ERROR: Build directory not found: $BUILD_DIR"
-    echo "Build first: mkdir build && cd build && cmake .. -DCUEST_INSTALL_DIR=<path> && make -j"
+    echo "Build first: mkdir build && cd build && cmake .. -DCUEST_INCLUDE_DIR=<include> -DCUEST_LIB_DIR=<lib> && make -j"
     exit 1
 fi
 
@@ -25,20 +27,20 @@ if [ -z "$DATA_DIR" ] || [ ! -d "$DATA_DIR" ]; then
     exit 1
 fi
 
-# Auto-detect CUEST_INSTALL_DIR from CMakeCache if not provided
-if [ -z "${CUEST_INSTALL_DIR:-}" ]; then
+# Auto-detect CUEST_LIB_DIR from CMakeCache if not provided
+if [ -z "${CUEST_LIB_DIR:-}" ]; then
     CACHE="$BUILD_DIR/CMakeCache.txt"
     if [ -f "$CACHE" ]; then
-        CUEST_INSTALL_DIR=$(grep -m1 "^CUEST_INSTALL_DIR" "$CACHE" | cut -d= -f2)
+        CUEST_LIB_DIR=$(grep -m1 "^CUEST_LIB_DIR" "$CACHE" | cut -d= -f2)
     fi
 fi
 
-if [ -n "${CUEST_INSTALL_DIR:-}" ]; then
+if [ -n "${CUEST_LIB_DIR:-}" ]; then
     CUDA_MAJOR=$(nvcc --version 2>/dev/null | grep -oP 'release \K[0-9]+' | head -1 || true)
-    if [ -n "$CUDA_MAJOR" ] && [ -d "${CUEST_INSTALL_DIR}/lib/${CUDA_MAJOR}" ]; then
-        export LD_LIBRARY_PATH="${CUEST_INSTALL_DIR}/lib/${CUDA_MAJOR}:${CUEST_INSTALL_DIR}/lib:${LD_LIBRARY_PATH:-}"
+    if [ -n "$CUDA_MAJOR" ] && [ -d "${CUEST_LIB_DIR}/${CUDA_MAJOR}" ]; then
+        export LD_LIBRARY_PATH="${CUEST_LIB_DIR}/${CUDA_MAJOR}:${CUEST_LIB_DIR}:${LD_LIBRARY_PATH:-}"
     else
-        export LD_LIBRARY_PATH="${CUEST_INSTALL_DIR}/lib:${LD_LIBRARY_PATH:-}"
+        export LD_LIBRARY_PATH="${CUEST_LIB_DIR}:${LD_LIBRARY_PATH:-}"
     fi
 fi
 

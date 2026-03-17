@@ -14,30 +14,32 @@ For full API documentation, see https://docs.nvidia.com/cuda/cuest/.
 
 ```bash
 mkdir build && cd build
-cmake .. -DCUEST_INSTALL_DIR=/path/to/cuest/install
+cmake .. -DCUEST_INCLUDE_DIR=/path/to/cuest/include -DCUEST_LIB_DIR=/path/to/cuest/lib
 make -j
 ```
 
-`CUEST_INSTALL_DIR` must point to the cuEST installation prefix, which is
-expected to contain:
+`CUEST_INCLUDE_DIR` must point to the directory containing the cuEST headers,
+and `CUEST_LIB_DIR` must point to the directory containing `libcuest.so`.
+Both flat and CUDA-major-versioned layouts are supported:
 
 ```
-<CUEST_INSTALL_DIR>/
-  include/          # cuEST headers
-  lib/<cuda_major>/ # libcuest.so  (e.g. lib/12/libcuest.so)
+libcuest.so              # e.g. /path/to/cuest/lib/libcuest.so
+<cuda_major>/libcuest.so # e.g. /path/to/cuest/lib/12/libcuest.so
 ```
 
-### Optional CMake variables
+### CMake variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CUEST_INSTALL_DIR` | *(required)* | Path to cuEST installation |
+| `CUEST_INCLUDE_DIR` | *(required)* | Path to cuEST headers |
+| `CUEST_LIB_DIR` | *(required)* | Path to directory containing `libcuest.so` |
 | `CMAKE_CUDA_ARCHITECTURES` | `80 90` | Target GPU architectures |
 
 Example with custom GPU architectures:
 
 ```bash
-cmake .. -DCUEST_INSTALL_DIR=/opt/cuest -DCMAKE_CUDA_ARCHITECTURES="80;90;100"
+cmake .. -DCUEST_INCLUDE_DIR=/opt/cuest/include -DCUEST_LIB_DIR=/opt/cuest/lib \
+         -DCMAKE_CUDA_ARCHITECTURES="80;90;100"
 ```
 
 ## Directory Structure

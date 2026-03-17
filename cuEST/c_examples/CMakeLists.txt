@@ -19,25 +19,29 @@ project(cuest_c_examples LANGUAGES C)
 find_package(CUDAToolkit REQUIRED)
 find_package(Threads REQUIRED)
 
-if(NOT DEFINED CUEST_INSTALL_DIR)
+if(NOT DEFINED CUEST_INCLUDE_DIR)
     message(FATAL_ERROR
-        "CUEST_INSTALL_DIR is not set.\n"
-        "Re-run cmake with: -DCUEST_INSTALL_DIR=<path to cuest installation>")
+        "CUEST_INCLUDE_DIR is not set.\n"
+        "Re-run cmake with: -DCUEST_INCLUDE_DIR=<path to cuest headers>")
 endif()
 
-set(CUEST_INCLUDE_DIR ${CUEST_INSTALL_DIR}/include)
+if(NOT DEFINED CUEST_LIB_DIR)
+    message(FATAL_ERROR
+        "CUEST_LIB_DIR is not set.\n"
+        "Re-run cmake with: -DCUEST_LIB_DIR=<path to cuest libraries>")
+endif()
 
 if(NOT EXISTS ${CUEST_INCLUDE_DIR})
     message(FATAL_ERROR "CUEST include directory not found: ${CUEST_INCLUDE_DIR}")
 endif()
 
-# Support both lib/libcuest.so and lib/<cuda_major>/libcuest.so layouts
-if(EXISTS ${CUEST_INSTALL_DIR}/lib/libcuest.so)
-    set(CUEST_LIBRARY ${CUEST_INSTALL_DIR}/lib/libcuest.so)
-elseif(EXISTS ${CUEST_INSTALL_DIR}/lib/${CUDAToolkit_VERSION_MAJOR}/libcuest.so)
-    set(CUEST_LIBRARY ${CUEST_INSTALL_DIR}/lib/${CUDAToolkit_VERSION_MAJOR}/libcuest.so)
+# Support both <lib_dir>/libcuest.so and <lib_dir>/<cuda_major>/libcuest.so layouts
+if(EXISTS ${CUEST_LIB_DIR}/libcuest.so)
+    set(CUEST_LIBRARY ${CUEST_LIB_DIR}/libcuest.so)
+elseif(EXISTS ${CUEST_LIB_DIR}/${CUDAToolkit_VERSION_MAJOR}/libcuest.so)
+    set(CUEST_LIBRARY ${CUEST_LIB_DIR}/${CUDAToolkit_VERSION_MAJOR}/libcuest.so)
 else()
-    message(FATAL_ERROR "cuest library not found under ${CUEST_INSTALL_DIR}/lib/")
+    message(FATAL_ERROR "cuest library not found under ${CUEST_LIB_DIR}")
 endif()
 
 if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
