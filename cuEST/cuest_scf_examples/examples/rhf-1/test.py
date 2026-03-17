@@ -71,6 +71,7 @@ rhf = cuest_scf.RHF(
     auxiliary_name=auxiliary_name,
     minao_name=minao_name,
     threshold_pq=threshold_pq,
+    df_fitting_eigenvalue_cutoff=1.0e-12,
     # NOTE: Delicate applications or tight comparisons of gradients may require
     # tighter than the working default of g_convergence=1.0E-6
     # g_convergence=1.0E-8,

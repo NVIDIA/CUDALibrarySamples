@@ -61,6 +61,7 @@ class RHF(object):
         print_level : int = 2,
         threshold_pq : float = 1.0E-12,
         threshold_canonical : float = 1.0E-6,
+        df_fitting_eigenvalue_cutoff : float = 1.0e-12,
         diis_max_nvector : int = 6,
         maxiter : int = 100,
         g_convergence : float = 1.0E-6,
@@ -110,6 +111,7 @@ class RHF(object):
 
         self.threshold_pq = threshold_pq
         self.threshold_canonical = threshold_canonical
+        self.df_fitting_eigenvalue_cutoff = df_fitting_eigenvalue_cutoff
         self.diis_max_nvector = diis_max_nvector
         self.maxiter = maxiter
         self.g_convergence = g_convergence
@@ -206,6 +208,7 @@ class RHF(object):
             auxiliary=self.cuest_auxiliary,
             ao_pair_list=self.cuest_ao_pair_list,
             exchange_scale=self.cuest_xc_int_plan.exchange_scale,
+            df_fitting_eigenvalue_cutoff=self.df_fitting_eigenvalue_cutoff,
             )
 
     @memoized_property

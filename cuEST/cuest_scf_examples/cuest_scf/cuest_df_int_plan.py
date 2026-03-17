@@ -34,12 +34,14 @@ class CuestDFIntPlan(object):
         auxiliary : CuestAOBasis,
         ao_pair_list : CuestAOPairList,
         exchange_scale : float = 1.0,
+        df_fitting_eigenvalue_cutoff : float = 1.0e-12,
         ):
 
         self.initialized = False
 
         self.handle = handle
         self.exchange_scale = exchange_scale
+        self.df_fitting_eigenvalue_cutoff = df_fitting_eigenvalue_cutoff
 
         # NOTE: The CuestDFIntPlan has several defaultable parameters that
         # production codes may wish to override and expose as user-accessible
@@ -50,6 +52,7 @@ class CuestDFIntPlan(object):
             )
 
         exchange_scale_data = ce.data_double(self.exchange_scale)
+        df_fitting_eigenvalue_cutoff_data = ce.data_double(self.df_fitting_eigenvalue_cutoff)
 
         self.df_int_plan_handle = ce.cuestDFIntPlanHandle()
         status = ce.cuestParametersConfigure(
@@ -58,7 +61,15 @@ class CuestDFIntPlan(object):
             attribute=ce.CuestDFIntPlanParametersAttributes.CUEST_DFINTPLAN_PARAMETERS_EXCHANGE_FRACTION,
             attributeValue=exchange_scale_data,
             )
+        if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
+            raise RuntimeError('cuestParametersConfigure failed')
 
+        status = ce.cuestParametersConfigure(
+            parametersType=ce.CuestParametersType.CUEST_DFINTPLAN_PARAMETERS,
+            parameters=df_int_plan_parameters.parameters,
+            attribute=ce.CuestDFIntPlanParametersAttributes.CUEST_DFINTPLAN_PARAMETERS_FITTING_CUTOFF,
+            attributeValue=df_fitting_eigenvalue_cutoff_data,
+            )
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
             raise RuntimeError('cuestParametersConfigure failed')
 
