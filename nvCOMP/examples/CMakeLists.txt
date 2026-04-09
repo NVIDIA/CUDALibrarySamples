@@ -39,8 +39,6 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     list(APPEND NVCOMP_LINK_LIBS "dynamic")
   endif()
 
-  # Compilation settings
-  set(NVCOMP_NAMESPACE "nvcomp::")
   set(GPU_ARCHS "75;80;86;89;90")
   if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "13")
     set(GPU_ARCHS ${GPU_ARCHS} "70")
@@ -57,9 +55,6 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   find_package(nvcomp REQUIRED)
 else()
   message(STATUS "Building examples as part of the nvCOMP library build.")
-
-  # Compilation settings
-  set(NVCOMP_NAMESPACE "")
 endif()
 
 # Options
@@ -85,10 +80,10 @@ function(add_example EXAMPLE_SOURCE NVCOMP_LIB_TYPE)
 
   if (NVCOMP_LIB_TYPE STREQUAL "static")
     set(TARGET_NAME ${BARE_NAME}_static)
-    set(NVCOMP_LIB "${NVCOMP_NAMESPACE}nvcomp_static")
+    set(NVCOMP_LIB "nvcomp::nvcomp_static")
   else()
     set(TARGET_NAME ${BARE_NAME}_dynamic)
-    set(NVCOMP_LIB "${NVCOMP_NAMESPACE}nvcomp")
+    set(NVCOMP_LIB "nvcomp::nvcomp")
   endif()
 
   add_executable(${TARGET_NAME} ${EXAMPLE_SOURCE})
@@ -134,7 +129,7 @@ foreach(NVCOMP_LIB_TYPE ${NVCOMP_LINK_LIBS})
   # Add gdeflate CPU examples
   foreach(EXAMPLE_SOURCE gdeflate_cpu_decompression.cu gdeflate_cpu_compression.cu)
     add_example(${EXAMPLE_SOURCE} ${NVCOMP_LIB_TYPE}
-      LINK_LIBRARIES "${NVCOMP_NAMESPACE}nvcomp_cpu${NVCOMP_SUFFIX}"
+      LINK_LIBRARIES "nvcomp::nvcomp_cpu${NVCOMP_SUFFIX}"
     )
   endforeach(EXAMPLE_SOURCE)
 
@@ -159,6 +154,11 @@ foreach(NVCOMP_LIB_TYPE ${NVCOMP_LINK_LIBS})
   else()
     message(WARNING "Skipping building LZ4 CPU example, as no LZ4 library was found.")
   endif()
+
+  # High-level C++ API: compress with lz4_cpu.hpp, decompress with lz4.hpp (GPU)
+  add_example(lz4_cpu_compression_high_level.cpp ${NVCOMP_LIB_TYPE}
+    LINK_LIBRARIES "nvcomp::nvcomp_cpu${NVCOMP_SUFFIX}"
+  )
 
   # Add quickstart examples
   add_example(low_level_quickstart_example.cpp ${NVCOMP_LIB_TYPE})

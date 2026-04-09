@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -88,15 +88,74 @@ std::string human_readable_byte_size(size_t size)
     return human_readable_size(size) + "B";
 }
 
-std::pair<std::string, size_t> parse_command_line_args(int argc, char* argv[])
+struct args_type {
+    std::string output_filename;
+    size_t storage_size;
+    size_t min_buf_size;
+    size_t max_buf_size;
+    size_t min_buf_count;
+    size_t max_buf_count;
+    int step_shift;
+};
+
+void usage(const char* program_name)
 {
-    // Get output filename
-    std::string output_filename = "crc32_perf.csv";
-    if (argc > 1) {
-        output_filename = argv[1];
+    std::cout << "Usage: " << program_name << " [OPTIONS]\n"
+              << "  -o, --output <file>    Output CSV filename (default: crc32_perf.csv)\n"
+              << "  -c, --complete         Complete mode: fine-grained sweep over the full range\n"
+              << "  -s, --storage <bytes>  Override storage size in bytes (must be a power of two)\n"
+              << "  -h, --help             Show this help message\n";
+}
+
+args_type parse_args(int argc, char* argv[])
+{
+    args_type args{};
+    args.output_filename = "crc32_perf.csv";
+    args.min_buf_size  = 64 * Ki;
+    args.max_buf_size  = 4 * Gi;   // Large enough to saturate SMs
+    args.min_buf_count = 1;
+    args.max_buf_count = 64 * Ki;  // High enough to exercise WarpKernel
+    args.step_shift    = 4;        // Larger step to reduce combinations
+    args.storage_size  = 0;        // 0 means auto-detect
+
+    int i = 1;
+    while (i < argc) {
+        const char* arg = argv[i++];
+        if (strcmp(arg, "-o") == 0 || strcmp(arg, "--output") == 0) {
+            if (i >= argc) {
+                std::cerr << "Error: missing value for " << arg << std::endl;
+                std::exit(1);
+            }
+            args.output_filename = argv[i++];
+        } else if (strcmp(arg, "-c") == 0 || strcmp(arg, "--complete") == 0) {
+            std::cout << "Complete mode: fine-grained sweep over the full range" << std::endl;
+            args.min_buf_size  = Ki;
+            args.max_buf_size  = 32 * Gi;
+            args.min_buf_count = 1;
+            args.max_buf_count = Mi;
+            args.step_shift    = 1;
+        } else if (strcmp(arg, "-s") == 0 || strcmp(arg, "--storage") == 0) {
+            if (i >= argc) {
+                std::cerr << "Error: missing value for " << arg << std::endl;
+                std::exit(1);
+            }
+            args.storage_size = std::stoull(argv[i++]);
+            if (!is_power_of_two(args.storage_size)) {
+                std::cerr << "Error: storage size (" << human_readable_byte_size(args.storage_size)
+                          << ") must be a power of two" << std::endl;
+                std::exit(1);
+            }
+        } else if (strcmp(arg, "-h") == 0 || strcmp(arg, "--help") == 0) {
+            usage(argv[0]);
+            std::exit(0);
+        } else {
+            std::cerr << "Error: unknown argument '" << arg << "'" << std::endl;
+            usage(argv[0]);
+            std::exit(1);
+        }
     }
 
-    // Query GPU memory
+    // Auto-detect storage size from GPU memory if not specified
     size_t free_mem = 0;
     size_t total_mem = 0;
     CUDA_CHECK(cudaMemGetInfo(&free_mem, &total_mem));
@@ -105,33 +164,24 @@ std::pair<std::string, size_t> parse_command_line_args(int argc, char* argv[])
     std::cout << "Free GPU memory: " << free_mem << " (" << human_readable_byte_size(free_mem) << ")" << std::endl;
 
     // Reserve some memory for other allocations (kernels, temporary buffers, etc.)
-    // Use 90% of total_mem to be safe.
-    size_t considered_mem = size_t(double(total_mem) * 0.9);
+    const size_t gpu_storage_limit = next_lower_power_of_two(size_t(double(total_mem) * 0.9));
 
-    // Calculate storage size as next lower power of two
-    size_t default_storage_size = next_lower_power_of_two(considered_mem);
-
-    size_t storage_size = default_storage_size;
-
-    if (argc > 2) {
-        // Use override from command line argument
-        storage_size = std::stoull(argv[2]);
-
-        if (!is_power_of_two(storage_size)) {
-            std::stringstream ss;
-            ss << "Override storage size (" << human_readable_byte_size(storage_size)
-               << ") is not a power of two";
-            throw std::logic_error(ss.str());
-        }
-
-        if (storage_size > default_storage_size) {
-            std::cerr << "Warning: Override storage size (" << human_readable_byte_size(storage_size)
-                     << ") exceeds default storage size (" << human_readable_byte_size(default_storage_size) << ")" << std::endl;
-        }
+    if (args.storage_size == 0) {
+        args.storage_size = std::min(gpu_storage_limit, args.max_buf_count * args.max_buf_size);
+    } else if (args.storage_size > gpu_storage_limit) {
+        std::cerr << "Error: necessary storage size (" << human_readable_byte_size(args.storage_size)
+                  << ") exceeds available GPU memory (" << human_readable_byte_size(gpu_storage_limit) << ")" << std::endl;
+        std::exit(1);
     }
 
-    std::cout << "Using storage size: " << human_readable_byte_size(storage_size) << std::endl;
-    return {output_filename, storage_size};
+    std::cout << "Storage size: " << human_readable_byte_size(args.storage_size) << std::endl;
+    std::cout << "Buffer size range: " << human_readable_byte_size(args.min_buf_size)
+              << " - " << human_readable_byte_size(args.max_buf_size) << std::endl;
+    std::cout << "Buffer count range: " << human_readable_size(args.min_buf_count)
+              << " - " << human_readable_size(args.max_buf_count) << std::endl;
+    std::cout << "Step multiplier: x" << (1 << args.step_shift) << std::endl;
+
+    return args;
 }
 
 struct ThroughputTable
@@ -141,25 +191,18 @@ struct ThroughputTable
     std::vector<size_t> buf_counts{};
 };
 
-constexpr size_t MinBufSize = Ki;
-constexpr size_t MaxBufSize = 4 * Gi;
-constexpr size_t MinBufCount = 1;
-constexpr size_t MaxBufCount = Mi;
-
-ThroughputTable make_throughput_table(size_t storage_size)
+ThroughputTable make_throughput_table(const args_type& args)
 {
     ThroughputTable table;
-    // Generate all valid buf_size values (powers of two from 1 KiB to 4 GiB)
-    for (size_t buf_size = MinBufSize; buf_size <= MaxBufSize; buf_size <<= 1) {
-        if (buf_size * MinBufCount > storage_size) {
+    for (size_t buf_size = args.min_buf_size; buf_size <= args.max_buf_size; buf_size <<= args.step_shift) {
+        if (buf_size * args.min_buf_count > args.storage_size) {
             break;
         }
         table.buf_sizes.push_back(buf_size);
     }
 
-    // Generate all valid buf_count values (powers of two from 1 to 1M)
-    for (size_t buf_count = MinBufCount; buf_count <= MaxBufCount; buf_count <<= 1) {
-        if (buf_count * MinBufSize > storage_size) {
+    for (size_t buf_count = args.min_buf_count; buf_count <= args.max_buf_count; buf_count <<= args.step_shift) {
+        if (buf_count * args.min_buf_size > args.storage_size) {
             break;
         }
         table.buf_counts.push_back(buf_count);
@@ -329,19 +372,16 @@ void write_throughput_table_to_csv(const std::string& output_filename, const Thr
     std::cout << "Results written to " << output_filename << std::endl;
 }
 
-int main(int argc, char* argv[])
-{
+int main(int argc, char* argv[]) {
     try {
-        auto args = parse_command_line_args(argc, argv);
-        const std::string& output_filename = args.first;
-        const size_t storage_size = args.second;
+        args_type args = parse_args(argc, argv);
 
-        ThroughputTable table = make_throughput_table(storage_size);
+        ThroughputTable table = make_throughput_table(args);
 
         void* storage_buf = nullptr;
-        CUDA_CHECK(cudaMallocSafe(&storage_buf, storage_size));
+        CUDA_CHECK(cudaMallocSafe(&storage_buf, args.storage_size));
 
-        initialize_data(storage_buf, storage_size);
+        initialize_data(storage_buf, args.storage_size);
 
         BenchmarkContext ctx{storage_buf, table.buf_counts.back()};
 
@@ -349,16 +389,14 @@ int main(int argc, char* argv[])
 
         auto start_time = std::chrono::high_resolution_clock::now();
 
-        // Main benchmark loop
         for (size_t size_idx = 0; size_idx < table.buf_sizes.size(); ++size_idx) {
             size_t buf_size = table.buf_sizes[size_idx];
 
             for (size_t count_idx = 0; count_idx < table.buf_counts.size(); ++count_idx) {
                 size_t buf_count = table.buf_counts[count_idx];
 
-                // Check if buf_size * buf_count <= storage_size
-                if (buf_size > storage_size || buf_count > storage_size / buf_size) {
-                    continue; // Skip this combination
+                if (buf_size > args.storage_size || buf_count > args.storage_size / buf_size) {
+                    continue;
                 }
 
                 table.contents[size_idx][count_idx] =
@@ -370,7 +408,7 @@ int main(int argc, char* argv[])
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         std::cout << "Total benchmark time: " << duration.count() / 1000.0 << " seconds" << std::endl;
 
-        write_throughput_table_to_csv(output_filename, table);
+        write_throughput_table_to_csv(args.output_filename, table);
 
         return 0;
     }

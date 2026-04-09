@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,10 +15,10 @@
  * limitations under the License.
  */
 
-#include "zlib.h"
+#include <zlib.h>
+
 #include "nvcomp/gzip.h"
 #include "BatchData.h"
-
 
 static void run_example(const std::vector<std::vector<char>>& data,
                         size_t warmup_iteration_count, size_t total_iteration_count)
@@ -46,9 +46,31 @@ static void run_example(const std::vector<std::vector<char>>& data,
 
   // compression
 
+  auto init_gzip_deflate = [](z_stream& zs) {
+    // 15 | 16 - enable gzip header
+    int ret = deflateInit2(&zs, 9, Z_DEFLATED, 15 | 16, 8, Z_DEFAULT_STRATEGY);
+    if (ret != Z_OK) {
+      throw std::runtime_error("Call to deflateInit2 failed: " + std::to_string(ret));
+    }
+  };
+  auto end_gzip_deflate = [](z_stream& zs) {
+    int ret = deflateEnd(&zs);
+    if (ret != Z_OK) {
+      throw std::runtime_error("Call to deflateEnd failed: " + std::to_string(ret));
+    }
+  };
+
+  // Use deflateBound to determine the max compressed size for a chunk.
+  // gzip framing adds overhead, so the output can exceed the input size
+  // for incompressible data.
+  z_stream tmp_zs{};
+  init_gzip_deflate(tmp_zs);
+  const size_t max_compressed_chunk_size = deflateBound(&tmp_zs, chunk_size);
+  end_gzip_deflate(tmp_zs);
+
   // Allocate and prepare output/compressed batch
   BatchDataCPU compressed_data_cpu(
-      chunk_size, chunk_count);
+      max_compressed_chunk_size, chunk_count);
 
   // loop over chunks on the CPU, compressing each one
   for (size_t i = 0; i < chunk_count; ++i) {
@@ -59,19 +81,13 @@ static void run_example(const std::vector<std::vector<char>>& data,
    zs.next_in  = (Bytef *)input_data_cpu.ptrs()[i];
    zs.avail_in = static_cast<uInt>(input_data_cpu.sizes()[i]);
    zs.next_out = (Bytef *)compressed_data_cpu.ptrs()[i];
-   zs.avail_out = static_cast<uInt>(input_data_cpu.sizes()[i]);
-   int strategy = Z_DEFAULT_STRATEGY;
-   // 15 | 16 to enable gzip header
-   int ret = deflateInit2(&zs, 9, Z_DEFLATED, 15 | 16, 8, strategy);
-   if (ret!=Z_OK) {
-       throw std::runtime_error("Call to deflateInit2 failed: " + std::to_string(ret));
-   }
-   if ((ret = deflate(&zs, Z_FINISH)) != Z_STREAM_END) {
+   zs.avail_out = static_cast<uInt>(max_compressed_chunk_size);
+   init_gzip_deflate(zs);
+   int ret = deflate(&zs, Z_FINISH);
+   if (ret != Z_STREAM_END) {
        throw std::runtime_error("Gzip operation failed: " + std::to_string(ret));
    }
-   if ((ret = deflateEnd(&zs)) != Z_OK) {
-       throw std::runtime_error("Call to deflateEnd failed: " + std::to_string(ret));
-   }
+   end_gzip_deflate(zs);
    // set the actual compressed size
    compressed_data_cpu.sizes()[i] = zs.total_out;
   }
@@ -222,9 +238,13 @@ int main(int argc, char* argv[])
     return 1;
   }
 
-  auto data = multi_file(file_names);
-
-  run_example(data, warmup_iteration_count, total_iteration_count);
+  try {
+    auto data = multi_file(file_names);
+    run_example(data, warmup_iteration_count, total_iteration_count);
+  } catch (const std::exception& e) {
+    std::cerr << "ERROR: " << e.what() << std::endl;
+    return 1;
+  }
 
   return 0;
 }

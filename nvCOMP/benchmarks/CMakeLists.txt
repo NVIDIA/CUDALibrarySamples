@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -39,8 +39,6 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     list(APPEND NVCOMP_LINK_LIBS "dynamic")
   endif()
 
-  # Compilation settings
-  set(NVCOMP_NAMESPACE "nvcomp::")
   set(GPU_ARCHS "75;80;86;89;90")
   if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "13")
     set(GPU_ARCHS ${GPU_ARCHS} "70")
@@ -57,9 +55,6 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   find_package(nvcomp REQUIRED)
 else()
   message(STATUS "Building benchmarks as part of the nvCOMP library build.")
-
-  # Compilation settings
-  set(NVCOMP_NAMESPACE "")
 endif()
 
 # Making the compilation consistent between standalone and library build modes
@@ -84,10 +79,12 @@ function(add_benchmark BENCHMARK_SOURCE NVCOMP_LIB_TYPE)
 
   if (NVCOMP_LIB_TYPE STREQUAL "static")
     set(TARGET_NAME ${BARE_NAME}_static)
-    set(NVCOMP_LIB "${NVCOMP_NAMESPACE}nvcomp_static")
+    set(NVCOMP_LIB "nvcomp::nvcomp_static")
+    set(NVCOMP_CPU_LIB "nvcomp::nvcomp_cpu_static")
   else()
     set(TARGET_NAME ${BARE_NAME}_dynamic)
-    set(NVCOMP_LIB "${NVCOMP_NAMESPACE}nvcomp")
+    set(NVCOMP_LIB "nvcomp::nvcomp")
+    set(NVCOMP_CPU_LIB "nvcomp::nvcomp_cpu")
   endif()
 
   add_executable(${TARGET_NAME} ${BENCHMARK_SOURCE})
@@ -117,7 +114,12 @@ function(add_benchmark BENCHMARK_SOURCE NVCOMP_LIB_TYPE)
     set(INSTALL_DESTINATION dynamic_bin)
   endif()
 
-  target_link_libraries(${TARGET_NAME} PRIVATE ${NVCOMP_LIB} CUDA::cudart_static ${OPTIONAL_LINK_LIBRARIES})
+  target_link_libraries(${TARGET_NAME} PRIVATE
+    ${NVCOMP_LIB}
+    ${NVCOMP_CPU_LIB}
+    CUDA::cudart_static
+    ${OPTIONAL_LINK_LIBRARIES}
+  )
 
   install(TARGETS ${TARGET_NAME} DESTINATION ${INSTALL_DESTINATION} COMPONENT tests)
 endfunction()

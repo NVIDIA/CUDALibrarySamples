@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,11 +15,11 @@
  * limitations under the License.
  */
 
-#include "BatchData.h"
+#include <lz4.h>
+#include <lz4hc.h>
 
-#include "lz4.h"
-#include "lz4hc.h"
 #include "nvcomp/lz4.h"
+#include "BatchData.h"
 
 // Benchmark performance from the binary data file fname
 static void run_example(const std::vector<std::vector<char>>& data,

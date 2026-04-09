@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,10 +33,24 @@ static bool handleCommandLineArgument(
     additionalArgsUsed = 1;
     bool valid;
     nvcompBatchedLZ4CompressOpts.data_type = string_to_data_type(typeArg, valid);
+    nvcompBatchedLZ4DecompressOpts.data_type = nvcompBatchedLZ4CompressOpts.data_type;
     return valid;
+  }
+  if (arg == "--bitshuffle" || arg == "--bs") {
+    int bitshuffle_mode = atoi(*additionalArgs);
+    additionalArgsUsed = 1;
+    if (bitshuffle_mode < 0 || bitshuffle_mode > 2) {
+      std::cerr << "ERROR: Bitshuffle mode must be 0, 1, or 2, but it is "
+                << bitshuffle_mode << std::endl;
+      return false;
+    }
+    nvcompBatchedLZ4CompressOpts.bitshuffle_mode = static_cast<nvcompBitshuffleMode_t>(bitshuffle_mode);
+    nvcompBatchedLZ4DecompressOpts.bitshuffle_mode = static_cast<nvcompBitshuffleMode_t>(bitshuffle_mode);
+    return true;
   }
   return false;
 }
+
 
 static bool isLZ4InputValid(const std::vector<std::vector<char>>& data,
                             bool compressed_inputs)

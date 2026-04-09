@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -184,7 +184,7 @@ int main(int argc, char* argv[])
   {
     std::shared_ptr<nvcompManagerBase> manager;
     if (comp_format == "lz4") {
-      manager = std::make_shared<LZ4Manager>(chunk_size, nvcompBatchedLZ4CompressOpts_t{data_type, {0}}, nvcompBatchedLZ4DecompressDefaultOpts, stream, NoComputeNoVerify);
+      manager = std::make_shared<LZ4Manager>(chunk_size, nvcompBatchedLZ4CompressOpts_t{data_type, NVCOMP_BITSHUFFLE_NONE, {0}}, nvcompBatchedLZ4DecompressDefaultOpts, stream, NoComputeNoVerify);
     } else if (comp_format == "snappy") {
       manager = std::make_shared<SnappyManager>(chunk_size, nvcompBatchedSnappyCompressDefaultOpts, nvcompBatchedSnappyDecompressDefaultOpts, stream, NoComputeNoVerify);
     } else if (comp_format == "bitcomp") {

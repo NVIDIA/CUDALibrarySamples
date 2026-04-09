@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -38,6 +38,8 @@
 
 #include "nvcomp.hpp"
 #include "nvcomp/cascaded.h"
+#include "nvcomp/utils.hpp"
+#include "benchmark_lossy_common.h"
 
 
 #define CUDA_CHECK(func)                                                       \
@@ -338,85 +340,6 @@ multi_file(const std::vector<std::string>& filenames,
   }
 
   return split_data;
-}
-
-void verify_lossy_tolerance(
-  const std::vector<void*>& h_input_ptrs,
-  const std::vector<void*>& h_output_ptrs,
-  const std::vector<size_t>& h_input_sizes,
-  double delta,
-  int fp_bits,
-  bool is_data_on_device = true)
-{
-  const double error_tolerance = 0.5 * delta; // theoretical max error for Bitcomp quantization
-  const size_t batch_size = h_input_ptrs.size();
-
-  for (size_t ix_chunk = 0; ix_chunk < batch_size; ++ix_chunk) {
-    const size_t nbytes = h_input_sizes[ix_chunk];
-
-    auto copy_to_host = [](void* dst, const void* src, size_t bytes, bool from_device) {
-      if (from_device) {
-        CUDA_CHECK(cudaMemcpy(dst, src, bytes, cudaMemcpyDeviceToHost));
-      } else {
-        std::memcpy(dst, src, bytes);
-      }
-    };
-
-    if (fp_bits == 16) {
-      // FP16 case
-      const size_t nelems = nbytes / sizeof(uint16_t);
-      std::vector<uint16_t> exp_data(nelems);
-      copy_to_host(exp_data.data(), h_input_ptrs[ix_chunk], nbytes, is_data_on_device);
-      std::vector<uint16_t> act_data(nelems);
-      copy_to_host(act_data.data(), h_output_ptrs[ix_chunk], nbytes, is_data_on_device);
-
-      for (size_t iel = 0; iel < nelems; ++iel) {
-        float x = __half2float(*reinterpret_cast<const __half*>(&exp_data[iel]));
-        float xr = __half2float(*reinterpret_cast<const __half*>(&act_data[iel]));
-        if (std::isnan(x) || std::isinf(x)) continue;
-        if (std::fabs(xr - x) > error_tolerance) {
-          benchmark_assert(false, "Lossy tolerance check failed: ix_chunk=" + std::to_string(ix_chunk) +
-            " ix_elem=" + std::to_string(iel) + " x=" + std::to_string(x) + " xr=" + std::to_string(xr) + " tol=" + std::to_string(error_tolerance));
-        }
-      }
-    } else if (fp_bits == 32) {
-      // FP32 case
-      const size_t nelems = nbytes / sizeof(float);
-      std::vector<float> exp_data(nelems);
-      copy_to_host(exp_data.data(), h_input_ptrs[ix_chunk], nbytes, is_data_on_device);
-      std::vector<float> act_data(nelems);
-      copy_to_host(act_data.data(), h_output_ptrs[ix_chunk], nbytes, is_data_on_device);
-
-      for (size_t iel = 0; iel < nelems; ++iel) {
-        const float& x = exp_data[iel];
-        const float& xr = act_data[iel];
-        if (std::isnan(x) || std::isinf(x)) continue;
-        if (std::fabs(xr - x) > error_tolerance) {
-          benchmark_assert(false, "Lossy tolerance check failed: ix_chunk=" + std::to_string(ix_chunk) +
-            " ix_elem=" + std::to_string(iel) + " x=" + std::to_string(x) + " xr=" + std::to_string(xr) + " tol=" + std::to_string(error_tolerance));
-        }
-      }
-    } else if (fp_bits == 64) {
-      // FP64 case
-      const size_t nelems = nbytes / sizeof(double);
-      std::vector<double> exp_data(nelems);
-      copy_to_host(exp_data.data(), h_input_ptrs[ix_chunk], nbytes, is_data_on_device);
-      std::vector<double> act_data(nelems);
-      copy_to_host(act_data.data(), h_output_ptrs[ix_chunk], nbytes, is_data_on_device);
-
-      for (size_t iel = 0; iel < nelems; ++iel) {
-        const double& x = exp_data[iel];
-        const double& xr = act_data[iel];
-        if (std::isnan(x) || std::isinf(x)) continue;
-        if (std::fabs(xr - x) > error_tolerance) {
-          benchmark_assert(false, "Lossy tolerance check failed: ix_chunk=" + std::to_string(ix_chunk) +
-            " ix_elem=" + std::to_string(iel) + " x=" + std::to_string(x) + " xr=" + std::to_string(xr) + " tol=" + std::to_string(error_tolerance));
-        }
-      }
-    } else {
-      benchmark_assert(false, "Unsupported floating point precision: " + std::to_string(fp_bits));
-    }
-  }
 }
 
 } // namespace nvcomp

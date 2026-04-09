@@ -22,6 +22,14 @@ This folder contains examples demonstrating the usage of the nvCOMP C, C++, and 
     lz4_cpu_decompression -f <input file(s)>
     ```
 
+* [LZ4 CPU Manager compression](lz4_cpu_compression_high_level.cpp)
+
+    The sample demonstrates CPU compression via `LZ4CPUManager`, and subseqent GPU decompression via nvCOMP.
+
+    ```
+    lz4_cpu_compression_high_level -f <input file(s)>
+    ```
+
 * [Snappy CPU compression](snappy_cpu_compression.cu)
 
     The sample demonstrates CPU compression via `snappy::RawCompress`, and subseqent GPU decompression via nvCOMP.

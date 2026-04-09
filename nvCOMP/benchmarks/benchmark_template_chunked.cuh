@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,8 +15,7 @@
  * limitations under the License.
  */
 
-#ifndef NVCOMP_BENCHMARKS_BENCHMARK_TEMPLATE_CHUNKED_CUH
-#define NVCOMP_BENCHMARKS_BENCHMARK_TEMPLATE_CHUNKED_CUH
+#pragma once
 
 // nvcc has a known issue with MSVC debug iterators, leading to a warning
 // hit by thrust::device_vector construction from std::vector below, so this
@@ -37,28 +36,6 @@
 #include <cuda_fp16.h>
 
 #include "benchmark_common.h"
-
-namespace nvcomp {
-
-template <typename U, typename T>
-constexpr __host__ __device__ U roundUpDiv(U const num, T const chunk)
-{
-  return (num + chunk - 1) / chunk;
-}
-
-template <typename U, typename T>
-constexpr __host__ __device__ U roundDownTo(U const num, T const chunk)
-{
-  return (num / chunk) * chunk;
-}
-
-template <typename U, typename T>
-constexpr __host__ __device__ U roundUpTo(U const num, T const chunk)
-{
-  return roundUpDiv(num, chunk) * chunk;
-}
-
-}
 
 template<typename T>
 static thrust::device_vector<T> allocateThrustDeviceVectorSafe(size_t size)
@@ -164,37 +141,7 @@ using namespace nvcomp;
 namespace
 {
 
-constexpr const char * const REQUIRED_PARAMTER = "_REQUIRED_";
-
-static size_t compute_batch_size(
-    const std::vector<std::vector<char>>& data, const size_t chunk_size)
-{
-  size_t batch_size = 0;
-  for (size_t i = 0; i < data.size(); ++i) {
-    const size_t num_chunks = (data[i].size() + chunk_size - 1) / chunk_size;
-    batch_size += num_chunks;
-  }
-
-  return batch_size;
-}
-
-std::vector<size_t> compute_chunk_sizes(
-    const std::vector<std::vector<char>>& data,
-    const size_t batch_size,
-    const size_t chunk_size)
-{
-  std::vector<size_t> sizes(batch_size, chunk_size);
-
-  size_t offset = 0;
-  for (size_t i = 0; i < data.size(); ++i) {
-    const size_t num_chunks = (data[i].size() + chunk_size - 1) / chunk_size;
-    if (data[i].size() % chunk_size != 0) {
-      sizes[offset] = data[i].size() % chunk_size;
-    }
-    offset += num_chunks;
-  }
-  return sizes;
-}
+constexpr const char * const REQUIRED_PARAMETER = "_REQUIRED_";
 
 class BatchData
 {
@@ -348,10 +295,7 @@ std::vector<std::vector<char>> readFileWithPageSizes(const std::string& filename
   return res;
 }
 
-
 }
-
-
 
 template<
     typename CompGetTempT,
@@ -364,8 +308,8 @@ template<
     typename DecompGetSizeT,
     typename DecompAlignmentReqsT,
     typename IsInputValidT,
-    typename FormatOptsT,
-    typename DecompressFormatOptsT>
+    typename CompressOptsT,
+    typename DecompressOptsT>
 void
 run_benchmark_template(
     CompGetTempT BatchedCompressGetTempSizeAsync,
@@ -378,8 +322,8 @@ run_benchmark_template(
     DecompGetSizeT BatchedDecompressGetSize,
     DecompAlignmentReqsT BatchedDecompressAlignmentReqs,
     IsInputValidT IsInputValid,
-    const FormatOptsT compress_opts,
-    DecompressFormatOptsT decompress_opts,
+    const CompressOptsT compress_opts,
+    DecompressOptsT decompress_opts,
     const std::vector<std::vector<char>>& data,
     const bool warmup,
     const size_t count,
@@ -395,6 +339,9 @@ run_benchmark_template(
     const double lossy_delta = 0.0,
     const int lossy_fp_bits = 0)
 {
+  if (count == 0) {
+    return;
+  }
   benchmark_assert(IsInputValid(data, compressed_inputs), "Invalid input data");
 
   const size_t batch_size = data.size();
@@ -739,18 +686,20 @@ run_benchmark_template(
       std::vector<void*> h_input_ptrs(batch_size);
       CUDA_CHECK(cudaMemcpy(h_input_ptrs.data(), input_data->ptrs(), sizeof(void*)*batch_size, cudaMemcpyDeviceToHost));
 
-      if (lossy_delta > 0.0) {
-        // Use lossy tolerance verification
-        verify_lossy_tolerance(h_input_ptrs, h_output_ptrs, h_input_sizes, lossy_delta, lossy_fp_bits, true);
-      } else {
-        // Use exact byte comparison for lossless
-        for (size_t ix_chunk = 0; ix_chunk < batch_size; ++ix_chunk) {
-          std::vector<uint8_t> exp_data(h_input_sizes[ix_chunk]);
-          CUDA_CHECK(cudaMemcpy(exp_data.data(), h_input_ptrs[ix_chunk],
-              h_input_sizes[ix_chunk], cudaMemcpyDeviceToHost));
-          std::vector<uint8_t> act_data(h_decomp_sizes[ix_chunk]);
-          CUDA_CHECK(cudaMemcpy(act_data.data(), h_output_ptrs[ix_chunk],
-          h_decomp_sizes[ix_chunk], cudaMemcpyDeviceToHost));
+      // Copy buffers to host
+      for (size_t ix_chunk = 0; ix_chunk < batch_size; ++ix_chunk) {
+        std::vector<uint8_t> exp_data(h_input_sizes[ix_chunk]);
+        CUDA_CHECK(cudaMemcpy(exp_data.data(), h_input_ptrs[ix_chunk],
+            h_input_sizes[ix_chunk], cudaMemcpyDeviceToHost));
+        std::vector<uint8_t> act_data(h_decomp_sizes[ix_chunk]);
+        CUDA_CHECK(cudaMemcpy(act_data.data(), h_output_ptrs[ix_chunk],
+        h_decomp_sizes[ix_chunk], cudaMemcpyDeviceToHost));
+
+        if (lossy_delta > 0.0) {
+          // Use lossy tolerance verification
+          verifyLossyCompression(exp_data.data(), act_data.data(), h_input_sizes[ix_chunk], lossy_delta, getLossyDataType(lossy_fp_bits));
+        } else {
+          // Use exact byte comparison for lossless
           for (size_t ix_byte = 0; ix_byte < h_input_sizes[ix_chunk]; ++ix_byte) {
             if (act_data[ix_byte] != exp_data[ix_byte]) {
               benchmark_assert(false, "Batch item decompressed output did not match input: ix_chunk="+std::to_string(ix_chunk) + ": ix_byte=" + std::to_string(ix_byte) + " act=" + std::to_string(act_data[ix_byte]) + " exp=" +
@@ -810,49 +759,54 @@ run_benchmark_template(
 
   if (!warmup) {
     const double comp_ratio = (double)total_bytes / compressed_size;
-    const double compression_throughput_gbs = (double)total_bytes / (1.0e9 *
-        comp_time_s);
-    const double decompression_throughput_gbs = (double)total_bytes / (1.0e9 *
-        decomp_time_s);
+    const double compression_throughput_gbs = (double)total_bytes / (1.0e9 * comp_time_s);
+    const double decompression_throughput_gbs = (double)total_bytes / (1.0e9 * decomp_time_s);
 
     if (!csv_output) {
       std::cout << "----------" << std::endl;
       std::cout << "files: " << num_files << std::endl;
 #if VERBOSE
-    std::cout << "async temp space (B): " << decomp_temp_bytes_async << std::endl
-              << "sync temp space (B): " << decomp_temp_bytes_sync << std::endl;
-    std::cout << "temp space reduction ratio: "
-              << static_cast<double>(decomp_temp_bytes_async) / decomp_temp_bytes_sync << std::endl;
+      std::cout << "async temp space (B): " << decomp_temp_bytes_async
+                << std::endl
+                << "sync temp space (B): " << decomp_temp_bytes_sync
+                << std::endl;
+      std::cout << "temp space reduction ratio: "
+                << static_cast<double>(decomp_temp_bytes_async)
+                      / decomp_temp_bytes_sync
+                << std::endl;
 #endif // VERBOSE
       std::cout << "uncompressed (B): " << total_bytes << std::endl;
       std::cout << "comp_size: " << compressed_size
                 << ", compressed ratio: " << std::fixed << std::setprecision(4)
                 << comp_ratio << std::endl;
-      std::cout << "compression throughput (GB/s): " << compression_throughput_gbs << std::endl;
-      std::cout << "decompression throughput (GB/s): " << decompression_throughput_gbs << std::endl;
+      std::cout << "compression throughput (GB/s): "
+                << compression_throughput_gbs << std::endl;
+      std::cout << "decompression throughput (GB/s): "
+                << decompression_throughput_gbs << std::endl;
     } else {
       const std::string separator = use_tabs ? "\t" : ",";
-      // header
+      // Header
       std::cout << "Files";
       std::cout << separator << "Duplicate data";
-      std::cout << separator << "Size in MB";
-      std::cout << separator << "Pages";
-      std::cout << separator << "Avg page size in KB";
-      std::cout << separator << "Max page size in KB";
-      std::cout << separator << "Ucompressed size in bytes";
+      std::cout << separator << "Size in MiB";
+      std::cout << separator << "Chunks";
+      std::cout << separator << "Avg chunk size in KiB";
+      std::cout << separator << "Max chunk size in KiB";
+      std::cout << separator << "Uncompressed size in bytes";
       std::cout << separator << "Compressed size in bytes";
       std::cout << separator << "Compression ratio";
       std::cout << separator << "Compression throughput (uncompressed) in GB/s";
-      std::cout << separator << "Decompression throughput (uncompressed) in GB/s";
+      std::cout << separator
+                << "Decompression throughput (uncompressed) in GB/s";
       std::cout << std::endl;
 
-      // values
+      // Values
       std::cout << num_files;
       std::cout << separator << duplicate_count;
-      std::cout << separator << (total_bytes * 1e-6); // MB
+      std::cout << separator << (total_bytes / (1024 * 1024)); // MiB
       std::cout << separator << data.size();
-      std::cout << separator << ((1e-3*total_bytes) / data.size()); // KB
-      std::cout << separator << (1e-3*max_input_chunk_size); // KB
+      std::cout << separator << (total_bytes / (data.size() * 1024)); // KiB
+      std::cout << separator << (max_input_chunk_size / 1024);      // KiB
       std::cout << separator << total_bytes;
       std::cout << separator << compressed_size;
       std::cout << separator << std::fixed << std::setprecision(2)
@@ -928,7 +882,7 @@ void usage(const std::string& name, const std::vector<parameter_type>& parameter
     std::cout << "  : " << parameter.description << std::endl;
     if (parameter.default_value.empty()) {
       // no default value
-    } else if (parameter.default_value == REQUIRED_PARAMTER) {
+    } else if (parameter.default_value == REQUIRED_PARAMETER) {
       std::cout << "    required" << std::endl;
     } else {
       std::cout << "    default=" << parameter.default_value << std::endl;
@@ -958,38 +912,62 @@ args_type parse_args(int argc, char ** argv) {
   args.compressed_inputs = false;
   args.single_output_buffer = false;
 
-
-  const std::vector<parameter_type> params{
+  std::vector<parameter_type> params{
     {"?", "help", "Show options.", ""},
     {"g", "gpu", "GPU device number", std::to_string(args.gpu)},
-    {"f", "input_file", "The list of inputs files. All files must start "
-        "with a character other than '-'", "_required_"},
-    {"w", "warmup_count", "The number of warmup iterations to perform.",
-        std::to_string(args.warmup_count)},
-    {"i", "iteration_count", "The number of runs to average.",
-        std::to_string(args.iteration_count)},
-    {"m", "multiple_of", "Add padding to the input data such that its "
-        "length becomes a multiple of the given argument (in bytes). Only applicable to "
-        "data without page sizes.",
-        std::to_string(args.multiple_of)},
-    {"x", "duplicate_data", "Clone uncompressed chunks multiple times (scale factor, 1x means no duplication).",
-        std::to_string(args.duplicate_count)},
-    {"c", "csv_output", "Output in column/csv format.",
-        bool_to_string(args.csv_output)},
-    {"db", "decompress_backend", "Decompression backend to use : Best available (0), HW (1) or CUDA (2). Default is best available",
-        std::to_string(args.decompress_backend)},
-    {"e", "tab_separator", "Use tabs instead of commas when "
-        "'--csv_output' is specificed.",
-        bool_to_string(args.use_tabs)},
-    {"p", "chunk_size", "Chunk size when splitting uncompressed data.",
-        std::to_string(args.chunk_size)},
-    {"compressed", "compressed_inputs", "The input dataset is compressed.",
-        std::to_string(args.compressed_inputs)},
-    {"single", "single_output_buffer", "There is only one tight output buffer during decompression.",
-        std::to_string(args.single_output_buffer)},
+    {"db",
+      "decompress_backend",
+      "Decompression backend to use : Best available (0), HW (1) or CUDA (2). "
+      "Default is best available",
+      std::to_string(args.decompress_backend)},
+    {"compressed",
+      "compressed_inputs",
+      "The input dataset is compressed.",
+      std::to_string(args.compressed_inputs)},
+    {"f",
+      "input_file",
+      "The list of inputs files. All files must start "
+      "with a character other than '-'",
+      REQUIRED_PARAMETER},
+    {"w",
+      "warmup_count",
+      "The number of warmup iterations to perform. It is used to initialize CUDA or boost clocks.",
+      std::to_string(args.warmup_count)},
+    {"i",
+      "iteration_count",
+      "The number of runs to average.",
+      std::to_string(args.iteration_count)},
+    {"m",
+      "multiple_of",
+      "Add padding to the input data such that its "
+      "length becomes a multiple of the given argument (in bytes). Only "
+      "applicable to "
+      "data without page sizes.",
+      std::to_string(args.multiple_of)},
+    {"x",
+      "duplicate_data",
+      "Clone uncompressed chunks multiple times (scale factor, 1x means no "
+      "duplication).",
+      std::to_string(args.duplicate_count)},
+    {"c",
+      "csv_output",
+      "Output in column/csv format.",
+      bool_to_string(args.csv_output)},
+    {"e",
+      "tab_separator",
+      "Use tabs instead of commas when "
+      "'--csv_output' is specificed.",
+      bool_to_string(args.use_tabs)},
+    {"p",
+      "chunk_size",
+      "Chunk size when splitting uncompressed data.",
+      std::to_string(args.chunk_size)},
+    {"single",
+      "single_output_buffer",
+      "There is only one tight output buffer during decompression.",
+      std::to_string(args.single_output_buffer)},
     {"oc", "output_compressed_file", "Output compressed basename", ""},
-    {"o", "output_decompressed_file", "Output decompressed filename", ""}
-  };
+    {"o", "output_decompressed_file", "Output decompressed filename", ""}};
 
   char** argv_end = argv + argc;
   const std::string name(argv[0]);
@@ -1014,13 +992,13 @@ args_type parse_args(int argc, char ** argv) {
           usage(name, params);
           std::exit(1);
         }
-
         if (param.long_flag == "gpu") {
           args.gpu = std::stol(*(argv++));
           break;
-        } else if (param.long_flag == "input_file") {
+        } else
+        if (param.long_flag == "input_file") {
           // read all following arguments until a new flag is found
-          char ** next_argv_ptr = argv;
+          char** next_argv_ptr = argv;
           while (next_argv_ptr < argv_end && (*next_argv_ptr)[0] != '-') {
             args.filenames.emplace_back(*next_argv_ptr);
             next_argv_ptr = ++argv;
@@ -1043,7 +1021,8 @@ args_type parse_args(int argc, char ** argv) {
           args.csv_output = parse_bool(on);
           break;
         } else if (param.long_flag == "decompress_backend") {
-          args.decompress_backend = static_cast<nvcompDecompressBackend_t>(size_t(std::stol(*(argv++))));
+          args.decompress_backend = static_cast<nvcompDecompressBackend_t>(
+              size_t(std::stol(*(argv++))));
           break;
         } else if (param.long_flag == "tab_separator") {
           std::string on(*(argv++));
@@ -1067,7 +1046,8 @@ args_type parse_args(int argc, char ** argv) {
           args.output_decompressed_filename = *(argv++);
           break;
         } else {
-          std::cerr << "INTERNAL ERROR: Unhandled paramter '" << arg << "'." << std::endl;
+          std::cerr << "INTERNAL ERROR: Unhandled paramter '" << arg << "'."
+                    << std::endl;
           usage(name, params);
           std::exit(1);
         }
@@ -1096,22 +1076,41 @@ int main(int argc, char** argv)
 
   CUDA_CHECK(cudaSetDevice(args.gpu));
 
-  auto data = multi_file(args.filenames, !args.compressed_inputs, args.chunk_size, args.multiple_of,
+  auto data = multi_file(
+      args.filenames,
+      !args.compressed_inputs,
+      args.chunk_size,
+      args.multiple_of,
       args.duplicate_count);
 
-  // one warmup to allow cuda to initialize
-  run_benchmark(data, true, args.warmup_count, false, args.decompress_backend, false,
-      args.duplicate_count, args.filenames.size(), args.compressed_inputs, args.single_output_buffer,
+  run_benchmark(
+      data,
+      true,
+      args.warmup_count,
+      false,
+      args.decompress_backend,
+      false,
+      args.duplicate_count,
+      args.filenames.size(),
+      args.compressed_inputs,
+      args.single_output_buffer,
       args.output_compressed_filename,
       args.output_decompressed_filename);
 
   // second run to report times
-  run_benchmark(data, false, args.iteration_count, args.csv_output, args.decompress_backend,
-      args.use_tabs, args.duplicate_count, args.filenames.size(), args.compressed_inputs, args.single_output_buffer,
+  run_benchmark(
+      data,
+      false,
+      args.iteration_count,
+      args.csv_output,
+      args.decompress_backend,
+      args.use_tabs,
+      args.duplicate_count,
+      args.filenames.size(),
+      args.compressed_inputs,
+      args.single_output_buffer,
       args.output_compressed_filename,
       args.output_decompressed_filename);
 
   return 0;
 }
-
-#endif // NVCOMP_BENCHMARKS_BENCHMARK_TEMPLATE_CHUNKED_CUH

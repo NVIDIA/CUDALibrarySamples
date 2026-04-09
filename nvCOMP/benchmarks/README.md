@@ -23,6 +23,17 @@ This folder contains benchmarks demonstrating the performance (and usage) of the
                               [{-a|--algorithm} {0|1}]
     ```
 
+* [Bitcomp lossy benchmark](benchmark_bitcomp_lossy.cu)
+
+    The sample demonstrates the lossy Bitcomp (Native API) compression and decompression usage and performance via nvCOMP.
+
+    ```
+    benchmark_bitcomp_lossy {-f|--input_file} <input_file>
+                            [{--delta} <quantization accuracy, e.g., 0.5>]
+                            [{--fp} {16|32|64}]
+                            [{-a|--algorithm} {0|1}]
+    ```
+
 * [Cascaded benchmark](benchmark_cascaded_chunked.cu)
 
     The sample demonstrates the Cascaded compression and decompression usage and performance via nvCOMP.
@@ -97,8 +108,32 @@ This folder contains benchmarks demonstrating the performance (and usage) of the
     The sample demonstrates the nvCOMP CRC32 usage and performance via nvCOMP.
 
     ```
-    benchmark_crc32 [output_file]
-                    [storage_size]
+    benchmark_crc32 [{-o|--output} <output_file>]
+                    [{-c|--complete}]
+                    [{-s|--storage} <selected storage size in bytes, must be a power of 2>]
+    ```
+
+* [Bitcomp CPU benchmark](benchmark_bitcomp_cpu.cpp)
+
+    The sample demonstrates the Bitcomp CPU usage (Native API) and performance via nvCOMP.
+
+    ```
+    benchmark_bitcomp_cpu [{-f} <input_file>]
+                          [{-t} {uchar|char|ushort|short|uint|int|ulonglong|longlong}]
+                          [{-a|--algorithm} {0|1}]
+                          [{--lossy}]
+                          [{--fp} {16|32|64}]
+                          [{--delta} <quantization accuracy, e.g., 0.5>]
+    ```
+
+* [GDeflate CPU benchmark](benchmark_gdeflate_cpu.cpp)
+
+    The sample demonstrates the GDeflate CPU (Native API) usage and performance via nvCOMP.
+
+    ```
+    benchmark_gdeflate_cpu [{-f} <input_file>]
+                           [{-l} <compression level between 0 and 12 (both inclusive), e.g., 6>]
+                           [{-p} <chunk size in bytes, e.g., 65536>]
     ```
 
 Most of the benchmark executables also support:
