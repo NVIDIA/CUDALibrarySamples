@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,12 +13,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- */
+ */ 
 
 #define CUSOLVERDX_IGNORE_NVBUG_5288270_ASSERT
 #include <cusolverdx.hpp>
 
-#include "../common/common.hpp"
 #include "../common/cudart.hpp"
 #include "../common/error_checking.hpp"
 #include "../common/random.hpp"
@@ -31,7 +30,8 @@
 // factorization (without pivoting) of the batched general matrix A.  The results are compared with the reference values obtained with cuSolver host API.
 
 template<class Solver, unsigned int BatchesPerBlock, typename DataType = typename Solver::a_data_type>
-__global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(DataType* A, unsigned int lda_gmem, DataType* B, unsigned int ldb_gmem, typename Solver::status_type* info, const unsigned int batches) {
+__global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(
+        DataType* A, unsigned int lda_gmem, DataType* B, unsigned int ldb_gmem, typename Solver::status_type* info, const unsigned int batches) {
 
     constexpr auto m = Solver::m_size;
     constexpr auto n = Solver::n_size;
@@ -45,12 +45,10 @@ __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(DataType
     constexpr auto one_batch_size_a_smem = (cusolverdx::arrangement_of_v_a<Solver> == cusolverdx::col_major) ? lda_smem * n : m * lda_smem;
     constexpr auto one_batch_size_b_smem = (cusolverdx::arrangement_of_v_b<Solver> == cusolverdx::col_major) ? ldb_smem * k : n * ldb_smem;
 
-    extern __shared__ __align__(16) unsigned char shared_mem[];
+    extern __shared__ __align__(16) cusolverdx::byte shared_mem[];
     // Slice shared memory into pointers
-    auto [As, Bs] = cusolverdx::shared_memory::slice<DataType, DataType>(
-        shared_mem,
-        alignof(DataType), one_batch_size_a_smem * BatchesPerBlock,
-        alignof(DataType)  // the size (number of elements) may be omitted for the last pointer
+    auto [As, Bs] = cusolverdx::shared_memory::slice<DataType, DataType>(shared_mem, alignof(DataType), one_batch_size_a_smem * BatchesPerBlock,
+            alignof(DataType) // the size (number of elements) may be omitted for the last pointer
     );
 
     const auto batch_idx = blockIdx.x * BatchesPerBlock;
@@ -72,16 +70,11 @@ __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(DataType
 }
 
 template<int Arch>
-int gesv_batched_wo_pivot() {
+int gesv_batched_wo_pivot_block() {
 
     using namespace cusolverdx;
-#if __CUDACC_VER_MAJOR__ >= 12 and __CUDACC_VER_MINOR__ >= 6
-    using Base = decltype(Size<5, 5, 4>() + Precision<float>() + Type<type::complex>() + Function<gesv_no_pivot>() + Arrangement<arrangement::row_major, col_major>() + LeadingDimension<5, 7>() +
-                          SM<Arch>() + Block() + TransposeMode<conj_trans>());
-#else
-    using Base      = decltype(Size<5, 5, 4>() + Precision<float>() + Type<type::real>() + Function<gesv_no_pivot>() + Arrangement<arrangement::row_major, col_major>() + LeadingDimension<5, 7>() +
-                          SM<Arch>() + Block() + TransposeMode<trans>());
-#endif
+    using Base   = decltype(Size<5, 5, 4>() + Precision<float>() + Type<type::complex>() + Function<gesv_no_pivot>() +
+                          Arrangement<arrangement::row_major, col_major>() + LeadingDimension<5, 7>() + SM<Arch>() + Block() + TransposeMode<conj_trans>());
     using Solver = decltype(Base() + BatchesPerBlock<Base::suggested_batches_per_block>() + BlockDim<65, 1, 1>());
 
     constexpr unsigned bpb = Solver::batches_per_block;
@@ -89,9 +82,9 @@ int gesv_batched_wo_pivot() {
     std::cout << "Suggested BlockDim = " << Solver::suggested_block_dim.x << std::endl;
     std::cout << "BlockDim Used = " << Solver::block_dim.x << std::endl;
 
-    using data_type = typename Solver::a_data_type;
+    using data_type      = typename Solver::a_data_type;
     using cuda_data_type = typename Solver::a_cuda_data_type;
-    
+
     constexpr auto m            = Solver::m_size;
     constexpr auto n            = Solver::n_size;
     constexpr auto k            = Solver::k_size;
@@ -107,7 +100,8 @@ int gesv_batched_wo_pivot() {
     CUDA_CHECK_AND_EXIT(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
 
     std::vector<data_type> A(input_size_a * padded_batches);
-    common::fillup_random_diagonal_dominant_matrix<data_type>(arrangement_of_v_a<Solver> == col_major, m, n, A.data(), lda, false, 2, 4, batches); // not symmetric
+    common::fillup_random_diagonal_dominant_matrix<data_type>(
+            arrangement_of_v_a<Solver> == col_major, m, n, A.data(), lda, false, 2, 4, batches); // not symmetric
     std::vector<data_type> L(input_size_a * padded_batches);
 
     std::vector<data_type> B(input_size_b * padded_batches);
@@ -151,19 +145,9 @@ int gesv_batched_wo_pivot() {
     //=========================
     // cuSolver reference
     //=========================
-    common::reference_cusolver_lu<data_type, cuda_data_type, true>(A,
-                                                                   B,
-                                                                   info.data(),
-                                                                   m,
-                                                                   n,
-                                                                   k,
-                                                                   padded_batches,
-                                                                   false,
-                                                                   (arrangement_of_v_a<Solver> == arrangement::col_major),
-                                                                   (arrangement_of_v_b<Solver> == arrangement::col_major),
-                                                                   (transpose_mode_of_v<Solver> == trans || transpose_mode_of_v<Solver> == conj_trans),
-                                                                   nullptr,
-                                                                   batches);
+    common::reference_cusolver_lu<data_type, cuda_data_type, true>(A, B, info.data(), m, n, k, padded_batches, false,
+            (arrangement_of_v_a<Solver> == arrangement::col_major), (arrangement_of_v_b<Solver> == arrangement::col_major),
+            (transpose_mode_of_v<Solver> == trans || transpose_mode_of_v<Solver> == conj_trans), nullptr, batches);
 
     /* free resources */
     CUDA_CHECK_AND_EXIT(cudaFree(d_A));
@@ -188,9 +172,9 @@ int gesv_batched_wo_pivot() {
 }
 
 template<int Arch>
-struct gesv_batched_wo_pivot_functor {
-    int operator()() { return gesv_batched_wo_pivot<Arch>(); }
+struct gesv_batched_wo_pivot_block_functor {
+    int operator()() { return gesv_batched_wo_pivot_block<Arch>(); }
 };
 
 
-int main() { return common::run_example_with_sm<gesv_batched_wo_pivot_functor>(); }
+int main() { return common::run_example_with_sm<gesv_batched_wo_pivot_block_functor>(); }

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,7 +29,7 @@ template<class FFT>
 __launch_bounds__(FFT::max_threads_per_block) __global__ void block_fft_kernel(typename FFT::value_type* data) {
     using complex_type = typename FFT::value_type;
 
-    extern __shared__ __align__(alignof(float4)) unsigned char shared_mem[];
+    extern __shared__ __align__(alignof(float4)) cufftdx::byte shared_mem[];
 
     auto this_block_data = data + cufftdx::size_of<FFT>::value * (FFT::ffts_per_block / FFT::implicit_type_batching) * blockIdx.x;
 

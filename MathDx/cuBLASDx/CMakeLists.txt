@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,7 +16,7 @@
 cmake_minimum_required(VERSION 3.18.0)
 
 # cuBLASDx Examples project
-project(cublasdx_examples VERSION 0.5.0 LANGUAGES CXX CUDA)
+project(cublasdx_examples VERSION 0.6.0 LANGUAGES CXX CUDA)
 
 # PROJECT_IS_TOP_LEVEL is available since 3.21
 if(CMAKE_VERSION VERSION_LESS 3.21)
@@ -62,15 +62,6 @@ if(PROJECT_IS_TOP_LEVEL)
         set(CUBLASDX_CUDA_CXX_FLAGS "${CUBLASDX_CUDA_CXX_FLAGS} -Wno-switch")
         set(CUBLASDX_CUDA_CXX_FLAGS "${CUBLASDX_CUDA_CXX_FLAGS} -Wno-unused-but-set-parameter")
         set(CUBLASDX_CUDA_CXX_FLAGS "${CUBLASDX_CUDA_CXX_FLAGS} -Wno-sign-compare")
-
-        if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12.0.0)
-            # Ignore NVCC warning #940-D: missing return statement at end of non-void function
-            # This happens in cuBLASDx test sources, not in cuBLASDx headers
-            set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --diag-suppress 940")
-            # Ignore NVCC warning warning #186-D: pointless comparison of unsigned integer with zero
-            # cutlass/include/cute/algorithm/gemm.hpp(658)
-            set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --diag-suppress 186")
-        endif()
     else()
         add_definitions(-D_CRT_SECURE_NO_WARNINGS)
         add_definitions(-D_CRT_NONSTDC_NO_WARNINGS)
@@ -79,6 +70,10 @@ if(PROJECT_IS_TOP_LEVEL)
         set(CUBLASDX_CUDA_CXX_FLAGS "${CUBLASDX_CUDA_CXX_FLAGS} /W3") # Warning level
         set(CUBLASDX_CUDA_CXX_FLAGS "${CUBLASDX_CUDA_CXX_FLAGS} /WX") # All warnings are errors
         set(CUBLASDX_CUDA_CXX_FLAGS "${CUBLASDX_CUDA_CXX_FLAGS} /Zc:__cplusplus") # Enable __cplusplus macro
+    endif()
+
+    if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0.0)
+        message(FATAL_ERROR "cuBLASDX examples require CUDA 13.0.0 or newer, but the compiler version is ${CMAKE_CUDA_COMPILER_VERSION}")
     endif()
 
     # Global CXX flags/options
@@ -97,22 +92,46 @@ if(PROJECT_IS_TOP_LEVEL)
     set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcompiler \"${CUBLASDX_CUDA_CXX_FLAGS}\"")
 
     # Targeted CUDA Architectures, see https://cmake.org/cmake/help/latest/prop_tgt/CUDA_ARCHITECTURES.html#prop_tgt:CUDA_ARCHITECTURES
-    set(CUBLASDX_CUDA_ARCHITECTURES 70-real;80-real CACHE
-        STRING "List of targeted cuBLASDx CUDA architectures, for example \"70-real;75-real;80\""
+    set(CUBLASDX_CUDA_ARCHITECTURES 80-real CACHE
+        STRING "List of targeted cuBLASDx CUDA architectures, for example \"75-real;80-virtual;90-real\""
     )
     # Remove unsupported architectures
     list(REMOVE_ITEM CUBLASDX_CUDA_ARCHITECTURES 30;32;35;37;50;52;53)
     list(REMOVE_ITEM CUBLASDX_CUDA_ARCHITECTURES 30-real;32-real;35-real;37-real;50-real;52-real;53-real;)
     list(REMOVE_ITEM CUBLASDX_CUDA_ARCHITECTURES 30-virtual;32-virtual;35-virtual;37-virtual;50-virtual;52-virtual;53-virtual)
     message(STATUS "Targeted cuBLASDx CUDA Architectures: ${CUBLASDX_CUDA_ARCHITECTURES}")
+
+    # Detect whether any accelerated architecture (e.g. 90a, 100a) is targeted.
+    set(CUBLASDX_HAS_ACCELERATED_ARCH FALSE)
+    foreach(_CUBLASDX_ARCH ${CUBLASDX_CUDA_ARCHITECTURES})
+        if(_CUBLASDX_ARCH MATCHES "^[0-9]+[af](-|$)")
+            set(CUBLASDX_HAS_ACCELERATED_ARCH TRUE)
+            break()
+        endif()
+    endforeach()
+    unset(_CUBLASDX_ARCH)
+
+    # Fatbin compilation/linking is not supported when targeting accelerated
+    # architectures with CUDA Toolkit < 13.2.  In that case cuBLASDx operates in
+    # header-only mode (TRSM still works; GEMM database look-up is unavailable).
+    if(CUBLASDX_HAS_ACCELERATED_ARCH AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "13.2")
+        set(CUBLASDX_SKIP_FATBIN TRUE)
+        message(STATUS "cuBLASDx: accelerated arch with CTK < 13.2 - fatbin disabled (header-only mode, NVBUG5504462)")
+    else()
+        set(CUBLASDX_SKIP_FATBIN FALSE)
+    endif()
 endif()
 
 if(PROJECT_IS_TOP_LEVEL OR CUBLASDX_TEST_PACKAGE)
     find_package(mathdx REQUIRED CONFIG
         PATHS
             "${PROJECT_SOURCE_DIR}/../.." # example/cublasdx
-            "/opt/nvidia/mathdx/25.12"
+            "/opt/nvidia/mathdx/*"
     )
+    set(CUBLASDX_MIN_VERSION 0.6.0)
+    if(cublasdx_VERSION VERSION_LESS ${CUBLASDX_MIN_VERSION})
+        message(FATAL_ERROR "cuBLASDx version (${cublasdx_VERSION}) is less than ${CUBLASDX_MIN_VERSION}")
+    endif()
 endif()
 
 
@@ -131,17 +150,83 @@ foreach(CUDA_ARCH ${CUBLASDX_CUDA_ARCHITECTURES})
 endforeach()
 
 ###############################################################
+# link_lto_library_workaround
+# ###############################################################
+# Workaround for LTO support in CMAKE <3.25
+function(link_lto_library_workaround TARGET_NAME LTO_FATBIN_FILE CUDA_ARCHITECTURES)
+    target_link_options(${TARGET_NAME}
+        PRIVATE
+            $<DEVICE_LINK:-dlto>
+    )
+    target_compile_options(${TARGET_NAME}
+        PRIVATE
+            "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-rdc=true>"
+    )
+    foreach(CUDA_ARCH ${CUDA_ARCHITECTURES})
+        string(REPLACE "-" ";" CUDA_ARCH_LIST ${CUDA_ARCH})
+        list(GET CUDA_ARCH_LIST 0 ARCH)
+        target_compile_options(${TARGET_NAME}
+            PRIVATE
+                "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--generate-code arch=compute_${ARCH},code=lto_${ARCH}>"
+        )
+    endforeach()
+endfunction()
+
+###############################################################
+# Conditionally link cublasdx
+###############################################################
+function(conditionally_link_cublasdx_fatbin EXAMPLE_TARGET)
+    if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.2)
+        target_link_libraries(${EXAMPLE_TARGET}
+            PRIVATE
+            $<IF:$<TARGET_EXISTS:mathdx::cublasdx>,mathdx::cublasdx,cublasdx::cublasdx>
+        )
+        set_target_properties(${EXAMPLE_TARGET}
+            PROPERTIES
+            CUDA_SEPARABLE_COMPILATION ON
+            INTERPROCEDURAL_OPTIMIZATION ON # This is basically "$<DEVICE_LINK:-dlto>" but it requires CMake 3.25+
+            CUDA_ARCHITECTURES "${CUBLASDX_CUDA_ARCHITECTURES}"
+        )
+        # Workaround for LTO support in CMAKE <3.25
+        if(CMAKE_VERSION VERSION_LESS 3.25)
+            link_lto_library_workaround(${EXAMPLE_TARGET} "${cublasdx_FATBIN}" "${CUBLASDX_CUDA_ARCHITECTURES}")
+        endif()
+    elseif(CUBLASDX_SKIP_FATBIN)
+        target_link_libraries(${EXAMPLE_TARGET}
+            PRIVATE
+            $<IF:$<TARGET_EXISTS:mathdx::cublasdx>,mathdx::cublasdx,cublasdx::cublasdx>
+        )
+    else()
+        # Link cuBLASDx fatbin
+        target_link_libraries(${EXAMPLE_TARGET}
+            PRIVATE
+                $<IF:$<TARGET_EXISTS:mathdx::cublasdx_fatbin>,mathdx::cublasdx_fatbin,cublasdx::cublasdx_fatbin>
+        )
+        set_target_properties(${EXAMPLE_TARGET}
+        PROPERTIES
+            CUDA_SEPARABLE_COMPILATION ON
+            INTERPROCEDURAL_OPTIMIZATION ON # This is basically "$<DEVICE_LINK:-dlto>" but it requires CMake 3.25+
+            CUDA_ARCHITECTURES "${CUBLASDX_CUDA_ARCHITECTURES}"
+        )
+        # Workaround for LTO support in CMAKE <3.25
+        if(CMAKE_VERSION VERSION_LESS 3.25)
+            link_lto_library_workaround(${EXAMPLE_TARGET} "${cublasdx_FATBIN}" "${CUBLASDX_CUDA_ARCHITECTURES}")
+        endif()
+    endif()
+endfunction()
+
+###############################################################
 # Common correctness checking objects
 # ###############################################################
 if (NOT TARGET common_correctness_objects)
     set(common_correctness_objects_sources reference/check_error.cu reference/naive_reference.cu)
     set_source_files_properties("${common_correctness_objects_sources}" PROPERTIES LANGUAGE CUDA)
     add_library(common_correctness_objects STATIC "${common_correctness_objects_sources}")
-    target_link_libraries(common_correctness_objects PRIVATE mathdx::cublasdx)
     set_target_properties(common_correctness_objects
         PROPERTIES
             CUDA_ARCHITECTURES "${CUBLASDX_CUDA_ARCHITECTURES}"
     )
+    conditionally_link_cublasdx_fatbin(common_correctness_objects)
 endif()
 
 # ###############################################################
@@ -163,14 +248,21 @@ function(add_cufftdx_cublasdx_example GROUP_TARGET EXAMPLE_SOURCES)
 
     set_source_files_properties(${EXAMPLE_SOURCES} PROPERTIES LANGUAGE CUDA)
     add_executable(${EXAMPLE_TARGET} ${EXAMPLE_SOURCES})
+
     target_link_libraries(${EXAMPLE_TARGET}
         PRIVATE
-            mathdx::cublasdx
             CUDA::cublas
             cufftdx::cufftdx
             CUDA::cufft
             common_correctness_objects
     )
+
+    set_target_properties(${EXAMPLE_TARGET}
+        PROPERTIES
+            CUDA_ARCHITECTURES "${CUBLASDX_CUDA_ARCHITECTURES}"
+    )
+
+    conditionally_link_cublasdx_fatbin(${EXAMPLE_TARGET})
     add_test(NAME ${EXAMPLE_NAME} COMMAND ${EXAMPLE_TARGET})
 
     # Set the output directory and executable name
@@ -179,18 +271,14 @@ function(add_cufftdx_cublasdx_example GROUP_TARGET EXAMPLE_SOURCES)
         OUTPUT_NAME "${EXAMPLE_FILENAME}"
     )
 
-    set_target_properties(${EXAMPLE_TARGET}
-        PROPERTIES
-            CUDA_ARCHITECTURES "${CUBLASDX_CUDA_ARCHITECTURES}"
-    )
     target_compile_options(${EXAMPLE_TARGET}
         PRIVATE
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xfatbin -compress-all>"
             # Required to support std::tuple in device code
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--expt-relaxed-constexpr>"
             "--extended-lambda"
-
     )
+
     set_tests_properties(${EXAMPLE_NAME}
         PROPERTIES
             LABELS "EXAMPLE"
@@ -219,10 +307,17 @@ function(add_cublasdx_example2 GROUP_TARGET ENABLE_RELAXED_CONSTEXPR EXAMPLE_SOU
     add_executable(${EXAMPLE_TARGET} ${EXAMPLE_SOURCES})
     target_link_libraries(${EXAMPLE_TARGET}
         PRIVATE
-            mathdx::cublasdx
             CUDA::cublas
             common_correctness_objects
     )
+
+    set_target_properties(${EXAMPLE_TARGET}
+        PROPERTIES
+            CUDA_ARCHITECTURES "${CUBLASDX_CUDA_ARCHITECTURES}"
+    )
+
+    conditionally_link_cublasdx_fatbin(${EXAMPLE_TARGET})
+
     add_test(NAME ${EXAMPLE_NAME} COMMAND ${EXAMPLE_TARGET})
 
     # Set the output directory and executable name
@@ -231,16 +326,13 @@ function(add_cublasdx_example2 GROUP_TARGET ENABLE_RELAXED_CONSTEXPR EXAMPLE_SOU
         OUTPUT_NAME "${EXAMPLE_FILENAME}"
     )
 
-    set_target_properties(${EXAMPLE_TARGET}
-        PROPERTIES
-            CUDA_ARCHITECTURES "${CUBLASDX_CUDA_ARCHITECTURES}"
-    )
     target_compile_options(${EXAMPLE_TARGET}
         PRIVATE
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xfatbin -compress-all>"
             # Required to support std::tuple in device code
             "$<$<BOOL:${ENABLE_RELAXED_CONSTEXPR}>:$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--expt-relaxed-constexpr>>"
     )
+
     set_tests_properties(${EXAMPLE_NAME}
         PROPERTIES
             LABELS "EXAMPLE"
@@ -271,12 +363,13 @@ function(add_cublasdx_nvrtc_example GROUP_TARGET EXAMPLE_SOURCES)
     add_executable(${EXAMPLE_TARGET} ${EXAMPLE_SOURCES})
     target_link_libraries(${EXAMPLE_TARGET}
         PRIVATE
-            $<IF:$<TARGET_EXISTS:mathdx::cublasdx>,mathdx::cublasdx,cublasdx::cublasdx>
             CUDA::cudart
             CUDA::cuda_driver
             CUDA::nvrtc
             common_correctness_objects
     )
+
+    conditionally_link_cublasdx_fatbin(${EXAMPLE_TARGET})
 
     set(CUBLASDX_CUDA_INCLUDE_DIRS "${CUDAToolkit_INCLUDE_DIRS}")
     list(LENGTH CUBLASDX_CUDA_INCLUDE_DIRS CUDA_INCLUDE_LENGTH)
@@ -347,6 +440,8 @@ add_cublasdx_example(cublasdx_examples 07_gemm_transform/simple_gemm_transform.c
 add_cublasdx_example(cublasdx_examples 09_gemm_custom_layout/simple_gemm_aat.cu)
 add_cublasdx_example(cublasdx_examples 11_gemm_device_performance/device_gemm_performance.cu)
 add_cublasdx_example(cublasdx_examples 12_gemm_device_partial_sums/gemm_device_partial_sums.cu)
+add_cublasdx_example(cublasdx_examples 19_gemm_batched/batched_gemm_pipeline.cu)
+add_cublasdx_example(cublasdx_examples 19_gemm_batched/batched_gemm.cu)
 
 # cuBLASDx advanced examples
 add_cublasdx_example(cublasdx_examples 14_gemm_fused/gemm_fusion.cu)
@@ -360,19 +455,25 @@ else()
     message("Disabling example 16, dgemm_emulation, due to incompatible CTK (13.1 required)")
 endif()
 
-# cuBLASDx performance examples
-# Examples which measure performance are enabled only for CUDA >=11.8.0 because of an NVCC bug
-if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11.8.0)
-    add_cublasdx_example(cublasdx_examples 10_gemm_block_performance/single_gemm_performance.cu)
-    add_cublasdx_example(cublasdx_examples 14_gemm_fused/fused_gemm_performance.cu)
+# cuBLASDx TRSM examples
+if(NOT CUBLASDX_SKIP_FATBIN)
+    add_cublasdx_example(cublasdx_examples 17_trsm/trsm_block.cu)
+    add_cublasdx_example(cublasdx_examples 17_trsm/trsm_thread.cu)
+    add_cublasdx_example(cublasdx_examples 18_tensor_transform/trsm_conj_transpose.cu)
+else()
+    message(STATUS "cuBLASDx: TRSM examples disabled (fatbin linking skipped)")
 endif()
+
+# cuBLASDx transform examples (GEMM, no fatbin required)
+add_cublasdx_example(cublasdx_examples 18_tensor_transform/gemm_conj_transpose.cu)
+
+# cuBLASDx performance examples
+add_cublasdx_example(cublasdx_examples 10_gemm_block_performance/single_gemm_performance.cu)
+add_cublasdx_example(cublasdx_examples 14_gemm_fused/fused_gemm_performance.cu)
 
 # cuBLASDx/cuFFTDx examples
 if(cufftdx_FOUND)
-    # Examples which measure performance are enabled only for CUDA >=11.8.0 because of an NVCC bug
-    if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11.8.0)
-        add_cufftdx_cublasdx_example(cublasdx_examples 13_gemm_fft/gemm_fft.cu)
-        add_cufftdx_cublasdx_example(cublasdx_examples 13_gemm_fft/gemm_fft_fp16.cu)
-        add_cufftdx_cublasdx_example(cublasdx_examples 13_gemm_fft/gemm_fft_performance.cu)
-    endif()
+    add_cufftdx_cublasdx_example(cublasdx_examples 13_gemm_fft/gemm_fft.cu)
+    add_cufftdx_cublasdx_example(cublasdx_examples 13_gemm_fft/gemm_fft_fp16.cu)
+    add_cufftdx_cublasdx_example(cublasdx_examples 13_gemm_fft/gemm_fft_performance.cu)
 endif()

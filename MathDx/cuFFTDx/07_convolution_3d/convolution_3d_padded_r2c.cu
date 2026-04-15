@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -223,9 +223,9 @@ int conv_3d() {
     // When padding it is important to test different padding sizes for different application
     // requirements.
     // Some padding sizes (such as power of 2 sizes) can provide a higher performance
-    // increase than others. However, padding to a closer size not requiring a 
-    // workspace can increase the accuracy of the results without compromising as much 
-    // performance. 
+    // increase than others. However, padding to a closer size not requiring a
+    // workspace can increase the accuracy of the results without compromising as much
+    // performance.
     static constexpr unsigned int fft_size_y_padded = 81;
     static constexpr unsigned int y_ept             = 9;
     static constexpr unsigned int y_fpb             = 16;

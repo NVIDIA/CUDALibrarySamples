@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -123,7 +123,7 @@ namespace example {
                                                     device_vector<Prec> const& A,          \
                                                     device_vector<Prec> const& B,          \
                                                     Prec const&                beta,       \
-                                                    device_vector<Prec>&       C);         \
+                                                    device_vector<Prec>&       C);               \
                                                                                            \
     template void reference_gemm_naive_device<cublasdx::complex<Prec>>(                    \
         unsigned_tuple const&                         gemm_shape,                          \

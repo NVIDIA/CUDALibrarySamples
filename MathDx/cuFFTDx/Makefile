@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,7 +16,7 @@
 CXX?=g++
 NVCC?=nvcc
 
-CUDA_ARCHITECTURES?=70 75 80 86
+CUDA_ARCHITECTURES?= 75 80 86
 NVCC_FLAGS=-std=c++17 -O3 $(foreach arch, $(CUDA_ARCHITECTURES), --generate-code arch=compute_$(arch),code=sm_$(arch))
 NVCC_LTO_FLAGS=-std=c++17 -O3 $(foreach arch, $(CUDA_ARCHITECTURES), --generate-code arch=compute_$(arch),code=lto_$(arch))
 CXX_FLAGS=-std=c++17 -O3
@@ -27,7 +27,6 @@ CUFFT_HOME?=../../../cufft
 
 CUDA_BIN_DIR=$(shell dirname `which $(NVCC)`)
 CUDA_INCLUDE_DIR=$(CUDA_BIN_DIR)/../include
-NVCC_DEFINES=-DCUFFTDX_DISABLE_CUTLASS_DEPENDENCY
 NVRTC_DEFINES=-DCUDA_INCLUDE_DIR='"$(CUDA_INCLUDE_DIR)"' -DCOMMONDX_INCLUDE_DIR='"$(COMMONDX_INCLUDE_DIR)"' -DCUFFTDX_INCLUDE_DIRS='"$(CUFFTDX_INCLUDE_DIR)"'
 LTO_DEFINES=-DCUFFTDX_ENABLE_CUFFT_DEPENDENCY
 
@@ -58,13 +57,13 @@ ADDITIONAL_DEFINES=-DCUFFTDX_USE_SEPARATE_TWIDDLES
 EXTRA_FLAGS=-rdc=true
 
 $(TARGETS): %: %.cu
-	$(NVCC) -o $@ $< $(NVCC_FLAGS) -I$(COMMONDX_INCLUDE_DIR) -I$(CUFFTDX_INCLUDE_DIR) $(NVCC_DEFINES) -lcufft
+	$(NVCC) -o $@ $< $(NVCC_FLAGS) -I$(COMMONDX_INCLUDE_DIR) -I$(CUFFTDX_INCLUDE_DIR) -lcufft
 
 $(NVRTC_TARGETS): %: %.cu
-	$(NVCC) -o $@ $< $(NVCC_FLAGS) -I$(COMMONDX_INCLUDE_DIR) -I$(CUFFTDX_INCLUDE_DIR) $(NVCC_DEFINES) $(NVRTC_DEFINES) -lnvrtc -lcuda
+	$(NVCC) -o $@ $< $(NVCC_FLAGS) -I$(COMMONDX_INCLUDE_DIR) -I$(CUFFTDX_INCLUDE_DIR) $(NVRTC_DEFINES) -lnvrtc -lcuda
 
 $(NVRTC_LTO_TARGETS): %: %.cu
-	$(NVCC) -o $@ $< $(NVCC_FLAGS) -I$(COMMONDX_INCLUDE_DIR) -I$(CUFFTDX_INCLUDE_DIR) -I$(CUFFT_HOME)/include -L$(CUFFT_HOME)/lib $(NVCC_DEFINES) $(NVRTC_DEFINES) ${LTO_DEFINES} -lnvrtc -lcuda -lcufft -lnvJitLink
+	$(NVCC) -o $@ $< $(NVCC_FLAGS) -I$(COMMONDX_INCLUDE_DIR) -I$(CUFFTDX_INCLUDE_DIR) -I$(CUFFT_HOME)/include -L$(CUFFT_HOME)/lib $(NVRTC_DEFINES) ${LTO_DEFINES} -lnvrtc -lcuda -lcufft -lnvJitLink
 
 $(TARGETS_TWIDDLES): %: $(SRCS)
 	$(NVCC) $(ADDITIONAL_DEFINES) -o $@ $(ADDITIONAL_SRCS) $< $(NVCC_FLAGS) $(EXTRA_FLAGS) $(ADDITIONAL_DEFINES) -I$(COMMONDX_INCLUDE_DIR) -I$(CUFFTDX_INCLUDE_DIR) -lcufft

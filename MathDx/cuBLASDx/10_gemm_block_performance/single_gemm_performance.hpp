@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -36,7 +36,7 @@ __launch_bounds__(GEMM::max_threads_per_block) __global__ void gemm_kernel(const
                                                                            const typename GEMM::c_value_type beta,
                                                                            CInputType*                       output,
                                                                            unsigned int                      repeats) {
-    extern __shared__ __align__(16) char smem[];
+    extern __shared__ __align__(16) cublasdx::byte smem[];
 
     auto a_global_tensor   = cublasdx::make_tensor(a, GEMM::get_layout_gmem_a());
     auto b_global_tensor   = cublasdx::make_tensor(b, GEMM::get_layout_gmem_b());
@@ -90,7 +90,8 @@ int benchmark_mixed_precision_gemm(const cudaStream_t& stream, bool verbose = fa
 
     using suggested_ld = suggested_leading_dimension_of_t<GEMM, Arch>;
     constexpr bool set_block_size {BlockSize > 0};
-    using gemm_base_type = std::conditional_t<set_block_size, decltype(GEMM() + BlockDim<BlockSize>() + StaticBlockDim()), GEMM>;
+    using gemm_base_type =
+        std::conditional_t<set_block_size, decltype(GEMM() + BlockDim<BlockSize>() + StaticBlockDim()), GEMM>;
     using gemm_type = std::conditional_t<UseSuggestedLD, decltype(gemm_base_type() + suggested_ld()), gemm_base_type>;
 
     using TA = AInputType;

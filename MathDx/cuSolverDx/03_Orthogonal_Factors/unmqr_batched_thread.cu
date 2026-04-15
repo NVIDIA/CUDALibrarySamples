@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,11 +13,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- */
+ */ 
 
 #include <cusolverdx.hpp>
 
-#include "../common/common.hpp"
 #include "../common/cudart.hpp"
 #include "../common/error_checking.hpp"
 #include "../common/random.hpp"
@@ -26,7 +25,8 @@
 #include "../common/print.hpp"
 #include "../common/cusolver_reference_unmqr.hpp"
 
-// This example demonstrates how to use cuSolverDx API to multiply a batched matrix B by an orthogonal/unitary matrix Q,
+// This example demonstrates how to use cuSolverDx API to multiply a batched matrix B by an orthogonal/unitary matrix Q with Thread operator.
+// The problem size is small, so it could be more efficient to use Thread execution instead of Block execution.
 // computed by QR factorization GEQRF. The results are compared with the reference values obtained with cuSolver host API.
 //
 // UNMQR performs matrix multiplication with an orthogonal/unitary matrix Q:
@@ -41,8 +41,8 @@
 // The v(i) is stored in the i-th column of A below the diagonal.
 //
 
-template<class Solver, unsigned int BatchesPerBlock, typename DataType = typename Solver::a_data_type>
-__global__ __launch_bounds__(Solver::max_threads_per_block) void unmqr_kernel(const DataType* A, const DataType* tau, DataType* B, const unsigned batches) {
+template<class Solver, typename DataType = typename Solver::a_data_type>
+__global__ void unmqr_kernel(const DataType* A, const DataType* tau, DataType* B, const unsigned batches) {
 
     constexpr auto m = Solver::m_size;
     constexpr auto n = Solver::n_size;
@@ -54,60 +54,30 @@ __global__ __launch_bounds__(Solver::max_threads_per_block) void unmqr_kernel(co
     constexpr auto BM = m;
     constexpr auto BN = n;
 
-    const auto lda_gmem = (cusolverdx::arrangement_of_v_a<Solver> == cusolverdx::col_major) ? AM : AN;
-    const auto ldb_gmem = (cusolverdx::arrangement_of_v_b<Solver> == cusolverdx::col_major) ? BM : BN;
-    const auto lda_smem = Solver::lda;
-    const auto ldb_smem = Solver::ldb;
-
     constexpr auto one_batch_size_a_gmem = AM * AN;
     constexpr auto one_batch_size_b_gmem = BM * BN;
-    const auto     one_batch_size_a_smem = cusolverdx::arrangement_of_v_a<Solver> == cusolverdx::col_major ? lda_smem * AN : AM * lda_smem;
-    const auto     one_batch_size_b_smem = cusolverdx::arrangement_of_v_b<Solver> == cusolverdx::col_major ? ldb_smem * BN : BM * ldb_smem;
 
-    extern __shared__ __align__(16) unsigned char shared_mem[];
-    // Slice shared memory into pointers
-    auto [As, Bs, taus] = cusolverdx::shared_memory::slice<DataType, DataType, DataType>(
-        shared_mem, alignof(DataType), one_batch_size_a_smem * BatchesPerBlock, alignof(DataType), one_batch_size_b_smem * BatchesPerBlock, alignof(DataType), k * BatchesPerBlock);
-
-    const auto batch_idx = blockIdx.x * BatchesPerBlock;
+    const auto batch_idx = threadIdx.x + blockIdx.x * blockDim.x;
     if (batch_idx >= batches)
         return;
+
     auto this_A   = A + one_batch_size_a_gmem * batch_idx;
     auto this_B   = B + one_batch_size_b_gmem * batch_idx;
     auto this_tau = tau + k * batch_idx;
 
-    // Load data from global memory to shared memory
-    common::io<Solver, BatchesPerBlock>::load_a<AM, AN>(this_A, lda_gmem, As, lda_smem);
-    common::io<Solver, BatchesPerBlock>::load_b<BM, BN>(this_B, ldb_gmem, Bs, ldb_smem);
-
-    // Load tau from global memory to shared memory
-    const int tid = threadIdx.x + threadIdx.y * Solver::block_dim.x + threadIdx.z * Solver::block_dim.x * Solver::block_dim.y;
-    for (int i = tid; i < k * BatchesPerBlock; i += Solver::max_threads_per_block) {
-        taus[i] = this_tau[i];
-    }
-    __syncthreads();
-
-    Solver().execute(As, lda_smem, taus, Bs, ldb_smem);
-
-    // Store results back to global memory
-    common::io<Solver, BatchesPerBlock>::store_b<BM, BN>(Bs, ldb_smem, this_B, ldb_gmem);
+    Solver().execute(this_A, this_tau, this_B);
 }
 
 template<int Arch>
-int unmqr_batched() {
+int unmqr_batched_thread() {
 
     using namespace cusolverdx;
-    using Base   = decltype(Size<32, 16, 14>() + Precision<float>() + Type<type::complex>() + Function<unmqr>() + Arrangement<arrangement::row_major, arrangement::row_major>() +
-                          TransposeMode<conj_trans>() + Side<side::right>() + SM<Arch>() + Block());
-    using Solver = decltype(Base() + BatchesPerBlock<Base::suggested_batches_per_block>());
+    using Solver =
+            decltype(Size<8, 6, 4>() + Precision<float>() + Type<type::complex>() + Function<unmqr>() +
+                     Arrangement<arrangement::row_major, arrangement::row_major>() + TransposeMode<conj_trans>() + Side<side::right>() + SM<Arch>() + Thread());
 
     using data_type      = typename Solver::a_data_type;
     using cuda_data_type = typename Solver::a_cuda_data_type;
-
-    constexpr unsigned bpb = Solver::batches_per_block;
-    std::cout << "Using Suggested Batches per block = " << bpb << std::endl;
-    std::cout << "Suggested BlockDim = " << Solver::suggested_block_dim.x << std::endl;
-    std::cout << "BlockDim Used = " << Solver::block_dim.x << std::endl;
 
     constexpr auto m = Solver::m_size;
     constexpr auto n = Solver::n_size;
@@ -126,16 +96,15 @@ int unmqr_batched() {
     constexpr auto input_size_a = a_m * a_n;
     constexpr auto input_size_b = b_m * b_n;
 
-    const auto batches        = 2;
-    const auto padded_batches = (batches + bpb - 1) / bpb * bpb;
+    const auto batches = 2;
 
     cudaStream_t stream = nullptr;
     CUDA_CHECK_AND_EXIT(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
 
     // Generate input matrices A and B
-    std::vector<data_type> A(input_size_a * padded_batches);
-    std::vector<data_type> B(input_size_b * padded_batches);
-    std::vector<data_type> tau(k * padded_batches);
+    std::vector<data_type> A(input_size_a * batches);
+    std::vector<data_type> B(input_size_b * batches);
+    std::vector<data_type> tau(k * batches);
 
     // Fill A with random data (this would normally come from a previous GEQRF call)
     common::fillup_random_matrix<data_type>(is_col_maj_a, a_m, a_n, A.data(), lda, false, false, -0.1, 0.1, batches);
@@ -146,7 +115,7 @@ int unmqr_batched() {
     // Generate tau values (this would normally come from a previous GEQRF call)
     common::fillup_random_matrix<data_type>(true, k, 1, tau.data(), k, false, false, -2, 2, batches);
 
-    std::vector<data_type> B_result(input_size_b * padded_batches);
+    std::vector<data_type> B_result(input_size_b * batches);
 
     data_type* d_A   = nullptr;
     data_type* d_tau = nullptr;
@@ -166,12 +135,9 @@ int unmqr_batched() {
     CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(d_tau, tau.data(), sizeof(data_type) * tau.size(), cudaMemcpyHostToDevice, stream));
     CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(d_B, B.data(), sizeof(data_type) * B.size(), cudaMemcpyHostToDevice, stream));
 
-    auto       sm_size = Solver::get_shared_memory_size(lda, ldb);
-    const auto kernel  = unmqr_kernel<Solver, bpb>;
-    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, sm_size));
-
     // Invoke kernel to compute Q*B
-    kernel<<<padded_batches / bpb, Solver::block_dim, sm_size, stream>>>(d_A, d_tau, d_B, batches);
+    const auto nthreads = 64;
+    unmqr_kernel<Solver><<<(batches + nthreads - 1) / nthreads, nthreads, 0, stream>>>(d_A, d_tau, d_B, batches);
     CUDA_CHECK_AND_EXIT(cudaGetLastError());
 
     CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(B_result.data(), d_B, sizeof(data_type) * B.size(), cudaMemcpyDeviceToHost, stream));
@@ -193,18 +159,8 @@ int unmqr_batched() {
     //=========================
 
     // Use cuSolver UNMQR reference implementation
-    bool ref_success = common::reference_cusolver_unmqr<data_type, cuda_data_type>(A,   
-                                                                                   B,   
-                                                                                   tau, 
-                                                                                   m,   
-                                                                                   n,   
-                                                                                   k,   
-                                                                                   padded_batches,
-                                                                                   batches,
-                                                                                   side_of_v<Solver> == side::left,
-                                                                                   is_col_maj_a,
-                                                                                   is_col_maj_b,
-                                                                                   transpose_mode_of_v<Solver> != transpose::non_transposed);
+    bool ref_success = common::reference_cusolver_unmqr<data_type, cuda_data_type>(A, B, tau, m, n, k, batches, batches, side_of_v<Solver> == side::left,
+            is_col_maj_a, is_col_maj_b, transpose_mode_of_v<Solver> != transpose::non_transposed);
 
     if (!ref_success) {
         std::cout << "cuSolver reference computation failed" << std::endl;
@@ -230,8 +186,8 @@ int unmqr_batched() {
 }
 
 template<int Arch>
-struct unmqr_batched_functor {
-    int operator()() { return unmqr_batched<Arch>(); }
+struct unmqr_batched_thread_functor {
+    int operator()() { return unmqr_batched_thread<Arch>(); }
 };
 
-int main() { return common::run_example_with_sm<unmqr_batched_functor>(); }
+int main() { return common::run_example_with_sm<unmqr_batched_thread_functor>(); }

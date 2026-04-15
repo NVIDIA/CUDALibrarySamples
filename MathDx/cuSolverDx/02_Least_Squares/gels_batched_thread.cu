@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,11 +13,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- */
+ */ 
 
 #include <cusolverdx.hpp>
 
-#include "../common/common.hpp"
 #include "../common/cudart.hpp"
 #include "../common/error_checking.hpp"
 #include "../common/random.hpp"
@@ -26,105 +25,74 @@
 #include "../common/print.hpp"
 #include "../common/cusolver_reference_geqrf_gels.hpp"
 
-// This example demonstrates how to use cuSolverDx API to solve a batched least squares problem.
+// This example demonstrates how to use cuSolverDx API to solve a batched least squares problem with Thread execution.
+// The thread execution is used for the case where the problem size is small, so it could be more efficient to use Thread execution.
 // The results are compared with reference values obtained with the cuSolver and cuBLAS APIs.
 
-template<class Solver, unsigned int BatchesPerBlock, typename DataType = typename Solver::a_data_type>
-__global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(DataType* A, const int lda_gmem, DataType* tau, DataType* B, const int ldb_gmem, const unsigned batches) {
+template<class Solver, typename DataType = typename Solver::a_data_type>
+__global__ void gels_kernel(DataType* A, DataType* tau, DataType* B, const unsigned batches) {
 
-    constexpr auto m = Solver::m_size;
-    constexpr auto n = Solver::n_size;
-    constexpr auto k = Solver::k_size;
+    constexpr auto m      = Solver::m_size;
+    constexpr auto n      = Solver::n_size;
+    constexpr auto k      = Solver::k_size;
     constexpr auto max_mn = m >= n ? m : n;
 
-    const auto     one_batch_size_a_gmem = (cusolverdx::arrangement_of_v_a<Solver> == cusolverdx::col_major) ? lda_gmem * n : m * lda_gmem;
-    const auto     one_batch_size_b_gmem = (cusolverdx::arrangement_of_v_b<Solver> == cusolverdx::col_major) ? ldb_gmem * k : max_mn * ldb_gmem;
-    constexpr auto lda_smem              = Solver::lda;
-    constexpr auto ldb_smem              = Solver::ldb;
-    constexpr auto one_batch_size_a_smem = (cusolverdx::arrangement_of_v_a<Solver> == cusolverdx::col_major) ? lda_smem * n : m * lda_smem;
-    constexpr auto one_batch_size_b_smem = (cusolverdx::arrangement_of_v_b<Solver> == cusolverdx::col_major) ? ldb_smem * k : max_mn * ldb_smem;
+    const auto one_batch_size_a_gmem = m * n;
+    const auto one_batch_size_b_gmem = max_mn * k;
 
-    extern __shared__ __align__(16) unsigned char shared_mem[];
-    // Slice shared memory into pointers
-    auto [As, Bs, tau_s] = cusolverdx::shared_memory::slice<DataType, DataType, DataType>(
-        shared_mem,
-        alignof(DataType), one_batch_size_a_smem * BatchesPerBlock,
-        alignof(DataType), one_batch_size_b_smem * BatchesPerBlock,
-        alignof(DataType)  // the size (number of elements) may be omitted for the last pointer
-    );
-
-    const auto batch_idx = blockIdx.x * BatchesPerBlock;
+    const auto batch_idx = threadIdx.x + blockIdx.x * blockDim.x;
     if (batch_idx >= batches)
         return;
+
     auto Ag    = A + one_batch_size_a_gmem * batch_idx;
     auto Bg    = B + one_batch_size_b_gmem * batch_idx;
     auto tau_g = tau + min(m, n) * batch_idx;
 
-    // Load data from global memory to shared memory
-    common::io<Solver, BatchesPerBlock>::load_a<m, n>(Ag, lda_gmem, As, lda_smem);
-    common::io<Solver, BatchesPerBlock>::load_b<max_mn, k>(Bg, ldb_gmem, Bs, ldb_smem);
-    
-    Solver().execute(As, lda_smem, tau_s, Bs, ldb_smem);
-
-    // Store results back to global memory
-    common::io<Solver, BatchesPerBlock>::store_a<m, n>(As, lda_smem, Ag, lda_gmem);
-    common::io<Solver, BatchesPerBlock>::store_b<max_mn, k>(Bs, ldb_smem, Bg, ldb_gmem);
-
-    // store tau from shared memory to global memory
-    int thread_id = threadIdx.x + Solver::block_dim.x * (threadIdx.y + Solver::block_dim.y * threadIdx.z);
-    for (int i = thread_id; i < min(m, n) * BatchesPerBlock; i += Solver::max_threads_per_block) {
-        tau_g[i] = tau_s[i];
-    }
+    Solver().execute(Ag, tau_g, Bg);
 }
 
 template<int Arch>
-int gels_batched() {
+int gels_batched_thread() {
 
     using namespace cusolverdx;
-    using Base   = decltype(Size<20, 16, 5>() + Precision<double>() + Type<type::complex>() + Function<gels>() + Arrangement<arrangement::col_major, arrangement::row_major>() + TransposeMode<conj_trans>() + SM<Arch>() + Block());
-    using Solver = decltype(Base() + BatchesPerBlock<Base::suggested_batches_per_block>());
+    using Solver = decltype(Size<8, 6, 3>() + Precision<double>() + Type<type::complex>() + Function<gels>() +
+                            Arrangement<arrangement::col_major, arrangement::row_major>() + TransposeMode<conj_trans>() + SM<Arch>() + Thread());
 
     using data_type      = typename Solver::a_data_type;
     using cuda_data_type = typename Solver::a_cuda_data_type;
 
-    constexpr unsigned bpb = Solver::batches_per_block;
-    std::cout << "Using Suggested Batches per block = " << bpb << std::endl;
-    std::cout << "Suggested BlockDim = " << Solver::suggested_block_dim.x << std::endl;
-    std::cout << "BlockDim Used = " << Solver::block_dim.x << std::endl;
-
-    constexpr auto m = Solver::m_size;
-    constexpr auto n = Solver::n_size;
-    constexpr auto k = Solver::k_size;
-    const auto max_mn = m >= n ? m : n;
+    constexpr auto m      = Solver::m_size;
+    constexpr auto n      = Solver::n_size;
+    constexpr auto k      = Solver::k_size;
+    const auto     max_mn = m >= n ? m : n;
 
     constexpr bool is_col_maj_a = arrangement_of_v_a<Solver> == arrangement::col_major;
     constexpr bool is_col_maj_b = arrangement_of_v_b<Solver> == arrangement::col_major;
 
-    const auto     lda          = is_col_maj_a ? m : n;
-    const auto     ldb          = is_col_maj_b ? max_mn : k;
+    const auto lda = is_col_maj_a ? m : n;
+    const auto ldb = is_col_maj_b ? max_mn : k;
 
     constexpr auto input_size_a = m * n; // input A size is m x n per batch
     constexpr auto input_size_b = max_mn * k; // allocate B/X with max(m, n) x k per batch
 
     constexpr auto output_size_x = (transpose_mode_of_v<Solver> == trans || transpose_mode_of_v<Solver> == conj_trans) ? n * k : m * k;
 
-    const auto batches        = 3;
-    const auto padded_batches = (batches + bpb - 1) / bpb * bpb;
+    const auto batches = 300;
 
     cudaStream_t stream = nullptr;
     CUDA_CHECK_AND_EXIT(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
 
-    std::vector<data_type> A(input_size_a * padded_batches);
+    std::vector<data_type> A(input_size_a * batches);
     common::fillup_random_matrix<data_type>(is_col_maj_a, m, n, A.data(), lda, false, false, 2, 4, batches); // not symmetric and not diagonally dominant
 
-    std::vector<data_type> B(input_size_b * padded_batches);
+    std::vector<data_type> B(input_size_b * batches);
     common::fillup_random_matrix<data_type>(is_col_maj_b, max_mn, k, B.data(), ldb, false, false, -1, 1, batches);
-    std::vector<data_type> X(input_size_b * padded_batches);
+    std::vector<data_type> X(input_size_b * batches);
 
 
-    std::vector<data_type> L(input_size_a * padded_batches);
-    std::vector<data_type> tau(min(m, n) * padded_batches);
-    std::vector<data_type> tau_ref(min(m, n) * padded_batches);
+    std::vector<data_type> L(input_size_a * batches);
+    std::vector<data_type> tau(min(m, n) * batches);
+    std::vector<data_type> tau_ref(min(m, n) * batches);
     data_type*             d_A   = nullptr;
     data_type*             d_B   = nullptr;
     data_type*             d_tau = nullptr;
@@ -142,10 +110,9 @@ int gels_batched() {
     CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(d_A, A.data(), sizeof(data_type) * A.size(), cudaMemcpyHostToDevice, stream));
     CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(d_B, B.data(), sizeof(data_type) * B.size(), cudaMemcpyHostToDevice, stream));
 
-    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(kernel<Solver, bpb>, cudaFuncAttributeMaxDynamicSharedMemorySize, Solver::shared_memory_size));
-
     //Invokes kernel
-    kernel<Solver, bpb><<<padded_batches / bpb, Solver::block_dim, Solver::shared_memory_size, stream>>>(d_A, lda, d_tau, d_B, ldb, batches);
+    const auto nthreads = 64;
+    gels_kernel<Solver><<<(batches + nthreads - 1) / nthreads, nthreads, 0, stream>>>(d_A, d_tau, d_B, batches);
     CUDA_CHECK_AND_EXIT(cudaGetLastError());
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
@@ -172,10 +139,11 @@ int gels_batched() {
     CUDA_CHECK_AND_EXIT(cudaStreamDestroy(stream));
 
     //==================================================================================================================
-    // cuSolver/cuBLAS reference using cusolverDnXgeqrf, cusolverDnunmqr, and cublas<t>trsm. 
+    // cuSolver/cuBLAS reference using cusolverDnXgeqrf, cusolverDnunmqr, and cublas<t>trsm.
     //=================================================================================================================
     if (m >= n) {
-        common::reference_cusolver_geqrf_gels<data_type, cuda_data_type, true, false>(A, B, tau_ref, m, n, k, padded_batches, is_col_maj_a, is_col_maj_b, (transpose_mode_of_v<Solver> != non_trans), batches);
+        common::reference_cusolver_geqrf_gels<data_type, cuda_data_type, true, false>(
+                A, B, tau_ref, m, n, k, batches, is_col_maj_a, is_col_maj_b, (transpose_mode_of_v<Solver> != non_trans), batches);
 
         // check A, tau and X
         const auto total_relative_error_a = common::check_error<data_type, data_type>(L.data(), A.data(), batches * input_size_a);
@@ -216,9 +184,9 @@ int gels_batched() {
 }
 
 template<int Arch>
-struct gels_batched_functor {
-    int operator()() { return gels_batched<Arch>(); }
+struct gels_batched_thread_functor {
+    int operator()() { return gels_batched_thread<Arch>(); }
 };
 
 
-int main() { return common::run_example_with_sm<gels_batched_functor>(); }
+int main() { return common::run_example_with_sm<gels_batched_thread_functor>(); }

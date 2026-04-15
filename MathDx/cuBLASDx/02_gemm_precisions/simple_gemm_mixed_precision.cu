@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,7 +28,7 @@ template<class BLAS, class TA, class TB, class TC>
 __launch_bounds__(BLAS::max_threads_per_block) __global__
     void gemm_kernel(const TA* a, const TB* b, const TC* c, const TC alpha, const TC beta, TC* output) {
 
-    extern __shared__ __align__(16) char smem[];
+    extern __shared__ __align__(16) cublasdx::byte smem[];
 
     auto a_global_tensor = cublasdx::make_tensor(a, BLAS::get_layout_gmem_a());
     auto b_global_tensor = cublasdx::make_tensor(b, BLAS::get_layout_gmem_b());
@@ -84,15 +84,9 @@ int simple_gemm_mixed_precision() {
                  cublasdx::Arrangement<cublasdx::row_major, cublasdx::col_major>() + cublasdx::Alignment<16, 16, 16>() +
                  cublasdx::Block() + cublasdx::BlockDim<block_size>() + cublasdx::SM<Arch>());
 
-#ifdef CUBLASDX_EXAMPLE_DETAIL_NVCC_12_2_BUG_WORKAROUND
-    using TA = typename example::a_value_type_t<BLAS>;
-    using TB = typename example::b_value_type_t<BLAS>;
-    using TC = typename example::c_value_type_t<BLAS>;
-#else
     using TA = typename BLAS::a_value_type;
     using TB = typename BLAS::b_value_type;
     using TC = typename BLAS::c_value_type;
-#endif
 
     std::cout << "Precisions: A is " << example::precision_string<TA>() << ", B is " << example::precision_string<TB>()
               << " and C is " << example::precision_string<TC>() << " \nType: A/B/C is " << example::type_string<TA>()

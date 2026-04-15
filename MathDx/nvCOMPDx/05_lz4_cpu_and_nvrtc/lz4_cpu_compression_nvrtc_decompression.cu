@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 
 #include <lz4.h>
 #include <lz4hc.h>
@@ -112,19 +111,8 @@ static std::vector<std::string> get_comp_include_dirs()
     comp_include_dirs_array.push_back("--include-path=" + std::string(COMMONDX_INCLUDE_DIR));
   }
 #endif // COMMONDX_INCLUDE_DIR
-#ifdef CUTLASS_INCLUDE_DIR
-  {
-    comp_include_dirs_array.push_back("--include-path=" + std::string(CUTLASS_INCLUDE_DIR));
-  }
-#endif // CUTLASS_INCLUDE_DIR
   {
     const char* env_ptr = std::getenv("NVCOMPDX_EXAMPLE_COMMONDX_INCLUDE_DIR");
-    if (env_ptr != nullptr) {
-        comp_include_dirs_array.push_back("--include-path=" + std::string(env_ptr));
-    }
-  }
-  {
-    const char* env_ptr = std::getenv("NVCOMPDX_EXAMPLE_CUTLASS_INCLUDE_DIR");
     if (env_ptr != nullptr) {
         comp_include_dirs_array.push_back("--include-path=" + std::string(env_ptr));
     }
@@ -255,9 +243,6 @@ static int run_nvrtc_example(const std::vector<std::vector<char>>& data)
     "--include-path=" CUDAToolkit_INCLUDE_DIR "/cccl/cuda/std", // Path to standard headers (CTK 13+)
     "-dlto",
     "-rdc=true",
-#ifdef NVCOMPDX_DISABLE_CUTLASS
-    "-DNVCOMPDX_DISABLE_CUTLASS",
-#endif // NVCOMPDX_DISABLE_CUTLASS
     gpu_architecture_option.c_str()
   };
 

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,7 +35,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__ void block_fft_kernel(t
                                                                                unsigned int                 repeats,
                                                                                typename FFT::workspace_type workspace) {
     using complex_type = typename FFT::value_type;
-    extern __shared__ __align__(alignof(float4)) unsigned char shared_mem[];
+    extern __shared__ __align__(alignof(float4)) cufftdx::byte shared_mem[];
 
     // Local array for thread
     complex_type thread_data[FFT::storage_size];

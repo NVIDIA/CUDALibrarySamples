@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -92,7 +92,6 @@ namespace example {
                     #endif
                 }
             }
-
             {
                 const char* env_ptr = std::getenv("CUFFTDX_EXAMPLE_CUFFTDX_INCLUDE_DIR");
                 if(env_ptr != nullptr) {
@@ -109,8 +108,6 @@ namespace example {
                 const char* env_ptr = std::getenv("CUFFTDX_EXAMPLE_CUTLASS_INCLUDE_DIR");
                 if(env_ptr != nullptr) {
                     path_handler("CUFFTDX_EXAMPLE_CUTLASS_INCLUDE_DIR", std::string(env_ptr));
-                } else {
-                    cufftdx_include_dirs_array.push_back("-DCUFFTDX_DISABLE_CUTLASS_DEPENDENCY");
                 }
             }
             {
@@ -151,7 +148,7 @@ namespace example {
         }
 
         inline std::string get_device_architecture_option(int device) {
-            std::string gpu_architecture_option = "--gpu-architecture=compute_" + std::to_string(get_device_architecture(device));
+            std::string gpu_architecture_option = "-arch=sm_" + std::to_string(nvrtc::get_device_architecture(device));
             return gpu_architecture_option;
         }
 

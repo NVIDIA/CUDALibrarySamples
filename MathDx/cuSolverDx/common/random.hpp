@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -90,7 +90,7 @@ namespace common {
                         A[col * row_stride + row * col_stride + batch * m * n].y = -Areg.y;
                     }
                     // Hermitian matrix has real diagonal elements, so we need to set the diagonal elements to be real
-                    // However, LAPACK routines do not reference the imaginary parts of diagonal elements in input and explicitly set them to zero upon output, 
+                    // However, LAPACK routines do not reference the imaginary parts of diagonal elements in input and explicitly set them to zero upon output,
                     // so cuSolverDx functions follow the same LAPACK convention.
                     // Uncomment below to set the imaginary parts of diagonal elements to zero if needed
                     // A[col * row_stride + col * col_stride + batch * m * n].y = 0;
@@ -210,8 +210,8 @@ namespace common {
         fillup_random_matrix(true, m, n, A, lda, symm, true, min, max, batches);
     }
 
-    // Input A(total_batches, dim_slow, dim_fast), dim_fast being the fastest dimension
-    // Output A(total_batches, dim_fast, dim_slow), dim_slow being the fastest dimension
+    // Input A: dim_slow x dim_fast x batches. dim_slow being the size of the fastest dimension 
+    // Output A: dim_fast x dim_slow x batches. dim_fast being the size of the fastest dimension
     template<typename T>
     void transpose_matrix(std::vector<T>& A, const unsigned int dim_fast, const unsigned int dim_slow, const unsigned batches) {
 

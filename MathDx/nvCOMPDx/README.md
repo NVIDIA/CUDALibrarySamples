@@ -1,10 +1,49 @@
-# nvCOMPDx Examples
+# nvCOMPDx Library - API Examples
+
+All examples are shipped within [nvCOMPDx package](https://developer.nvidia.com/nvcompdx-downloads).
 
 ## Description
 
-This folder contains examples demonstrating the usage of the nvCOMPDx C++ API.
+This folder demonstrates nvCOMPDx APIs usage.
+
+* [nvCOMPDx download page](https://developer.nvidia.com/nvcompdx-downloads)
+* [nvCOMPDx API documentation](https://docs.nvidia.com/cuda/nvcompdx/index.html)
+
+## Requirements
+
+* [See nvCOMPDx requirements](https://docs.nvidia.com/cuda/nvcompdx/requirements.html)
+* CMake 3.26 or newer
+* CUDA Toolkit 13.0 or newer
+* Linux system with installed NVIDIA drivers
+* NVIDIA GPU of Turing (SM75) or newer architecture
+* External library: `lz4` (required for LZ4 CPU examples and NVRTC example — see Build section)
+
+## Build
+
+* You may specify `NVCOMPDX_CUDA_ARCHITECTURES` to limit CUDA architectures used for compilation (see [CMake:CUDA_ARCHITECTURES](https://cmake.org/cmake/help/latest/prop_tgt/CUDA_ARCHITECTURES.html#prop_tgt:CUDA_ARCHITECTURES))
+* `mathdx_ROOT` - path to MathDx package (XX.Y - version of the package)
+
+The LZ4 CPU and NVRTC examples require the `lz4` library. Install it before building:
+
+```sh
+# Ubuntu:
+sudo apt-get install liblz4-dev liblz4-1
+
+# Red Hat:
+dnf install lz4-devel lz4-libs
+```
+
+```
+mkdir build && cd build
+cmake -DNVCOMPDX_CUDA_ARCHITECTURES=75-real -Dmathdx_ROOT=/opt/nvidia/mathdx/XX.Y ..
+make
+# Run
+ctest
+```
 
 ## Examples
+
+For the detailed descriptions of the examples please visit Examples section of the [nvCOMPDx documentation](https://docs.nvidia.com/cuda/nvcompdx/index.html).
 
 * [LZ4 GPU compression introduction](01_introduction/lz4_gpu_compression_introduction.cu)
 
@@ -61,38 +100,3 @@ This folder contains examples demonstrating the usage of the nvCOMPDx C++ API.
     ```
     lz4_cpu_compression_nvrtc_decompression -f <input file(s)>
     ```
-
-## Building (x86-64, or aarch64)
-
-The samples require the following external libraries to be installed prior to compilation: `lz4`.
-
-### Linux
-
-The external libraries can be installed via a package manager (both on ARM and on x86):
-
-```sh
-# Ubuntu:
-# LZ4
-sudo apt-get install liblz4-dev
-sudo apt-get install liblz4-1
-
-# Red Hat:
-# LZ4
-dnf install lz4-devel
-dnf install lz4-libs
-```
-
-Alternatively, they can also be compiled from source.
-
-Afterwards, the example compilation via CMake is relatively simple:
-
-```sh
-cd <nvCOMPDx example folder>
-mkdir build
-cd build
-
-cmake .. -DCMAKE_PREFIX_PATH=<MathDx sysroot path> \
-         -DCMAKE_BUILD_TYPE=Release
-
-cmake --build .
-```

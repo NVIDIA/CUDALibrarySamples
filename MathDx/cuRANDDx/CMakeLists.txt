@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,7 +16,7 @@
 cmake_minimum_required(VERSION 3.23.0)
 
 # cuRANDDx example project
-project(curanddx_example VERSION ${CMAKE_PROJECT_VERSION} LANGUAGES CXX CUDA)
+project(curanddx_example VERSION 0.2.3 LANGUAGES CXX CUDA)
 
 if(PROJECT_IS_TOP_LEVEL)
     if(NOT MSVC)
@@ -65,10 +65,10 @@ if(PROJECT_IS_TOP_LEVEL)
         STRING "List of targeted cuRANDDx CUDA architectures, for example \"75-real;80-real\""
     )
 
-    # Remove unsupported architectures
-    list(REMOVE_ITEM CURANDDX_CUDA_ARCHITECTURES 30;32;35;37;50;52;53)
-    list(REMOVE_ITEM CURANDDX_CUDA_ARCHITECTURES 30-real;32-real;35-real;37-real;50-real;52-real;53-real;)
-    list(REMOVE_ITEM CURANDDX_CUDA_ARCHITECTURES 30-virtual;32-virtual;35-virtual;37-virtual;50-virtual;52-virtual;53-virtual)
+    # Remove unsupported architectures (minimum Turing / SM75)
+    list(REMOVE_ITEM CURANDDX_CUDA_ARCHITECTURES 30;32;35;37;50;52;53;70;72)
+    list(REMOVE_ITEM CURANDDX_CUDA_ARCHITECTURES 30-real;32-real;35-real;37-real;50-real;52-real;53-real;70-real;72-real)
+    list(REMOVE_ITEM CURANDDX_CUDA_ARCHITECTURES 30-virtual;32-virtual;35-virtual;37-virtual;50-virtual;52-virtual;53-virtual;70-virtual;72-virtual)
     message(STATUS "Targeted cuRANDDx CUDA Architectures: ${CURANDDX_CUDA_ARCHITECTURES}")
 endif()
 
@@ -79,8 +79,12 @@ if(PROJECT_IS_TOP_LEVEL)
     find_package(mathdx REQUIRED CONFIG
         PATHS
             "${PROJECT_SOURCE_DIR}/../.." # example/curanddx
-            "/opt/nvidia/mathdx/25.06"
+            "/opt/nvidia/mathdx/*"
     )
+    set(CURANDDX_MIN_VERSION 0.2.3)
+    if(curanddx_VERSION VERSION_LESS ${CURANDDX_MIN_VERSION})
+        message(FATAL_ERROR "cuRANDDx version (${curanddx_VERSION}) is less than ${CURANDDX_MIN_VERSION}")
+    endif()
 endif()
 
 # CUDA Toolkit
@@ -198,10 +202,21 @@ function(add_curanddx_nvrtc_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
             CUDA::cuda_driver
             CUDA::nvrtc
     )
+
+    # For compatibility with CUDA 13+ & CMAKE 4+
+    set(CURANDDX_CUDA_INCLUDE_DIRS "${CUDAToolkit_INCLUDE_DIRS}")
+    list(LENGTH CURANDDX_CUDA_INCLUDE_DIRS CUDA_INCLUDE_LENGTH)
+
+    if(${CUDA_INCLUDE_LENGTH} GREATER 1)
+        list(GET CURANDDX_CUDA_INCLUDE_DIRS 0 CURANDDX_CUDA_INCLUDE_DIRS)
+    else()
+        set(CURANDDX_CUDA_INCLUDE_DIRS "${CURANDDX_CUDA_INCLUDE_DIRS}")
+    endif()
+
     target_compile_definitions(${EXAMPLE_TARGET}
         PRIVATE
-            CUDA_INCLUDE_DIR="${CUDAToolkit_INCLUDE_DIRS}"
-            CUDA_CCCL_INCLUDE_DIR="${CUDAToolkit_INCLUDE_DIRS}/cccl/" # for CTK 13.0 support
+            CUDA_INCLUDE_DIR="${CURANDDX_CUDA_INCLUDE_DIRS}"
+            CUDA_CCCL_INCLUDE_DIR="${CURANDDX_CUDA_INCLUDE_DIRS}/cccl/" # required for CTK 13+
             COMMONDX_INCLUDE_DIR="${curanddx_commondx_INCLUDE_DIR}"
             CURANDDX_INCLUDE_DIRS="${curanddx_INCLUDE_DIRS}"
     )
@@ -227,6 +242,7 @@ add_custom_target(curanddx_examples)
 add_curanddx_example_nvpl_rand(curanddx_examples "cuRANDDx.example.introduction_simple_pcg_thread_api" 02_thread_api/pcg_thread_api.cu)
 
 add_curanddx_example(curanddx_examples "cuRANDDx.example.philox_thread_api" 01_introduction/philox_thread_api.cu)
+add_curanddx_example(curanddx_examples "cuRANDDx.example.philox_random_bits_thread_api" 02_thread_api/philox_random_bits_thread_api.cu)
 add_curanddx_example(curanddx_examples "cuRANDDx.example.xorwow_init_and_generate_thread_api" 02_thread_api/xorwow_init_and_generate_thread_api.cu)
 add_curanddx_example(curanddx_examples "cuRANDDx.example.sobol_thread_api" 02_thread_api/sobol_thread_api.cu)
 add_curanddx_example(curanddx_examples "cuRANDDx.example.mrg_two_distributions_thread_api" 02_thread_api/mrg_two_distributions_thread_api.cu)

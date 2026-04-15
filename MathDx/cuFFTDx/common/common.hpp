@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -195,17 +195,6 @@ namespace example {
     };
 
     struct cufftdx_enable_example_sm {
-        #if defined(CUFFTDX_EXAMPLE_ENABLE_SM_70)
-        static constexpr bool sm_70 = true;
-        #else
-        static constexpr bool sm_70 = false;
-        #endif
-
-        #if defined(CUFFTDX_EXAMPLE_ENABLE_SM_72)
-        static constexpr bool sm_72 = true;
-        #else
-        static constexpr bool sm_72 = false;
-        #endif
 
         #if defined(CUFFTDX_EXAMPLE_ENABLE_SM_75)
         static constexpr bool sm_75 = true;
@@ -249,12 +238,6 @@ namespace example {
         static constexpr bool sm_100 = false;
         #endif
 
-        #if defined(CUFFTDX_EXAMPLE_ENABLE_SM_101)
-        static constexpr bool sm_101 = true;
-        #else
-        static constexpr bool sm_101 = false;
-        #endif
-
         #if defined(CUFFTDX_EXAMPLE_ENABLE_SM_103)
         static constexpr bool sm_103 = true;
         #else
@@ -284,12 +267,6 @@ namespace example {
     void print_supported_sm(unsigned cuda_device_arch) {
         auto stream = std::stringstream();
 
-        if constexpr (EnableSM::sm_70) {
-            stream << "- SM 700" << std::endl;
-        }
-        if constexpr (EnableSM::sm_72) {
-            stream << "- SM 720" << std::endl;
-        }
         if constexpr (EnableSM::sm_75) {
             stream << "- SM 750" << std::endl;
         }
@@ -310,9 +287,6 @@ namespace example {
         }
         if constexpr (EnableSM::sm_100) {
             stream << "- SM 1000" << std::endl;
-        }
-        if constexpr (EnableSM::sm_101) {
-            stream << "- SM 1010" << std::endl;
         }
         if constexpr (EnableSM::sm_103) {
             stream << "- SM 1030" << std::endl;
@@ -339,12 +313,6 @@ namespace example {
         switch (cuda_device_arch) {
 // If examples are compiled via Makefile all cases are enabled, if via CMake only the SMs
 // that are part of CUFFTDX_TARGET_ARCHS/CUFFTDX_CUDA_ARCHITECTURES are enabled.
-#if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_70)
-            case 700: Functor<700>()(); return 0;
-#endif
-#if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_72)
-            case 720: Functor<720>()(); return 0;
-#endif
 #if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_75)
             case 750: Functor<750>()(); return 0;
 #endif
@@ -365,9 +333,6 @@ namespace example {
 #endif
 #if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_100)
             case 1000: Functor<1000>()(); return 0;
-#endif
-#if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_101)
-            case 1010: Functor<1010>()(); return 0;
 #endif
 #if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_103)
             case 1030: Functor<1030>()(); return 0;

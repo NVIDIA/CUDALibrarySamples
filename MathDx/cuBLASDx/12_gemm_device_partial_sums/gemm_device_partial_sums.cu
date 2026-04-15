@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,17 +35,16 @@ template<class BLAS,
          class BValueType,
          class Beta,
          class CValueType>
-__launch_bounds__(BLAS::max_threads_per_block, 1)
-__global__ void gemm_kernel(GEMMShape  const  gemm_shape,
-                            GEMMArr    const  gemm_arr,
-                            GEMMLD     const  gemm_ld,
-                            Alpha      const  alpha,
-                            AValueType const* a,
-                            BValueType const* b,
-                            Beta       const  beta,
-                            CValueType      * c) {
+__launch_bounds__(BLAS::max_threads_per_block, 1) __global__ void gemm_kernel(GEMMShape const   gemm_shape,
+                                                                              GEMMArr const     gemm_arr,
+                                                                              GEMMLD const      gemm_ld,
+                                                                              Alpha const       alpha,
+                                                                              AValueType const* a,
+                                                                              BValueType const* b,
+                                                                              Beta const        beta,
+                                                                              CValueType*       c) {
 
-    extern __shared__ __align__(16) char smem[];
+    extern __shared__ __align__(16) cublasdx::byte smem[];
 
     using alignment = cublasdx::alignment_of<BLAS>;
 
@@ -53,29 +52,31 @@ __global__ void gemm_kernel(GEMMShape  const  gemm_shape,
     // 1. PREPARE GLOBAL MEMORY TENSORS
 
     // Create tensors for global A / B / C corresponding to set MNK, arrangement and LDs
-    const auto [m, n, k] = gemm_shape;
+    const auto [m, n, k]       = gemm_shape;
     const auto [lda, ldb, ldc] = gemm_ld;
-    auto global_a = cublasdx::make_gmem_tensor<cute::get<0>(gemm_arr)>(a, m, k, lda);
-    auto global_b = cublasdx::make_gmem_tensor<cute::get<1>(gemm_arr)>(b, k, n, ldb);
-    auto global_c = cublasdx::make_gmem_tensor<cute::get<2>(gemm_arr)>(c, m, n, ldc);
+    auto global_a              = cublasdx::make_gmem_tensor<cute::get<0>(gemm_arr)>(a, m, k, lda);
+    auto global_b              = cublasdx::make_gmem_tensor<cute::get<1>(gemm_arr)>(b, k, n, ldb);
+    auto global_c              = cublasdx::make_gmem_tensor<cute::get<2>(gemm_arr)>(c, m, n, ldc);
 
     // Get tile row of A, tile col of B and tile of C
     const auto tile_slice_a_gmem = cublasdx::get_tile_row(global_a, BLAS::a_shape, blockIdx.x);
     const auto tile_slice_b_gmem = cublasdx::get_tile_col(global_b, BLAS::b_shape, blockIdx.y);
-    auto tile_c_gmem = cublasdx::get_tile(global_c, BLAS::c_shape, blockIdx.x, blockIdx.y);
+    auto       tile_c_gmem       = cublasdx::get_tile(global_c, BLAS::c_shape, blockIdx.x, blockIdx.y);
 
     // ================================
     // 2. PREPARE SHARED MEMORY TENSORS
 
     // Slice shared memory into tensors for proper alignment in 2-stage pipelining
     auto [s_a, s_b, s_a_n, s_b_n] =
-        cublasdx::shared_memory::slice<AValueType, BValueType, AValueType, BValueType>(
-            smem,
-            cublasdx::alignment_of_v_a<BLAS>, BLAS::suggest_layout_smem_a(),
-            cublasdx::alignment_of_v_b<BLAS>, BLAS::suggest_layout_smem_b(),
-            cublasdx::alignment_of_v_a<BLAS>, BLAS::suggest_layout_smem_a(),
-            cublasdx::alignment_of_v_b<BLAS>, BLAS::suggest_layout_smem_b()
-        );
+        cublasdx::shared_memory::slice<AValueType, BValueType, AValueType, BValueType>(smem,
+                                                                                       cublasdx::alignment_of_v_a<BLAS>,
+                                                                                       BLAS::suggest_layout_smem_a(),
+                                                                                       cublasdx::alignment_of_v_b<BLAS>,
+                                                                                       BLAS::suggest_layout_smem_b(),
+                                                                                       cublasdx::alignment_of_v_a<BLAS>,
+                                                                                       BLAS::suggest_layout_smem_a(),
+                                                                                       cublasdx::alignment_of_v_b<BLAS>,
+                                                                                       BLAS::suggest_layout_smem_b());
 
     // ==================================
     // 3. PREPARE 2-STAGE MEMORY PIPELINE
@@ -84,13 +85,11 @@ __global__ void gemm_kernel(GEMMShape  const  gemm_shape,
     // GEMM stages, we can just use it for iteration
     const auto k_stages = cute::get<2>(cute::shape(tile_slice_a_gmem.layout()));
 
-    auto get_tile_from_slice = [](auto& slice, auto index) {
-        return slice(cublasdx::slice, cublasdx::slice, index);
-    };
+    auto get_tile_from_slice = [](auto& slice, auto index) { return slice(cublasdx::slice, cublasdx::slice, index); };
 
     // Schedule first stage into memory pipeline queue
     // cute::Int<X> is a static integer similar to std::integral_constant
-    constexpr auto static_first_stage_index = cute::Int<0>{};
+    constexpr auto static_first_stage_index = cute::Int<0> {};
     cublasdx::copy<BLAS, alignment::a>(get_tile_from_slice(tile_slice_a_gmem, static_first_stage_index), s_a);
     cublasdx::copy<BLAS, alignment::b>(get_tile_from_slice(tile_slice_b_gmem, static_first_stage_index), s_b);
 
@@ -103,18 +102,18 @@ __global__ void gemm_kernel(GEMMShape  const  gemm_shape,
     auto c_frag_accumulator = cublasdx::make_fragment_like<CValueType>(accumulator.make_empty_fragment());
     cublasdx::clear(c_frag_accumulator);
 
-    #pragma unroll 1
-    for(int stage = 0; stage < k_stages; stage += AccumulationIterations) {
-        // Inner loop for accumulating partial sums (fast accumulator is cleared every AccumulationIterations)
-        #pragma unroll 1
-        for(int iter = 0; iter < AccumulationIterations; ++iter) {
+#pragma unroll 1
+    for (int stage = 0; stage < k_stages; stage += AccumulationIterations) {
+// Inner loop for accumulating partial sums (fast accumulator is cleared every AccumulationIterations)
+#pragma unroll 1
+        for (int iter = 0; iter < AccumulationIterations; ++iter) {
             const auto next_stage = stage + iter + 1;
 
             // Wait for previous stage
             cublasdx::copy_wait();
 
             // Load next stage of A and B
-            if(next_stage < k_stages) {
+            if (next_stage < k_stages) {
                 cublasdx::copy<BLAS, alignment::a>(get_tile_from_slice(tile_slice_a_gmem, next_stage), s_a_n);
                 cublasdx::copy<BLAS, alignment::b>(get_tile_from_slice(tile_slice_b_gmem, next_stage), s_b_n);
             }
@@ -128,7 +127,8 @@ __global__ void gemm_kernel(GEMMShape  const  gemm_shape,
         }
 
         // Accumulate partial sums in higher precision
-        cublasdx::transform_fragment(accumulator.get_results(), c_frag_accumulator, c_frag_accumulator, [](auto a, auto b) { return a + b; } );
+        cublasdx::transform_fragment(
+            accumulator.get_results(), c_frag_accumulator, c_frag_accumulator, [](auto a, auto b) { return a + b; });
 
         // Clear fast accumulator for next iteration
         accumulator.clear();
@@ -171,29 +171,40 @@ auto measure_cublasdx(GEMMShape         gemm_shape,
     std::vector<CValueType> results(m * n);
 
     std::cout << "tile_m, tile_n, tile_k: " << tile_m << ", " << tile_n << ", " << tile_k << std::endl;
-    std::cout << "Alignment: " << cublasdx::alignment_of<BLAS>::a << ", " << cublasdx::alignment_of<BLAS>::b << ", " << cublasdx::alignment_of<BLAS>::c << std::endl;
-    std::cout << "tile_lda, tile_ldb, tile_ldc: " << BLAS::lda << ", " << BLAS::ldb << ", " << BLAS::ldc << std::endl;
+    std::cout << "Alignment: " << cublasdx::alignment_of<BLAS>::a << ", " << cublasdx::alignment_of<BLAS>::b << ", "
+              << cublasdx::alignment_of<BLAS>::c << std::endl;
     std::cout << "block_size: " << BLAS::max_threads_per_block << std::endl;
 
-    constexpr bool reverse_block_coord = (cute::get<0>(gemm_arr) == cublasdx::row_major) and
-                                         (cute::get<1>(gemm_arr) == cublasdx::row_major);
+    constexpr bool reverse_block_coord =
+        (cute::get<0>(gemm_arr) == cublasdx::row_major) and (cute::get<1>(gemm_arr) == cublasdx::row_major);
 
-    dim3 grid_dim = cute::conditional_return<reverse_block_coord>(dim3{n / tile_n, m / tile_m, 1}, dim3{(m / tile_m), (n / tile_n), 1});
+    dim3 grid_dim = cute::conditional_return<reverse_block_coord>(dim3 {n / tile_n, m / tile_m, 1},
+                                                                  dim3 {(m / tile_m), (n / tile_n), 1});
 
     // Increase max dynamic shared memory for the kernel if needed.
     auto shared_memory_size =
         cublasdx::make_shared_storage_calculator()
-        .add(cublasdx::alignment_of_v_a<BLAS>, sizeof(AValueType), BLAS::suggest_layout_smem_a())
-        .add(cublasdx::alignment_of_v_b<BLAS>, sizeof(BValueType), BLAS::suggest_layout_smem_b())
-        .add(cublasdx::alignment_of_v_a<BLAS>, sizeof(AValueType), BLAS::suggest_layout_smem_a())
-        .add(cublasdx::alignment_of_v_b<BLAS>, sizeof(BValueType), BLAS::suggest_layout_smem_b())
-        .get();
+            .add(cublasdx::alignment_of_v_a<BLAS>, sizeof(AValueType), BLAS::suggest_layout_smem_a())
+            .add(cublasdx::alignment_of_v_b<BLAS>, sizeof(BValueType), BLAS::suggest_layout_smem_b())
+            .add(cublasdx::alignment_of_v_a<BLAS>, sizeof(AValueType), BLAS::suggest_layout_smem_a())
+            .add(cublasdx::alignment_of_v_b<BLAS>, sizeof(BValueType), BLAS::suggest_layout_smem_b())
+            .get();
 
-    auto kernel = gemm_kernel<BLAS, AccumulationIterations, GEMMShape, GEMMArr, GEMMLD, Alpha, AValueType, BValueType, Beta, CValueType>;
+    auto kernel = gemm_kernel<BLAS,
+                              AccumulationIterations,
+                              GEMMShape,
+                              GEMMArr,
+                              GEMMLD,
+                              Alpha,
+                              AValueType,
+                              BValueType,
+                              Beta,
+                              CValueType>;
     CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_memory_size));
 
     auto run_cublasdx_gemm = [&](cudaStream_t str) {
-        kernel<<<grid_dim, BLAS::block_dim, shared_memory_size, str>>>(gemm_shape, gemm_arr, gemm_ld, alpha, a, b, beta, c);
+        kernel<<<grid_dim, BLAS::block_dim, shared_memory_size, str>>>(
+            gemm_shape, gemm_arr, gemm_ld, alpha, a, b, beta, c);
     };
 
     // Perform computations with cuBLASDx BLAS operator.
@@ -228,10 +239,10 @@ int gemm_device_partial_sums() {
     // - C matrix is M x N
 
     // A matrix which is small but deep, a lot of roundings will be needed
-    const auto m = 768; // Global M GEMM Size
-    const auto n = 768; // Global N GEMM Size
-    const auto k = 8192; // Global K GEMM Size
-    auto global_shape = cute::make_tuple(m, n, k);
+    const auto m            = 768;  // Global M GEMM Size
+    const auto n            = 768;  // Global N GEMM Size
+    const auto k            = 8192; // Global K GEMM Size
+    auto       global_shape = cute::make_tuple(m, n, k);
 
     // Compute precision (use Tensor Cores of this precision)
     // and cuBLAS input precision
@@ -247,7 +258,7 @@ int gemm_device_partial_sums() {
     // What should be the interval for accumulating in higher precision
     constexpr int partial_sum_iterations = 64;
 
-    if(k % partial_sum_iterations != 0) {
+    if (k % partial_sum_iterations != 0) {
         std::cerr << "K must be divisible by partial_sum_iterations" << std::endl;
         return 1;
     }
@@ -276,11 +287,16 @@ int gemm_device_partial_sums() {
     // - precision
     // - type (real / complex)
     // this will be either precision or cublasdx::complex<precision>
-    using a_compute_value_type = cute::conditional_t<type == cublasdx::type::real, a_compute_precision, cublasdx::complex<a_compute_precision>>;
-    using b_compute_value_type = cute::conditional_t<type == cublasdx::type::real, b_compute_precision, cublasdx::complex<b_compute_precision>>;
-    using c_compute_value_type = cute::conditional_t<type == cublasdx::type::real, c_compute_precision, cublasdx::complex<c_compute_precision>>;
+    using a_compute_value_type =
+        cute::conditional_t<type == cublasdx::type::real, a_compute_precision, cublasdx::complex<a_compute_precision>>;
+    using b_compute_value_type =
+        cute::conditional_t<type == cublasdx::type::real, b_compute_precision, cublasdx::complex<b_compute_precision>>;
+    using c_compute_value_type =
+        cute::conditional_t<type == cublasdx::type::real, c_compute_precision, cublasdx::complex<c_compute_precision>>;
 
-    using c_accumulation_value_type = cute::conditional_t<type == cublasdx::type::real, c_accumulation_precision, cublasdx::complex<c_accumulation_precision>>;
+    using c_accumulation_value_type = cute::conditional_t<type == cublasdx::type::real,
+                                                          c_accumulation_precision,
+                                                          cublasdx::complex<c_accumulation_precision>>;
 
     // Scalar multipliers
     // C = alpha * A * B + beta * C
@@ -318,7 +334,7 @@ int gemm_device_partial_sums() {
     // Maximal alignment to be used for shared memory data.
     // Effectively this limits maximal vectorization level
     // for loads and stores.
-    constexpr unsigned int maximal_alignment = 64;
+    constexpr unsigned int maximal_alignment  = 64;
     constexpr unsigned int cublasdx_alignment = maximal_alignment;
 
     // ================================
@@ -326,7 +342,7 @@ int gemm_device_partial_sums() {
     // ================================
 
     const bool divisible = (m % tile_m == 0 and n % tile_n == 0 and k % tile_k == 0);
-    if(not divisible) {
+    if (not divisible) {
         std::cerr << "M, N, K dimensions must be divisible by tile_m, tile_n, tile_k" << std::endl;
         return 1;
     }
@@ -338,23 +354,20 @@ int gemm_device_partial_sums() {
     // Use tuples to avoid passing 20 arguments to a function
     constexpr auto global_arrangement = cute::make_tuple(
         // These must be passed as integral constants to properly dispatch static striding
-        std::integral_constant<cublasdx::arrangement, global_arrangement_a>{},
-        std::integral_constant<cublasdx::arrangement, global_arrangement_b>{},
-        std::integral_constant<cublasdx::arrangement, global_arrangement_c>{}
-    );
+        std::integral_constant<cublasdx::arrangement, global_arrangement_a> {},
+        std::integral_constant<cublasdx::arrangement, global_arrangement_b> {},
+        std::integral_constant<cublasdx::arrangement, global_arrangement_c> {});
 
-    const auto global_ld = cute::make_tuple(
-        global_lda, global_ldb, global_ldc
-    );
+    const auto global_ld = cute::make_tuple(global_lda, global_ldb, global_ldc);
 
     // Test implementation
-    a_io_value_type *a_cublasdx = nullptr;
-    b_io_value_type *b_cublasdx = nullptr;
-    c_io_value_type *c_cublasdx = nullptr;
+    a_io_value_type* a_cublasdx = nullptr;
+    b_io_value_type* b_cublasdx = nullptr;
+    c_io_value_type* c_cublasdx = nullptr;
 
-    a_compute_value_type *a_cublas = nullptr;
-    b_compute_value_type *b_cublas = nullptr;
-    c_compute_value_type *c_cublas = nullptr;
+    a_compute_value_type* a_cublas = nullptr;
+    b_compute_value_type* b_cublas = nullptr;
+    c_compute_value_type* c_cublas = nullptr;
 
     // Use nullptr tensors to make it easier to calculate memory requirements
     auto global_a = cublasdx::make_gmem_tensor<cute::get<0>(global_arrangement)>(a_cublas, m, k, global_lda);
@@ -362,13 +375,13 @@ int gemm_device_partial_sums() {
     auto global_c = cublasdx::make_gmem_tensor<cute::get<2>(global_arrangement)>(c_cublas, m, n, global_ldc);
 
     CUDA_CHECK_AND_EXIT(cudaMalloc(&a_cublasdx, cublasdx::cosize(global_a.layout()) * sizeof(a_io_value_type)));
-    CUDA_CHECK_AND_EXIT(cudaMalloc(&a_cublas,   cublasdx::cosize(global_a.layout()) * sizeof(a_compute_value_type)));
+    CUDA_CHECK_AND_EXIT(cudaMalloc(&a_cublas, cublasdx::cosize(global_a.layout()) * sizeof(a_compute_value_type)));
 
     CUDA_CHECK_AND_EXIT(cudaMalloc(&b_cublasdx, cublasdx::cosize(global_b.layout()) * sizeof(b_io_value_type)));
-    CUDA_CHECK_AND_EXIT(cudaMalloc(&b_cublas,   cublasdx::cosize(global_b.layout()) * sizeof(b_compute_value_type)));
+    CUDA_CHECK_AND_EXIT(cudaMalloc(&b_cublas, cublasdx::cosize(global_b.layout()) * sizeof(b_compute_value_type)));
 
     CUDA_CHECK_AND_EXIT(cudaMalloc(&c_cublasdx, cublasdx::cosize(global_c.layout()) * sizeof(c_io_value_type)));
-    CUDA_CHECK_AND_EXIT(cudaMalloc(&c_cublas,   cublasdx::cosize(global_c.layout()) * sizeof(c_compute_value_type)));
+    CUDA_CHECK_AND_EXIT(cudaMalloc(&c_cublas, cublasdx::cosize(global_c.layout()) * sizeof(c_compute_value_type)));
 
     // Fill the A, B, C matrices with random values.
     {
@@ -385,13 +398,19 @@ int gemm_device_partial_sums() {
         static_assert(std::is_convertible_v<c_io_value_type, c_compute_value_type>);
         auto host_c_compute = std::vector<c_compute_value_type>(host_c_io.begin(), host_c_io.end());
 
-        CUDA_CHECK_AND_EXIT(cudaMemcpy(a_cublasdx, host_a_io.data(), m * k * sizeof(a_io_value_type), cudaMemcpyHostToDevice));
-        CUDA_CHECK_AND_EXIT(cudaMemcpy(b_cublasdx, host_b_io.data(), k * n * sizeof(b_io_value_type), cudaMemcpyHostToDevice));
-        CUDA_CHECK_AND_EXIT(cudaMemcpy(c_cublasdx, host_c_io.data(), m * n * sizeof(c_io_value_type), cudaMemcpyHostToDevice));
+        CUDA_CHECK_AND_EXIT(
+            cudaMemcpy(a_cublasdx, host_a_io.data(), m * k * sizeof(a_io_value_type), cudaMemcpyHostToDevice));
+        CUDA_CHECK_AND_EXIT(
+            cudaMemcpy(b_cublasdx, host_b_io.data(), k * n * sizeof(b_io_value_type), cudaMemcpyHostToDevice));
+        CUDA_CHECK_AND_EXIT(
+            cudaMemcpy(c_cublasdx, host_c_io.data(), m * n * sizeof(c_io_value_type), cudaMemcpyHostToDevice));
 
-        CUDA_CHECK_AND_EXIT(cudaMemcpy(a_cublas, host_a_compute.data(), m * k * sizeof(a_compute_value_type), cudaMemcpyHostToDevice));
-        CUDA_CHECK_AND_EXIT(cudaMemcpy(b_cublas, host_b_compute.data(), k * n * sizeof(b_compute_value_type), cudaMemcpyHostToDevice));
-        CUDA_CHECK_AND_EXIT(cudaMemcpy(c_cublas, host_c_compute.data(), m * n * sizeof(c_compute_value_type), cudaMemcpyHostToDevice));
+        CUDA_CHECK_AND_EXIT(
+            cudaMemcpy(a_cublas, host_a_compute.data(), m * k * sizeof(a_compute_value_type), cudaMemcpyHostToDevice));
+        CUDA_CHECK_AND_EXIT(
+            cudaMemcpy(b_cublas, host_b_compute.data(), k * n * sizeof(b_compute_value_type), cudaMemcpyHostToDevice));
+        CUDA_CHECK_AND_EXIT(
+            cudaMemcpy(c_cublas, host_c_compute.data(), m * n * sizeof(c_compute_value_type), cudaMemcpyHostToDevice));
         // destroy host vectors
     }
 
@@ -413,18 +432,17 @@ int gemm_device_partial_sums() {
     // Execute cuBLASDx and cuBLASLt
     // =============================
 
-    auto host_dx_results =
-        measure_cublasdx<BLAS, partial_sum_iterations>(global_shape, global_arrangement, global_ld, alpha, a_cublasdx, b_cublasdx, beta, c_cublasdx, stream);
+    auto host_dx_results = measure_cublasdx<BLAS, partial_sum_iterations>(
+        global_shape, global_arrangement, global_ld, alpha, a_cublasdx, b_cublasdx, beta, c_cublasdx, stream);
 
     // Measure cuBLAS performance.
-    auto host_blas_results =
-        example::cublaslt_runner<a_compute_value_type, b_compute_value_type, c_compute_value_type>(global_shape, global_arrangement, global_ld)
-            .execute_with_results(alpha, a_cublas, b_cublas, beta, c_cublas, stream);
+    auto host_blas_results = example::cublaslt_runner<a_compute_value_type, b_compute_value_type, c_compute_value_type>(
+                                 global_shape, global_arrangement, global_ld)
+                                 .execute_with_results(alpha, a_cublas, b_cublas, beta, c_cublas, stream);
 
     // Write performance data.
     using cublasdx::size_of;
-    std::cout << "m, n, k: " << m << ", " << n << ", " << k
-              << std::endl;
+    std::cout << "m, n, k: " << m << ", " << n << ", " << k << std::endl;
     std::cout << "Compute Type A: " << example::type_string<a_compute_value_type>() << std::endl;
     std::cout << "Compute Type B: " << example::type_string<b_compute_value_type>() << std::endl;
     std::cout << "Compute Type C: " << example::type_string<c_compute_value_type>() << std::endl;
@@ -442,7 +460,7 @@ int gemm_device_partial_sums() {
     auto error = example::calculate_error(host_dx_results, host_blas_results);
     std::cout << "Error = " << error << "\n";
 
-    if(example::is_error_acceptable<a_compute_value_type, b_compute_value_type, c_compute_value_type>(error)) {
+    if (example::is_error_acceptable<a_compute_value_type, b_compute_value_type, c_compute_value_type>(error)) {
         std::cout << "Success!\n";
     } else {
         std::cout << "Failure!\n";
@@ -469,5 +487,5 @@ struct gemm_device_partial_sums_functor {
 };
 
 int main() {
-    return example::sm_runner(gemm_device_partial_sums_functor{});
+    return example::sm_runner(gemm_device_partial_sums_functor {});
 }

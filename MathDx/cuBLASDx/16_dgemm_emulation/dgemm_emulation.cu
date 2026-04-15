@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -155,20 +155,22 @@ auto cublasdx_dgemm_emulation(double                                alpha,
     // Each slice represents a portion of the original double precision values
     example::device_vector<slice_value_type> d_slice_a(m * k * Params::slices);
 
-    auto const shape_slice_a  = cuda::std::make_tuple(m, k, cuda::std::integral_constant<int, Params::slices> {});
-    auto const stride_slice_a = example::conditional_return<cuda::std::get<0>(gemm_arrangement) == cublasdx::col_major>(
-        cuda::std::make_tuple(cuda::std::integral_constant<int, 1> {}, m, m * k),
-        cuda::std::make_tuple(k, cuda::std::integral_constant<int, 1> {}, m * k));
+    auto const shape_slice_a = cuda::std::make_tuple(m, k, cuda::std::integral_constant<int, Params::slices> {});
+    auto const stride_slice_a =
+        example::conditional_return < cuda::std::get<0>(gemm_arrangement) ==
+        cublasdx::col_major > (cuda::std::make_tuple(cuda::std::integral_constant<int, 1> {}, m, m * k),
+                               cuda::std::make_tuple(k, cuda::std::integral_constant<int, 1> {}, m * k));
 
     auto d_tensor_slice_a = example::make_gmem_tensor_from_tuples(d_slice_a.data(), shape_slice_a, stride_slice_a);
 
     // Create slice tensor B: [slices, k, n] - stores int8_t slices of matrix B
     example::device_vector<slice_value_type> d_slice_b(k * n * Params::slices);
 
-    auto const shape_slice_b  = cuda::std::make_tuple(k, n, cuda::std::integral_constant<int, Params::slices> {});
-    auto const stride_slice_b = example::conditional_return<cuda::std::get<1>(gemm_arrangement) == cublasdx::col_major>(
-        cuda::std::make_tuple(cuda::std::integral_constant<int, 1> {}, k, k * n),
-        cuda::std::make_tuple(n, cuda::std::integral_constant<int, 1> {}, k * n));
+    auto const shape_slice_b = cuda::std::make_tuple(k, n, cuda::std::integral_constant<int, Params::slices> {});
+    auto const stride_slice_b =
+        example::conditional_return < cuda::std::get<1>(gemm_arrangement) ==
+        cublasdx::col_major > (cuda::std::make_tuple(cuda::std::integral_constant<int, 1> {}, k, k * n),
+                               cuda::std::make_tuple(n, cuda::std::integral_constant<int, 1> {}, k * n));
 
     auto d_tensor_slice_b = example::make_gmem_tensor_from_tuples(d_slice_b.data(), shape_slice_b, stride_slice_b);
 
@@ -509,4 +511,3 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
 
     return example::sm_runner(dgemm_emulation_functor<params> {}, problems, debug);
 }
-

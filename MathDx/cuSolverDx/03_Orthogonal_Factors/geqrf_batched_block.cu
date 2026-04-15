@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,11 +13,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- */
+ */ 
 
 #include <cusolverdx.hpp>
 
-#include "../common/common.hpp"
 #include "../common/cudart.hpp"
 #include "../common/error_checking.hpp"
 #include "../common/random.hpp"
@@ -26,8 +25,11 @@
 #include "../common/print.hpp"
 #include "../common/cublas_reference_geqrf_gels.hpp"
 
-// This example demonstrates how to use cuSolverDx API to compute the QR factorization on a batched m x n matrix A.
+// This example demonstrates how to use cuSolverDx API to compute the QR factorization on a batched m x n matrix A with Block execution.
 // The results are compared with the reference values obtained with cuBLAS batched API.
+//
+// Note that if M <= N, cuSolverDx GEQRF skips computing the last reflector and tau[min(m, n) - 1] is set to 0
+// This could lead to different results from cuSolver reference for complex data type
 
 template<class Solver, unsigned int BatchesPerBlock, typename DataType = typename Solver::a_data_type>
 __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(DataType* A, const int lda_gmem, DataType* tau, const unsigned batches) {
@@ -39,12 +41,10 @@ __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(DataType
     constexpr auto lda_smem              = Solver::lda;
     constexpr auto one_batch_size_a_smem = (cusolverdx::arrangement_of_v_a<Solver> == cusolverdx::col_major) ? lda_smem * n : m * lda_smem;
 
-    extern __shared__ __align__(16) unsigned char shared_mem[];
+    extern __shared__ __align__(16) cusolverdx::byte shared_mem[];
     // Slice shared memory into pointers
-    auto [As, tau_s] = cusolverdx::shared_memory::slice<DataType, DataType>(
-        shared_mem,
-        alignof(DataType), one_batch_size_a_smem * BatchesPerBlock,
-        alignof(DataType)  // the size (number of elements) may be omitted for the last pointer
+    auto [As, tau_s] = cusolverdx::shared_memory::slice<DataType, DataType>(shared_mem, alignof(DataType), one_batch_size_a_smem * BatchesPerBlock,
+            alignof(DataType) // the size (number of elements) may be omitted for the last pointer
     );
 
     const auto batch_idx = blockIdx.x * BatchesPerBlock;
@@ -66,14 +66,14 @@ __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(DataType
     for (int i = thread_id; i < min(m, n) * BatchesPerBlock; i += Solver::max_threads_per_block) {
         tau_g[i] = tau_s[i];
     }
-    
 }
 
 template<int Arch>
-int geqrf_batched() {
+int geqrf_batched_block() {
 
     using namespace cusolverdx;
-    using Base   = decltype(Size<16, 20>() + Precision<float>() + Type<type::real>() + Function<geqrf>() + Arrangement<arrangement::row_major>() + SM<Arch>() + Block());
+    using Base   = decltype(Size<16, 20>() + Precision<float>() + Type<type::real>() + Function<geqrf>() + Arrangement<arrangement::row_major>() + SM<Arch>() +
+                          Block());
     using Solver = decltype(Base() + BatchesPerBlock<Base::suggested_batches_per_block>());
 
     using data_type      = typename Solver::a_data_type;
@@ -84,8 +84,8 @@ int geqrf_batched() {
     std::cout << "Suggested BlockDim = " << Solver::suggested_block_dim.x << std::endl;
     std::cout << "BlockDim Used = " << Solver::block_dim.x << std::endl;
 
-    constexpr auto m = Solver::m_size;
-    constexpr auto n = Solver::n_size;
+    constexpr auto m      = Solver::m_size;
+    constexpr auto n      = Solver::n_size;
     constexpr auto min_mn = m > n ? n : m;
 
     constexpr bool is_col_maj_a = arrangement_of_v_a<Solver> == arrangement::col_major;
@@ -178,9 +178,9 @@ int geqrf_batched() {
 }
 
 template<int Arch>
-struct geqrf_batched_functor {
-    int operator()() { return geqrf_batched<Arch>(); }
+struct geqrf_batched_block_functor {
+    int operator()() { return geqrf_batched_block<Arch>(); }
 };
 
 
-int main() { return common::run_example_with_sm<geqrf_batched_functor>(); }
+int main() { return common::run_example_with_sm<geqrf_batched_block_functor>(); }

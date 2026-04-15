@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -136,13 +136,18 @@ namespace example {
 
     template<class TA, class TB, class TC, typename ResT, typename RefT>
     bool check_error_custom(const std::vector<ResT>& results,
-                            const std::vector<RefT>& reference,
+                            const std::vector<RefT>& reference_original,
                             bool                     verbose = false,
                             bool                     print   = false) {
         [[maybe_unused]] constexpr bool is_floating = commondx::is_floating_point_v<RefT>;
         [[maybe_unused]] constexpr bool is_integral = commondx::is_integral_v<RefT>;
 
+        std::vector<RefT> reference = reference_original;
+
         auto ret = false;
+        std::transform(reference_original.cbegin(), reference_original.cend(), reference.begin(), [](auto val) {
+            return convert<RefT>(convert<TC>(val));
+        });
 
         if constexpr (is_floating) {
             double error = calculate_error(results, reference, verbose, print);
@@ -178,9 +183,9 @@ namespace example {
                      const std::vector<RefT>& reference,
                      bool                     verbose = false,
                      bool                     print   = false) {
-        using a_prec_t = typename cublasdx::precision_of<BLAS>::a_type;
-        using b_prec_t = typename cublasdx::precision_of<BLAS>::b_type;
-        using c_prec_t = typename cublasdx::precision_of<BLAS>::c_type;
+        using a_prec_t = typename BLAS::a_value_type;
+        using b_prec_t = typename BLAS::b_value_type;
+        using c_prec_t = typename BLAS::c_value_type;
         return check_error_custom<a_prec_t, b_prec_t, c_prec_t, ResT, RefT>(results, reference, verbose, print);
     }
 

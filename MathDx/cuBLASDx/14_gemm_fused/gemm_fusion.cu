@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -39,11 +39,11 @@ __launch_bounds__(BLAS1::max_threads_per_block) //
                      const ValueType* f,
                      ValueType*       output) {
     using value_type = ValueType;
-    extern __shared__ __align__(16) char smem[];
+    extern __shared__ __align__(16) cublasdx::byte smem[];
 
     static_assert(std::is_same_v<value_type, example::uniform_value_type_t<BLAS2>>,
                   "BLAS1 and BLAS2 must have the same type and precision");
-    static_assert((BLAS1::c_dim == BLAS2::a_dim), "The dimensions of C matrix are different in BLAS1 and BLAS2");
+    static_assert((BLAS1::c_shape == BLAS2::a_shape), "The shape of C matrix is different in BLAS1 and BLAS2");
 
     // Matrix C is the first in shared memory, because it's reused in the 2nd GEMM. Moreover,
     // matrices A and B might have different sizes than F and D.

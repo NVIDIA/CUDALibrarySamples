@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,7 +34,7 @@ __launch_bounds__(BLAS::max_threads_per_block) //
                      const ValueType  beta,
                      ValueType*       output) {
     using value_type = ValueType;
-    extern __shared__ __align__(16) char smem[];
+    extern __shared__ __align__(16) cublasdx::byte smem[];
 
     auto a_global_tensor = cublasdx::make_tensor(a, BLAS::get_layout_gmem_a());
     auto b_global_tensor = cublasdx::make_tensor(b, BLAS::get_layout_gmem_b());

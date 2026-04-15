@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -45,7 +45,7 @@ extern "C" __global__ void thread_fft_kernel(typename FFT::value_type *data)
     typename FFT::value_type thread_data[FFT::storage_size];
 
     // Load data from global memory to registers.
-    // thread_data should have all input data in order.
+    // thread_data should have all fft_data data in order.
     unsigned int index = threadIdx.x * FFT::elements_per_thread;
     for (size_t i = 0; i < FFT::elements_per_thread; i++) {
         thread_data[i] = data[index + i];
@@ -88,8 +88,7 @@ int main(int, char**) {
     // Prepare compilation options
     std::vector<const char*> opts = {
         "--std=c++17",
-        "--device-as-default-execution-space",
-        "-DCUFFTDX_DISABLE_CUTLASS_DEPENDENCY"
+        "--device-as-default-execution-space"
     };
     // Parse cuFFTDx include dirs
     std::vector<std::string> cufftdx_include_dirs = example::nvrtc::get_cufftdx_include_dirs();
@@ -112,11 +111,11 @@ int main(int, char**) {
         std::exit(1);
     }
 
-    // Obtain PTX from the program.
-    size_t ptx_size;
-    NVRTC_SAFE_CALL(nvrtcGetPTXSize(program, &ptx_size));
-    auto ptx = std::make_unique<char[]>(ptx_size);
-    NVRTC_SAFE_CALL(nvrtcGetPTX(program, ptx.get()));
+    // Obtain cubin from the program.
+    size_t cubin_size;
+    NVRTC_SAFE_CALL(nvrtcGetCUBINSize(program, &cubin_size));
+    auto cubin = std::make_unique<char[]>(cubin_size);
+    NVRTC_SAFE_CALL(nvrtcGetCUBIN(program, cubin.get()));
 
     // Destroy the program.
     NVRTC_SAFE_CALL(nvrtcDestroyProgram(&program));
@@ -133,24 +132,20 @@ int main(int, char**) {
     #else
         CU_CHECK_AND_EXIT(cuCtxCreate(&context, 0, cuDevice));
     #endif
-    CU_CHECK_AND_EXIT(cuModuleLoadDataEx(&module, ptx.get(), 0, 0, 0));
+    CU_CHECK_AND_EXIT(cuModuleLoadDataEx(&module, cubin.get(), 0, 0, 0));
     CU_CHECK_AND_EXIT(cuModuleGetFunction(&kernel, module, "thread_fft_kernel"));
 
     // Generate input for execution
-    std::vector<value_type> host_input(fft_size);
-    float                   i = 0.0f;
-    for (auto& v : host_input) {
-        v.x = i++;
-        v.y = 0;
+    value_type* fft_data;
+    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&fft_data, fft_size * sizeof(value_type)));
+
+    for(size_t i = 0; i < fft_size; i++) {
+        fft_data[i].x = float(i);
+        fft_data[i].y = 0;
     }
 
-    size_t fft_buffer_size = fft_size * sizeof(value_type);
-    void*  device_values;
-    CUDA_CHECK_AND_EXIT(cudaMalloc(&device_values, fft_buffer_size));
-    CUDA_CHECK_AND_EXIT(cudaMemcpy(device_values, host_input.data(), fft_buffer_size, cudaMemcpyHostToDevice));
-
     // Execute thread_fft_kernel
-    void* args[] = {&device_values};
+    void* args[] = {&fft_data};
     CU_CHECK_AND_EXIT(cuLaunchKernel(kernel,
                                        1, // number of blocks
                                        1,
@@ -164,22 +159,23 @@ int main(int, char**) {
                                        0));
     CU_CHECK_AND_EXIT(cuCtxSynchronize());
 
-    // Retrieve and print output.
-    std::vector<value_type> host_output(fft_size);
-    CUDA_CHECK_AND_EXIT(cudaMemcpy(host_output.data(), device_values, fft_buffer_size, cudaMemcpyDeviceToHost));
+    // Retrieve and print output
     for (size_t i = 0; i < fft_size; ++i) {
-        std::cout << i << ": (" << host_output[i].x << ", " << host_output[i].y << ")" << std::endl;
+        std::cout << i << ": (" << fft_data[i].x << ", " << fft_data[i].y << ")" << std::endl;
     }
 
-    // Release resources.
-    CUDA_CHECK_AND_EXIT(cudaFree(device_values));
-    CU_CHECK_AND_EXIT(cuModuleUnload(module));
-
-    double expected_value = (fft_size * (fft_size + 1)) / 2;
-    if ((host_output[0].x - expected_value) > 0.01) {
+    // Validate results before destroying context
+    double expected_value = (fft_size * (fft_size - 1)) / 2;
+    if (std::abs(fft_data[0].x - expected_value) > 0.01) {
         std::cout << "Failed" << std::endl;
+        CUDA_CHECK_AND_EXIT(cudaFree(fft_data));
+        CU_CHECK_AND_EXIT(cuModuleUnload(module));
         return 1;
     }
     std::cout << "Success" << std::endl;
+
+    // Release resources
+    CUDA_CHECK_AND_EXIT(cudaFree(fft_data));
+    CU_CHECK_AND_EXIT(cuModuleUnload(module));
     return 0;
 }

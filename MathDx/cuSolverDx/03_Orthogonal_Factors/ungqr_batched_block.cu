@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,11 +13,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- */
+ */ 
 
 #include <cusolverdx.hpp>
 
-#include "../common/common.hpp"
 #include "../common/cudart.hpp"
 #include "../common/error_checking.hpp"
 #include "../common/random.hpp"
@@ -28,13 +27,13 @@
 
 // This example demonstrates how to use cuSolverDx API to generate matrix Q from QR factorization of matrix A.
 // The results are compared with the reference values obtained with cuSolver host API.
-// 
+//
 // UNGQR generates an M-by-N real/complex matrix Q with orthonormal columns,
 // which is defined as the first N columns of a product of K elementary
 // reflectors of order M:
-// 
+//
 // Q = H(0) * H(1) * ... * H(K-1)
-// 
+//
 // as returned by GEQRF.
 
 template<class Solver, unsigned int BatchesPerBlock, typename DataType = typename Solver::a_data_type>
@@ -43,13 +42,14 @@ __global__ __launch_bounds__(Solver::max_threads_per_block) void ungqr_kernel(Da
     constexpr auto n = Solver::n_size;
     constexpr auto k = Solver::k_size;
 
-    constexpr auto lda_smem = Solver::lda;
-    constexpr auto lda_gmem = (cusolverdx::arrangement_of_v_a<Solver> == cusolverdx::col_major) ? m : n;
+    constexpr auto lda_smem              = Solver::lda;
+    constexpr auto lda_gmem              = (cusolverdx::arrangement_of_v_a<Solver> == cusolverdx::col_major) ? m : n;
     constexpr auto one_batch_size_a_gmem = m * n;
     constexpr auto one_batch_size_a_smem = (cusolverdx::arrangement_of_v_a<Solver> == cusolverdx::col_major) ? lda_smem * n : m * lda_smem;
 
-    extern __shared__ char shared_mem[];
-    auto [As, taus] = cusolverdx::shared_memory::slice<DataType, DataType>(shared_mem, alignof(DataType), one_batch_size_a_smem * BatchesPerBlock, alignof(DataType));
+    extern __shared__ cusolverdx::byte shared_mem[];
+    auto [As, taus] =
+            cusolverdx::shared_memory::slice<DataType, DataType>(shared_mem, alignof(DataType), one_batch_size_a_smem * BatchesPerBlock, alignof(DataType));
 
     const auto batch_idx = blockIdx.x * BatchesPerBlock;
     if (batch_idx >= batches)
@@ -75,10 +75,11 @@ __global__ __launch_bounds__(Solver::max_threads_per_block) void ungqr_kernel(Da
 }
 
 template<int Arch>
-int ungqr_batched() {
+int ungqr_batched_block() {
 
     using namespace cusolverdx;
-    using Base   = decltype(Size<26, 25, 23>() + Precision<float>() + Type<type::complex>() + Function<ungqr>() + Arrangement<arrangement::row_major>() + SM<Arch>() + Block());
+    using Base   = decltype(Size<26, 25, 23>() + Precision<float>() + Type<type::complex>() + Function<ungqr>() + Arrangement<arrangement::row_major>() +
+                          SM<Arch>() + Block());
     using Solver = decltype(Base() + BatchesPerBlock<Base::suggested_batches_per_block>());
 
     using data_type      = typename Solver::a_data_type;
@@ -154,14 +155,7 @@ int ungqr_batched() {
     //=========================
 
     // Use cuSolver UNMQR reference implementation
-    bool ref_success = common::reference_cusolver_ungqr<data_type, cuda_data_type>(A,   
-                                                                                   tau, 
-                                                                                   m,   
-                                                                                   n,   
-                                                                                   k,   
-                                                                                   padded_batches,
-                                                                                   batches,
-                                                                                   is_col_maj_a);
+    bool ref_success = common::reference_cusolver_ungqr<data_type, cuda_data_type>(A, tau, m, n, k, padded_batches, batches, is_col_maj_a);
 
     if (!ref_success) {
         std::cout << "cuSolver reference computation failed" << std::endl;
@@ -187,8 +181,8 @@ int ungqr_batched() {
 }
 
 template<int Arch>
-struct ungqr_batched_functor {
-    int operator()() { return ungqr_batched<Arch>(); }
+struct ungqr_batched_block_functor {
+    int operator()() { return ungqr_batched_block<Arch>(); }
 };
 
-int main() { return common::run_example_with_sm<ungqr_batched_functor>(); }
+int main() { return common::run_example_with_sm<ungqr_batched_block_functor>(); }

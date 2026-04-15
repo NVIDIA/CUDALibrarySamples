@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,7 +16,7 @@
 cmake_minimum_required(VERSION 3.26)
 
 # cuFFTDx project
-project(cufftdx_examples VERSION 1.6.0 LANGUAGES CXX CUDA)
+project(cufftdx_examples VERSION 1.7.0 LANGUAGES CXX CUDA)
 
 # Project options
 option(USE_MATHDX_PACKAGE "Use mathDx package to find cuFFTDx" ON)
@@ -42,20 +42,23 @@ if(NOT TARGET cufftdx)
     if(USE_MATHDX_PACKAGE)
         message(STATUS "Using mathDx package to find cuFFTDx")
         # Find mathDx and cuFFTDx (mathDx's component)
-        # Default path: "/opt/nvidia/mathdx/25.12", path to mathDx can be passed cmake in mathdx_ROOT variable
+        # Default path: "/opt/nvidia/mathdx/*", path to mathDx can be passed cmake in mathdx_ROOT variable
         find_package(mathdx REQUIRED COMPONENTS cufftdx CONFIG
             PATHS
                 "${PROJECT_SOURCE_DIR}/../.." # example/cufftdx
                 "${PROJECT_SOURCE_DIR}/../../.." # include/cufftdx/example
-                "/opt/nvidia/mathdx/25.12/"
+                "/opt/nvidia/mathdx/*"
         )
     elseif(USE_CUFFTDX_PACKAGE)
         message(STATUS "Using cuFFTDx package to find cuFFTDx")
         # Find cuFFTDx
-        # Default path: "/opt/nvidia/mathdx/25.12/", path to cuFFTDx can be passed cmake in cufftdx_ROOT variable
-        find_package(cufftdx REQUIRED CONFIG PATHS "/opt/nvidia/mathdx/25.12/" "${PROJECT_SOURCE_DIR}/../../")
+        # Default path: "/opt/nvidia/mathdx/*/", path to cuFFTDx can be passed cmake in cufftdx_ROOT variable
+        find_package(cufftdx REQUIRED CONFIG PATHS "/opt/nvidia/mathdx/*/" "${PROJECT_SOURCE_DIR}/../../")
     else()
         message(FATAL_ERROR "No cuFFTDx package found")
+    endif()
+    if(cufftdx_VERSION VERSION_LESS cufftdx_examples_VERSION)
+        message(FATAL_ERROR "cuFFTDx version (${cufftdx_VERSION}) is less than required (${cufftdx_examples_VERSION})")
     endif()
 endif()
 
@@ -115,21 +118,6 @@ if(PROJECT_IS_TOP_LEVEL)
         # fixed in GCC13 https://gcc.gnu.org/bugzilla/show_bug.cgi?id=53431
         # but still not widely adopted
         set(CUFFTDX_CUDA_CXX_FLAGS "${CUFFTDX_CUDA_CXX_FLAGS} -Wno-unknown-pragmas")
-        # CUTLASS/CuTe workarounds
-        set(CUFFTDX_CUDA_CXX_FLAGS "${CUFFTDX_CUDA_CXX_FLAGS} -Wno-switch")
-        set(CUFFTDX_CUDA_CXX_FLAGS "${CUFFTDX_CUDA_CXX_FLAGS} -Wno-unused-but-set-parameter")
-        set(CUFFTDX_CUDA_CXX_FLAGS "${CUFFTDX_CUDA_CXX_FLAGS} -Wno-sign-compare")
-
-        if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12.0.0)
-            # Ignore NVCC warning #940-D: missing return statement at end of non-void function
-            # This happens in cuBLASDx test sources, not in cuBLASDx headers
-            set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --diag-suppress 940")
-            # Ignore NVCC warning warning #186-D: pointless comparison of unsigned integer with zero
-            # cutlass/include/cute/algorithm/gemm.hpp(658)
-            set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --diag-suppress 186")
-        endif()
-
-
     else()
         add_definitions(-D_CRT_SECURE_NO_WARNINGS)
         add_definitions(-D_CRT_NONSTDC_NO_WARNINGS)
@@ -157,12 +145,12 @@ if(PROJECT_IS_TOP_LEVEL)
 
     # Targeted CUDA Architectures, see https://cmake.org/cmake/help/latest/prop_tgt/CUDA_ARCHITECTURES.html#prop_tgt:CUDA_ARCHITECTURES
     set(CUFFTDX_CUDA_ARCHITECTURES 80-real CACHE
-        STRING "List of targeted cuFFTDx CUDA architectures, for example \"70-real;75-real;80\""
+        STRING "List of targeted cuFFTDx CUDA architectures, for example \"75-real;80\""
     )
     # Remove unsupported architectures
-    list(REMOVE_ITEM CUFFTDX_CUDA_ARCHITECTURES 30;32;35;37;50;52;53)
-    list(REMOVE_ITEM CUFFTDX_CUDA_ARCHITECTURES 30-real;32-real;35-real;37-real;50-real;52-real;53-real;)
-    list(REMOVE_ITEM CUFFTDX_CUDA_ARCHITECTURES 30-virtual;32-virtual;35-virtual;37-virtual;50-virtual;52-virtual;53-virtual)
+    list(REMOVE_ITEM CUFFTDX_CUDA_ARCHITECTURES 30;32;35;37;50;52;53;70;72)
+    list(REMOVE_ITEM CUFFTDX_CUDA_ARCHITECTURES 30-real;32-real;35-real;37-real;50-real;52-real;53-real;70-real;72-real)
+    list(REMOVE_ITEM CUFFTDX_CUDA_ARCHITECTURES 30-virtual;32-virtual;35-virtual;37-virtual;50-virtual;52-virtual;53-virtual;70-virtual;72-virtual)
     message(STATUS "Targeted cuFFTDx CUDA Architectures: ${CUFFTDX_CUDA_ARCHITECTURES}")
 
     # CUDA Architectures
@@ -204,7 +192,7 @@ endfunction()
 function(is_version_supported TARGET)
     string(FIND ${TARGET} "block_dim" BLOCK_DIM_EXAMPLE)
     if(${BLOCK_DIM_EXAMPLE} GREATER -1)
-        if(${CUDAToolkit_VERSION} VERSION_LESS "${CUFFTDX_CUFFT_MIN_VERSION}")
+        if(${CUDAToolkit_VERSION} VERSION_LESS "12.1")
             set(EXAMPLE_VERSION_SUPPORTED FALSE PARENT_SCOPE)
             return()
         endif()
@@ -428,7 +416,6 @@ function(add_cufftdx_nvrtc_example GROUP_TARGET EXAMPLE_SOURCES)
     target_compile_definitions(${EXAMPLE_TARGET}
         PRIVATE
             CUDA_INCLUDE_DIR="${CUFFTDX_CUDA_INCLUDE_DIRS}"
-            CUTLASS_INCLUDE_DIR="${cufftdx_cutlass_INCLUDE_DIR}"
             COMMONDX_INCLUDE_DIR="${cufftdx_commondx_INCLUDE_DIR}"
             CUFFTDX_INCLUDE_DIRS="${cufftdx_INCLUDE_DIRS}"
     )
@@ -450,8 +437,6 @@ function(add_cufftdx_nvrtc_example GROUP_TARGET EXAMPLE_SOURCES)
     # LTO example
     string(FIND ${EXAMPLE_NAME} "lto" LTO_EXAMPLE)
     if(${LTO_EXAMPLE} GREATER -1)
-        list(APPEND CMAKE_MODULE_PATH "${cufftdx_cufft_MODULE_PATH}")
-        find_package(cufft ${CUFFTDX_CUFFT_MIN_VERSION} REQUIRED)
         target_compile_definitions(${EXAMPLE_TARGET} PRIVATE CUFFTDX_ENABLE_CUFFT_DEPENDENCY) # To include cufftdx::utils::get_database_and_ltoir helper function
         target_compile_definitions(${EXAMPLE_TARGET} PRIVATE CUFFT_ENABLE_EXPERIMENTAL_API)
         target_link_libraries(${EXAMPLE_TARGET}
@@ -487,22 +472,39 @@ endfunction()
 # check_cufftdx_lto_support
 # ###############################################################
 function(check_cufftdx_lto_support RESULT)
-    set(${RESULT} TRUE PARENT_SCOPE)
-    if((CMAKE_CXX_COMPILER_ID STREQUAL "NVHPC") OR WIN32 OR (${CUDAToolkit_VERSION} VERSION_LESS "12.8.0"))
-        message(STATUS "cuFFTDx LTO support check - "
-                       "WIN32: ${WIN32} "
-                       "CMAKE_CXX_COMPILER_ID: ${CMAKE_CXX_COMPILER_ID} "
-                       "CUDAToolkit_VERSION: ${CUDAToolkit_VERSION}")
-        set(${RESULT} FALSE PARENT_SCOPE)
+    set(LTO_SUPPORTED TRUE)
+
+    # Check compiler and platform
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "NVHPC" OR WIN32)
+        message(STATUS "cuFFTDx LTO not supported - WIN32: ${WIN32}, Compiler: ${CMAKE_CXX_COMPILER_ID}")
+        set(LTO_SUPPORTED FALSE)
     endif()
-    foreach(CUDA_ARCH ${CUFFTDX_CUDA_ARCHITECTURES})
-        string(REPLACE "-" ";" CUDA_ARCH_LIST ${CUDA_ARCH})
-        list(GET CUDA_ARCH_LIST 0 ARCH)
-        if(${ARCH} EQUAL 101)
-            set(${RESULT} FALSE PARENT_SCOPE)
-            message(STATUS "cuFFTDx LTO CUDA_ARCH not supported: ${CUDA_ARCH} ${ARCH}")
+
+    # Check CUDA architecture
+    if(LTO_SUPPORTED)
+        foreach(CUDA_ARCH ${CUFFTDX_CUDA_ARCHITECTURES})
+            string(REPLACE "-" ";" CUDA_ARCH_LIST ${CUDA_ARCH})
+            list(GET CUDA_ARCH_LIST 0 ARCH)
+        endforeach()
+    endif()
+
+    # Check cuFFT version and CUDA compatibility
+    if(LTO_SUPPORTED)
+        list(APPEND CMAKE_MODULE_PATH "${cufftdx_cufft_MODULE_PATH}") # Path to Findcufft.cmake
+        find_package(cufft ${CUFFTDX_CUFFT_MIN_VERSION} QUIET)
+        if(NOT cufft_FOUND)
+            message(STATUS "cuFFTDx LTO requires cuFFT package (minimum version ${CUFFTDX_CUFFT_MIN_VERSION}) but it was not found")
+            set(LTO_SUPPORTED FALSE)
+        elseif(cufft_VERSION VERSION_LESS "12.3" AND CUDAToolkit_VERSION VERSION_LESS "12.8")
+            message(STATUS "cuFFTDx LTO not supported - cuFFT ${cufft_VERSION} requires CUDA >= 12.8 (found ${CUDAToolkit_VERSION})")
+            set(LTO_SUPPORTED FALSE)
+        elseif(cufft_VERSION VERSION_GREATER_EQUAL "12.3" AND CUDAToolkit_VERSION VERSION_LESS "13.0")
+            message(STATUS "cuFFTDx LTO not supported - cuFFT ${cufft_VERSION} requires CUDA >= 13.0 (found ${CUDAToolkit_VERSION})")
+            set(LTO_SUPPORTED FALSE)
         endif()
-    endforeach()
+    endif()
+
+    set(${RESULT} ${LTO_SUPPORTED} PARENT_SCOPE)
 endfunction()
 
 # ###############################################################
@@ -515,11 +517,12 @@ add_custom_target(cufftdx_examples)
 option(CUFFTDX_EXAMPLES_CUFFT_CALLBACK "Build cuFFTDx convolution_performance example with cuFFT callback" OFF)
 
 # CUFFTDX_EXAMPLES_LTO
-check_cufftdx_lto_support(CUFFTDX_LTO_SUPPORTED)
 option(CUFFTDX_EXAMPLES_LTO "Build cuFFTDx LTO examples" OFF)
-if(CUFFTDX_EXAMPLES_LTO AND NOT CUFFTDX_LTO_SUPPORTED)
-    message(WARNING "CUFFTDX_EXAMPLES_LTO requested but LTO is not supported. Disabling CUFFTDX_EXAMPLES_LTO.")
-    set(CUFFTDX_EXAMPLES_LTO OFF CACHE BOOL "Build cuFFTDx LTO examples" FORCE)
+if(CUFFTDX_EXAMPLES_LTO)
+    check_cufftdx_lto_support(CUFFTDX_LTO_SUPPORTED)
+    if(NOT CUFFTDX_LTO_SUPPORTED)
+        message(FATAL_ERROR "CUFFTDX_EXAMPLES_LTO requested but LTO is not supported. Set CUFFTDX_EXAMPLES_LTO to OFF or use a supported cuFFT or CUDA version to remove this error.")
+    endif()
 endif()
 
 # CTK requirement for cuFFTDx LTO examples
@@ -541,6 +544,7 @@ add_cufftdx_example(cufftdx_examples 03_block_fft_performance/block_fft_performa
 add_cufftdx_example(cufftdx_examples 03_block_fft_performance/block_fft_performance_many.cu)
 add_cufftdx_nvrtc_example(cufftdx_examples 04_nvrtc_fft/nvrtc_fft_thread.cu)
 add_cufftdx_nvrtc_example(cufftdx_examples 04_nvrtc_fft/nvrtc_fft_block.cu)
+add_cufftdx_nvrtc_example(cufftdx_examples 04_nvrtc_fft/nvrtc_query_database_fft_block.cu)
 add_cufft_and_cufftdx_example(cufftdx_examples 05_fft_Xd/fft_2d.cu)
 add_cufft_and_cufftdx_example(cufftdx_examples 05_fft_Xd/fft_2d_single_kernel.cu)
 add_cufft_and_cufftdx_example(cufftdx_examples 05_fft_Xd/fft_2d_single_kernel_block_dim.cu)

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -45,7 +45,7 @@ __constant__ unsigned int blas_shared_memory = cublasdx::get_shared_storage_size
 
 extern "C" __global__ void test_kernel(typename BLAS::a_value_type* a, typename BLAS::b_value_type* b, typename BLAS::c_value_type* c)
 {
-    extern __shared__ __align__(16) char smem[];
+    extern __shared__ __align__(16) cublasdx::byte smem[];
 
     // Load
     auto a_global_tensor = cublasdx::make_tensor(a, BLAS::get_layout_gmem_a());
@@ -162,12 +162,7 @@ int main(int, char**) {
     CU_CHECK_AND_EXIT(cuInit(0));
     CU_CHECK_AND_EXIT(cuDeviceGet(&cuDevice, current_device));
 
-#if CUDA_VERSION >= 13000
     CU_CHECK_AND_EXIT(cuCtxCreate(&context, (CUctxCreateParams*)0, 0, cuDevice));
-#else
-    CU_CHECK_AND_EXIT(cuCtxCreate(&context, 0, cuDevice));
-#endif
-
     CU_CHECK_AND_EXIT(cuModuleLoadDataEx(&module, cubin.get(), 0, 0, 0));
     CU_CHECK_AND_EXIT(cuModuleGetFunction(&kernel, module, "test_kernel"));
 

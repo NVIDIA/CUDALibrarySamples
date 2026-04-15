@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,11 +13,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- */
+ */ 
 
 #include <cusolverdx.hpp>
 
-#include "../common/common.hpp"
 #include "../common/cudart.hpp"
 #include "../common/error_checking.hpp"
 #include "../common/random.hpp"
@@ -27,12 +26,13 @@
 #include "../common/print.hpp"
 #include "../common/cusolver_reference_cholesky.hpp"
 
-// This example demonstrates how to use cuSolverDx API to solve a batched linear systems with multiple right hand side
+// This example demonstrates how to use cuSolverDx API with Block execution to solve a batched linear systems with multiple right hand side
 // after performing Cholesky factorization of the batched symmetric, positive-definite matrix A.
 // The results are compared with the reference values obtained with cuSolver host API.
 
 template<class POSV, unsigned int BatchesPerBlock, class DataType = typename POSV::a_data_type>
-__global__ __launch_bounds__(POSV::max_threads_per_block) void posv_kernel(DataType* A, const unsigned int lda_gmem, DataType* B, const unsigned int ldb_gmem, typename POSV::status_type* info, const unsigned int batches) {
+__global__ __launch_bounds__(POSV::max_threads_per_block) void posv_kernel(
+        DataType* A, const unsigned int lda_gmem, DataType* B, const unsigned int ldb_gmem, typename POSV::status_type* info, const unsigned int batches) {
 
     using namespace cusolverdx;
     constexpr auto m                     = POSV::m_size;
@@ -45,7 +45,7 @@ __global__ __launch_bounds__(POSV::max_threads_per_block) void posv_kernel(DataT
     constexpr auto one_batch_size_a_smem = lda_smem * m;
     constexpr auto one_batch_size_b_smem = (arrangement_of_v_b<POSV> == arrangement::col_major) ? ldb_smem * nrhs : m * ldb_smem;
 
-    extern __shared__ __align__(sizeof(DataType)) char shared_mem[];
+    extern __shared__ __align__(sizeof(DataType)) cusolverdx::byte shared_mem[];
 
     DataType* As = reinterpret_cast<DataType*>(shared_mem);
     DataType* Bs = As + one_batch_size_a_smem * BatchesPerBlock;
@@ -73,8 +73,8 @@ int simple_posv_batched() {
 
     using namespace cusolverdx;
 
-    using POSV = decltype(Size<32 /* = m */, 32 /* = n */, 1 /* = k */>() + Precision<double>() + Type<type::complex>() + Function<function::posv>() + FillMode<lower>() +
-                          Arrangement<col_major /* A, X, and B */>() + SM<Arch>() + Block());
+    using POSV = decltype(Size<32 /* = m */, 32 /* = n */, 1 /* = k */>() + Precision<double>() + Type<type::complex>() + Function<function::posv>() +
+                          FillMode<lower>() + Arrangement<col_major /* A, X, and B */>() + SM<Arch>() + Block());
 
     constexpr unsigned bpb = POSV::batches_per_block;
     std::cout << "Using Suggested Batches per block = " << bpb << std::endl;
@@ -83,7 +83,7 @@ int simple_posv_batched() {
 
     using data_type      = typename POSV::a_data_type;
     using cuda_data_type = typename POSV::a_cuda_data_type;
-    
+
     constexpr auto m    = POSV::m_size;
     constexpr auto n    = POSV::n_size;
     constexpr auto nrhs = POSV::k_size;
@@ -114,17 +114,6 @@ int simple_posv_batched() {
     std::vector<data_type> L(one_batch_size_A * padded_batches);
 
     common::fillup_random_diagonal_dominant_matrix<data_type>(arrangement_of_v_a<POSV> == col_major, m, n, A.data(), lda, false, 2, 4, batches);
-
-    // To get around cuSolver potrsBatched bug for CUDA <=12.2, set the diagonal elements of input matrix A to be real
-#if (__CUDACC_VER_MAJOR__ == 12 && __CUDACC_VER_MINOR__ <= 2)
-    if constexpr (common::is_complex<data_type>()) {
-        for (auto batch = 0; batch < batches; batch++) {
-            for (unsigned int row = 0; row < m; row++) {
-                A[row + row * lda + batch * one_batch_size_A].y = 0;
-            }
-        }
-    }
-#endif
 
     std::vector<data_type> B(one_batch_size_B * padded_batches);
     common::fillup_random_matrix<data_type>(arrangement_of_v_b<POSV> == col_major, m, nrhs, B.data(), ldb, false, false, -1, 1, batches);
@@ -180,16 +169,9 @@ int simple_posv_batched() {
     //=======================================================
     // cuSolver reference with potrfBatched and portsBatched
     //=======================================================
-    common::reference_cusolver_cholesky<data_type, cuda_data_type, true>(A,
-                                                                         B,
-                                                                         info.data(),
-                                                                         m,
-                                                                         nrhs,
-                                                                         padded_batches,
-                                                                         (fill_mode_of_v<POSV> == fill_mode::lower),           /* is_lower? */
-                                                                         is_col_maj_a,
-                                                                         is_col_maj_b,
-                                                                         batches);
+    common::reference_cusolver_cholesky<data_type, cuda_data_type, true>(A, B, info.data(), m, nrhs, padded_batches,
+            (fill_mode_of_v<POSV> == fill_mode::lower), /* is_lower? */
+            is_col_maj_a, is_col_maj_b, batches);
 
     auto total_relative_error = common::check_error<data_type, data_type>(L.data(), A.data(), batches * one_batch_size_A);
     printf("BATCHED POSV: relative error of A between cuSolverDx and cuSolver results: = %e\n", total_relative_error);

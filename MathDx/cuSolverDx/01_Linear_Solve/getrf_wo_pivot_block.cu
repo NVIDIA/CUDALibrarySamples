@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,11 +13,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- */
+ */ 
 
 #include <cusolverdx.hpp>
 
-#include "../common/common.hpp"
 #include "../common/cudart.hpp"
 #include "../common/error_checking.hpp"
 #include "../common/random.hpp"
@@ -31,7 +30,7 @@
 template<class Solver, typename DataType = typename Solver::a_data_type>
 __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(DataType* A, unsigned int lda, typename Solver::status_type* info) {
 
-    extern __shared__ unsigned char shared_mem[];
+    extern __shared__ cusolverdx::byte shared_mem[];
 
     DataType* As = reinterpret_cast<DataType*>(shared_mem);
 
@@ -45,14 +44,15 @@ __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(DataType
 }
 
 template<int Arch>
-int getrf_wo_pivot() {
+int getrf_wo_pivot_block() {
 
     using namespace cusolverdx;
-    using Solver = decltype(Size<60, 64>() + Precision<double>() + Type<type::real>() + Function<getrf_no_pivot>() + Arrangement<arrangement::col_major>() + SM<Arch>() + Block() + BlockDim<256>());
+    using Solver = decltype(Size<60, 64>() + Precision<double>() + Type<type::real>() + Function<getrf_no_pivot>() + Arrangement<arrangement::col_major>() +
+                            SM<Arch>() + Block() + BlockDim<256>());
 
     using data_type      = typename Solver::a_data_type;
     using cuda_data_type = typename Solver::a_cuda_data_type;
-    
+
     constexpr auto m          = Solver::m_size;
     constexpr auto n          = Solver::n_size;
     const auto     lda        = m;
@@ -62,7 +62,8 @@ int getrf_wo_pivot() {
     CUDA_CHECK_AND_EXIT(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
 
     std::vector<data_type> A(input_size);
-    common::fillup_random_diagonal_dominant_matrix<data_type>(arrangement_of_v_a<Solver> == arrangement::col_major, m, n, A.data(), lda, false, 2, 4); // not symmetric
+    common::fillup_random_diagonal_dominant_matrix<data_type>(
+        arrangement_of_v_a<Solver> == arrangement::col_major, m, n, A.data(), lda, false, 2, 4); // not symmetric
 
     std::vector<data_type> L(input_size);
     int                    info   = 0;
@@ -116,9 +117,9 @@ int getrf_wo_pivot() {
 }
 
 template<int Arch>
-struct getrf_wo_pivot_functor {
-    int operator()() { return getrf_wo_pivot<Arch>(); }
+struct getrf_wo_pivot_block_functor {
+    int operator()() { return getrf_wo_pivot_block<Arch>(); }
 };
 
 
-int main() { return common::run_example_with_sm<getrf_wo_pivot_functor>(); }
+int main() { return common::run_example_with_sm<getrf_wo_pivot_block_functor>(); }

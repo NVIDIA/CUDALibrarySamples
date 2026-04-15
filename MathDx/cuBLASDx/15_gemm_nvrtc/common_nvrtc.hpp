@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -78,7 +78,9 @@ namespace example {
                     cublasdx_include_dirs_array.push_back("--include-path=" + std::string(env_ptr));
                 } else {
 #ifdef COMMONDX_INCLUDE_DIR
-                    { cublasdx_include_dirs_array.push_back("--include-path=" + std::string(COMMONDX_INCLUDE_DIR)); }
+                    {
+                        cublasdx_include_dirs_array.push_back("--include-path=" + std::string(COMMONDX_INCLUDE_DIR));
+                    }
 #endif
                 }
             }
@@ -106,17 +108,11 @@ namespace example {
                 const char* env_ptr = std::getenv("CUBLASDX_EXAMPLE_CUDA_INCLUDE_DIR");
                 if (env_ptr != nullptr) {
                     cublasdx_include_dirs_array.push_back("--include-path=" + std::string(env_ptr));
-// CUDA 13 created a separate include folder for CCCL
-#if CUDA_VERSION >= 13000
                     cublasdx_include_dirs_array.push_back("--include-path=" + std::string(env_ptr) + "/cccl");
-#endif
                 } else {
 #ifdef CUDA_INCLUDE_DIR
                     cublasdx_include_dirs_array.push_back("--include-path=" + std::string(CUDA_INCLUDE_DIR));
-// CUDA 13 created a separate include folder for CCCL
-#    if CUDA_VERSION >= 13000
                     cublasdx_include_dirs_array.push_back("--include-path=" + std::string(CUDA_INCLUDE_DIR) + "/cccl");
-#    endif
 #endif
                 }
             }

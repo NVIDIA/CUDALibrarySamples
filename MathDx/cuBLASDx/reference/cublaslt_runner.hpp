@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -68,12 +68,10 @@ namespace example {
             return CUDA_R_16F;
         } else if constexpr (cute::is_same_v<T, __nv_bfloat16>) {
             return CUDA_R_16BF;
-#if CUBLASDX_EXAMPLE_SUPPORTS_FP8
         } else if constexpr (cute::is_same_v<T, __nv_fp8_e5m2>) {
             return CUDA_R_8F_E5M2;
         } else if constexpr (cute::is_same_v<T, __nv_fp8_e4m3>) {
             return CUDA_R_8F_E4M3;
-#endif
         } else if constexpr (cute::is_same_v<T, int8_t>) {
             return CUDA_R_8I;
         } else if constexpr (cute::is_same_v<T, uint8_t>) {
@@ -147,7 +145,7 @@ namespace example {
         device_vector<char> workspace_vector        = device_vector<char>(workspace_size_in_bytes);
 
         template<class GEMMShape, class GEMMArr, class GEMMLD>
-        cublaslt_runner(GEMMShape gemm_shape, GEMMArr gemm_arr, GEMMLD gemm_ld) {
+        void initialize(GEMMShape gemm_shape, GEMMArr gemm_arr, GEMMLD gemm_ld) {
             const auto [m, n, k]             = gemm_shape;
             const auto [lda, ldb, ldc]       = gemm_ld;
             const auto [arr_a, arr_b, arr_c] = gemm_arr;
@@ -206,6 +204,22 @@ namespace example {
             if (returned_results == 0) {
                 CUBLAS_CHECK_AND_EXIT(CUBLAS_STATUS_NOT_SUPPORTED);
             }
+        }
+
+        template<class GEMMShape, class GEMMArr, class GEMMLD>
+        cublaslt_runner(GEMMShape gemm_shape, GEMMArr gemm_arr, GEMMLD gemm_ld) {
+            initialize(gemm_shape, gemm_arr, gemm_ld);
+        }
+
+        template<class GEMMShape, class GEMMArr>
+        cublaslt_runner(GEMMShape gemm_shape, GEMMArr gemm_arr) {
+            auto const [m, n, k]             = gemm_shape;
+            auto const [arr_a, arr_b, arr_c] = gemm_arr;
+            auto const lda                   = (arr_a == cublasdx::col_major) ? m : k;
+            auto const ldb                   = (arr_b == cublasdx::col_major) ? k : n;
+            auto const ldc                   = (arr_c == cublasdx::col_major) ? m : n;
+            auto const gemm_ld               = std::make_tuple(lda, ldb, ldc);
+            initialize(gemm_shape, gemm_arr, gemm_ld);
         }
 
         void execute(CComputeType const& alpha,

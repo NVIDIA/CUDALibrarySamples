@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -41,18 +41,18 @@ namespace example {
              class CLoadOp              = cublasdx::identity,
              class CStoreOp             = cublasdx::identity,
              class ComputeReferenceType = detail::get_reference_value_type_t<typename BLAS::c_value_type>>
-    std::vector<ComputeReferenceType> reference_gemm(GEMMShape                          const& gemm_shape,
-                                                     GEMMLD                             const& gemm_ld,
+    std::vector<ComputeReferenceType> reference_gemm(GEMMShape const&                          gemm_shape,
+                                                     GEMMLD const&                             gemm_ld,
                                                      Alpha                                     alpha,
                                                      example::device_vector<AValueType> const& data_a,
                                                      example::device_vector<BValueType> const& data_b,
                                                      Beta                                      beta,
                                                      example::device_vector<CValueType> const& data_c,
                                                      cudaStream_t                              stream     = 0,
-                                                     ALoadOp                            const& a_load_op  = {},
-                                                     BLoadOp                            const& b_load_op  = {},
-                                                     CLoadOp                            const& c_load_op  = {},
-                                                     CStoreOp                           const& c_store_op = {}) {
+                                                     ALoadOp const&                            a_load_op  = {},
+                                                     BLoadOp const&                            b_load_op  = {},
+                                                     CLoadOp const&                            c_load_op  = {},
+                                                     CStoreOp const&                           c_store_op = {}) {
         using compute_value_type = ComputeReferenceType;
 
         constexpr bool use_cublas = commondx::is_floating_point_v<compute_value_type>;
@@ -98,8 +98,8 @@ namespace example {
         thrust::transform(
             execution_policy, data_c.cbegin(), data_c.cend(), ref_data_c.begin(), c_load_transform_then_convert);
 
-        using arr       = cublasdx::arrangement_of<BLAS>;
-        auto gemm_arr   = cute::make_tuple(arr::a, arr::b, arr::c);
+        using arr     = cublasdx::arrangement_of<BLAS>;
+        auto gemm_arr = cute::make_tuple(arr::a, arr::b, arr::c);
 
         if constexpr (use_cublas) {
             cublaslt_runner<compute_value_type>(gemm_shape, gemm_arr, gemm_ld)
@@ -147,18 +147,18 @@ namespace example {
              class CLoadOp              = cublasdx::identity,
              class CStoreOp             = cublasdx::identity,
              class ComputeReferenceType = detail::get_reference_value_type_t<typename BLAS::c_value_type>>
-    std::vector<ComputeReferenceType> reference_gemm(GEMMShape                           const& gemm_shape,
-                                                     GEMMLD                              const& gemm_ld,
+    std::vector<ComputeReferenceType> reference_gemm(GEMMShape const&                           gemm_shape,
+                                                     GEMMLD const&                              gemm_ld,
                                                      Alpha                                      alpha,
                                                      std::vector<AValueType, AAllocType> const& data_a,
                                                      std::vector<BValueType, BAllocType> const& data_b,
                                                      Beta                                       beta,
                                                      std::vector<CValueType, CAllocType> const& data_c,
                                                      cudaStream_t                               stream     = 0,
-                                                     ALoadOp                             const& a_load_op  = {},
-                                                     BLoadOp                             const& b_load_op  = {},
-                                                     CLoadOp                             const& c_load_op  = {},
-                                                     CStoreOp                            const& c_store_op = {}) {
+                                                     ALoadOp const&                             a_load_op  = {},
+                                                     BLoadOp const&                             b_load_op  = {},
+                                                     CLoadOp const&                             c_load_op  = {},
+                                                     CStoreOp const&                            c_store_op = {}) {
         example::device_vector<AValueType> device_a = data_a;
         example::device_vector<BValueType> device_b = data_b;
         example::device_vector<CValueType> device_c = data_c;
@@ -179,8 +179,7 @@ namespace example {
 
     // Generate dynamic LeadingDimensions for cuBLAS
     template<class BLAS,
-             template<class, class>
-             class DataVector,
+             template<class, class> class DataVector,
              class Alpha,
              class AValueType,
              class AAllocType,
@@ -209,10 +208,18 @@ namespace example {
         const auto ldb       = cublasdx::arrangement_of<BLAS>::b == cublasdx::arrangement::col_major ? k : n;
         const auto ldc       = cublasdx::arrangement_of<BLAS>::c == cublasdx::arrangement::col_major ? m : n;
 
-        return reference_gemm<BLAS>(
-            cute::make_tuple(m, n, k), cute::make_tuple(lda, ldb, ldc),
-            alpha, data_a, data_b, beta, data_c,
-            stream, a_load_op, b_load_op, c_load_op, c_store_op);
+        return reference_gemm<BLAS>(cute::make_tuple(m, n, k),
+                                    cute::make_tuple(lda, ldb, ldc),
+                                    alpha,
+                                    data_a,
+                                    data_b,
+                                    beta,
+                                    data_c,
+                                    stream,
+                                    a_load_op,
+                                    b_load_op,
+                                    c_load_op,
+                                    c_store_op);
     }
 } // namespace example
 

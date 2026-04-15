@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +13,7 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- */
+ */ 
 
 #include <iostream>
 #include <vector>
@@ -122,7 +122,7 @@ int mrg_two_executions_thread_api() {
     // Compare Results
     if (h_out_uniform_double == h_ref_uniform_double && h_out_normal == h_ref_normal) {
         std::cout
-            << "SUCCESS: \nSame sequence is generated with cuRANDDx and cuRAND Host API for three distributions.\n";
+            << "SUCCESS: \nSame sequence is generated with cuRANDDx and cuRAND Host API for two distributions.\n";
         return 0;
     } else {
         if (h_out_uniform_double != h_ref_uniform_double) {

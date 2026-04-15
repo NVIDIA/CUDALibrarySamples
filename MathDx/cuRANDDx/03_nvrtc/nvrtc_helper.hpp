@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,12 +13,13 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- */
+ */ 
 
 #ifndef CURANDDX_EXAMPLE_NVRTC_HELPER_HPP
 #define CURANDDX_EXAMPLE_NVRTC_HELPER_HPP
 
 #include <cstdlib>
+#include "../common.hpp" // for CUDA_CHECK_AND_EXIT
 #define CURANDDX_EXAMPLE_NVRTC
 
 #define NVRTC_SAFE_CALL(x)                                                                            \
@@ -77,21 +78,12 @@ namespace example {
 #ifdef COMMONDX_INCLUDE_DIR
             { curanddx_include_dirs_array.push_back("--include-path=" + std::string(COMMONDX_INCLUDE_DIR)); }
 #endif
-#ifdef CUTLASS_INCLUDE_DIR
-            { curanddx_include_dirs_array.push_back("--include-path=" + std::string(CUTLASS_INCLUDE_DIR)); }
-#endif
             {
                 const char* env_ptr = std::getenv("CURANDDX_EXAMPLE_COMMONDX_INCLUDE_DIR");
                 if (env_ptr != nullptr) {
                     curanddx_include_dirs_array.push_back("--include-path=" + std::string(env_ptr));
                 }
             }
-            // {
-            //     const char* env_ptr = std::getenv("CURANDDX_EXAMPLE_CUTLASS_INCLUDE_DIR");
-            //     if (env_ptr != nullptr) {
-            //         curanddx_include_dirs_array.push_back("--include-path=" + std::string(env_ptr));
-            //     }
-            // }
             {
                 const char* env_ptr = std::getenv("CURANDDX_EXAMPLE_CURANDDX_INCLUDE_DIR");
                 if (env_ptr != nullptr) {
@@ -113,8 +105,8 @@ namespace example {
         inline unsigned get_device_architecture(int device) {
             int major = 0;
             int minor = 0;
-            CU_CHECK_AND_EXIT(cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device));
-            CU_CHECK_AND_EXIT(cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, device));
+            CUDA_CHECK_AND_EXIT(cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device));
+            CUDA_CHECK_AND_EXIT(cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, device));
             return major * 10 + minor;
         }
 

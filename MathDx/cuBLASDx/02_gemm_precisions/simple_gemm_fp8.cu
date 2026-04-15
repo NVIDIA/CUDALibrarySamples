@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,7 +30,7 @@ __launch_bounds__(BLAS::max_threads_per_block) __global__ void gemm_kernel(const
                                                                            typename BLAS::c_value_type*       c,
                                                                            const typename BLAS::c_value_type  alpha,
                                                                            const typename BLAS::c_value_type  beta) {
-    extern __shared__ __align__(16) char smem[];
+    extern __shared__ __align__(16) cublasdx::byte smem[];
 
     auto a_global_tensor = cublasdx::make_tensor(a, BLAS::get_layout_gmem_a());
     auto b_global_tensor = cublasdx::make_tensor(b, BLAS::get_layout_gmem_b());
@@ -65,7 +65,7 @@ __launch_bounds__(BLAS::max_threads_per_block) __global__ void gemm_kernel(const
 //    (e4m3, e5m2, FP32)
 //    (e5m2, e4m3, FP32)
 //    (e5m2, e5m2, FP32)
-// and GEMM is excuted on SM89 or higher GPUs with CUDA NVCC 12.4+, then matrix multiply-and-accumulation (MMA) instructions are used.
+// and GEMM is executed on SM89 or higher GPUs, then matrix multiply-and-accumulation (MMA) instructions are used.
 //
 // Input data is generated on host using random number generators, and later copied to
 // the global memory. Next, kernel with GEMM is executed, and then the matrix C (the result)
@@ -73,7 +73,6 @@ __launch_bounds__(BLAS::max_threads_per_block) __global__ void gemm_kernel(const
 //
 template<unsigned int Arch>
 int simple_gemm() {
-#if CUBLASDX_EXAMPLE_SUPPORTS_FP8
     // Parameters m, n, k define the dimensions of matrices A, B, and C
     constexpr unsigned int m = 64;
     constexpr unsigned int n = 64;
@@ -94,15 +93,11 @@ int simple_gemm() {
                           cublasdx::Alignment<2, 2, 8>() + cublasdx::Block() + cublasdx::SM<Arch>());
 
     // Allocate managed memory for a, b, c
-#    ifdef CUBLASDX_EXAMPLE_DETAIL_NVCC_12_2_BUG_WORKAROUND
-    using TA = typename example::a_value_type_t<BLAS>;
-    using TB = typename example::b_value_type_t<BLAS>;
-    using TC = typename example::c_value_type_t<BLAS>;
-#    else
+
     using TA = typename BLAS::a_value_type;
     using TB = typename BLAS::b_value_type;
     using TC = typename BLAS::c_value_type;
-#    endif
+
     TA* a;
     TB* b;
     TC* c;
@@ -155,10 +150,6 @@ int simple_gemm() {
     }
     std::cout << "Failure" << std::endl;
     return 1;
-#else
-    std::cout << "Compiler version does not support FP8 datatype, skip the test" << std::endl;
-    return 0;
-#endif
 }
 
 struct simple_gemm_functor {

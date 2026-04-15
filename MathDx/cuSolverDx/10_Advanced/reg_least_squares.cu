@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +13,7 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- */
+ */ 
 
 #include <cusolverdx.hpp>
 #include <cublasdx.hpp>
@@ -44,7 +44,7 @@ __global__ __launch_bounds__(NT) void solve_normal_equations(const T* A, unsigne
     // (M + N) * (N + 1) words of dynamic shared memory are required
 
     // Setup shared memory
-    extern __shared__ __align__(16) unsigned char shared_mem[];
+    extern __shared__ __align__(16) cusolverdx::byte shared_mem[];
 
     // Slice shared memory into pointers
     // Note that in memory, we have the augmented matrices [As bs] and [Gs vs]
@@ -73,7 +73,7 @@ __global__ __launch_bounds__(NT) void solve_normal_equations(const T* A, unsigne
     using          prec = std::conditional_t<std::is_same_v<T, float> || std::is_same_v<T, commondx::complex<float>>, float, double>;
     constexpr auto type = (std::is_same_v<T, float> || std::is_same_v<T, double>) ? cublasdx::type::real : cublasdx::type::complex;
 
-    using GEMM = decltype(cublasdx::TransposeMode<cublasdx::C, cublasdx::N>() + cublasdx::Size<N, N+1, M>() + cublasdx::LeadingDimension<M, M, N>() +
+    using GEMM = decltype(cublasdx::TransposeMode<cublasdx::C, cublasdx::N>() + cublasdx::Size<N, N+1, M>() + cublasdx::LeadingDimension<M, M, N>() + cublasdx::Function<cublasdx::function::MM>() +
                           cublasdx::Precision<prec>() + cublasdx::Type<type>() + cublasdx::Block() + cublasdx::BlockDim<NT>() + cublasdx::SM<Arch>());
     using POSV = decltype(cusolverdx::Function<cusolverdx::posv>() + cusolverdx::Size<N, N, 1>() + cusolverdx::FillMode<cusolverdx::lower>() +
                           cusolverdx::Precision<prec>() + cusolverdx::Type<type>() + cusolverdx::Block() + cusolverdx::BlockDim<NT>() + cusolverdx::SM<Arch>());
@@ -106,7 +106,7 @@ __global__ __launch_bounds__(NT) void solve_householder(const T* A, unsigned lda
     // QR requires an extra N rows for the regularization terms
 
     // Setup shared memory
-    extern __shared__ __align__(16) unsigned char shared_mem[];
+    extern __shared__ __align__(16) cusolverdx::byte shared_mem[];
     // Slice shared memory into pointers (arrays)
     auto [As, taus, bs] = cusolverdx::shared_memory::slice<T, T, T>(
         shared_mem,

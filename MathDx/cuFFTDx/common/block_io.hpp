@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -97,21 +97,21 @@ namespace example {
         }
 
         template<class DataType>
-        static inline __device__ void load_to_smem(const DataType* global, unsigned char* shared) {
+        static inline __device__ void load_to_smem(const DataType* global, void* shared) {
             using input_t = typename FFT::input_type;
             copy<FFT::input_ept>(reinterpret_cast<const input_t*>(global),
-                                reinterpret_cast<input_t*>(shared),
-                                computing_threads_y() * FFT::input_length);
+                                 reinterpret_cast<input_t*>(shared),
+                                 computing_threads_y() * FFT::input_length);
             __syncthreads();
         }
 
         template<class DataType>
-        static inline __device__ void store_from_smem(const unsigned char* shared, DataType* global) {
+        static inline __device__ void store_from_smem(const void* shared, DataType* global) {
             __syncthreads();
             using output_t = typename FFT::output_type;
             copy<FFT::output_ept>(reinterpret_cast<const output_t*>(shared),
-                                 reinterpret_cast<output_t*>(global),
-                                 computing_threads_y() * FFT::output_length);
+                                  reinterpret_cast<output_t*>(global),
+                                  computing_threads_y() * FFT::output_length);
         }
 
 

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +16,7 @@
  */
 
 #include "common_lto.hpp"
+
 
 std::vector<std::string> parseCSVHeader(const std::string &header_line, const std::vector<std::string> &expected_fields) {
     std::vector<std::string> header_map;
@@ -129,7 +130,7 @@ void showUsage(const std::string& program_name) {
     std::cout << "Usage: " << program_name << " <output_dir> <csv_file> [--CUDA_ARCHITECTURES=XX;YY;...]\n";
     std::cout << "    <output_dir>       Directory where the output files will be written.\n";
     std::cout << "    <csv_file>         Path to the input CSV file.\n";
-    std::cout << "    --CUDA_ARCHITECTURES (Optional): List of CUDA architectures separted by semicolon (e.g., 50,70).\n";
+    std::cout << "    --CUDA_ARCHITECTURES (Optional): List of CUDA architectures separted by semicolon (e.g., 75,80).\n";
     std::cout << "Example:\n";
     std::cout << "  " << program_name << " ./output ./data/input.csv --CUDA_ARCHITECTURES=80,90\n";
     std::cout << std::endl;

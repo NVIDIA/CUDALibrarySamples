@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,11 +13,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- */
+ */ 
 
 #include <cusolverdx.hpp>
 
-#include "../common/common.hpp"
 #include "../common/cudart.hpp"
 #include "../common/error_checking.hpp"
 #include "../common/random.hpp"
@@ -26,7 +25,7 @@
 #include "../common/print.hpp"
 #include "../common/cublas_reference_trsm.hpp"
 
-// This example demonstrates how to use cuSolverDx API to solve triangular systems
+// This example demonstrates how to use cuSolverDx block execution API to solve triangular systems
 // The results are compared with the reference values obtained with cublasXtrsm API.
 
 template<class TRSM, unsigned int BatchesPerBlock, class DataType = typename TRSM::a_data_type>
@@ -42,7 +41,7 @@ __global__ __launch_bounds__(TRSM::max_threads_per_block) void trsm_kernel(const
     const auto     one_batch_size_b_smem = ldb_smem * (cusolverdx::arrangement_of_v_b<TRSM> == cusolverdx::col_major ? TRSM::n_size : TRSM::m_size);
 
 
-    extern __shared__ __align__(16) unsigned char shared_mem[];
+    extern __shared__ __align__(16) cusolverdx::byte shared_mem[];
     // Slice shared memory into pointers
     auto [As, Bs] = cusolverdx::shared_memory::slice<DataType, DataType>(shared_mem,
                                                                          alignof(DataType),
@@ -68,7 +67,7 @@ __global__ __launch_bounds__(TRSM::max_threads_per_block) void trsm_kernel(const
 }
 
 template<int Arch>
-int simple_trsm() {
+int trsm_block_execution() {
     using namespace cusolverdx;
 
     // The Size Operator for TRSM only takes M, N. If K is specified, it is ignored. 
@@ -197,8 +196,8 @@ int simple_trsm() {
 }
 
 template<int Arch>
-struct simple_trsm_functor {
-    int operator()() { return simple_trsm<Arch>(); }
+struct trsm_block_execution_functor {
+    int operator()() { return trsm_block_execution<Arch>(); }
 };
 
-int main() { return common::run_example_with_sm<simple_trsm_functor>(); }
+int main() { return common::run_example_with_sm<trsm_block_execution_functor>(); }

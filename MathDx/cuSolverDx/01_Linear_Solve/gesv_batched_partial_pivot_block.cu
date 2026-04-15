@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,11 +13,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- */
+ */ 
 
 #include <cusolverdx.hpp>
 
-#include "../common/common.hpp"
 #include "../common/cudart.hpp"
 #include "../common/error_checking.hpp"
 #include "../common/random.hpp"
@@ -29,7 +28,8 @@
 // factorization with pivoting of the batched general matrix A.  The results are compared with the reference values obtained with cuSolver host API.
 
 template<class Solver, unsigned int BatchesPerBlock, typename DataType = typename Solver::a_data_type>
-__global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(DataType* A, const int lda_gmem, int* ipiv, DataType* B, const int ldb_gmem, typename Solver::status_type* info, const unsigned batches) {
+__global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(
+        DataType* A, const int lda_gmem, int* ipiv, DataType* B, const int ldb_gmem, typename Solver::status_type* info, const unsigned batches) {
 
     constexpr auto m = Solver::m_size;
     constexpr auto n = Solver::n_size;
@@ -43,13 +43,11 @@ __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(DataType
     constexpr auto one_batch_size_a_smem = lda_smem * m;
     constexpr auto one_batch_size_b_smem = (cusolverdx::arrangement_of_v_b<Solver> == cusolverdx::col_major) ? ldb_smem * k : n * ldb_smem;
 
-    extern __shared__ __align__(16) unsigned char shared_mem[];
+    extern __shared__ __align__(16) cusolverdx::byte shared_mem[];
     // Slice shared memory into pointers
     auto [As, Bs, ipivs] = cusolverdx::shared_memory::slice<DataType, DataType, int>(
-        shared_mem,
-        alignof(DataType), one_batch_size_a_smem * BatchesPerBlock,
-        alignof(DataType), one_batch_size_b_smem * BatchesPerBlock,
-        alignof(int) // the size (number of elements) may be omitted for the last pointer
+            shared_mem, alignof(DataType), one_batch_size_a_smem * BatchesPerBlock, alignof(DataType), one_batch_size_b_smem * BatchesPerBlock,
+            alignof(int) // the size (number of elements) may be omitted for the last pointer
     );
 
     const auto batch_idx = blockIdx.x * BatchesPerBlock;
@@ -77,16 +75,17 @@ __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(DataType
 }
 
 template<int Arch>
-int gesv_batched_partial_pivot() {
+int gesv_batched_partial_pivot_block() {
 
     using namespace cusolverdx;
-    using Base   = decltype(Size<18, 18, 1>() + Precision<float>() + Type<type::complex>() + Function<gesv_partial_pivot>() + Arrangement<arrangement::col_major, arrangement::col_major>() +
-                          TransposeMode<non_trans>() + LeadingDimension<18, 20>() + SM<Arch>() + Block() + BlockDim<64>());
+    using Base   = decltype(Size<18, 18, 1>() + Precision<float>() + Type<type::complex>() + Function<gesv_partial_pivot>() +
+                          Arrangement<arrangement::col_major, arrangement::col_major>() + TransposeMode<non_trans>() + LeadingDimension<18, 20>() + SM<Arch>() +
+                          Block() + BlockDim<64>());
     using Solver = decltype(Base() + BatchesPerBlock<Base::suggested_batches_per_block>());
 
     using data_type      = typename Solver::a_data_type;
     using cuda_data_type = typename Solver::a_cuda_data_type;
-    
+
     constexpr unsigned bpb = Solver::batches_per_block;
     std::cout << "Using Suggested Batches per block = " << bpb << std::endl;
     std::cout << "Suggested BlockDim = " << Solver::suggested_block_dim.x << std::endl;
@@ -168,22 +167,12 @@ int gesv_batched_partial_pivot() {
     //=========================
     // cuSolver reference
     //=========================
-    common::reference_cusolver_lu<data_type, cuda_data_type, true>(A,
-                                                                   B,
-                                                                   info.data(),
-                                                                   m,
-                                                                   n,
-                                                                   k,
-                                                                   padded_batches,
-                                                                   true /* is_pivot */,
-                                                                   is_col_maj_a,
-                                                                   is_col_maj_b,
-                                                                   (transpose_mode_of_v<Solver> == trans || transpose_mode_of_v<Solver> == conj_trans),
-                                                                   ipiv_ref.data(),
-                                                                   batches); // is_pivot, col_maj_a, col_maj_b, do_solver, ipiv
+    common::reference_cusolver_lu<data_type, cuda_data_type, true>(A, B, info.data(), m, n, k, padded_batches, true /* is_pivot */, is_col_maj_a, is_col_maj_b,
+            (transpose_mode_of_v<Solver> == trans || transpose_mode_of_v<Solver> == conj_trans), ipiv_ref.data(),
+            batches); // is_pivot, col_maj_a, col_maj_b, do_solver, ipiv
 
 
-    // check A
+    // check A and X
     const auto total_relative_error_a = common::check_error<data_type, data_type>(L.data(), A.data(), batches * input_size_a);
     std::cout << "GESV partial pivoting: relative error of A between cuSolverDx and cuSolver results: " << total_relative_error_a << std::endl;
     const auto total_relative_error_b = common::check_error<data_type, data_type>(X.data(), B.data(), batches * input_size_b);
@@ -212,9 +201,9 @@ int gesv_batched_partial_pivot() {
 }
 
 template<int Arch>
-struct gesv_batched_partial_pivot_functor {
-    int operator()() { return gesv_batched_partial_pivot<Arch>(); }
+struct gesv_batched_partial_pivot_block_functor {
+    int operator()() { return gesv_batched_partial_pivot_block<Arch>(); }
 };
 
 
-int main() { return common::run_example_with_sm<gesv_batched_partial_pivot_functor>(); }
+int main() { return common::run_example_with_sm<gesv_batched_partial_pivot_block_functor>(); }

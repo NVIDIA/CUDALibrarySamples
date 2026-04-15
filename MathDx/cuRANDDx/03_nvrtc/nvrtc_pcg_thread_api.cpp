@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +13,7 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- */
+ */ 
 
 #include <iostream>
 #include <vector>
@@ -58,7 +58,7 @@ int main(int, char**) {
 
     // Get current device
     int current_device;
-    CU_CHECK_AND_EXIT(cudaGetDevice(&current_device));
+    CUDA_CHECK_AND_EXIT(cudaGetDevice(&current_device));
 
     // Create NVRTC program
     nvrtcProgram program;
@@ -164,6 +164,9 @@ int main(int, char**) {
     CU_CHECK_AND_EXIT(cuMemcpyDtoH(h_out.data(), d_out, size * sizeof(DataType)));
     CU_CHECK_AND_EXIT(cuMemFree(d_out));
 
+    CU_CHECK_AND_EXIT(cuModuleUnload(module));
+    CU_CHECK_AND_EXIT(cuCtxDestroy(context));
+
     // Compare hash
     unsigned int xor_curand = 0x0;
     for (auto i = 0U; i < size; i++) {
@@ -177,6 +180,6 @@ int main(int, char**) {
     } else {
         std::cout
             << "FAILED: different sequence is generated with NVPL RAND and cuRANDDx generator using STRICT ordering.\n";
-        return -1;
+        return 1;
     }
 }

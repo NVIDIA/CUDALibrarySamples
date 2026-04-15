@@ -6,14 +6,15 @@ All examples are shipped within [cuRANDDx package](https://developer.nvidia.com/
 
 This folder demonstrates cuRANDDx APIs usage.
 
+* [cuRANDDx download page](https://developer.nvidia.com/curanddx-downloads)
 * [cuRANDDx API documentation](https://docs.nvidia.com/cuda/curanddx/index.html)
 
 ## Requirements
 
 * [See cuRANDDx requirements](https://docs.nvidia.com/cuda/curanddx/get_started/requirement.html)
-* CMake 3.18 or newer
+* CMake 3.23 or newer
 * Linux system with installed NVIDIA drivers
-* NVIDIA GPU of Volta (SM70) or newer architecture
+* NVIDIA GPU of Turing (SM75) or newer architecture
 
 ## Build
 
@@ -22,9 +23,9 @@ This folder demonstrates cuRANDDx APIs usage.
 
 ```
 mkdir build && cd build
-cmake -DCURANDDX_CUDA_ARCHITECTURES=80-real -Dmathdx_ROOT=<path_of_mathdx>/mathdx/XX.Y ..
+cmake -DCURANDDX_CUDA_ARCHITECTURES=80-real -Dmathdx_ROOT=/opt/nvidia/mathdx/XX.Y ..
 make
-// Run
+# Run
 ctest
 ```
 
@@ -39,4 +40,5 @@ For the detailed descriptions of the examples please visit [Examples](https://do
 |                              | sobol_thread_api                    | Sobol quasi-random number generator                                                             |
 |                              | pcg_thread_api                      | PCG random number generator                                                                     |
 |                              | mrg_two_distributions_thread_api    | Multiple random number distributions using MRG32k3a generator                                   |
+|                              | philox_random_bits_thread_api       | Philox random bits generation matching cuRAND host ordering                                     |
 | NVRTC Examples               | nvrtc_pcg_thread_api                | Using cuRANDDx with NVRTC runtime compilation and nvJitLink runtime linking                     |

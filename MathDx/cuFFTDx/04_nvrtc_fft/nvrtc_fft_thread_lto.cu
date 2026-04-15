@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -180,20 +180,16 @@ int main(int, char**) {
     CU_CHECK_AND_EXIT(cuModuleGetFunction(&kernel, module, "test_kernel"));
 
     // Generate input for execution
-    std::vector<value_type> host_input(fft_size);
-    float                   i = 0.0f;
-    for (auto& v : host_input) {
-        v.x = i++;
-        v.y = 0;
-    }
-    size_t fft_buffer_size = fft_size * sizeof(value_type);
+    value_type* fft_data;
+    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&fft_data, fft_size * sizeof(value_type)));
 
-    CUdeviceptr device_values;
-    CU_CHECK_AND_EXIT(cuMemAlloc(&device_values, fft_buffer_size));
-    CU_CHECK_AND_EXIT(cuMemcpyHtoD(device_values, host_input.data(), fft_buffer_size));
+    for(size_t i = 0; i < fft_size; i++) {
+        fft_data[i].x = float(i);
+        fft_data[i].y = 0;
+    }
 
     // Execute test_kernel
-    void* args[] = {&device_values};
+    void* args[] = {&fft_data};
     CU_CHECK_AND_EXIT(cuLaunchKernel(kernel,
                                      1, // number of blocks
                                      1,
@@ -207,22 +203,20 @@ int main(int, char**) {
                                      0));
     CU_CHECK_AND_EXIT(cuCtxSynchronize());
 
-    // Retrieve and print output.
-    std::vector<value_type> host_output(fft_size);
-    CU_CHECK_AND_EXIT(cuMemcpyDtoH(host_output.data(), device_values, fft_buffer_size));
-    // for (size_t i = 0; i < fft_size; ++i) {
-    //     std::cout << i << ": (" << host_output[i].x << ", " << host_output[i].y << ")" << std::endl;
-    // }
-
-    // Release resources.
-    CU_CHECK_AND_EXIT(cuMemFree(device_values));
-    CU_CHECK_AND_EXIT(cuModuleUnload(module));
-    CU_CHECK_AND_EXIT(cuCtxDestroy(context));
-
-    if ((host_output[0].x - 120.0 > 0.01)) {
+    // Validate results before destroying context
+    double expected_value = (fft_size * (fft_size - 1)) / 2;
+    if (std::abs(fft_data[0].x - expected_value) > 0.01) {
         std::cout << "[test_nvrtc_lto_thread] Failed" << std::endl;
+        CUDA_CHECK_AND_EXIT(cudaFree(fft_data));
+        CU_CHECK_AND_EXIT(cuModuleUnload(module));
+        CU_CHECK_AND_EXIT(cuCtxDestroy(context));
         return 1;
     }
     std::cout << "[test_nvrtc_lto_thread] Passed" << std::endl;
+
+    // Release resources
+    CUDA_CHECK_AND_EXIT(cudaFree(fft_data));
+    CU_CHECK_AND_EXIT(cuModuleUnload(module));
+    CU_CHECK_AND_EXIT(cuCtxDestroy(context));
     return 0;
 }

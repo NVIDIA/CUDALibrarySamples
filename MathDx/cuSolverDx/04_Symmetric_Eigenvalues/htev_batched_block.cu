@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,11 +13,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- */
+ */ 
 
 #include <cusolverdx.hpp>
 
-#include "../common/common.hpp"
 #include "../common/cudart.hpp"
 #include "../common/error_checking.hpp"
 #include "../common/random.hpp"
@@ -25,24 +24,24 @@
 #include "../common/device_io.hpp"
 #include "../common/print.hpp"
 
-// This example demonstrates how to use cuSolverDx API to compute eigenvalues, and optionally eigenvectors, of a batched symmetric tridiagonal matrix A.
+// This example demonstrates how to use cuSolverDx block execution API to compute eigenvalues, and optionally eigenvectors, of a batched symmetric tridiagonal matrix A.
 // The results are verified by comparing A * V with V * diagm(lambda), where V is the eigenvectors and diagm(lambda) is the diagonal matrix of eigenvalues.
 
 template<class Solver, unsigned int BatchesPerBlock, typename DataType = typename Solver::a_data_type>
-__global__ __launch_bounds__(Solver::max_threads_per_block)
-void kernel(DataType* d, DataType* e, DataType* V, typename Solver::status_type* info, const unsigned batches) {
+__global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(
+        DataType* d, DataType* e, DataType* V, typename Solver::status_type* info, const unsigned batches) {
 
     const auto batch_idx = blockIdx.x * BatchesPerBlock;
     if (batch_idx >= batches)
         return;
 
     constexpr auto m = Solver::m_size;
-    
-    extern __shared__ __align__(16) unsigned char shared_mem[];
+
+    extern __shared__ __align__(16) cusolverdx::byte shared_mem[];
     // Slice shared memory into pointers
     // if compute_vectors is false, V_s is a dummy null pointer
-    auto [d_s, e_s, V_s] =
-        cusolverdx::shared_memory::slice<DataType, DataType, DataType>(shared_mem, alignof(DataType), m * BatchesPerBlock, alignof(DataType), (m - 1) * BatchesPerBlock, alignof(DataType));
+    auto [d_s, e_s, V_s] = cusolverdx::shared_memory::slice<DataType, DataType, DataType>(
+            shared_mem, alignof(DataType), m * BatchesPerBlock, alignof(DataType), (m - 1) * BatchesPerBlock, alignof(DataType));
 
     auto this_d = d + m * batch_idx;
     auto this_e = e + (m - 1) * batch_idx;
@@ -70,7 +69,7 @@ void kernel(DataType* d, DataType* e, DataType* V, typename Solver::status_type*
 }
 
 template<int Arch>
-int htev_batched() {
+int htev_batched_block() {
 
     using namespace cusolverdx;
     using Base = decltype(Size<64>() + Precision<float>() + Type<type::real>() + Function<htev>() + SM<Arch>() + Block());
@@ -92,20 +91,20 @@ int htev_batched() {
 
     constexpr auto m = Solver::m_size;
 
-    constexpr bool compute_vectors = Solver::job != job::no_vectors;
+    constexpr bool                  compute_vectors = Solver::job != job::no_vectors;
     [[maybe_unused]] constexpr bool is_col_maj_v    = Solver::a_arrangement == arrangement::col_major; // only useful when eigenvectors are computed
 
-    const auto batches        = 2;
+    const auto batches        = 1000;
     const auto padded_batches = (batches + bpb - 1) / bpb * bpb;
 
     cudaStream_t stream = nullptr;
     CUDA_CHECK_AND_EXIT(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
 
     std::vector<data_type> d(m * padded_batches), d_input(m * padded_batches);
-    std::vector<data_type> e((m-1) * padded_batches), e_input((m-1) * padded_batches);
+    std::vector<data_type> e((m - 1) * padded_batches), e_input((m - 1) * padded_batches);
     // Fill the diagonal and subdiagonal elements of the tridiagonal matrix
     common::fillup_random_matrix<data_type>(true, m, 1, d_input.data(), m, false /*symmetric*/, false /*diagonal dominant*/, 2, 4, batches);
-    common::fillup_random_matrix<data_type>(true, m-1, 1, e_input.data(), m-1, false /*symmetric*/, false /*diagonal dominant*/, -5, 20, batches);
+    common::fillup_random_matrix<data_type>(true, m - 1, 1, e_input.data(), m - 1, false /*symmetric*/, false /*diagonal dominant*/, -5, 20, batches);
 
     std::vector<data_type> V;
     if constexpr (compute_vectors) {
@@ -192,13 +191,13 @@ int htev_batched() {
 
         std::vector<data_type> A_v(m * m);
         std::vector<data_type> lambda_v(m * m);
-        constexpr unsigned col_stride = is_col_maj_v ? m : 1;
-        constexpr unsigned row_stride = is_col_maj_v ? 1 : m;
+        constexpr unsigned     col_stride = is_col_maj_v ? m : 1;
+        constexpr unsigned     row_stride = is_col_maj_v ? 1 : m;
 
         for (int b = 0; b < batches; ++b) {
-            data_type* A_db = d_input.data() + b * m;
-            data_type* A_eb = e_input.data() + b * (m - 1);
-            data_type* Vb = V.data() + b * m * m;   
+            data_type* A_db     = d_input.data() + b * m;
+            data_type* A_eb     = e_input.data() + b * (m - 1);
+            data_type* Vb       = V.data() + b * m * m;
             data_type* lambda_b = d.data() + b * m;
 
             // Compute A * V (tridiagonal matrix-matrix multiplication) and V * diagm(lambda) (scalar-vector multiplication)
@@ -206,28 +205,28 @@ int htev_batched() {
             for (int row = 0; row < m; ++row) {
                 for (int col = 0; col < m; ++col) {
                     lambda_v[row * row_stride + col * col_stride] = lambda_b[col] * Vb[row * row_stride + col * col_stride];
-                    
+
                     // Tridiagonal matrix multiplication: A[row][k] * V[k][col]
                     // For tridiagonal matrix, only non-zero elements are:
                     // - diagonal: A[row][row] = A_db[row]
                     // - subdiagonal: A[row][row-1] = A_eb[row-1] (if row > 0)
                     // - superdiagonal: A[row][row+1] = A_eb[row] (if row < m-1)
-                    
+
                     // Diagonal element
                     A_v[row * row_stride + col * col_stride] += A_db[row] * Vb[row * row_stride + col * col_stride];
-                    
+
                     // Subdiagonal element (if not first row)
                     if (row > 0) {
                         A_v[row * row_stride + col * col_stride] += A_eb[row - 1] * Vb[(row - 1) * row_stride + col * col_stride];
                     }
-                    
+
                     // Superdiagonal element (if not last row)
                     if (row < m - 1) {
                         A_v[row * row_stride + col * col_stride] += A_eb[row] * Vb[(row + 1) * row_stride + col * col_stride];
                     }
                 }
             }
-            
+
             // Compare A * V with V * diagm(lambda) to verify eigenvector property
             const auto total_relative_error_lambda = common::check_error<data_type, data_type>(A_v.data(), lambda_v.data(), m * m);
             std::cout << "HTEV: relative error of A * V - V * diagm(lambda): for batch " << b << " : " << total_relative_error_lambda << std::endl;
@@ -246,9 +245,9 @@ int htev_batched() {
 }
 
 template<int Arch>
-struct htev_batched_functor {
-    int operator()() { return htev_batched<Arch>(); }
+struct htev_batched_block_functor {
+    int operator()() { return htev_batched_block<Arch>(); }
 };
 
 
-int main() { return common::run_example_with_sm<htev_batched_functor>(); }
+int main() { return common::run_example_with_sm<htev_batched_block_functor>(); }

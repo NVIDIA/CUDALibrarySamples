@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -129,19 +129,14 @@ __launch_bounds__(FFT::max_threads_per_block) __global__ void gemm_fft_fp16_kern
                                                                                    const ValueType  alpha,
                                                                                    const ValueType  beta,
                                                                                    ValueType*       output) {
-#if CUBLASDX_EXAMPLE_DETAIL_NVCC_12_2_BUG_WORKAROUND
-    using blas_complex_type = example::uniform_value_type_t<BLAS>;
-    using fft_complex_type  = example::value_type_t<FFT>;
-#else
     using blas_complex_type = example::uniform_value_type_t<BLAS>;
     using fft_complex_type  = typename FFT::value_type;
-#endif
 
     using complex_type                = blas_complex_type;
     using value_type                  = ValueType;
     constexpr unsigned int block_size = BLAS::block_dim.x * BLAS::block_dim.y * BLAS::block_dim.z;
 
-    extern __shared__ complex_type smem[];
+    extern __shared__ __align__(alignof(complex_type)) complex_type smem[];
 
     auto [smem_a, smem_b, smem_c] = cublasdx::slice_shared_memory<BLAS>(reinterpret_cast<char*>(smem));
 
@@ -221,14 +216,9 @@ int gemm_fft_fp16() {
                           cublasdx::Arrangement<cublasdx::col_major, cublasdx::col_major>() + cublasdx::Block() +
                           cublasdx::BlockDim<FFT::block_dim.x>() + cublasdx::SM<Arch>());
 
-#if CUBLASDX_EXAMPLE_DETAIL_NVCC_12_2_BUG_WORKAROUND
-    using fft_complex_type  = example::value_type_t<FFT>;
-    using blas_complex_type = example::uniform_value_type_t<BLAS>;
-#else
     using fft_complex_type  = typename FFT::value_type;
     using blas_complex_type = example::uniform_value_type_t<BLAS>;
-#endif
-    using complex_type = blas_complex_type;
+    using complex_type      = blas_complex_type;
 
     // Check that FFT matches GEMM dimensions.
     static_assert(cufftdx::size_of<FFT>::value == cublasdx::size_of<BLAS>::k,
@@ -286,12 +276,8 @@ int gemm_fft_fp16() {
     {
         int device;
         CUDA_CHECK_AND_EXIT(cudaGetDevice(&device));
-#if CUDA_VERSION >= 13000
         CUDA_CHECK_AND_EXIT(
             cudaMemPrefetchAsync(buffer, size_bytes, cudaMemLocation {cudaMemLocationTypeDevice, device}, 0, stream));
-#else
-        CUDA_CHECK_AND_EXIT(cudaMemPrefetchAsync(buffer, size_bytes, device, stream));
-#endif
         CUDA_CHECK_AND_EXIT(cudaStreamSynchronize(stream));
         CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
     }

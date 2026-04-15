@@ -1,24 +1,9 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 
 #ifndef CUSOLVERDX_EXAMPLE_COMMON_NVRTC_HELPER_HPP
 #define CUSOLVERDX_EXAMPLE_COMMON_NVRTC_HELPER_HPP
 
 #include <cstdlib>
+#include <sstream>
 #define CUSOLVERDX_EXAMPLE_NVRTC
 
 #define NVRTC_SAFE_CALL(x)                                                                            \
@@ -77,18 +62,24 @@ namespace common {
 #ifndef CUSOLVERDX_INCLUDE_DIRS
             return std::vector<std::string>();
 #endif
+
+            auto append_multiple_dirs = [](auto& container, const std::string& semicolon_separated_dirs) {
+                if (semicolon_separated_dirs.empty())
+                    return;
+
+                std::stringstream ss(semicolon_separated_dirs);
+                std::string       dir;
+                while (std::getline(ss, dir, ';')) {
+                    if (!dir.empty()) { // Skip empty directories
+                        container.push_back("--include-path=" + dir);
+                    }
+                }
+            };
+
             std::vector<std::string> solver_include_dirs_array;
             {
                 std::string solver_include_dirs = CUSOLVERDX_INCLUDE_DIRS;
-                std::string delim               = ";";
-                size_t      start               = 0U;
-                size_t      end                 = solver_include_dirs.find(delim);
-                while (end != std::string::npos) {
-                    solver_include_dirs_array.push_back("--include-path=" + solver_include_dirs.substr(start, end - start));
-                    start = end + delim.length();
-                    end   = solver_include_dirs.find(delim, start);
-                }
-                solver_include_dirs_array.push_back("--include-path=" + solver_include_dirs.substr(start, end - start));
+                append_multiple_dirs(solver_include_dirs_array, solver_include_dirs);
             }
 #ifdef COMMONDX_INCLUDE_DIR
             { solver_include_dirs_array.push_back("--include-path=" + std::string(COMMONDX_INCLUDE_DIR)); }
@@ -121,6 +112,12 @@ namespace common {
                     #if CUDA_VERSION >= 13000
                     solver_include_dirs_array.push_back("--include-path=" + std::string(env_ptr) + "/cccl");
                     #endif
+                }
+            }
+            {
+                const char* env_ptr = std::getenv("CUSOLVERDX_EXAMPLE_USER_DIRECTORIES");
+                if (env_ptr != nullptr) {
+                    append_multiple_dirs(solver_include_dirs_array, std::string(env_ptr));
                 }
             }
             return solver_include_dirs_array;

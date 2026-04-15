@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 
 #pragma once
 
@@ -188,14 +187,6 @@ int run_with_current_arch(Args&&... args)
   unsigned int current_device_arch = 10 * get_current_device_architecture();
   switch (current_device_arch) {
 // Archs supported by nvCOMPDx
-#ifdef NVCOMPDX_EXAMPLE_ENABLE_SM_70
-    case 700:
-      return Runner<700>::run(std::forward<Args>(args)...);
-#endif
-#ifdef NVCOMPDX_EXAMPLE_ENABLE_SM_72
-    case 720:
-      return Runner<720>::run(std::forward<Args>(args)...);
-#endif
 #ifdef NVCOMPDX_EXAMPLE_ENABLE_SM_75
     case 750:
       return Runner<750>::run(std::forward<Args>(args)...);
@@ -223,10 +214,6 @@ int run_with_current_arch(Args&&... args)
 #ifdef NVCOMPDX_EXAMPLE_ENABLE_SM_100
     case 1000:
       return Runner<1000>::run(std::forward<Args>(args)...);
-#endif
-#ifdef NVCOMPDX_EXAMPLE_ENABLE_SM_101
-    case 1010:
-      return Runner<1010>::run(std::forward<Args>(args)...);
 #endif
 #ifdef NVCOMPDX_EXAMPLE_ENABLE_SM_103
     case 1030:

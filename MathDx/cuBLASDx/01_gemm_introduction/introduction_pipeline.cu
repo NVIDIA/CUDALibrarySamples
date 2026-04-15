@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,16 +27,16 @@
 
 template<class BLAS, class Alpha, class Beta, class CTensor, class DevicePipeline>
 __launch_bounds__(DevicePipeline::max_threads_per_block, 1) __global__
-    void gemm_kernel(Alpha const                            alpha,
-                     Beta const                             beta,
-                     CTensor                                global_c,
+    void gemm_kernel(Alpha const alpha,
+                     Beta const  beta,
+                     CTensor     global_c,
                      // IMPORTANT: Notice __grid_constant__ is used for device_pipeline argument
                      __grid_constant__ DevicePipeline const device_pipeline) {
 #ifdef __CUDA_ARCH__
     if constexpr (cublasdx::sm_of_v<BLAS> == __CUDA_ARCH__) {
 
         // Use device_pipeline traits to properly align dynamic shared memory
-        extern __shared__ __align__(device_pipeline.buffer_alignment()) char smem[];
+        extern __shared__ __align__(device_pipeline.buffer_alignment()) cublasdx::byte smem[];
 
         // Instantiate tile_pipeline for trivial tile dictated by block coordinates
         auto tile_pipeline = device_pipeline.get_tile(smem, blockIdx.x, blockIdx.y);
@@ -44,7 +44,7 @@ __launch_bounds__(DevicePipeline::max_threads_per_block, 1) __global__
         // Define epilogue to be opaquely executed by BLAS::block_dim threads
         auto epilogue_functor = [&](auto& accumulator) {
             // Partition logical C tile of input/output data
-            auto tile_gmem_c   = cublasdx::get_tile(global_c, BLAS::c_shape, blockIdx.x, blockIdx.y);
+            auto tile_gmem_c = cublasdx::get_tile(global_c, BLAS::c_shape, blockIdx.x, blockIdx.y);
             // Create fragment and copy appropriate per-thread partition of data into it
             auto d_fragment = accumulator.make_partition_and_copy(tile_gmem_c);
             // D = alpha * A * B + beta * C
@@ -114,9 +114,12 @@ int introduction_pipeline() {
     // - precision
     // - type (real / complex)
     // this will be either precision or cublasdx::complex<precision>
-    using a_compute_value_type = cute::conditional_t<type == cublasdx::type::real, a_compute_precision, cublasdx::complex<a_compute_precision>>;
-    using b_compute_value_type = cute::conditional_t<type == cublasdx::type::real, b_compute_precision, cublasdx::complex<b_compute_precision>>;
-    using c_compute_value_type = cute::conditional_t<type == cublasdx::type::real, c_compute_precision, cublasdx::complex<c_compute_precision>>;
+    using a_compute_value_type =
+        cute::conditional_t<type == cublasdx::type::real, a_compute_precision, cublasdx::complex<a_compute_precision>>;
+    using b_compute_value_type =
+        cute::conditional_t<type == cublasdx::type::real, b_compute_precision, cublasdx::complex<b_compute_precision>>;
+    using c_compute_value_type =
+        cute::conditional_t<type == cublasdx::type::real, c_compute_precision, cublasdx::complex<c_compute_precision>>;
 
     // Scalar multipliers
     // C = alpha * A * B + beta * C
@@ -140,7 +143,7 @@ int introduction_pipeline() {
     // If pipeline_depth is left at 0, an automatically generated depth
     // will be used, equal to the maximal possible value based on shared memory
     // size of chosen device architecture
-    constexpr unsigned pipeline_depth   = 2;
+    constexpr unsigned pipeline_depth = 2;
 
     // Arrangement of data in a per-threadblock tile of data
     constexpr auto tile_arr_a = global_arrangement_a;
@@ -159,8 +162,7 @@ int introduction_pipeline() {
 
     auto k_stages = k / tile_k;
     if (k_stages < pipeline_depth) {
-        std::cerr << "PipelineDepth must be less or equal to GEMM k stages, please adjust pipeline_depth"
-                  << std::endl;
+        std::cerr << "PipelineDepth must be less or equal to GEMM k stages, please adjust pipeline_depth" << std::endl;
         return 1;
     }
 
@@ -182,12 +184,9 @@ int introduction_pipeline() {
     b_compute_value_type* b_data = nullptr;
     c_compute_value_type* c_data = nullptr;
 
-    CUDA_CHECK_AND_EXIT(
-        cudaMalloc(&a_data, m * k * sizeof(a_compute_value_type)));
-    CUDA_CHECK_AND_EXIT(
-        cudaMalloc(&b_data, k * n * sizeof(b_compute_value_type)));
-    CUDA_CHECK_AND_EXIT(
-        cudaMalloc(&c_data, m * n * sizeof(c_compute_value_type)));
+    CUDA_CHECK_AND_EXIT(cudaMalloc(&a_data, m * k * sizeof(a_compute_value_type)));
+    CUDA_CHECK_AND_EXIT(cudaMalloc(&b_data, k * n * sizeof(b_compute_value_type)));
+    CUDA_CHECK_AND_EXIT(cudaMalloc(&c_data, m * n * sizeof(c_compute_value_type)));
 
     CUDA_CHECK_AND_EXIT(
         cudaMemcpy(a_data, host_a_io.data(), m * k * sizeof(a_compute_value_type), cudaMemcpyHostToDevice));
@@ -227,7 +226,7 @@ int introduction_pipeline() {
     // Check if object is valid
     if (not opt_device_pipeline) {
         std::cout << "Incorrect pipeline configuration, please ensure global tensors are divisible by tile"
-                    << std::endl;
+                  << std::endl;
         exit(1);
     }
 
@@ -236,14 +235,13 @@ int introduction_pipeline() {
 
     // Use device_pipeline traits to get necessary shared memory allocation size
     auto shared_memory_size = cublasdx::make_shared_storage_calculator()
-                                    .add(device_pipeline.buffer_alignment(), device_pipeline.buffer_size())
-                                    .get();
+                                  .add(device_pipeline.buffer_alignment(), device_pipeline.buffer_size())
+                                  .get();
 
     using alpha_t = c_compute_value_type;
-    using beta_t = c_compute_value_type;
-    auto kernel = gemm_kernel<BLAS, alpha_t, beta_t, decltype(global_c), decltype(device_pipeline)>;
-    CUDA_CHECK_AND_EXIT(
-        cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_memory_size));
+    using beta_t  = c_compute_value_type;
+    auto kernel   = gemm_kernel<BLAS, alpha_t, beta_t, decltype(global_c), decltype(device_pipeline)>;
+    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_memory_size));
 
     // Pass device_pipeline to kernel as regular by value argument
     kernel<<<grid_dim, device_pipeline.get_block_dim(), shared_memory_size, stream>>>(
@@ -254,7 +252,8 @@ int introduction_pipeline() {
 
     // Copy back data
     std::vector<c_compute_value_type> results(m * n);
-    CUDA_CHECK_AND_EXIT(cudaMemcpy(results.data(), c_data, results.size() * sizeof(c_compute_value_type), cudaMemcpyDeviceToHost));
+    CUDA_CHECK_AND_EXIT(
+        cudaMemcpy(results.data(), c_data, results.size() * sizeof(c_compute_value_type), cudaMemcpyDeviceToHost));
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     // Free resources.
@@ -271,12 +270,11 @@ int introduction_pipeline() {
 struct introduction_pipeline_functor {
 
     template<int Arch, cublasdx::sm_modifier Modifier>
-    int operator()(std::integral_constant<int, Arch>,
-                   std::integral_constant<cublasdx::sm_modifier, Modifier>) {
+    int operator()(std::integral_constant<int, Arch>, std::integral_constant<cublasdx::sm_modifier, Modifier>) {
         return introduction_pipeline<Arch, Modifier>();
     }
 };
 
-int main(int , char** ) {
+int main(int, char**) {
     return example::sm_runner(introduction_pipeline_functor {});
 }

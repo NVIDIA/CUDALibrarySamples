@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -76,8 +76,8 @@ __launch_bounds__(BlockSize, 2) __global__ void max_reduce_kernel(InTensor in_te
     auto bid                              = blockIdx.x;
 
     // Assume that tensor is reduced along the last dimension
-    auto const row_index = example::conditional_return<SliceMatrix == slice_matrix::a>(bid, cublasdx::slice);
-    auto const col_index = example::conditional_return<SliceMatrix == slice_matrix::a>(cublasdx::slice, bid);
+    auto const row_index = example::conditional_return < SliceMatrix == slice_matrix::a > (bid, cublasdx::slice);
+    auto const col_index = example::conditional_return < SliceMatrix == slice_matrix::a > (cublasdx::slice, bid);
 
     auto global_tile = in_tensor(row_index, col_index);
 
@@ -201,7 +201,7 @@ __launch_bounds__(DevicePipeline::max_threads_per_block, 1) __global__
                                AShiftTensor const                     gmem_shift_a,
                                BShiftTensor const                     gmem_shift_b) {
 #ifdef __CUDA_ARCH__
-    extern __shared__ __align__(device_pipeline.buffer_alignment()) char smem[];
+    extern __shared__ __align__(device_pipeline.buffer_alignment()) cublasdx::byte smem[];
     if constexpr (cublasdx::sm_of_v<BLAS> == __CUDA_ARCH__) {
         // ================================
         // 1. SETUP AND TILE PREPARATION
@@ -287,32 +287,33 @@ __launch_bounds__(DevicePipeline::max_threads_per_block, 1) __global__
             // ========================================
             // Convert accumulated int32_t results back to double precision
             // and apply appropriate scaling based on slice positions
-	    if(accumulator.is_thread_active()) {
+            if (accumulator.is_thread_active()) {
                 auto gemm_results = accumulator.get_results();
-    
+
                 // Load existing C values
                 auto d_fp64_frag = cublasdx::make_fragment_like<double>(gemm_results);
                 auto c_fp64_frag = accumulator.make_partition_and_copy(tile_c_fp64_gmem);
-    
+
                 // Process each element in the register fragment
-    #    pragma unroll
+#    pragma unroll
                 for (int i = 0; i < cublasdx::size(d_fp64_frag); ++i) {
                     const auto [global_x, global_y] = accumulator.map_fragment_index(i);
                     const auto shift_a_elem         = smem_shift_a(global_x);
                     const auto shift_b_elem         = smem_shift_b(global_y);
-    
+
                     // Convert int32_t slice result back to double precision
                     // with appropriate scaling for this diagonal and element
-                    d_fp64_frag(i) = nth_slice_to_fp64<int32_t, int8_t>(diag, gemm_results(i), shift_a_elem + shift_b_elem);
+                    d_fp64_frag(i) =
+                        nth_slice_to_fp64<int32_t, int8_t>(diag, gemm_results(i), shift_a_elem + shift_b_elem);
                 }
-    
+
                 // Apply alpha/beta scaling and accumulate into C
                 // Use beta only for the first diagonal (highest order), then just add (beta=1.0)
                 cublasdx::axpby(alpha, d_fp64_frag, (diag == Slices - 1) ? beta : 1.0, c_fp64_frag);
-    
+
                 // Store results back to global memory
                 accumulator.partition_and_copy(c_fp64_frag, tile_c_fp64_gmem);
-	    }
+            }
         }
     }
 #endif

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,7 +29,7 @@ __global__ void gemm_kernel_shared(const typename GEMM::c_value_type  alpha,
                                    const typename GEMM::b_value_type* b,
                                    const typename GEMM::c_value_type  beta,
                                    typename GEMM::c_value_type*       c) {
-    extern __shared__ __align__(16) char smem[];
+    extern __shared__ __align__(16) cublasdx::byte smem[];
 
     // Make global memory tensor
     auto a_global_tensor = cublasdx::make_tensor(a, GEMM::get_layout_gmem_a());
@@ -61,7 +61,7 @@ template<class GEMM>
 __global__ void gemm_kernel_registers_accumulation(const typename GEMM::a_value_type* a,
                                                    const typename GEMM::b_value_type* b,
                                                    typename GEMM::c_value_type*       c) {
-    extern __shared__ __align__(16) char smem[];
+    extern __shared__ __align__(16) cublasdx::byte smem[];
 
     // Make global memory tensor
     auto a_global_tensor = cublasdx::make_tensor(a, GEMM::get_layout_gmem_a());
@@ -99,7 +99,7 @@ template<class GEMM>
 __global__ void gemm_kernel_registers(const typename GEMM::a_value_type* a,
                                       const typename GEMM::b_value_type* b,
                                       typename GEMM::c_value_type*       c) {
-    extern __shared__ __align__(16) char smem[];
+    extern __shared__ __align__(16) cublasdx::byte smem[];
 
     // Make global memory tensor
     auto a_global_tensor = cublasdx::make_tensor(a, GEMM::get_layout_gmem_a());

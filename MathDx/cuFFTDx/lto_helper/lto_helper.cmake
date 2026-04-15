@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,7 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 
 # Check all needed variables are defined
 if(NOT DEFINED CMAKE_BUILD_TYPE)
@@ -99,7 +98,7 @@ function(run_cufft_lto_helper SRC_DIR BUILD_DIR OUTPUT_NAME DESCS CUDA_ARCHITECT
         # Run helper executable with directory and arch arguments to generate artifacts
         execute_process(
             COMMAND ${CMAKE_COMMAND} -E echo "Running cufftdx_cufft_lto_helper for OUTPUT_NAME=${OUTPUT_NAME}..."
-            COMMAND ${CMAKE_COMMAND} -E env  ${BUILD_DIR}/cufftdx_cufft_lto_helper ${ARTIFACTS_DIR} ${DESCS} "--CUDA_ARCHITECTURES=${CUDA_ARCHITECTURES}"
+            COMMAND ${CMAKE_COMMAND} -E env "LD_LIBRARY_PATH=${CUDAToolkit_LIBRARY_DIR}:$ENV{LD_LIBRARY_PATH}" ${BUILD_DIR}/cufftdx_cufft_lto_helper ${ARTIFACTS_DIR} ${DESCS} "--CUDA_ARCHITECTURES=${CUDA_ARCHITECTURES}"
             RESULT_VARIABLE result
         )
         if(result)

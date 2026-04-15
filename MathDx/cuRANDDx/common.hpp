@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -110,13 +110,7 @@ namespace example {
         const auto cuda_device_arch = get_cuda_device_arch();
 
         switch (cuda_device_arch) {
-// All SM supported by cuRANDDx
-#ifdef CURANDDX_EXAMPLE_ENABLE_SM_70
-            case 700: return Functor<700>()();
-#endif
-#ifdef CURANDDX_EXAMPLE_ENABLE_SM_72
-            case 720: return Functor<720>()();
-#endif
+// All SM supported by cuRANDDx 
 #ifdef CURANDDX_EXAMPLE_ENABLE_SM_75
             case 750: return Functor<750>()();
 #endif
@@ -137,9 +131,6 @@ namespace example {
 #endif
 #ifdef CURANDDX_EXAMPLE_ENABLE_SM_100
             case 1000: return Functor<1000>()();
-#endif
-#ifdef CURANDDX_EXAMPLE_ENABLE_SM_101
-            case 1010: return Functor<1010>()();
 #endif
 #ifdef CURANDDX_EXAMPLE_ENABLE_SM_103
             case 1030: return Functor<1030>()();

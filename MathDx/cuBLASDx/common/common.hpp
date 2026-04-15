@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -43,17 +43,6 @@
 #    include <cuda_fp16.h>
 #    include "arch_runner.hpp"
 #endif
-
-#ifdef __NVCC__
-#    if (__CUDACC_VER_MAJOR__ == 12 && __CUDACC_VER_MINOR__ >= 2)
-#        define CUBLASDX_EXAMPLE_DETAIL_NVCC_12_2_BUG_WORKAROUND 1
-#    endif
-#endif
-
-#ifndef CUBLASDX_EXAMPLE_SUPPORTS_FP8
-#    define CUBLASDX_EXAMPLE_SUPPORTS_FP8 \
-        ((__CUDACC_VER_MAJOR__ >= 11 && __CUDACC_VER_MINOR__ >= 8) || __CUDACC_VER_MAJOR__ >= 12)
-#endif // CUBLASDX_EXAMPLE_SUPPORTS_FP8
 
 #ifndef CUDA_CHECK_AND_EXIT
 #    define CUDA_CHECK_AND_EXIT(error)                                                                      \
@@ -186,7 +175,7 @@ namespace example {
     };
 
     // Don't use thrust::device_vector to avoid unnecessary
-    // device destructors (parallel_for CUDA errors in some Volta/Driver setups)
+    // device destructors (parallel_for CUDA errors in some Turing/Driver setups)
     template<typename T, typename Alloc = void>
     struct device_vector {
         T*     _ptr;
@@ -210,7 +199,9 @@ namespace example {
 
         device_vector(device_vector<T>&& other) { *this = std::move(other); }
 
-        operator std::vector<T>() const {
+        operator std::vector<T>() const { return to_host(); }
+
+        std::vector<T> to_host() const {
             std::vector<T> ret(_size);
             CUDA_CHECK_AND_EXIT(cudaMemcpy(ret.data(), _ptr, _size * sizeof(T), cudaMemcpyDeviceToHost));
             return ret;
@@ -371,26 +362,8 @@ namespace example {
         }
     };
 
-    template<typename Layout>
-    constexpr CUBLASDX_HOST_DEVICE auto swap_layout_modes(const Layout& l) {
-        if constexpr (cute::rank(Layout {}) == 2) {
-            return cute::select<1, 0>(l);
-        } else if constexpr (cute::rank(Layout {}) == 3) {
-            return cute::select<1, 0, 2>(l);
-        } else {
-            static_assert(cute::rank(Layout {}) > 3, "Unsupported layout rank");
-        }
-    }
-
-    template<typename Swizzle, typename Offset, typename Layout>
-    constexpr CUBLASDX_HOST_DEVICE auto swap_layout_modes(const cute::ComposedLayout<Swizzle, Offset, Layout>& l) {
-        return cute::composition(l.layout_a(), l.offset(), swap_layout_modes(l.layout_b()));
-    }
-
-    template<typename T, typename Layout>
-    constexpr CUBLASDX_HOST_DEVICE auto swap_tensor_modes(const cute::Tensor<T, Layout>& t) {
-        return cute::make_tensor(t.data(), swap_layout_modes(t.layout()));
-    }
+    using cublasdx::detail::cute_backend::transpose_first_two_modes_of_layout;
+    using cublasdx::detail::cute_backend::transpose_first_two_modes_of_tensor;
 
     template<class T, class Dummy = void>
     struct get_value_type {
@@ -465,15 +438,11 @@ namespace example {
             return "half";
         } else if constexpr (std::is_same_v<value_type, __nv_bfloat16>) {
             return "bfloat16";
-        }
-#    if CUBLASDX_EXAMPLE_SUPPORTS_FP8
-        else if constexpr (std::is_same_v<value_type, __nv_fp8_e4m3>) {
+        } else if constexpr (std::is_same_v<value_type, __nv_fp8_e4m3>) {
             return "fp8_e4m3";
         } else if constexpr (std::is_same_v<value_type, __nv_fp8_e5m2>) {
-            return "fp8_e4m3";
-        }
-#    endif
-        else if constexpr (std::is_same_v<value_type, cublasdx::tfloat32_t>) {
+            return "fp8_e5m2";
+        } else if constexpr (std::is_same_v<value_type, cublasdx::tfloat32_t>) {
             return "tfloat32";
         } else if constexpr (std::is_same_v<value_type, float>) {
             return "float";
@@ -542,13 +511,14 @@ namespace example {
         using type = T;
     };
 
-    enum class random_data_type {
+    enum class random_data_type
+    {
         truly_random,
         pure_exponent
     };
 
     template<typename T, class Processor, class Dist>
-    std::vector<T> get_random_vector(Processor const& proc, Dist & dist, const size_t size, int seed = -1) {
+    std::vector<T> get_random_vector(Processor const& proc, Dist& dist, const size_t size, int seed = -1) {
 
         std::vector<T> ret(size);
 
@@ -560,7 +530,7 @@ namespace example {
                 using scalar_type = typename T::value_type;
                 scalar_type r     = convert<scalar_type>(proc(dist(gen)));
                 scalar_type i     = convert<scalar_type>(proc(dist(gen)));
-                return  T(r, i);
+                return T(r, i);
             } else {
                 return convert<T>(proc(dist(gen)));
             }
@@ -575,7 +545,7 @@ namespace example {
     std::vector<T> get_normal_floating_data(const size_t size, float mean, float sd, const int seed = -1) {
         static_assert(commondx::is_floating_point_v<T>, "Floating point output type required");
         auto dist = std::normal_distribution<float>(mean, sd);
-        auto proc = cublasdx::identity{};
+        auto proc = cublasdx::identity {};
         return get_random_vector<T>(proc, dist, size, seed);
     }
 
@@ -585,27 +555,29 @@ namespace example {
         using internal_type = typename get_value_type<T>::type;
 
         using lower_precision = cute::conditional_t<(sizeof(AccPrec) <= sizeof(internal_type)), AccPrec, internal_type>;
-        using precision_t = cute::conditional_t<cute::is_same_v<AccPrec, __nv_fp8_e4m3> or
-                                                cute::is_same_v<internal_type, __nv_fp8_e4m3>,
-                                                __nv_fp8_e4m3, lower_precision>;
+        using precision_t     = cute::conditional_t<cute::is_same_v<AccPrec, __nv_fp8_e4m3> or
+                                                        cute::is_same_v<internal_type, __nv_fp8_e4m3>,
+                                                    __nv_fp8_e4m3,
+                                                    lower_precision>;
 
-        constexpr bool is_bf16 = cute::is_same_v<precision_t, cublasdx::bfloat16_t> or cute::is_same_v<precision_t, __nv_bfloat16>;
+        constexpr bool is_bf16 =
+            cute::is_same_v<precision_t, cublasdx::bfloat16_t> or cute::is_same_v<precision_t, __nv_bfloat16>;
         constexpr bool is_e5m2 = cute::is_same_v<precision_t, __nv_fp8_e5m2>;
         constexpr bool is_e4m3 = cute::is_same_v<precision_t, __nv_fp8_e4m3>;
 
-        constexpr int exponent_bias = (is_bf16 ? 127 :
-                                      (is_e5m2 ? 15 :
-                                      (is_e4m3 ? 7 : 0)));
+        constexpr int exponent_bias = (is_bf16 ? 127 : (is_e5m2 ? 15 : (is_e4m3 ? 7 : 0)));
 
-        static_assert(exponent_bias != 0, "Pure exponent data filling mode is available only for BF16, E5M2 and E4M3 datatypes");
+        static_assert(exponent_bias != 0,
+                      "Pure exponent data filling mode is available only for BF16, E5M2 and E4M3 datatypes");
 
         // Use exponent sign to decide between positive and negative
         auto dist = std::uniform_int_distribution(-exponent_bias - 1, exponent_bias + 1);
         auto proc = [&](auto value) {
-            auto const normalized_value = cute::conditional_return((value < 0), -1.f / (1 << (-value)), 1.f / (1 << (value)));
+            auto const normalized_value =
+                cute::conditional_return((value < 0), -1.f / (1 << (-value)), 1.f / (1 << (value)));
             // Check if special value were randomized
             bool const is_minimal_value = value == (-exponent_bias - 1);
-            bool const is_zero = value == (exponent_bias + 1);
+            bool const is_zero          = value == (exponent_bias + 1);
 
             return convert<internal_type>(is_minimal_value ? -1.f : (is_zero ? 0.f : normalized_value));
         };
@@ -615,29 +587,30 @@ namespace example {
 
     template<typename T, typename MinMaxType = cute::conditional_t<commondx::is_floating_point_v<T>, float, int32_t>>
     std::vector<T> get_random_uniform_data(const size_t size, MinMaxType min, MinMaxType max, const int seed = -1) {
-        static_assert(commondx::is_floating_point_v<T> or commondx::is_integral_v<T>, "Datatype must be either recognized floating point or integral");
+        static_assert(commondx::is_floating_point_v<T> or commondx::is_integral_v<T>,
+                      "Datatype must be either recognized floating point or integral");
         auto dist = [&]() {
-            if constexpr(commondx::is_floating_point_v<T>) {
+            if constexpr (commondx::is_floating_point_v<T>) {
                 return std::uniform_real_distribution<double>(min, max);
             } else {
                 return std::uniform_int_distribution<int32_t>(min, max);
             }
             CUTE_GCC_UNREACHABLE;
         }();
-        auto proc = cublasdx::identity{};
+        auto proc = cublasdx::identity {};
         return get_random_vector<T>(proc, dist, size, seed);
     }
 
     template<typename T, typename AccPrec = T, random_data_type RandomDataType = random_data_type::truly_random>
     std::vector<T> get_random_data(const size_t size, const int seed = -1) {
         // Create distribution for random data
-        if constexpr(commondx::is_floating_point_v<T> and RandomDataType == random_data_type::truly_random) {
+        if constexpr (commondx::is_floating_point_v<T> and RandomDataType == random_data_type::truly_random) {
             return get_normal_floating_data<T>(size, 0.0, 1.0, seed);
-        } else if constexpr(commondx::is_floating_point_v<T> and RandomDataType == random_data_type::pure_exponent) {
+        } else if constexpr (commondx::is_floating_point_v<T> and RandomDataType == random_data_type::pure_exponent) {
             return get_uniform_exponent_floating_data<T, AccPrec>(size, seed);
-        } else if constexpr(commondx::is_signed_integral_v<T>) {
+        } else if constexpr (commondx::is_signed_integral_v<T>) {
             return get_random_uniform_data<T>(size, -20, 20, seed);
-        } else if constexpr(commondx::is_unsigned_integral_v<T>) {
+        } else if constexpr (commondx::is_unsigned_integral_v<T>) {
             return get_random_uniform_data<T>(size, 0, 40, seed);
         } else {
             static_assert(commondx::is_floating_point_v<T> or commondx::is_integral_v<T>);
@@ -686,17 +659,6 @@ namespace example {
     }
 
     struct cublasdx_enable_example_sm {
-#    if defined(CUBLASDX_EXAMPLE_ENABLE_SM_70)
-        static constexpr bool sm_70 = true;
-#    else
-        static constexpr bool sm_70 = false;
-#    endif
-
-#    if defined(CUBLASDX_EXAMPLE_ENABLE_SM_72)
-        static constexpr bool sm_72 = true;
-#    else
-        static constexpr bool sm_72 = false;
-#    endif
 
 #    if defined(CUBLASDX_EXAMPLE_ENABLE_SM_75)
         static constexpr bool sm_75 = true;
@@ -753,18 +715,6 @@ namespace example {
         static constexpr bool sm_100a = false;
 #    endif
 
-#    if defined(CUBLASDX_EXAMPLE_ENABLE_SM_101) && (CUDA_VERSION < 13000)
-        static constexpr bool sm_101 = true;
-#    else
-        static constexpr bool sm_101 = false;
-#    endif
-
-#    if defined(CUBLASDX_EXAMPLE_ENABLE_SM_101a) && (CUDA_VERSION < 13000)
-        static constexpr bool sm_101a = true;
-#    else
-        static constexpr bool sm_101a = false;
-#    endif
-
 #    if defined(CUBLASDX_EXAMPLE_ENABLE_SM_103)
         static constexpr bool sm_103 = true;
 #    else
@@ -777,13 +727,13 @@ namespace example {
         static constexpr bool sm_103a = false;
 #    endif
 
-#    if defined(CUBLASDX_EXAMPLE_ENABLE_SM_110) && (CUDA_VERSION >= 13000)
+#    if defined(CUBLASDX_EXAMPLE_ENABLE_SM_110)
         static constexpr bool sm_110 = true;
 #    else
         static constexpr bool sm_110 = false;
 #    endif
 
-#    if defined(CUBLASDX_EXAMPLE_ENABLE_SM_110a) && (CUDA_VERSION >= 13000)
+#    if defined(CUBLASDX_EXAMPLE_ENABLE_SM_110a)
         static constexpr bool sm_110a = true;
 #    else
         static constexpr bool sm_110a = false;
@@ -795,10 +745,22 @@ namespace example {
         static constexpr bool sm_120 = false;
 #    endif
 
+#    if defined(CUBLASDX_EXAMPLE_ENABLE_SM_120a)
+        static constexpr bool sm_120a = true;
+#    else
+        static constexpr bool sm_120a = false;
+#    endif
+
 #    if defined(CUBLASDX_EXAMPLE_ENABLE_SM_121)
         static constexpr bool sm_121 = true;
 #    else
         static constexpr bool sm_121 = false;
+#    endif
+
+#    if defined(CUBLASDX_EXAMPLE_ENABLE_SM_121a)
+        static constexpr bool sm_121a = true;
+#    else
+        static constexpr bool sm_121a = false;
 #    endif
     };
 

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -36,7 +36,7 @@ __launch_bounds__(DevicePipeline::max_threads_per_block, 1) __global__
 #ifdef __CUDA_ARCH__
     if constexpr (cublasdx::sm_of_v<BLAS> == __CUDA_ARCH__) {
 
-        extern __shared__ __align__(device_pipeline.buffer_alignment()) char smem[];
+        extern __shared__ __align__(device_pipeline.buffer_alignment()) cublasdx::byte smem[];
 
         auto tile_pipeline = device_pipeline.get_tile(smem, blockIdx.x, blockIdx.y);
         auto tile_gmem_c   = cublasdx::get_tile(global_c, BLAS::c_shape, blockIdx.x, blockIdx.y);
@@ -200,9 +200,12 @@ int device_gemm_performance(GlobalShape global_shape) {
     // - precision
     // - type (real / complex)
     // this will be either precision or cublasdx::complex<precision>
-    using a_compute_value_type = cute::conditional_t<type == cublasdx::type::real, a_compute_precision, cublasdx::complex<a_compute_precision>>;
-    using b_compute_value_type = cute::conditional_t<type == cublasdx::type::real, b_compute_precision, cublasdx::complex<b_compute_precision>>;
-    using c_compute_value_type = cute::conditional_t<type == cublasdx::type::real, c_compute_precision, cublasdx::complex<c_compute_precision>>;
+    using a_compute_value_type =
+        cute::conditional_t<type == cublasdx::type::real, a_compute_precision, cublasdx::complex<a_compute_precision>>;
+    using b_compute_value_type =
+        cute::conditional_t<type == cublasdx::type::real, b_compute_precision, cublasdx::complex<b_compute_precision>>;
+    using c_compute_value_type =
+        cute::conditional_t<type == cublasdx::type::real, c_compute_precision, cublasdx::complex<c_compute_precision>>;
 
     // Scalar multipliers
     // C = alpha * A * B + beta * C
@@ -280,7 +283,9 @@ int device_gemm_performance(GlobalShape global_shape) {
     constexpr unsigned available_shared_memory = commondx::device_info<Arch>::shared_memory();
     constexpr unsigned maximal_pipeline_depth  = cute::min(16, (available_shared_memory - 32) / stage_shared_req);
     constexpr unsigned pipeline_depth = override_pipeline_depth ? manual_pipeline_depth : maximal_pipeline_depth;
-    static_assert(pipeline_depth <= maximal_pipeline_depth, "The chosen pipeline depth requires more shared memory than is available for the target architecture");
+    static_assert(
+        pipeline_depth <= maximal_pipeline_depth,
+        "The chosen pipeline depth requires more shared memory than is available for the target architecture");
 
     auto k_stages = k / tile_k;
     if (k_stages < pipeline_depth) {

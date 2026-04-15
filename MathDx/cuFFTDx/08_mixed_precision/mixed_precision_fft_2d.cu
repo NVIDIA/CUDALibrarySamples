@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -44,7 +44,7 @@ __launch_bounds__(FFTX::max_threads_per_block) __global__
     constexpr bool is_mixed = !std::is_same_v<InputOutputType, complex_type>;
 
     // Shared memory
-    extern __shared__ __align__(alignof(float4)) unsigned char shared_mem[];
+    extern __shared__ __align__(alignof(float4)) cufftdx::byte shared_mem[];
 
     // Local array for thread
     complex_type thread_data[RequiredStorageSize];
@@ -404,7 +404,7 @@ void mixed_fft_2d() {
 
 template<unsigned int Arch>
 struct mixed_fft_2d_functor {
-    void operator()() { 
+    void operator()() {
         mixed_fft_2d<Arch, 512>();
     }
 };

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +13,7 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- */
+ */ 
 
 #ifndef CUSOLVERDX_EXAMPLE_COMMON_PRINT_HPP
 #define CUSOLVERDX_EXAMPLE_COMMON_PRINT_HPP
@@ -30,6 +30,7 @@ namespace common {
 #define CUSOLVERDX_EXAMPLE_PRINTF_SPEC "%0.2f"
 #define CUSOLVERDX_EXAMPLE_PRINTF_COMPLEX_SUFFIX "j "
 
+    // This function prints a matrix in col-major format.
     template<typename T>
     void print_matrix(const unsigned int M, const unsigned int N, bool is_col_major, const T* A, const unsigned int lda, const int nbatches = 1) {
         if (is_col_major) {
@@ -51,15 +52,21 @@ namespace common {
         } else { // row major
             if constexpr (!is_complex<T>()) {
                 for (int i = 0; i < M; i++) {
-                    for (int j = 0; j < N * nbatches; j++) {
-                        std::printf(CUSOLVERDX_EXAMPLE_PRINTF_SPEC " ", A[i * lda + j]);
+                    for (int b = 0; b < nbatches; b++) {
+                        for (int j = 0; j < N; j++) {
+                            std::printf(CUSOLVERDX_EXAMPLE_PRINTF_SPEC " ", A[b * M * N + i * lda + j]);
+                        }
                     }
                     printf("\n");
                 }
             } else {
                 for (int i = 0; i < M; i++) {
-                    for (int j = 0; j < N * nbatches; j++) {
-                        std::printf(CUSOLVERDX_EXAMPLE_PRINTF_SPEC " + " CUSOLVERDX_EXAMPLE_PRINTF_SPEC CUSOLVERDX_EXAMPLE_PRINTF_COMPLEX_SUFFIX, A[i * lda + j].x, A[i * lda + j].y);
+                    for (int b = 0; b < nbatches; b++) {
+                        for (int j = 0; j < N * nbatches; j++) {
+                            std::printf(CUSOLVERDX_EXAMPLE_PRINTF_SPEC " + " CUSOLVERDX_EXAMPLE_PRINTF_SPEC CUSOLVERDX_EXAMPLE_PRINTF_COMPLEX_SUFFIX,
+                                        A[b * M * N + i * lda + j].x,
+                                        A[b * M * N + i * lda + j].y);
+                        }
                     }
                     printf("\n");
                 }

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -45,7 +45,7 @@ inline __device__ unsigned int batch_offset(const unsigned int local_fft_id,
     return cufftdx::size_of<FFT>::value * global_fft_id;
 }
 
-extern "C" __global__ void test_kernel(typename FFT::value_type* input)
+extern "C" __global__ void test_kernel(typename FFT::value_type* fft_data)
 {
   typename FFT::value_type thread_data[FFT::storage_size];
 
@@ -54,7 +54,7 @@ extern "C" __global__ void test_kernel(typename FFT::value_type* input)
   unsigned int index = offset + threadIdx.x;
   for (unsigned int i = 0; i < FFT::elements_per_thread; i++) {
     if ((i * stride + threadIdx.x) < cufftdx::size_of<FFT>::value) {
-        thread_data[i] = input[index];
+        thread_data[i] = fft_data[index];
         index += stride;
     }
   }
@@ -65,7 +65,7 @@ extern "C" __global__ void test_kernel(typename FFT::value_type* input)
   index = offset + threadIdx.x;
   for (unsigned int i = 0; i < FFT::elements_per_thread; i++) {
     if ((i * stride + threadIdx.x) < cufftdx::size_of<FFT>::value) {
-        input[index] = thread_data[i];
+        fft_data[index] = thread_data[i];
         index += stride;
     }
   }
@@ -212,20 +212,16 @@ int main(int, char**) {
     CU_CHECK_AND_EXIT(cuModuleGetFunction(&kernel, module, "test_kernel"));
 
     // Generate input for execution
-    std::vector<value_type> host_input(fft_size);
-    float                   i = 0.0f;
-    for (auto& v : host_input) {
-        v.x = i++;
-        v.y = 0;
-    }
-    size_t fft_buffer_size = fft_size * sizeof(value_type);
+    value_type* fft_data;
+    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&fft_data, fft_size * sizeof(value_type)));
 
-    CUdeviceptr device_values;
-    CU_CHECK_AND_EXIT(cuMemAlloc(&device_values, fft_buffer_size));
-    CU_CHECK_AND_EXIT(cuMemcpyHtoD(device_values, host_input.data(), fft_buffer_size));
+    for(size_t i = 0; i < fft_size; i++) {
+        fft_data[i].x = float(i);
+        fft_data[i].y = 0;
+    }
 
     // Execute test_kernel
-    void* args[] = {&device_values};
+    void* args[] = {&fft_data};
     CU_CHECK_AND_EXIT(cuLaunchKernel(kernel,
                                      1, // number of blocks
                                      1,
@@ -239,23 +235,20 @@ int main(int, char**) {
                                      0));
     CU_CHECK_AND_EXIT(cuCtxSynchronize());
 
-    // Retrieve and print output.
-    std::vector<value_type> host_output(fft_size);
-    CU_CHECK_AND_EXIT(cuMemcpyDtoH(host_output.data(), device_values, fft_buffer_size));
-    // for (size_t i = 0; i < fft_size; ++i) {
-    //     std::cout << i << ": (" << host_output[i].x << ", " << host_output[i].y << ")" << std::endl;
-    // }
-
-    // Release resources.
-    CU_CHECK_AND_EXIT(cuMemFree(device_values));
-    CU_CHECK_AND_EXIT(cuModuleUnload(module));
-    CU_CHECK_AND_EXIT(cuCtxDestroy(context));
-
+    // Validate results before destroying context
     double sum = (fft_size * (fft_size - 1)) / 2.0;
-    if ((host_output[0].x - sum > 0.01)) {
+    if (std::abs(fft_data[0].x - sum) > 0.01) {
         std::cout << "[test_nvrtc_lto_block] Failed" << std::endl;
+        CUDA_CHECK_AND_EXIT(cudaFree(fft_data));
+        CU_CHECK_AND_EXIT(cuModuleUnload(module));
+        CU_CHECK_AND_EXIT(cuCtxDestroy(context));
         return 1;
     }
     std::cout << "[test_nvrtc_lto_block] Passed" << std::endl;
+
+    // Release resources
+    CUDA_CHECK_AND_EXIT(cudaFree(fft_data));
+    CU_CHECK_AND_EXIT(cuModuleUnload(module));
+    CU_CHECK_AND_EXIT(cuCtxDestroy(context));
     return 0;
 }

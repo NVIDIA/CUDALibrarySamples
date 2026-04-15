@@ -26,7 +26,7 @@ This folder demonstrates cuBLASDx APIs usage.
 mkdir build && cd build
 cmake -DCUBLASDX_CUDA_ARCHITECTURES=70-real -Dmathdx_ROOT=/opt/nvidia/mathdx/XX.Y ..
 make
-// Run
+# Run
 ctest
 ```
 
@@ -61,3 +61,9 @@ For the detailed descriptions of the examples please visit [Examples](https://do
 |                       |                | 13_gemm_fft_performance           | Benchmark for GEMM and FFT fused into a single kernel                          |
 |                       | Emulation      | 16_dgemm_emulation                | Emulate double precision GEMM using lower precision operations (Ozaki scheme)  |
 | NVRTC Examples        |                | 15_nvrtc_gemm                     | Performs GEMM, kernel is compiled using NVRTC                                  |
+| TRSM Examples         |                | 17_trsm_block                     | Block-level triangular solve (TRSM) in a single CUDA block                    |
+|                       |                | 17_trsm_thread                    | Thread-level triangular solve (TRSM), one instance per CUDA thread             |
+| Tensor Transform      |                | 18_gemm_conj_transpose            | GEMM where A is used in conjugate-transpose form (C = alpha * A^H * B + beta * C) |
+|                       |                | 18_trsm_conj_transpose            | TRSM where the triangular matrix is used in conjugate-transpose form           |
+| Batched GEMM          |                | 19_batched_gemm                   | Batched GEMM using cuBLASDx API with grid-stride loop over batch dimension     |
+|                       |                | 19_batched_gemm_pipeline          | Batched GEMM using pipelining API with grid-stride loop                        |
