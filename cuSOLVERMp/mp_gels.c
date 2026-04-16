@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,7 +16,6 @@
  */
 
 
-
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -24,7 +23,6 @@
 #include <time.h>
 #include <math.h>
 
-#include <omp.h>
 #include <mpi.h>
 
 #include <cusolverMp.h>
@@ -161,11 +159,11 @@ int main(int argc, char* argv[])
     MPI_Comm mpi_global_comm = MPI_COMM_WORLD;
 
     /* Get rank id and rank size of the comm. */
-    int mpiCommSize, mpiRank;
-    MPI_Comm_size(mpi_global_comm, &mpiCommSize);
-    MPI_Comm_rank(mpi_global_comm, &mpiRank);
+    int commSize, rank;
+    MPI_Comm_size(mpi_global_comm, &commSize);
+    MPI_Comm_rank(mpi_global_comm, &rank);
 
-    if (mpiRank == 0) print(&opts);
+    if (rank == 0) print(&opts);
 
     /* Define dimensions, block sizes and offsets of A and B matrices */
     const int64_t m    = opts.m;
@@ -212,9 +210,6 @@ int main(int argc, char* argv[])
     assert(cudaStat == cudaSuccess);
 
     {
-        const int rank     = mpiRank;
-        const int commSize = mpiCommSize;
-
         /* Error codes */
         cusolverStatus_t cusolverStat = CUSOLVER_STATUS_SUCCESS;
         ncclResult_t     ncclStat     = ncclSuccess;
@@ -651,7 +646,7 @@ int main(int argc, char* argv[])
     /* Finalize MPI environment */
     MPI_Finalize();
 
-    if (mpiRank == 0)
+    if (rank == 0)
     {
         printf("[SUCCEEDED]\n");
     }

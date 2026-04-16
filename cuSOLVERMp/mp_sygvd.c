@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,14 +16,12 @@
  */
 
 
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
 #include <time.h>
 #include <math.h>
 
-#include <omp.h>
 #include <mpi.h>
 
 #include <cusolverMp.h>
@@ -131,14 +129,14 @@ int main(int argc, char* argv[])
     const uint32_t csrcz = 0;
 
     /* Get rank id and rank size of the comm. */
-    int mpiCommSize, mpiRank;
-    MPI_Comm_size(MPI_COMM_WORLD, &mpiCommSize);
-    MPI_Comm_rank(MPI_COMM_WORLD, &mpiRank);
+    int commSize, rank;
+    MPI_Comm_size(MPI_COMM_WORLD, &commSize);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
     const int verbose = opts.verbose;
 
     /* input argument used in this sample */
-    if (mpiRank == 0)
+    if (rank == 0)
     {
         print(&opts);
     }
@@ -173,9 +171,6 @@ int main(int argc, char* argv[])
     assert(cudaStat == cudaSuccess);
 
     {
-        const int rank     = mpiRank;
-        const int commSize = mpiCommSize;
-
         /* compute process grid index */
         int myRowRank, myColRank;
         if (gridLayout == CUSOLVERMP_GRID_MAPPING_COL_MAJOR)
@@ -647,7 +642,7 @@ int main(int argc, char* argv[])
     /* Finalize MPI environment */
     MPI_Finalize();
 
-    if (mpiRank == 0)
+    if (rank == 0)
     {
         printf("[SUCCEEDED]\n");
     }

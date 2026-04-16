@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,14 +16,12 @@
  */
 
 
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
 #include <time.h>
 #include <math.h>
 
-#include <omp.h>
 #include <mpi.h>
 
 #include <cusolverMp.h>
@@ -47,7 +45,7 @@ static double normI(int64_t m, int64_t n, int64_t lda, const double* A)
     }
 
     return max_nrm;
-};
+}
 
 static void generate_diagonal_dominant_symmetric_matrix(int64_t n, double* A, int64_t lda)
 {
@@ -111,7 +109,6 @@ int main(int argc, char* argv[])
 
     parse(&opts, argc, argv);
     validate(&opts);
-    print(&opts);
 
     /* Initialize MPI library */
     MPI_Init(NULL, NULL);
@@ -148,9 +145,11 @@ int main(int argc, char* argv[])
     const uint32_t csrcb = 0;
 
     /* Get rank id and rank size of the comm. */
-    int mpiCommSize, mpiRank;
-    MPI_Comm_size(MPI_COMM_WORLD, &mpiCommSize);
-    MPI_Comm_rank(MPI_COMM_WORLD, &mpiRank);
+    int commSize, rank;
+    MPI_Comm_size(MPI_COMM_WORLD, &commSize);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+    if (rank == 0) print(&opts);
 
     /*
      * Initialize device context for this process
@@ -162,9 +161,6 @@ int main(int argc, char* argv[])
     assert(cudaStat == cudaSuccess);
 
     {
-        const int rank     = mpiRank;
-        const int commSize = mpiCommSize;
-
         /* Error codes */
         cusolverStatus_t cusolverStat = CUSOLVER_STATUS_SUCCESS;
         ncclResult_t     ncclStat     = ncclSuccess;
@@ -716,10 +712,10 @@ int main(int argc, char* argv[])
     /* Finalize MPI environment */
     MPI_Finalize();
 
-    if (mpiRank == 0)
+    if (rank == 0)
     {
         printf("[SUCCEEDED]\n");
     }
 
     return 0;
-};
+}

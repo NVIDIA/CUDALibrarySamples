@@ -14,13 +14,23 @@ Distributed decompositions and linear system solutions
 
 [Dense matrix Cholesky factorization and linear system solve](mp_potrf_potrs.c)
 
+[Dense matrix Cholesky factorization and linear system solve (FP32)](mp_potrf_potrs_fp32.c)
+
+[Dense matrix Cholesky factorization and linear system solve (FP32 emulation)](mp_potrf_potrs_fp32emulation.c)
+
 [Dense matrix Symmetric Eigensolver](mp_syevd.c)
 
 [Dense matrix Symmetric Generalized Eigensolver](mp_sygvd.c)
 
 [Dense matrix QR factorization](mp_geqrf.c)
 
+[Dense matrix QR factorization with explicit Q formation](mp_geqrf_orgqr.c)
+
 [Dense matrix QR factorization and linear system solve](mp_gels.c)
+
+[Dense matrix initialization (LASET)](mp_laset.c)
+
+[Newton Schulz Iterations](mp_newton_schulz.cpp)
 
 Examples are bootstrapped by MPI and use it to set up distributed data. Those examples are intended just to show how API is used and not for performance benchmarking. For same reasons process grid defaults to `2x1` in the examples, however you can change it using `-p` and `-q` command line parameters.
 
@@ -40,15 +50,20 @@ In these samples each process will use CUDA device ID equal to the local MPI ran
 
 ### Supported Compute Capabilities
 
-[Compute Capability 7.0 ](https://developer.nvidia.com/cuda-gpus)
+* CUDA 12.x
+    * [Compute Capability 7.0 ](https://developer.nvidia.com/cuda-gpus)
+    * [Compute Capability 7.5 ](https://developer.nvidia.com/cuda-gpus)
+    * [Compute Capability 8.0 ](https://developer.nvidia.com/cuda-gpus)
+    * [Compute Capability 9.0 ](https://developer.nvidia.com/cuda-gpus)
+    * [Compute Capability 10.0 ](https://developer.nvidia.com/cuda-gpus)
+    * [Compute Capability 12.0 ](https://developer.nvidia.com/cuda-gpus)
 
-[Compute Capability 8.0 ](https://developer.nvidia.com/cuda-gpus)
-
-[Compute Capability 9.0 ](https://developer.nvidia.com/cuda-gpus)
-
-[Compute Capability 10.0 ](https://developer.nvidia.com/cuda-gpus)
-
-[Compute Capability 12.0 ](https://developer.nvidia.com/cuda-gpus)
+* CUDA 13.x
+    * [Compute Capability 7.5 ](https://developer.nvidia.com/cuda-gpus)
+    * [Compute Capability 8.0 ](https://developer.nvidia.com/cuda-gpus)
+    * [Compute Capability 9.0 ](https://developer.nvidia.com/cuda-gpus)
+    * [Compute Capability 10.0 ](https://developer.nvidia.com/cuda-gpus)
+    * [Compute Capability 12.0 ](https://developer.nvidia.com/cuda-gpus)
 
 ### Documentation
 
@@ -72,7 +87,7 @@ export CUSOLVERMP_HOME=<path/to/cusolvermp>
 export NCCL_HOME=<path/to/nccl>
 source ${HPCXROOT}/hpcx-mt-init-ompi.sh
 hpcx_load
-cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_ARCHITECTURES="80;90;100;120" -DCUSOLVERMP_INCLUDE_DIRECTORIES=${CUSOLVERMP_HOME}/include -DCUSOLVERMP_LINK_DIRECTORIES=${CUSOLVERMP_HOME}/lib/ -DNCCL_INCLUDE_DIR=${NCCL_HOME}/include -DNCCL_LIBRARIES=${NCCL_HOME}/lib/libnccl.so
+cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_ARCHITECTURES="75;80;90;100;120" -DCUSOLVERMP_INCLUDE_DIRECTORIES=${CUSOLVERMP_HOME}/include -DCUSOLVERMP_LINK_DIRECTORIES=${CUSOLVERMP_HOME}/lib/ -DNCCL_INCLUDE_DIR=${NCCL_HOME}/include -DNCCL_LIBRARIES=${NCCL_HOME}/lib/libnccl.so
 make -j
 ```
 
@@ -100,4 +115,14 @@ Run examples with mpi command and number of processes according to process grid 
 
 `mpirun -n 2 ./mp_geqrf`
 
+`mpirun -n 2 ./mp_geqrf_orgqr`
+
+`mpirun -n 4 ./mp_geqrf_orgqr -p 2 -q 2 -m 100 -n 50 -mbA 32 -nbA 32`
+
 `mpirun -n 2 ./mp_gels`
+
+`mpirun -n 2 ./mp_laset`
+
+`mpirun -n 4 ./mp_laset -p 2 -q 2 -n 20 -mbA 4 -nbA 4`
+
+`mpirun -n 2 ./mp_newton_schulz -p 2 -q 1 -m 16384 -n 2048`

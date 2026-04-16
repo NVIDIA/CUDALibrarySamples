@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,13 +16,11 @@
  */
 
 
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
 #include <math.h>
 
-#include <omp.h>
 #include <mpi.h>
 
 #include <cusolverMp.h>
@@ -41,7 +39,7 @@ static double vec_nrm_inf(int64_t N, const double* X)
     }
 
     return max_nrm;
-};
+}
 
 /* A is 1D laplacian, return A[N:-1:1, :] */
 static void gen_1d_laplacian_perm(int64_t N, double* A, int64_t lda)
@@ -113,7 +111,6 @@ int main(int argc, char* argv[])
 
     parse(&opts, argc, argv);
     validate(&opts);
-    print(&opts);
 
     /* Initialize MPI library */
     MPI_Init(NULL, NULL);
@@ -153,9 +150,11 @@ int main(int argc, char* argv[])
     const uint32_t CSRCB = 0;
 
     /* Get rank id and rank size of the comm. */
-    int mpiCommSize, mpiRank;
-    MPI_Comm_size(MPI_COMM_WORLD, &mpiCommSize);
-    MPI_Comm_rank(MPI_COMM_WORLD, &mpiRank);
+    int commSize, rank;
+    MPI_Comm_size(MPI_COMM_WORLD, &commSize);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+    if (rank == 0) print(&opts);
 
     /*
      * Initialize device context for this process
@@ -167,9 +166,6 @@ int main(int argc, char* argv[])
     assert(cudaStat == cudaSuccess);
 
     {
-        const int rank     = mpiRank;
-        const int commSize = mpiCommSize;
-
         /* Library handles */
         cusolverMpHandle_t cusolverMpHandle = NULL;
 
@@ -780,10 +776,10 @@ int main(int argc, char* argv[])
     /* Finalize MPI environment */
     MPI_Finalize();
 
-    if (mpiRank == 0)
+    if (rank == 0)
     {
         printf("[SUCCEEDED]\n");
     }
 
     return 0;
-};
+}

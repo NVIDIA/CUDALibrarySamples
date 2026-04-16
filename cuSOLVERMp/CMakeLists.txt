@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,7 +15,7 @@
 
 cmake_minimum_required(VERSION 3.16)
 
-project(cusolvermp_samples LANGUAGES C CUDA)
+project(cusolvermp_samples LANGUAGES C CXX CUDA)
 
 find_package(MPI REQUIRED)
 
@@ -23,8 +23,19 @@ set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 set(CUDA_RUNTIME_LIBRARY shared)
 
-function(build_sample sample_name)
-    add_executable(${sample_name} ${sample_name}.c)
+function(build_sample sample_file_name)
+    get_filename_component(sample_name ${sample_file_name} NAME_WE)
+    get_filename_component(sample_ext ${sample_file_name} EXT)
+
+    if(sample_ext STREQUAL ".c")
+      #message(STATUS "Compiling sample in C: ${sample_file_name}")
+      set_source_files_properties(${sample_file_name} PROPERTIES LANGUAGE C)
+    elseif(sample_ext STREQUAL ".cpp")
+      #message(STATUS "Compiling sample in CXX: ${sample_file_name}")
+      set_source_files_properties(${sample_file_name} PROPERTIES LANGUAGE CXX)
+    endif()
+
+    add_executable(${sample_name} ${sample_file_name})
 
     target_include_directories(${sample_name} PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
@@ -58,11 +69,17 @@ function(build_sample sample_name)
     )
 endfunction(build_sample)
 
-build_sample("mp_getrf_getrs")
-build_sample("mp_potrf_potrs")
-build_sample("mp_potrf_potrs_fp32")
-build_sample("mp_potrf_potrs_fp32emulation")
-build_sample("mp_geqrf")
-build_sample("mp_syevd")
-build_sample("mp_sygvd")
-build_sample("mp_gels")
+# C
+build_sample("mp_getrf_getrs.c")
+build_sample("mp_potrf_potrs.c")
+build_sample("mp_potrf_potrs_fp32.c")
+build_sample("mp_potrf_potrs_fp32emulation.c")
+build_sample("mp_geqrf.c")
+build_sample("mp_geqrf_orgqr.c")
+build_sample("mp_syevd.c")
+build_sample("mp_sygvd.c")
+build_sample("mp_gels.c")
+build_sample("mp_laset.c")
+
+# C++ ( __nv_bfloat16 is c++ object and it requires a C++ compiler)
+build_sample("mp_newton_schulz.cpp")
