@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -75,7 +75,8 @@ inline bool isPtrArray(bool ptrArrayBatch, bool groupedBatch) {
 // Block scales used for mxfp8 and nvfp8 require a special layout:
 // https://docs.nvidia.com/cuda/cublas/index.html#d-block-scaling-factors-layout for more details.
 inline size_t getScaleTensorSize(int inner, int outer, cublasLtMatmulMatrixScale_t scaleMode) {
-    if (scaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F) return 1;
+    if (scaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F ||
+        scaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_PER_BATCH_SCALAR_32F) return 1;
 
     if (scaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_VEC32_UE8M0 ||
         scaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_VEC16_UE4M3) {
@@ -374,6 +375,39 @@ struct TestBench {
                        nArray[i], kArray[i], ldaArray[i], ldbArray[i], ldcArray[i], lddArray[i]);
             }
             printf("\n");
+
+            // Allocate per-group scale tensors for narrow precision types
+            // Note: D scaling and amax are not supported for grouped GEMM
+            if (isNarrowPrecision<InTypeAB>() || perTensorScalingEnabled) {
+                AscalePtrArrayHost.resize(N);
+                BscalePtrArrayHost.resize(N);
+
+                checkCudaStatus(cudaMalloc(reinterpret_cast<void **>(&AscalePtrArrayDev), N * sizeof(void *)));
+                checkCudaStatus(cudaMalloc(reinterpret_cast<void **>(&BscalePtrArrayDev), N * sizeof(void *)));
+
+                for (int i = 0; i < N; ++i) {
+                    // Calculate per-group scale tensor sizes
+                    int groupM = mArray[i];
+                    int groupN = nArray[i];
+                    int groupK = kArray[i];
+                    int aInner = transa != CUBLAS_OP_N ? groupK : groupM;
+                    int aOuter = transa != CUBLAS_OP_N ? groupM : groupK;
+                    int bInner = transb != CUBLAS_OP_N ? groupN : groupK;
+                    int bOuter = transb != CUBLAS_OP_N ? groupK : groupN;
+
+                    size_t AscaleSize = getScaleTensorSize(aInner, aOuter, AScaleMode);
+                    size_t BscaleSize = getScaleTensorSize(bInner, bOuter, BScaleMode);
+
+                    // Ensure minimum allocation of 1 element for scalar scales
+                    AscaleSize = std::max(AscaleSize, size_t(1));
+                    BscaleSize = std::max(BscaleSize, size_t(1));
+
+                    checkCudaStatus(cudaMalloc(reinterpret_cast<void **>(&AscalePtrArrayHost[i]),
+                                               AscaleSize * sizeof(ScaleType)));
+                    checkCudaStatus(cudaMalloc(reinterpret_cast<void **>(&BscalePtrArrayHost[i]),
+                                               BscaleSize * sizeof(ScaleType)));
+                }
+            }
         }
 
         if (isPtrArray(ptrArrayBatch, groupedBatch)) {
@@ -446,6 +480,16 @@ struct TestBench {
                 checkCudaStatus(cudaFree(alphaArrayHost[i]));
                 checkCudaStatus(cudaFree(betaArrayHost[i]));
             }
+
+            // Free per-group scale tensors
+            if (!AscalePtrArrayHost.empty()) {
+                for (int i = 0; i < N; ++i) {
+                    checkCudaStatus(cudaFree(AscalePtrArrayHost[i]));
+                    checkCudaStatus(cudaFree(BscalePtrArrayHost[i]));
+                }
+                checkCudaStatus(cudaFree(AscalePtrArrayDev));
+                checkCudaStatus(cudaFree(BscalePtrArrayDev));
+            }
         }
         if (isPtrArray(ptrArrayBatch, groupedBatch)) {
             for (int i = 0; i < N; ++i) {
@@ -517,6 +561,42 @@ struct TestBench {
                                                 cudaMemcpyHostToDevice, stream));
                 checkCudaStatus(cudaMemcpyAsync(betaArrayHost[i], &betaArray[i], sizeof(betaArray[0]),
                                                 cudaMemcpyHostToDevice, stream));
+            }
+
+            // Copy per-group scale pointer arrays and data
+            // Note: C, D scaling and amax are not supported for grouped GEMM
+            if (!AscalePtrArrayHost.empty()) {
+                checkCudaStatus(cudaMemcpyAsync(AscalePtrArrayDev, AscalePtrArrayHost.data(),
+                                                N * sizeof(AscalePtrArrayHost[0]), cudaMemcpyHostToDevice, stream));
+                checkCudaStatus(cudaMemcpyAsync(BscalePtrArrayDev, BscalePtrArrayHost.data(),
+                                                N * sizeof(BscalePtrArrayHost[0]), cudaMemcpyHostToDevice, stream));
+
+                // Copy scale data to per-group tensors
+                for (int i = 0; i < N; ++i) {
+                    int groupM = mArray[i];
+                    int groupN = nArray[i];
+                    int groupK = kArray[i];
+                    int aInner = transa != CUBLAS_OP_N ? groupK : groupM;
+                    int aOuter = transa != CUBLAS_OP_N ? groupM : groupK;
+                    int bInner = transb != CUBLAS_OP_N ? groupN : groupK;
+                    int bOuter = transb != CUBLAS_OP_N ? groupK : groupN;
+
+                    size_t AscaleSize = std::max(getScaleTensorSize(aInner, aOuter, AScaleMode), size_t(1));
+                    size_t BscaleSize = std::max(getScaleTensorSize(bInner, bOuter, BScaleMode), size_t(1));
+
+                    // Fill scale data with values from the host arrays (or defaults)
+                    ScaleType tempAscale = !AscaleHost.empty() ? AscaleHost[0] : ScaleType{2.0f};
+                    ScaleType tempBscale = !BscaleHost.empty() ? BscaleHost[0] : ScaleType{0.5f};
+
+                    // For simplicity, fill entire scale tensors with the same value
+                    std::vector<ScaleType> tempAscaleData(AscaleSize, tempAscale);
+                    std::vector<ScaleType> tempBscaleData(BscaleSize, tempBscale);
+
+                    checkCudaStatus(cudaMemcpyAsync(AscalePtrArrayHost[i], tempAscaleData.data(),
+                                                    AscaleSize * sizeof(ScaleType), cudaMemcpyHostToDevice, stream));
+                    checkCudaStatus(cudaMemcpyAsync(BscalePtrArrayHost[i], tempBscaleData.data(),
+                                                    BscaleSize * sizeof(ScaleType), cudaMemcpyHostToDevice, stream));
+                }
             }
         }
 
@@ -666,6 +746,11 @@ struct TestBench {
     std::vector<ComputeType> betaArray;
     typename StorageType<ComputeType>::type **alphaArrayDev, **betaArrayDev;
     std::vector<typename StorageType<ComputeType>::type *> alphaArrayHost, betaArrayHost;
+
+    // Grouped GEMM scale pointer arrays (for narrow precision types)
+    // Note: C, D scaling and amax are not supported for grouped GEMM
+    std::vector<ScaleType *> AscalePtrArrayHost, BscalePtrArrayHost;
+    ScaleType **AscalePtrArrayDev, **BscalePtrArrayDev;
 };
 
 template <> inline void TestBench<__half, __half, float>::fillData() {
@@ -688,6 +773,14 @@ inline void TestBench<__nv_fp4_e2m1, __nv_fp4_e2m1, float, __nv_fp8_e4m3, float,
     for (size_t i = 0; i < Bhost.size(); i++) Bhost[i] = __nv_fp4x2_e2m1{float2{float(i % 5), float(i % 5) + 1}};
     for (size_t i = 0; i < Chost.size(); i++) Chost[i] = __nv_bfloat16(i % 5);
     for (size_t i = 0; i < biasHost.size(); i++) biasHost[i] = __nv_fp4x2_e2m1{float2{float(i % 5), float(i % 5) + 1}};
+}
+
+template <>
+inline void TestBench<__nv_fp4_e2m1, __nv_bfloat16, float, __nv_fp8_e4m3, float, __nv_bfloat16>::fillData() {
+    for (size_t i = 0; i < Ahost.size(); i++) Ahost[i] = __nv_fp4x2_e2m1{float2{float(i % 5), float(i % 5) + 1}};
+    for (size_t i = 0; i < Bhost.size(); i++) Bhost[i] = __nv_fp4x2_e2m1{float2{float(i % 5), float(i % 5) + 1}};
+    for (size_t i = 0; i < Chost.size(); i++) Chost[i] = __nv_bfloat16(i % 5);
+    for (size_t i = 0; i < biasHost.size(); i++) biasHost[i] = __nv_bfloat16(float(i % 5) + 1);
 }
 
 const char *tileToString(cublasLtMatmulTile_t tile);

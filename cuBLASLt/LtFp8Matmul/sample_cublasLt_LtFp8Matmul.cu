@@ -102,7 +102,7 @@ void LtFp8Matmul(cublasLtHandle_t ltHandle,
         checkCublasStatus(CUBLAS_STATUS_NOT_SUPPORTED);
     }
 
-    checkCublasStatus(cublasLtMatmul(ltHandle, operationDesc, alpha, A, Adesc, B, Bdesc, &beta, C, Cdesc, D, Ddesc,
+    checkCublasStatus(cublasLtMatmul(ltHandle, operationDesc, alpha, A, Adesc, B, Bdesc, beta, C, Cdesc, D, Ddesc,
                                      &heuristicResult.algo, workspace, workspaceSize, 0));
 
     // descriptors are no longer needed as all GPU work was already enqueued
