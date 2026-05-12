@@ -208,9 +208,9 @@ size_t get_scaling_tensor_size(int64_t m, int64_t n, cublasMpMatmulMatrixScale_t
         case CUBLASMP_MATMUL_MATRIX_SCALE_SCALAR_FP32: return sizeof(float);
         case CUBLASMP_MATMUL_MATRIX_SCALE_OUTER_VEC_FP32: return n * sizeof(float);
         case CUBLASMP_MATMUL_MATRIX_SCALE_VEC16_UE4M3:
-            return roundup(m, 4 * 16) / 16 * roundup(n, 128) * sizeof(__nv_fp8_e4m3);
+            return roundup((m + 15) / 16, 4) * roundup(n, 128) * sizeof(__nv_fp8_e4m3);
         case CUBLASMP_MATMUL_MATRIX_SCALE_VEC32_UE8M0:
-            return roundup(m, 4 * 32) / 32 * roundup(n, 128) * sizeof(__nv_fp8_e8m0);
+            return roundup((m + 31) / 32, 4) * roundup(n, 128) * sizeof(__nv_fp8_e8m0);
         case CUBLASMP_MATMUL_MATRIX_SCALE_VEC128_FP32: return roundup((m + 127) / 128, 4) * n * sizeof(float);
         case CUBLASMP_MATMUL_MATRIX_SCALE_BLK128x128_FP32:
             return (roundup((m + 127) / 128, 4) * ((n + 127) / 128)) * sizeof(float);
@@ -402,10 +402,10 @@ struct Options
             typeD,
             transA,
             transB,
-            scaleA,
-            scaleB,
-            scaleD,
-            scaleDOut,
+            scaleA ? scaleA : "none",
+            scaleB ? scaleB : "none",
+            scaleD ? scaleD : "none",
+            scaleDOut ? scaleDOut : "none",
             p,
             q,
             grid_layout,

@@ -250,7 +250,17 @@ int run_matmul_ag(const Options& opts)
         &workspaceInBytesOnHost));
 
     void* d_work;
-    CUBLASMP_CHECK(cublasMpMalloc(grid_col_major, &d_work, workspaceInBytesOnDevice));
+    NCCL_CHECK(ncclMemAlloc(&d_work, workspaceInBytesOnDevice));
+
+    cublasMpStatus_t register_status = cublasMpBufferRegister(grid_col_major, d_work, workspaceInBytesOnDevice);
+    if (register_status != CUBLASMP_STATUS_SUCCESS && rank == 0)
+    {
+        fprintf(
+            stderr,
+            "Warning: failed to register workspace memory with cuBLASMp (%s); continuing without workspace "
+            "registration. The implementation will fall back to the NO_OVERLAP algorithm.\n",
+            cublasMpGetStatusString(register_status));
+    }
 
     std::vector<int8_t> h_work(workspaceInBytesOnHost);
 
@@ -330,7 +340,11 @@ int run_matmul_ag(const Options& opts)
     if (d_d_scale) CUDA_CHECK(cudaFree(d_d_scale));
     if (d_d_out_scale) CUDA_CHECK(cudaFree(d_d_out_scale));
 
-    CUBLASMP_CHECK(cublasMpFree(grid_col_major, d_work));
+    if (register_status == CUBLASMP_STATUS_SUCCESS)
+    {
+        CUBLASMP_CHECK(cublasMpBufferDeregister(grid_col_major, d_work));
+    }
+    NCCL_CHECK(ncclMemFree(d_work));
 
     CUBLASMP_CHECK(cublasMpGridDestroy(grid_col_major));
     CUBLASMP_CHECK(cublasMpGridDestroy(grid_row_major));

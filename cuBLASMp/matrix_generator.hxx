@@ -17,10 +17,39 @@
 
 #pragma once
 
+#include <cuda_fp4.h>
+
 #include <algorithm>
+#include <cstring>
 #include <limits>
 #include <random>
 #include <stdexcept>
+
+namespace fp4x2
+{
+
+inline float read_element(const void* ptr, int64_t idx)
+{
+    __nv_fp4x2_e2m1 packed;
+    packed.__x = static_cast<const __nv_fp4x2_storage_t*>(ptr)[idx / 2];
+    float2 vals = float2(packed);
+    return (idx % 2 == 0) ? vals.x : vals.y;
+}
+
+inline void write_element(void* ptr, int64_t idx, float val)
+{
+    __nv_fp4x2_storage_t* byte_ptr = &static_cast<__nv_fp4x2_storage_t*>(ptr)[idx / 2];
+    __nv_fp4x2_e2m1 packed;
+    packed.__x = *byte_ptr;
+    float2 existing = float2(packed);
+    if (idx % 2 == 0)
+        existing.x = val;
+    else
+        existing.y = val;
+    *byte_ptr = __nv_fp4x2_e2m1(existing).__x;
+}
+
+} // namespace fp4x2
 
 template <typename T, typename Generator>
 void generate_distributed_matrix(
@@ -71,7 +100,16 @@ void generate_distributed_matrix(
                 {
                     for (int64_t l = 0; l < tile_n; l++)
                     {
-                        generator(ptr[k + l * lld], k, l, i == j);
+                        if constexpr (std::is_same_v<T, __nv_fp4_e2m1>)
+                        {
+                            T val;
+                            generator(val, k, l, i == j);
+                            fp4x2::write_element(ptr, k + l * lld, float(val));
+                        }
+                        else
+                        {
+                            generator(ptr[k + l * lld], k, l, i == j);
+                        }
                     }
                 }
             }
@@ -140,23 +178,51 @@ static void generate_values(
     double min = 0.0,
     double max = 1.0)
 {
-    T* ptr = buffer;
-
-    if (device_allocation)
+    if constexpr (std::is_same_v<T, __nv_fp4_e2m1>)
     {
-        ptr = reinterpret_cast<T*>(malloc(size * sizeof(T)));
+        const size_t packed_bytes = (size + 1) / 2;
+        uint8_t* ptr = reinterpret_cast<uint8_t*>(buffer);
+
+        if (device_allocation)
+        {
+            ptr = reinterpret_cast<uint8_t*>(malloc(packed_bytes));
+        }
+
+        std::memset(ptr, 0, packed_bytes);
+        std::srand(seed);
+        for (int64_t i = 0; i < size; i++)
+        {
+            const double v = double(std::rand()) / RAND_MAX;
+            T val = T(min + v * (max - min));
+            fp4x2::write_element(ptr, i, float(val));
+        }
+
+        if (device_allocation)
+        {
+            CUDA_CHECK(cudaMemcpy(buffer, ptr, packed_bytes, cudaMemcpyHostToDevice));
+            free(ptr);
+        }
     }
-
-    std::srand(seed);
-    std::for_each(ptr, ptr + size, [&](T& x) {
-        const double v = double(std::rand()) / RAND_MAX;
-        x = T(min + v * (max - min));
-    });
-
-    if (device_allocation)
+    else
     {
-        CUDA_CHECK(cudaMemcpy(buffer, ptr, size * sizeof(T), cudaMemcpyHostToDevice));
-        free(ptr);
+        T* ptr = buffer;
+
+        if (device_allocation)
+        {
+            ptr = reinterpret_cast<T*>(malloc(size * sizeof(T)));
+        }
+
+        std::srand(seed);
+        std::for_each(ptr, ptr + size, [&](T& x) {
+            const double v = double(std::rand()) / RAND_MAX;
+            x = T(min + v * (max - min));
+        });
+
+        if (device_allocation)
+        {
+            CUDA_CHECK(cudaMemcpy(buffer, ptr, size * sizeof(T), cudaMemcpyHostToDevice));
+            free(ptr);
+        }
     }
 }
 

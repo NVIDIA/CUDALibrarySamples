@@ -193,51 +193,80 @@ int main(int argc, char* argv[])
             &workspaceInBytesOnDevice,
             &workspaceInBytesOnHost));
 
-        CUBLASMP_CHECK(cublasMpMalloc(grid_col_major, &d_work, workspaceInBytesOnDevice));
+        NCCL_CHECK(ncclMemAlloc(&d_work, workspaceInBytesOnDevice));
+
+        cublasMpStatus_t register_status = cublasMpBufferRegister(grid_col_major, d_work, workspaceInBytesOnDevice);
+        if (register_status != CUBLASMP_STATUS_SUCCESS && rank == 0)
+        {
+            fprintf(
+                stderr,
+                "Warning: failed to register workspace memory with cuBLASMp (%s); continuing without workspace "
+                "registration. The implementation will fall back to the NO_OVERLAP algorithm.\n",
+                cublasMpGetStatusString(register_status));
+        }
 
         std::vector<int8_t> h_work(workspaceInBytesOnHost);
 
         CUDA_CHECK(cudaStreamSynchronize(stream));
 
-        const double begin = MPI_Wtime();
+        const int warmup = 5;
+        const int cycles = 10;
 
-        CUBLASMP_CHECK(cublasMpMatmul(
-            handle,
-            matmulDesc,
-            m,
-            n,
-            k,
-            &alpha,
-            d_X0,
-            1,
-            1,
-            descA,
-            d_W0,
-            1,
-            1,
-            descB,
-            &beta,
-            nullptr,
-            1,
-            1,
-            descC,
-            d_X1,
-            1,
-            1,
-            descC,
-            d_work,
-            workspaceInBytesOnDevice,
-            h_work.data(),
-            workspaceInBytesOnHost));
+        cudaEvent_t start, stop;
+        CUDA_CHECK(cudaEventCreate(&start));
+        CUDA_CHECK(cudaEventCreate(&stop));
 
-        CUDA_CHECK(cudaStreamSynchronize(stream));
+        for (int i = 0; i < warmup + cycles; i++)
+        {
+            if (i == warmup)
+            {
+                CUDA_CHECK(cudaEventRecord(start, stream));
+            }
 
-        const double end = MPI_Wtime();
+            CUBLASMP_CHECK(cublasMpMatmul(
+                handle,
+                matmulDesc,
+                m,
+                n,
+                k,
+                &alpha,
+                d_X0,
+                1,
+                1,
+                descA,
+                d_W0,
+                1,
+                1,
+                descB,
+                &beta,
+                nullptr,
+                1,
+                1,
+                descC,
+                d_X1,
+                1,
+                1,
+                descC,
+                d_work,
+                workspaceInBytesOnDevice,
+                h_work.data(),
+                workspaceInBytesOnHost));
+        }
+
+        CUDA_CHECK(cudaEventRecord(stop, stream));
+        CUDA_CHECK(cudaEventSynchronize(stop));
+
+        float elapsed_ms;
+        CUDA_CHECK(cudaEventElapsedTime(&elapsed_ms, start, stop));
+        const double elapsed = (elapsed_ms / 1000.0) / cycles;
 
         if (rank == 0)
         {
-            printf("AG + Matmul: %lf (s) %lf (GFlops)\n", end - begin, (2 * m * n * k * 1e-9) / (end - begin));
+            printf("AG + Matmul: %lf (s) %lf (GFlops)\n", elapsed, (2 * m * n * k * 1e-9) / elapsed);
         }
+
+        CUDA_CHECK(cudaEventDestroy(start));
+        CUDA_CHECK(cudaEventDestroy(stop));
 
         CUBLASMP_CHECK(cublasMpMatmulDescriptorDestroy(matmulDesc));
 
@@ -247,7 +276,11 @@ int main(int argc, char* argv[])
 
         CUDA_CHECK(cudaFree(d_X0));
         CUDA_CHECK(cudaFree(d_W0));
-        CUBLASMP_CHECK(cublasMpFree(grid_col_major, d_work));
+        if (register_status == CUBLASMP_STATUS_SUCCESS)
+        {
+            CUBLASMP_CHECK(cublasMpBufferDeregister(grid_col_major, d_work));
+        }
+        NCCL_CHECK(ncclMemFree(d_work));
     }
 
     // Matmul + RS
@@ -344,51 +377,80 @@ int main(int argc, char* argv[])
             &workspaceInBytesOnDevice,
             &workspaceInBytesOnHost));
 
-        CUBLASMP_CHECK(cublasMpMalloc(grid_row_major, &d_work, workspaceInBytesOnDevice));
+        NCCL_CHECK(ncclMemAlloc(&d_work, workspaceInBytesOnDevice));
+
+        cublasMpStatus_t register_status = cublasMpBufferRegister(grid_row_major, d_work, workspaceInBytesOnDevice);
+        if (register_status != CUBLASMP_STATUS_SUCCESS && rank == 0)
+        {
+            fprintf(
+                stderr,
+                "Warning: failed to register workspace memory with cuBLASMp (%s); continuing without workspace "
+                "registration. The implementation will fall back to the NO_OVERLAP algorithm.\n",
+                cublasMpGetStatusString(register_status));
+        }
 
         std::vector<int8_t> h_work(workspaceInBytesOnHost);
 
         CUDA_CHECK(cudaStreamSynchronize(stream));
 
-        const double begin = MPI_Wtime();
+        const int warmup = 5;
+        const int cycles = 10;
 
-        CUBLASMP_CHECK(cublasMpMatmul(
-            handle,
-            matmulDesc,
-            m,
-            n,
-            k,
-            &alpha,
-            d_W1,
-            1,
-            1,
-            descA,
-            d_X1,
-            1,
-            1,
-            descB,
-            &beta,
-            nullptr,
-            1,
-            1,
-            descC,
-            d_X2,
-            1,
-            1,
-            descC,
-            d_work,
-            workspaceInBytesOnDevice,
-            h_work.data(),
-            workspaceInBytesOnHost));
+        cudaEvent_t start, stop;
+        CUDA_CHECK(cudaEventCreate(&start));
+        CUDA_CHECK(cudaEventCreate(&stop));
 
-        CUDA_CHECK(cudaStreamSynchronize(stream));
+        for (int i = 0; i < warmup + cycles; i++)
+        {
+            if (i == warmup)
+            {
+                CUDA_CHECK(cudaEventRecord(start, stream));
+            }
 
-        const double end = MPI_Wtime();
+            CUBLASMP_CHECK(cublasMpMatmul(
+                handle,
+                matmulDesc,
+                m,
+                n,
+                k,
+                &alpha,
+                d_W1,
+                1,
+                1,
+                descA,
+                d_X1,
+                1,
+                1,
+                descB,
+                &beta,
+                nullptr,
+                1,
+                1,
+                descC,
+                d_X2,
+                1,
+                1,
+                descC,
+                d_work,
+                workspaceInBytesOnDevice,
+                h_work.data(),
+                workspaceInBytesOnHost));
+        }
+
+        CUDA_CHECK(cudaEventRecord(stop, stream));
+        CUDA_CHECK(cudaEventSynchronize(stop));
+
+        float elapsed_ms;
+        CUDA_CHECK(cudaEventElapsedTime(&elapsed_ms, start, stop));
+        const double elapsed = (elapsed_ms / 1000.0) / cycles;
 
         if (rank == 0)
         {
-            printf("Matmul + RS: %lf (s) %lf (GFlops)\n", end - begin, (2 * m * n * k * 1e-9) / (end - begin));
+            printf("Matmul + RS: %lf (s) %lf (GFlops)\n", elapsed, (2 * m * n * k * 1e-9) / elapsed);
         }
+
+        CUDA_CHECK(cudaEventDestroy(start));
+        CUDA_CHECK(cudaEventDestroy(stop));
 
         CUBLASMP_CHECK(cublasMpMatmulDescriptorDestroy(matmulDesc));
 
@@ -399,7 +461,11 @@ int main(int argc, char* argv[])
         CUDA_CHECK(cudaFree(d_X1));
         CUDA_CHECK(cudaFree(d_W1));
         CUDA_CHECK(cudaFree(d_X2));
-        CUBLASMP_CHECK(cublasMpFree(grid_row_major, d_work));
+        if (register_status == CUBLASMP_STATUS_SUCCESS)
+        {
+            CUBLASMP_CHECK(cublasMpBufferDeregister(grid_row_major, d_work));
+        }
+        NCCL_CHECK(ncclMemFree(d_work));
     }
 
     CUBLASMP_CHECK(cublasMpGridDestroy(grid_col_major));

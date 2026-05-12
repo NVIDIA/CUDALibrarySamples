@@ -72,6 +72,7 @@ int run_matmul_ar(const Options& opts)
     const int64_t n = opts.n;
     const int64_t k = opts.k;
 
+    // AR only supports transA=T, transB=N pattern
     const int64_t loc_a_m = k / nranks;
     const int64_t loc_a_n = m;
     const int64_t loc_b_m = k / nranks;
@@ -234,7 +235,17 @@ int run_matmul_ar(const Options& opts)
         &workspaceInBytesOnHost));
 
     void* d_work;
-    CUBLASMP_CHECK(cublasMpMalloc(grid_row_major, &d_work, workspaceInBytesOnDevice));
+    NCCL_CHECK(ncclMemAlloc(&d_work, workspaceInBytesOnDevice));
+
+    cublasMpStatus_t register_status = cublasMpBufferRegister(grid_row_major, d_work, workspaceInBytesOnDevice);
+    if (register_status != CUBLASMP_STATUS_SUCCESS && rank == 0)
+    {
+        fprintf(
+            stderr,
+            "Warning: failed to register workspace memory with cuBLASMp (%s); continuing without workspace "
+            "registration. The implementation will fall back to the NO_OVERLAP algorithm.\n",
+            cublasMpGetStatusString(register_status));
+    }
 
     std::vector<int8_t> h_work(workspaceInBytesOnHost);
 
@@ -292,7 +303,7 @@ int run_matmul_ar(const Options& opts)
     if (rank == 0)
     {
         printf(
-            "Matmul + RS: %lf (s) %lf (GFlops)\n", elapsed_time / 1000, (2 * m * n * k * 1e-9) / (elapsed_time / 1000));
+            "Matmul + AR: %lf (s) %lf (GFlops)\n", elapsed_time / 1000, (2 * m * n * k * 1e-9) / (elapsed_time / 1000));
     }
 
     CUDA_CHECK(cudaEventDestroy(start));
@@ -314,7 +325,11 @@ int run_matmul_ar(const Options& opts)
     if (d_d_scale) CUDA_CHECK(cudaFree(d_d_scale));
     if (d_d_out_scale) CUDA_CHECK(cudaFree(d_d_out_scale));
 
-    CUBLASMP_CHECK(cublasMpFree(grid_row_major, d_work));
+    if (register_status == CUBLASMP_STATUS_SUCCESS)
+    {
+        CUBLASMP_CHECK(cublasMpBufferDeregister(grid_row_major, d_work));
+    }
+    NCCL_CHECK(ncclMemFree(d_work));
 
     CUBLASMP_CHECK(cublasMpGridDestroy(grid_col_major));
     CUBLASMP_CHECK(cublasMpGridDestroy(grid_row_major));

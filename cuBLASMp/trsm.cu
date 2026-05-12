@@ -48,7 +48,9 @@ int main(int argc, char* argv[])
                      .p = 2,
                      .q = 1,
                      .grid_layout = 'c',
-                     .verbose = false };
+                     .verbose = false,
+                     .cycles = 10,
+                     .warmup = 5 };
 
     opts.parse(argc, argv);
     opts.validate();
@@ -131,8 +133,8 @@ int main(int argc, char* argv[])
     generate_diag_matrix(m, m, h_A.data(), mbA, nbA, ia, ja, llda, nprow, npcol, myprow, mypcol);
     generate_random_matrix(m, n, h_B.data(), mbB, nbB, ib, jb, lldb, nprow, npcol, myprow, mypcol);
 
-    CUDA_CHECK(cudaMallocAsync(&d_A, llda * loc_n_a * sizeof(double), stream));
-    CUDA_CHECK(cudaMallocAsync(&d_B, lldb * loc_n_b * sizeof(double), stream));
+    CUDA_CHECK(cudaMalloc(&d_A, llda * loc_n_a * sizeof(double)));
+    CUDA_CHECK(cudaMalloc(&d_B, lldb * loc_n_b * sizeof(double)));
 
     CUDA_CHECK(cudaMemcpyAsync(d_A, h_A.data(), llda * loc_n_a * sizeof(double), cudaMemcpyHostToDevice, stream));
     CUDA_CHECK(cudaMemcpyAsync(d_B, h_B.data(), lldb * loc_n_b * sizeof(double), cudaMemcpyHostToDevice, stream));
@@ -148,6 +150,17 @@ int main(int argc, char* argv[])
         cublasMpMatrixDescriptorCreate(global_m_a, global_n_a, mbA, nbA, 0, 0, llda, CUDA_R_64F, grid, &descA));
     CUBLASMP_CHECK(
         cublasMpMatrixDescriptorCreate(global_m_b, global_n_b, mbB, nbB, 0, 0, lldb, CUDA_R_64F, grid, &descB));
+
+    cublasComputeType_t cublas_compute_type = CUBLAS_COMPUTE_64F;
+
+#if CUBLAS_VERSION >= 130002
+    cublasMpEmulationStrategy_t emulationStrategy = string_to_emulation_strategy(opts.emulationStrategy);
+    if (emulationStrategy != cublasMpEmulationStrategy_t(-1))
+    {
+        CUBLASMP_CHECK(cublasMpSetEmulationStrategy(handle, emulationStrategy));
+        cublas_compute_type = CUBLAS_COMPUTE_64F_EMULATED_FIXEDPOINT;
+    }
+#endif
 
     CUBLASMP_CHECK(cublasMpTrsm_bufferSize(
         handle,
@@ -166,52 +179,68 @@ int main(int argc, char* argv[])
         ib,
         jb,
         descB,
-        CUBLAS_COMPUTE_64F,
+        cublas_compute_type,
         &workspaceInBytesOnDevice,
         &workspaceInBytesOnHost));
 
-    CUDA_CHECK(cudaMallocAsync(&d_work, workspaceInBytesOnDevice, stream));
+    CUDA_CHECK(cudaMalloc(&d_work, workspaceInBytesOnDevice));
 
     std::vector<int8_t> h_work(workspaceInBytesOnHost);
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
-    const double begin = MPI_Wtime();
+    cudaEvent_t start, stop;
+    CUDA_CHECK(cudaEventCreate(&start));
+    CUDA_CHECK(cudaEventCreate(&stop));
 
-    CUBLASMP_CHECK(cublasMpTrsm(
-        handle,
-        CUBLAS_SIDE_LEFT,
-        CUBLAS_FILL_MODE_LOWER,
-        CUBLAS_OP_N,
-        CUBLAS_DIAG_NON_UNIT,
-        m,
-        n,
-        &alpha,
-        d_A,
-        ia,
-        ja,
-        descA,
-        d_B,
-        ib,
-        jb,
-        descB,
-        CUBLAS_COMPUTE_64F,
-        d_work,
-        workspaceInBytesOnDevice,
-        h_work.data(),
-        workspaceInBytesOnHost));
+    for (int i = 0; i < opts.warmup + opts.cycles; i++)
+    {
+        if (i == opts.warmup)
+        {
+            CUDA_CHECK(cudaEventRecord(start, stream));
+        }
 
-    CUDA_CHECK(cudaStreamSynchronize(stream));
+        CUBLASMP_CHECK(cublasMpTrsm(
+            handle,
+            CUBLAS_SIDE_LEFT,
+            CUBLAS_FILL_MODE_LOWER,
+            CUBLAS_OP_N,
+            CUBLAS_DIAG_NON_UNIT,
+            m,
+            n,
+            &alpha,
+            d_A,
+            ia,
+            ja,
+            descA,
+            d_B,
+            ib,
+            jb,
+            descB,
+            cublas_compute_type,
+            d_work,
+            workspaceInBytesOnDevice,
+            h_work.data(),
+            workspaceInBytesOnHost));
+    }
 
-    const double end = MPI_Wtime();
+    CUDA_CHECK(cudaEventRecord(stop, stream));
+    CUDA_CHECK(cudaEventSynchronize(stop));
+
+    float elapsed_ms;
+    CUDA_CHECK(cudaEventElapsedTime(&elapsed_ms, start, stop));
+    const double elapsed = (elapsed_ms / 1000.0) / opts.cycles;
 
     if (rank == 0)
     {
         printf(
             "Duration: %lf GFlops: %lf\n",
-            end - begin,
-            ((((0.5 * m * (m - 1)) + ((0.5 * m * (m + 1)))) * n) * 1e-9) / (end - begin));
+            elapsed,
+            ((((0.5 * m * (m - 1)) + ((0.5 * m * (m + 1)))) * n) * 1e-9) / elapsed);
     }
+
+    CUDA_CHECK(cudaEventDestroy(start));
+    CUDA_CHECK(cudaEventDestroy(stop));
 
     CUBLASMP_CHECK(cublasMpMatrixDescriptorDestroy(descA));
     CUBLASMP_CHECK(cublasMpMatrixDescriptorDestroy(descB));
@@ -220,9 +249,9 @@ int main(int argc, char* argv[])
 
     CUBLASMP_CHECK(cublasMpDestroy(handle));
 
-    CUDA_CHECK(cudaFreeAsync(d_A, stream));
-    CUDA_CHECK(cudaFreeAsync(d_B, stream));
-    CUDA_CHECK(cudaFreeAsync(d_work, stream));
+    CUDA_CHECK(cudaFree(d_A));
+    CUDA_CHECK(cudaFree(d_B));
+    CUDA_CHECK(cudaFree(d_work));
 
     NCCL_CHECK(ncclCommFinalize(comm));
     NCCL_CHECK(ncclCommDestroy(comm));
