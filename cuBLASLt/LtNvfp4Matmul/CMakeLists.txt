@@ -20,6 +20,12 @@ project(sample_cublasLt_LtNvfp4Matmul LANGUAGES CXX CUDA)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# NVfp4 support in cuBLASLt was added in CUDA 12.8.
+if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12.8)
+    message(WARNING "NVfp4 support in cuBLASLt was added in CUDA 12.8. Skipping sample_cublasLt_LtNvfp4Matmul.")
+    return()
+endif()
+
 add_executable(${PROJECT_NAME}
     main.cpp
     ${PROJECT_NAME}.cu

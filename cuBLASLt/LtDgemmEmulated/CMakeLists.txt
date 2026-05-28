@@ -20,6 +20,12 @@ project(sample_cublasLt_LtDgemmEmulated LANGUAGES CXX CUDA)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# FP64 emulated (fixedpoint) compute support in cuBLASLt was added in CUDA 13.0 Update 2.
+if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0.2)
+    message(WARNING "FP64 emulated (fixedpoint) compute support in cuBLASLt was added in CUDA 13.0 Update 2. Skipping sample_cublasLt_LtDgemmEmulated.")
+    return()
+endif()
+
 add_executable(${PROJECT_NAME}
     main.cpp
     sample_cublasLt_LtDgemmEmulated.cu

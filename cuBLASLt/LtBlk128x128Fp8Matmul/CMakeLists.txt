@@ -20,6 +20,12 @@ project(sample_cublasLt_LtBlk128x128Fp8Matmul LANGUAGES CXX CUDA)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Block-scaled FP8 (128x128) support in cuBLASLt was added in CUDA 12.9.
+if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12.9)
+    message(WARNING "Block-scaled FP8 (128x128) support in cuBLASLt was added in CUDA 12.9. Skipping sample_cublasLt_LtBlk128x128Fp8Matmul.")
+    return()
+endif()
+
 add_executable(${PROJECT_NAME}
     main.cpp
     ${PROJECT_NAME}.cu

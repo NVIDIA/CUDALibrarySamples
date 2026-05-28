@@ -20,6 +20,12 @@ project(sample_cublasLt_LtBlk128x128Fp8gemmGroupedSimple LANGUAGES CXX CUDA)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Grouped GEMM for narrow precision types in cuBLASLt was added in CUDA 13.2 Update 1.
+if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.2.1)
+    message(WARNING "Grouped GEMM for narrow precision types in cuBLASLt was added in CUDA 13.2 Update 1. Skipping sample_cublasLt_LtBlk128x128Fp8gemmGroupedSimple.")
+    return()
+endif()
+
 add_executable(${PROJECT_NAME}
     main.cpp
     ${PROJECT_NAME}.cu

@@ -20,6 +20,12 @@ project(sample_cublasLt_LtHSHgemmPointerArrayBatchSimple LANGUAGES CXX CUDA)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Pointer array batch mode (CUBLASLT_MATRIX_LAYOUT_BATCH_MODE) in cuBLASLt was added in CUDA 12.8.
+if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12.8)
+    message(WARNING "Pointer array batch mode in cuBLASLt was added in CUDA 12.8. Skipping sample_cublasLt_LtHSHgemmPointerArrayBatchSimple.")
+    return()
+endif()
+
 add_executable(${PROJECT_NAME}
     main.cpp
     ${PROJECT_NAME}.cu

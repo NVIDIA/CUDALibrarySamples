@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,20 +15,20 @@
 
 cmake_minimum_required(VERSION 3.10.0)
 
-project(sample_cublasLt_LtFp8CustomFind LANGUAGES CXX CUDA)
+project(sample_cublasLt_LtSgemmGreenCtx LANGUAGES CXX CUDA)
 
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# FP8 custom algo find support in cuBLASLt was added in CUDA 12.8.
-if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12.8)
-    message(WARNING "FP8 custom algo find support in cuBLASLt was added in CUDA 12.8. Skipping sample_cublasLt_LtFp8CustomFind.")
+# Green Context support was added in CUDA 13.3.
+if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.3)
+    message(WARNING "Green Context support in cuBLAS was added in CUDA 13.3. Skipping sample_cublasLt_LtSgemmGreenCtx.")
     return()
 endif()
 
 add_executable(${PROJECT_NAME}
-    main.cu
-    ../Common/helpers.cpp
+    main.cpp
+    ${PROJECT_NAME}.cu
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE
