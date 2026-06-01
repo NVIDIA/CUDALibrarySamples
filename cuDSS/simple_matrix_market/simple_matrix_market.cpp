@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 Rémi Bourgeois. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 Rémi Bourgeois. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -38,9 +38,10 @@
 
 */
 
-double compute_residual_abs_norm(int n, const int *csr_offsets_h, const int *csr_columns_h,
-                              const double *csr_values_h, const double *x_values_h,
-                              const double *b_values_h, cudssMatrixViewType_t mview) {
+double compute_residual_abs_norm(int n, const int *csr_offsets_h,
+                                 const int *csr_columns_h, const double *csr_values_h,
+                                 const double *x_values_h, const double *b_values_h,
+                                 cudssMatrixViewType_t mview) {
     std::vector<double> Ax(n, 0.0);
 
     for (int row = 0; row < n; ++row) {
@@ -143,28 +144,34 @@ int main(int argc, char *argv[]) {
             stderr,
             "Usage: %s <alg: 0|1|2|3> <mtype: general|symmetric|hermitian|spd|hpd> "
             "<mview: full|lower|upper> <matrix_filename> [vector_filename (optional)]\n"
-            "Suggested input to start with the sample .mtx files provided (from build folder):\n"
+            "Suggested input to start with the sample .mtx files provided (from build "
+            "folder):\n"
             "    ./simple_matrix_market_example 0 spd upper ../matrix.mtx ../rhs.mtx\n",
-            argv[0]
-        );
+            argv[0]);
         return EXIT_FAILURE;
     }
 
     // Parse algorithm
-    int            alg_input = std::atoi(argv[1]);
-    cudssAlgType_t reorder_alg;
+    int alg_input = std::atoi(argv[1]);
+    cudssReorderingAlg_t reorder_alg;
     switch (alg_input) {
     case 0:
-        reorder_alg = CUDSS_ALG_DEFAULT;
+        reorder_alg = CUDSS_REORDERING_ALG_DEFAULT;
         break;
     case 1:
-        reorder_alg = CUDSS_ALG_1;
+        reorder_alg = CUDSS_REORDERING_ALG_BTF_COLAMD;
         break;
     case 2:
-        reorder_alg = CUDSS_ALG_2;
+        reorder_alg = CUDSS_REORDERING_ALG_COLAMD;
         break;
     case 3:
-        reorder_alg = CUDSS_ALG_3;
+        reorder_alg = CUDSS_REORDERING_ALG_AMD;
+        break;
+    case 4:
+        reorder_alg = CUDSS_REORDERING_ALG_NESTED_DISSECTION;
+        break;
+    case 5:
+        reorder_alg = CUDSS_REORDERING_ALG_NONE;
         break;
     default:
         fprintf(stderr, "Error: Invalid algorithm '%s' (must be 0-3)\n", argv[1]);
@@ -191,9 +198,9 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    if (((reorder_alg == 1) || (reorder_alg == 2)) && (mtype != CUDSS_MTYPE_GENERAL)) {
+    if (((reorder_alg == CUDSS_REORDERING_ALG_BTF_COLAMD) || (reorder_alg == CUDSS_REORDERING_ALG_COLAMD)) && (mtype != CUDSS_MTYPE_GENERAL)) {
         fprintf(stderr,
-                "Warining: Invalid algorithm. CUDSS_ALG_1 and CUDSS_ALG_2 are only "
+                "Warning: BTF_COLAMD and COLAMD reordering are only "
                 "supported for general (non-symmetric or non-hermitian) matrices.\n"
                 "See https://docs.nvidia.com/cuda/cudss/types.html#cudssconfigparam-t\n"
                 "Expect a large error.\n");
@@ -321,7 +328,7 @@ int main(int argc, char *argv[]) {
 
     /* (optional) Setting algorithmic knobs */
     CUDSS_CALL_AND_CHECK(cudssConfigSet(solverConfig, CUDSS_CONFIG_REORDERING_ALG,
-                                        &reorder_alg, sizeof(cudssAlgType_t)),
+                                        &reorder_alg, sizeof(cudssReorderingAlg_t)),
                          status, "cudssSolverSet");
 
     CUDSS_CALL_AND_CHECK(cudssDataCreate(handle, &solverData), status, "cudssDataCreate");
@@ -331,11 +338,11 @@ int main(int argc, char *argv[]) {
     cudssMatrix_t x, b;
 
     int64_t nrows = n, ncols = n;
-    int     ldb = ncols, ldx = nrows;
-    CUDSS_CALL_AND_CHECK(cudssMatrixCreateDn(&b, ncols, nrhs, ldb, b_values_d, CUDA_R_64F,
+    int     ldb = nrows, ldx = ncols;
+    CUDSS_CALL_AND_CHECK(cudssMatrixCreateDn(&b, nrows, nrhs, ldb, b_values_d, CUDSS_R_64F,
                                              CUDSS_LAYOUT_COL_MAJOR),
                          status, "cudssMatrixCreateDn for b");
-    CUDSS_CALL_AND_CHECK(cudssMatrixCreateDn(&x, nrows, nrhs, ldx, x_values_d, CUDA_R_64F,
+    CUDSS_CALL_AND_CHECK(cudssMatrixCreateDn(&x, ncols, nrhs, ldx, x_values_d, CUDSS_R_64F,
                                              CUDSS_LAYOUT_COL_MAJOR),
                          status, "cudssMatrixCreateDn for x");
 
@@ -346,8 +353,8 @@ int main(int argc, char *argv[]) {
     cudaEventRecord(start);
     cudssIndexBase_t base = CUDSS_BASE_ZERO;
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateCsr(&A, nrows, ncols, nnz, csr_offsets_d, NULL,
-                                              csr_columns_d, csr_values_d, CUDA_R_32I,
-                                              CUDA_R_64F, mtype, mview, base),
+                                              csr_columns_d, csr_values_d, CUDSS_R_32I,
+                                              CUDSS_R_32I, CUDSS_R_64F, mtype, mview, base),
                          status, "cudssMatrixCreateCsr");
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
@@ -404,12 +411,16 @@ int main(int argc, char *argv[]) {
      * "simple_residual".
      */
     printf("\nComputing the residual (absolute) norm on the host for simplicity.\n");
-    printf("When using cuDSS in a production code, consider using a more standard approach\n");
-    printf("to estimate the accuracy of the solving. Please refer to the 'simple_residual' sample.\n");
-    printf("See: https://github.com/NVIDIA/CUDALibrarySamples/tree/main/cuDSS/simple_residual\n\n");
+    printf("When using cuDSS in a production code, consider using a more standard "
+           "approach\n");
+    printf("to estimate the accuracy of the solving. Please refer to the "
+           "'simple_residual' sample.\n");
+    printf("See: "
+           "https://github.com/NVIDIA/CUDALibrarySamples/tree/main/cuDSS/"
+           "simple_residual\n\n");
 
-    double residual = compute_residual_abs_norm(n, csr_offsets_h, csr_columns_h,
-                                             csr_values_h, x_values_h, b_values_h, mview);
+    double residual = compute_residual_abs_norm(
+        n, csr_offsets_h, csr_columns_h, csr_values_h, x_values_h, b_values_h, mview);
 
     printf("Residual L2 norm ||Ax - b|| = %e\n", residual);
 

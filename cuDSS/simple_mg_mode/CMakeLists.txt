@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,14 +22,40 @@ project("cuDSS_${EXAMPLE_NAME}_example"
         HOMEPAGE_URL "https://docs.nvidia.com/cuda/cudss/index.html"
         LANGUAGES    CXX CUDA)
 
+# Align CUDA host compiler with CXX (e.g. NVHPC + nvcc).
+if(NOT DEFINED CMAKE_CUDA_HOST_COMPILER)
+    set(CMAKE_CUDA_HOST_COMPILER "${CMAKE_CXX_COMPILER}" CACHE STRING "CUDA host compiler" FORCE)
+endif()
+
 set(CMAKE_CUDA_STANDARD          11)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_EXTENSIONS        OFF)
 
 option(BUILD_STATIC "Building statically linked examples" OFF)
 
+# Find CUDA toolkit (for cusolver)
+find_package(CUDAToolkit REQUIRED)
 # Find cuDSS
-find_package(cudss 0.7.0 REQUIRED)
+find_package(cudss 0.8.0 REQUIRED)
+# CUDAToolkit may expose CUDA::cusolver (CMake 3.17+) or not in some configs; fallback to library name
+if(NOT TARGET CUDA::cusolver AND NOT TARGET CUDAToolkit::cusolver)
+    find_library(CUSOLVER_LIBRARY cusolver
+        PATHS ${CUDAToolkit_LIBRARY_DIR} "${CUDAToolkit_LIBRARY_DIR}/${CUDAToolkit_VERSION_MAJOR}"
+              ${CUDAToolkit_ROOT} "$ENV{CUDA_PATH}"
+        PATH_SUFFIXES lib lib64
+        NO_DEFAULT_PATH)
+    if(CUSOLVER_LIBRARY)
+        add_library(cusolver_lib_imported SHARED IMPORTED)
+        set_target_properties(cusolver_lib_imported PROPERTIES IMPORTED_LOCATION "${CUSOLVER_LIBRARY}")
+        set(CUSOLVER_TARGET cusolver_lib_imported)
+    else()
+        message(FATAL_ERROR "cusolver not found; CUDAToolkit found but CUDA::cusolver target unavailable")
+    endif()
+elseif(TARGET CUDA::cusolver)
+    set(CUSOLVER_TARGET CUDA::cusolver)
+else()
+    set(CUSOLVER_TARGET CUDAToolkit::cusolver)
+endif()
 
 set_source_files_properties(${EXAMPLE_NAME}.cpp PROPERTIES LANGUAGE CUDA)
 
@@ -49,7 +75,7 @@ target_compile_options(${EXAMPLE_NAME}_example PRIVATE
 
 target_link_libraries(${EXAMPLE_NAME}_example PUBLIC
     cudss
-    cusolver
+    ${CUSOLVER_TARGET}
 )
 
 if(BUILD_STATIC)
@@ -64,11 +90,11 @@ if(BUILD_STATIC)
 
     if (WIN32)
         target_link_libraries(${EXAMPLE_NAME}_example_static PUBLIC
-        cudss
+        cudss ${CUSOLVER_TARGET}
     )
     else()
         target_link_libraries(${EXAMPLE_NAME}_example_static PUBLIC
-            cudss_static
+            cudss_static ${CUSOLVER_TARGET}
         )
     endif()
 

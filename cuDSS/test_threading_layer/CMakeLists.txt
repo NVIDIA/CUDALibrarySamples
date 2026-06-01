@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,10 +17,21 @@ cmake_minimum_required(VERSION 3.19)
 
 set(EXAMPLE_NAME test_threading_layer)
 
+# Use same compiler for CUDA host/link as for CXX (e.g. nvc++ with -mp). Must be set before project()
+# so that CMake uses it for CUDA linking. If not set, pass -DCMAKE_CUDA_HOST_COMPILER=nvc++ (or $CXX).
+if(DEFINED ENV{CXX})
+  set(CMAKE_CUDA_HOST_COMPILER "$ENV{CXX}" CACHE STRING "CUDA host compiler" FORCE)
+endif()
+
 project("cuDSS_${EXAMPLE_NAME}_example"
         DESCRIPTION  "cuDSS"
         HOMEPAGE_URL "https://docs.nvidia.com/cuda/cudss/index.html"
         LANGUAGES    CXX CUDA)
+
+# Align CUDA host compiler with CXX when not set from env (e.g. user passed -DCMAKE_CXX_COMPILER=nvc++).
+if(NOT DEFINED ENV{CXX})
+  set(CMAKE_CUDA_HOST_COMPILER "${CMAKE_CXX_COMPILER}" CACHE STRING "CUDA host compiler" FORCE)
+endif()
 
 set(CMAKE_CUDA_STANDARD          11)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
@@ -29,7 +40,7 @@ set(CMAKE_CUDA_EXTENSIONS        OFF)
 option(BUILD_STATIC           "Building statically linked examples" OFF)
 
 # Find cuDSS
-find_package(cudss 0.5.0 REQUIRED)
+find_package(cudss 0.8.0 REQUIRED)
 
 # Find OpenMP
 find_package(OpenMP REQUIRED)
@@ -95,7 +106,7 @@ foreach(backend ${MT_BACKENDS})
         )
 
         target_link_libraries(${EXAMPLE_NAME}_example_${backend}_static PUBLIC
-            cudss_static  OpenMP::OpenMP_CXX
+            cudss_static OpenMP::OpenMP_CXX
         )
 
         add_test(NAME ${EXAMPLE_NAME}_example_${backend}_static COMMAND ${EXAMPLE_NAME}_example_${backend}_static ${extra_mt_input_arg})

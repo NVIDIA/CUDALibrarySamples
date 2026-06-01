@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,6 +21,11 @@ project("cuDSS_${EXAMPLE_NAME}_example"
         DESCRIPTION  "cuDSS"
         HOMEPAGE_URL "https://docs.nvidia.com/cuda/cudss/index.html"
         LANGUAGES    CXX CUDA)
+
+# Align CUDA host compiler with CXX (e.g. NVHPC + nvcc).
+if(NOT DEFINED CMAKE_CUDA_HOST_COMPILER)
+    set(CMAKE_CUDA_HOST_COMPILER "${CMAKE_CXX_COMPILER}" CACHE STRING "CUDA host compiler" FORCE)
+endif()
 
 set(CMAKE_CUDA_STANDARD          11)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
@@ -45,7 +50,7 @@ set(NCCL_INCLUDE_DIRECTORIES "${NCCL_PATH}/include" CACHE STRING "Path to NCCL h
 set(NCCL_LINK_DIRECTORIES "${NCCL_PATH}/lib" CACHE STRING "Path to NCCL libraries")
 
 # Find cuDSS
-find_package(cudss 0.6.0 REQUIRED)
+find_package(cudss 0.8.0 REQUIRED)
 
 if(BUILD_MGMN_WITH_OPENMPI AND
         ((NOT IS_DIRECTORY ${OPENMPI_PATH}) AND
@@ -57,14 +62,19 @@ OpenMPI root directory must be set with OPENMPI_PATH, or the path to the headers
 in OPENMPI_INCLUDE_DIRECTORIES and OPENMPI_LINK_DIRECTORIES" )
 endif()
 
-if(BUILD_MGMN_WITH_NCCL AND
-        ((NOT IS_DIRECTORY ${NCCL_PATH}) AND
-        ((NOT IS_DIRECTORY ${NCCL_INCLUDE_DIRECTORIES}) OR (NOT IS_DIRECTORY ${NCCL_LINK_DIRECTORIES}))
-        )
-    )
-    message(FATAL_ERROR "For building MGMN examples with NCCL, either the path to the \
-NCCL root directory must be set with NCCL_PATH, or the path to the headers and libraries must be set \
-in NCCL_INCLUDE_DIRECTORIES and NCCL_LINK_DIRECTORIES" )
+# If NCCL requested but path invalid or library missing, disable NCCL backend so OpenMPI-only can still build
+if(BUILD_MGMN_WITH_NCCL)
+    if(NOT NCCL_PATH OR NOT IS_DIRECTORY "${NCCL_PATH}" OR
+       NOT IS_DIRECTORY "${NCCL_INCLUDE_DIRECTORIES}" OR NOT IS_DIRECTORY "${NCCL_LINK_DIRECTORIES}")
+        set(BUILD_MGMN_WITH_NCCL OFF CACHE BOOL "Enable NCCL backend" FORCE)
+        message(STATUS "NCCL not found (NCCL_PATH=${NCCL_PATH}), disabling NCCL backend; set NCCL_PATH to build with NCCL")
+    else()
+        find_library(_NCCL_LIB nccl PATHS ${NCCL_LINK_DIRECTORIES} NO_DEFAULT_PATH)
+        if(NOT _NCCL_LIB)
+            set(BUILD_MGMN_WITH_NCCL OFF CACHE BOOL "Enable NCCL backend" FORCE)
+            message(STATUS "libnccl not found under ${NCCL_LINK_DIRECTORIES}, disabling NCCL backend")
+        endif()
+    endif()
 endif()
 
 # (optional: only if samples are run with ctest)

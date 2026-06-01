@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -214,7 +214,7 @@ static __global__ void __launch_bounds__(1)
 // The relative residual norm is computed as:
 //              || r || / (|| A ||_F * || x || + || b ||)
 // where r = A * x - b is the residual.
-// The kernels sued in this function are not optimized for performance.
+// The kernels used in this function are not optimized for performance.
 // For a more performant implementation, consider using cuSPARSE and cuBLAS
 // routines.
 template <typename data_type, typename idx_type>
@@ -254,7 +254,7 @@ static bool relative_residual(const int64_t n, const int64_t nrhs, const int64_t
     CUDA_CALL_AND_CHECK(cudaMalloc(&r, nrhs * ldb * sizeof(data_type)),
                         "cudaMalloc for r");
 
-    data_type *fro_norm = NULL;
+    double *fro_norm = NULL;
     CUDA_CALL_AND_CHECK(cudaMalloc(&fro_norm, 1 * sizeof(double)),
                         "cudaMalloc for the fro_norm");
     CUDA_CALL_AND_CHECK(cudaMemset(fro_norm, 0, 1 * sizeof(double)),
@@ -554,10 +554,10 @@ int main(int argc, char *argv[]) {
     cudssMatrix_t x, b;
 
     int64_t nrows = n, ncols = n;
-    CUDSS_CALL_AND_CHECK(cudssMatrixCreateDn(&b, ncols, nrhs, ldb, b_values_d, CUDA_R_64F,
+    CUDSS_CALL_AND_CHECK(cudssMatrixCreateDn(&b, ncols, nrhs, ldb, b_values_d, CUDSS_R_64F,
                                              CUDSS_LAYOUT_COL_MAJOR),
                          status, "cudssMatrixCreateDn for b");
-    CUDSS_CALL_AND_CHECK(cudssMatrixCreateDn(&x, nrows, nrhs, ldx, x_values_d, CUDA_R_64F,
+    CUDSS_CALL_AND_CHECK(cudssMatrixCreateDn(&x, nrows, nrhs, ldx, x_values_d, CUDSS_R_64F,
                                              CUDSS_LAYOUT_COL_MAJOR),
                          status, "cudssMatrixCreateDn for x");
 
@@ -569,8 +569,8 @@ int main(int argc, char *argv[]) {
     cudssMatrixViewType_t mview = CUDSS_MVIEW_FULL;
     cudssIndexBase_t      base  = CUDSS_BASE_ZERO;
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateCsr(&A, nrows, ncols, nnz, csr_offsets_d, NULL,
-                                              csr_columns_d, csr_values_d, CUDA_R_32I,
-                                              CUDA_R_64F, mtype, mview, base),
+                                              csr_columns_d, csr_values_d, CUDSS_R_32I,
+                                              CUDSS_R_32I, CUDSS_R_64F, mtype, mview, base),
                          status, "cudssMatrixCreateCsr");
 
     /* Symbolic factorization */
@@ -601,7 +601,7 @@ int main(int argc, char *argv[]) {
 
     /* Print the solution and compare against the exact solution */
     CUDA_CALL_AND_CHECK_AND_EXIT(cudaMemcpy(x_values_h, x_values_d,
-                                            nrhs * n * sizeof(double),
+                                            nrhs * ldx * sizeof(double),
                                             cudaMemcpyDeviceToHost),
                                  "cudaMemcpy for x_values");
 
@@ -626,6 +626,7 @@ int main(int argc, char *argv[]) {
     /* Release the data allocated on the user side */
 
     CUDSS_EXAMPLE_FREE;
+    CUDA_CALL_AND_CHECK(cudaStreamDestroy(stream), "cudaStreamDestroy");
 
     if (status == CUDSS_STATUS_SUCCESS && passed) {
         printf("Example PASSED\n");

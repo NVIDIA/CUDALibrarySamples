@@ -22,14 +22,22 @@ project("cuDSS_${EXAMPLE_NAME}_example"
         HOMEPAGE_URL "https://docs.nvidia.com/cuda/cudss/index.html"
         LANGUAGES    CXX CUDA)
 
+# Align CUDA host compiler with CXX (e.g. NVHPC + nvcc).
+if(NOT DEFINED CMAKE_CUDA_HOST_COMPILER)
+    set(CMAKE_CUDA_HOST_COMPILER "${CMAKE_CXX_COMPILER}" CACHE STRING "CUDA host compiler" FORCE)
+endif()
+
+# matrix_market_reader.h uses C++17 (e.g. structured bindings)
 set(CMAKE_CUDA_STANDARD          17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_EXTENSIONS        OFF)
+set(CMAKE_CXX_STANDARD           17)
+set(CMAKE_CXX_STANDARD_REQUIRED  ON)
 
 option(BUILD_STATIC "Building statically linked examples" OFF)
 
 # Find cuDSS
-find_package(cudss 0.6.0 REQUIRED)
+find_package(cudss 0.8.0 REQUIRED)
 
 set_source_files_properties(${EXAMPLE_NAME}.cpp PROPERTIES LANGUAGE CUDA)
 

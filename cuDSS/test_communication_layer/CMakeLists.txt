@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,6 +21,11 @@ project("cuDSS_${EXAMPLE_NAME}_example"
         DESCRIPTION  "cuDSS"
         HOMEPAGE_URL "https://docs.nvidia.com/cuda/cudss/index.html"
         LANGUAGES    CXX CUDA)
+
+# Align CUDA host compiler with CXX (e.g. NVHPC + nvcc).
+if(NOT DEFINED CMAKE_CUDA_HOST_COMPILER)
+    set(CMAKE_CUDA_HOST_COMPILER "${CMAKE_CXX_COMPILER}" CACHE STRING "CUDA host compiler" FORCE)
+endif()
 
 set(CMAKE_CUDA_STANDARD          11)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
@@ -45,7 +50,7 @@ set(NCCL_INCLUDE_DIRECTORIES "${NCCL_PATH}/include")
 set(NCCL_LINK_DIRECTORIES "${NCCL_PATH}/lib")
 
 # Find cuDSS
-find_package(cudss 0.3.0 REQUIRED)
+find_package(cudss 0.8.0 REQUIRED)
 
 if(BUILD_MGMN_WITH_OPENMPI AND
         ((NOT OPENMPI_PATH) OR NOT IS_DIRECTORY ${OPENMPI_PATH}))
@@ -53,11 +58,16 @@ if(BUILD_MGMN_WITH_OPENMPI AND
 OpenMPI root directory must be set in OPENMPI_PATH" )
 endif()
 
-if(BUILD_MGMN_WITH_NCCL AND
-        ((NOT NCCL_PATH) OR NOT IS_DIRECTORY ${NCCL_PATH}))
-    message(FATAL_ERROR "For building MGMN examples with NCCL, path to the \
-NCCL root directory must be set in \
-NCCL_PATH" )
+# If NCCL requested but path invalid or library missing, disable NCCL backend so OpenMPI-only can still build
+if(BUILD_MGMN_WITH_NCCL AND (NOT NCCL_PATH OR NOT IS_DIRECTORY "${NCCL_PATH}"))
+    set(BUILD_MGMN_WITH_NCCL OFF CACHE BOOL "Enable NCCL backend" FORCE)
+    message(STATUS "NCCL not found (NCCL_PATH=${NCCL_PATH}), disabling NCCL backend; set NCCL_PATH to build with NCCL")
+elseif(BUILD_MGMN_WITH_NCCL)
+    find_library(_NCCL_LIB nccl PATHS ${NCCL_LINK_DIRECTORIES} NO_DEFAULT_PATH)
+    if(NOT _NCCL_LIB)
+        set(BUILD_MGMN_WITH_NCCL OFF CACHE BOOL "Enable NCCL backend" FORCE)
+        message(STATUS "libnccl not found under ${NCCL_LINK_DIRECTORIES}, disabling NCCL backend")
+    endif()
 endif()
 
 # (optional: only if samples are run with ctest)
@@ -198,7 +208,7 @@ foreach(backend ${CUDSS_MGMN_COMM_BACKENDS})
             target_compile_options(${EXAMPLE_NAME}_example_${backend}_static PRIVATE -DUSE_MPI)
         endif()
 
-        # Note: OpenMPI here has priority over NCCL ( we have to
+        # Note: OpenMPI here has priority over NCCL
         if ("${backend}" STREQUAL "openmpi")
             target_compile_options(${EXAMPLE_NAME}_example_${backend}_static PRIVATE -DUSE_OPENMPI)
         elseif ("${backend}" STREQUAL "nccl")

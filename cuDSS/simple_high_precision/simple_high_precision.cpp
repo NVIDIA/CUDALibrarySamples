@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,23 +15,23 @@
  * limitations under the License.
  */
 
-
-#include <assert.h>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <cuda_runtime.h>
-#include <math.h>
-#include <stdio.h>
-#include <stdlib.h>
 
 #include "cudss.h"
 
 /*
     This example demonstrates basic usage of cuDSS APIs for solving
-    a system of linear algebraic equations with a sparse matrix:
+    a high-precision linear system with a sparse matrix:
                                 Ax = b,
-    using multiple devices, where:
+    where:
         A is the sparse input matrix,
         b is the (dense) right-hand side vector (or a matrix),
-        x is the (dense) solution vector (or a matrix).
+        x is the (dense) solution vector (or a matrix),
+    and A, b, and x use cudss_fp64mp2_t values.
+    Note: This path requires device compute capability 9.0 or higher.
 */
 
 #define CUDSS_EXAMPLE_FREE                                                               \
@@ -41,8 +41,6 @@
         free(csr_values_h);                                                              \
         free(x_values_h);                                                                \
         free(b_values_h);                                                                \
-        free(device_indices);                                                            \
-        free(device_streams);                                                            \
         cudaFree(csr_offsets_d);                                                         \
         cudaFree(csr_columns_d);                                                         \
         cudaFree(csr_values_d);                                                          \
@@ -75,60 +73,94 @@
     } while (0);
 
 
+cudss_fp64mp2_t to_cudss_fp64mp2_t(double x) {
+    return cudss_fp64mp2_t{x, 0.0};
+}
+
+double dabs(cudss_fp64mp2_t x) {
+    return std::abs(x.hi + x.lo);
+}
+
+// Computes a + b with high precision
+cudss_fp64mp2_t high_precision_add(cudss_fp64mp2_t a, cudss_fp64mp2_t b) {
+    // First, add a.hi and b.hi without knowing which component is larger
+    const double res_hi       = a.hi + b.hi;
+    const double ah_prime     = res_hi - b.hi;
+    const double bh_prime     = res_hi - ah_prime;
+    const double delta_a      = a.hi - ah_prime;
+    const double delta_b      = b.hi - bh_prime;
+    const double res_hi_error = delta_a + delta_b;
+
+    // Now, add the low parts
+    const double res_lo = a.lo + b.lo + res_hi_error;
+
+    // Finally, we need to normalize the result
+    cudss_fp64mp2_t normalized_result{0, 0};
+
+    normalized_result.hi = res_hi + res_lo;
+    const double diff    = normalized_result.hi - res_hi;
+    normalized_result.lo = res_lo - diff;
+
+    return normalized_result;
+}
+
+// Computes a - b with high precision
+cudss_fp64mp2_t high_precision_sub(cudss_fp64mp2_t a, cudss_fp64mp2_t b) {
+    return high_precision_add(a, cudss_fp64mp2_t{-b.hi, -b.lo});
+}
+
+
 int main(int argc, char *argv[]) {
+    printf("---------------------------------------------------------\n");
+    printf("cuDSS example: solving a real linear 5x5 system\n"
+           "with a symmetric positive-definite matrix in high precision\n");
+    printf("---------------------------------------------------------\n");
     cudaError_t   cuda_error = cudaSuccess;
     cudssStatus_t status     = CUDSS_STATUS_SUCCESS;
 
-    /* Query the actual number of available devices */
-    int device_count = 0;
-    cuda_error       = cudaGetDeviceCount(&device_count);
-    if (cuda_error != cudaSuccess || device_count <= 0) {
-        printf("ERROR: no GPU devices found\n");
-        fflush(0);
+    int device = -1;
+    cuda_error = cudaGetDevice(&device);
+    if (cuda_error != cudaSuccess) {
+        printf("Error: cudaGetDevice failed with error %d\n", cuda_error);
         return -1;
     }
-
-    /* device_indices can be set to NULL. In that cases cuDSS will take devices
-     *     from 0 to (device_count - 1)
-     */
-    int *device_indices = NULL;
-    device_indices      = (int *)malloc(device_count * sizeof(int));
-    if (device_indices == NULL) {
-        printf("ERROR: failed to allocate host memory\n");
-        fflush(0);
+    cudaDeviceProp device_prop;
+    cuda_error = cudaGetDeviceProperties(&device_prop, 0);
+    if (cuda_error != cudaSuccess) {
+        printf("Error: cudaGetDeviceProperties failed with error %d\n", cuda_error);
         return -1;
     }
-    for (int i = 0; i < device_count; i++)
-        device_indices[i] = i;
+    int device_cc = device_prop.major * 10 + device_prop.minor;
 
-    printf("---------------------------------------------------------\n");
-    printf("cuDSS example: solving a real linear 5x5 system\n"
-           "with a symmetric positive-definite matrix with %d devices\n",
-           device_count);
-    printf("---------------------------------------------------------\n");
+    if (device_cc < 90) {
+        printf("Example SKIPPED: The device compute capability is less than 9.0 "
+               "(device_cc = %d < 90)\n",
+               device_cc);
+        return 0;
+    }
 
-    int n    = 5;
-    int nnz  = 8;
-    int nrhs = 1;
+    const int n    = 5;
+    const int nnz  = 8;
+    const int nrhs = 1;
 
-    int    *csr_offsets_h = NULL;
-    int    *csr_columns_h = NULL;
-    double *csr_values_h  = NULL;
-    double *x_values_h = NULL, *b_values_h = NULL;
+    int             *csr_offsets_h = NULL;
+    int             *csr_columns_h = NULL;
+    cudss_fp64mp2_t *csr_values_h  = NULL;
+    cudss_fp64mp2_t *x_values_h = NULL, *b_values_h = NULL;
 
-    int    *csr_offsets_d = NULL;
-    int    *csr_columns_d = NULL;
-    double *csr_values_d  = NULL;
-    double *x_values_d = NULL, *b_values_d = NULL;
+    int             *csr_offsets_d = NULL;
+    int             *csr_columns_d = NULL;
+    cudss_fp64mp2_t *csr_values_d  = NULL;
+    cudss_fp64mp2_t *x_values_d = NULL, *b_values_d = NULL;
 
     /* Allocate host memory for the sparse input matrix A,
-       right-hand side b and solution x */
+       right-hand side x and solution b*/
 
     csr_offsets_h = (int *)malloc((n + 1) * sizeof(int));
     csr_columns_h = (int *)malloc(nnz * sizeof(int));
-    csr_values_h  = (double *)malloc(nnz * sizeof(double));
-    x_values_h    = (double *)malloc(nrhs * n * sizeof(double));
-    b_values_h    = (double *)malloc(nrhs * n * sizeof(double));
+    csr_values_h  = (cudss_fp64mp2_t *)malloc(nnz * sizeof(cudss_fp64mp2_t));
+    x_values_h    = (cudss_fp64mp2_t *)malloc(nrhs * n * sizeof(cudss_fp64mp2_t));
+    b_values_h    = (cudss_fp64mp2_t *)malloc(nrhs * n * sizeof(cudss_fp64mp2_t));
 
     if (!csr_offsets_h || !csr_columns_h || !csr_values_h || !x_values_h || !b_values_h) {
         printf("Error: host memory allocation failed\n");
@@ -155,42 +187,38 @@ int main(int argc, char *argv[]) {
     csr_columns_h[i++] = 4;
 
     i                 = 0;
-    csr_values_h[i++] = 4.0;
-    csr_values_h[i++] = 1.0;
-    csr_values_h[i++] = 3.0;
-    csr_values_h[i++] = 2.0;
-    csr_values_h[i++] = 5.0;
-    csr_values_h[i++] = 1.0;
-    csr_values_h[i++] = 1.0;
-    csr_values_h[i++] = 2.0;
+    csr_values_h[i++] = to_cudss_fp64mp2_t(4.0);
+    csr_values_h[i++] = to_cudss_fp64mp2_t(1.0);
+    csr_values_h[i++] = to_cudss_fp64mp2_t(3.0);
+    csr_values_h[i++] = to_cudss_fp64mp2_t(2.0);
+    csr_values_h[i++] = to_cudss_fp64mp2_t(5.0);
+    csr_values_h[i++] = to_cudss_fp64mp2_t(1.0);
+    csr_values_h[i++] = to_cudss_fp64mp2_t(1.0);
+    csr_values_h[i++] = to_cudss_fp64mp2_t(2.0);
 
-    /* Note: Right-hand side b is initialized with values which correspond
-       to the exact solution vector {1, 2, 3, 4, 5} */
+
+    const cudss_fp64mp2_t expected_solution[5] = {
+        cudss_fp64mp2_t{1.0, 1.0e-20}, cudss_fp64mp2_t{2.0, -1.0e-23},
+        cudss_fp64mp2_t{3.0, 0.0}, cudss_fp64mp2_t{4.0, 0.0}, cudss_fp64mp2_t{5.0, 0.0}};
+
+    /* Note: b is set to the solution of A * expected_solution */
     i               = 0;
-    b_values_h[i++] = 7.0;
-    b_values_h[i++] = 12.0;
-    b_values_h[i++] = 25.0;
-    b_values_h[i++] = 4.0;
-    b_values_h[i++] = 13.0;
+    b_values_h[i++] = cudss_fp64mp2_t{7.0, 4.0e-20};
+    b_values_h[i++] = cudss_fp64mp2_t{12.0, -3.0e-23};
+    b_values_h[i++] = cudss_fp64mp2_t{25.0, 1.0e-20 - 2.0e-23};
+    b_values_h[i++] = cudss_fp64mp2_t{4.0, 0.0};
+    b_values_h[i++] = cudss_fp64mp2_t{13.0, 0.0};
 
-    /* Create per-device CUDA streams for multi-GPU mode */
-    cudaStream_t *device_streams = NULL;
-    device_streams = (cudaStream_t *)malloc(device_count * sizeof(cudaStream_t));
-    if (device_streams == NULL) {
-        printf("ERROR: failed to allocate device_streams array\n");
-        CUDSS_EXAMPLE_FREE;
-        return -1;
-    }
     /* Allocate device memory for A, x and b */
     CUDA_CALL_AND_CHECK(cudaMalloc(&csr_offsets_d, (n + 1) * sizeof(int)),
                         "cudaMalloc for csr_offsets");
     CUDA_CALL_AND_CHECK(cudaMalloc(&csr_columns_d, nnz * sizeof(int)),
                         "cudaMalloc for csr_columns");
-    CUDA_CALL_AND_CHECK(cudaMalloc(&csr_values_d, nnz * sizeof(double)),
+    CUDA_CALL_AND_CHECK(cudaMalloc(&csr_values_d, nnz * sizeof(cudss_fp64mp2_t)),
                         "cudaMalloc for csr_values");
-    CUDA_CALL_AND_CHECK(cudaMalloc(&b_values_d, nrhs * n * sizeof(double)),
+    CUDA_CALL_AND_CHECK(cudaMalloc(&b_values_d, nrhs * n * sizeof(cudss_fp64mp2_t)),
                         "cudaMalloc for b_values");
-    CUDA_CALL_AND_CHECK(cudaMalloc(&x_values_d, nrhs * n * sizeof(double)),
+    CUDA_CALL_AND_CHECK(cudaMalloc(&x_values_d, nrhs * n * sizeof(cudss_fp64mp2_t)),
                         "cudaMalloc for x_values");
 
     /* Copy host memory to device for A and b */
@@ -200,51 +228,36 @@ int main(int argc, char *argv[]) {
     CUDA_CALL_AND_CHECK(cudaMemcpy(csr_columns_d, csr_columns_h, nnz * sizeof(int),
                                    cudaMemcpyHostToDevice),
                         "cudaMemcpy for csr_columns");
-    CUDA_CALL_AND_CHECK(cudaMemcpy(csr_values_d, csr_values_h, nnz * sizeof(double),
-                                   cudaMemcpyHostToDevice),
+    CUDA_CALL_AND_CHECK(cudaMemcpy(csr_values_d, csr_values_h,
+                                   nnz * sizeof(cudss_fp64mp2_t), cudaMemcpyHostToDevice),
                         "cudaMemcpy for csr_values");
-    CUDA_CALL_AND_CHECK(cudaMemcpy(b_values_d, b_values_h, nrhs * n * sizeof(double),
+    CUDA_CALL_AND_CHECK(cudaMemcpy(b_values_d, b_values_h,
+                                   nrhs * n * sizeof(cudss_fp64mp2_t),
                                    cudaMemcpyHostToDevice),
                         "cudaMemcpy for b_values");
 
-
-    int current_device = -1;
-    CUDA_CALL_AND_CHECK(cudaGetDevice(&current_device), "cudaGetDevice");
-
-    for (int i = 0; i < device_count; i++) {
-        CUDA_CALL_AND_CHECK(cudaSetDevice(device_indices[i]), "cudaSetDevice");
-        CUDA_CALL_AND_CHECK(cudaStreamCreate(&device_streams[i]), "cudaStreamCreate");
-    }
-    CUDA_CALL_AND_CHECK(cudaSetDevice(current_device), "cudaSetDevice restore");
+    /* Create a CUDA stream */
+    cudaStream_t stream = NULL;
+    CUDA_CALL_AND_CHECK(cudaStreamCreate(&stream), "cudaStreamCreate");
 
     /* Creating the cuDSS library handle */
     cudssHandle_t handle;
 
-    /* Initialize cudss handle for multiple devices */
-    CUDSS_CALL_AND_CHECK(cudssCreateMg(&handle, device_count, device_indices), status,
-                         "cudssCreate");
+    CUDSS_CALL_AND_CHECK(cudssCreate(&handle), status, "cudssCreate");
 
-    /* (optional) Setting per-device custom streams for the library handle */
-    CUDSS_CALL_AND_CHECK(cudssSetMgStreams(handle, device_streams, device_count), status,
-                         "cudssSetMgStreams");
+    /* (optional) Setting the custom stream for the library handle */
+    CUDSS_CALL_AND_CHECK(cudssSetStream(handle, stream), status, "cudssSetStream");
 
     /* Creating cuDSS solver configuration and data objects */
     cudssConfig_t solverConfig;
     cudssData_t   solverData;
 
     CUDSS_CALL_AND_CHECK(cudssConfigCreate(&solverConfig), status, "cudssConfigCreate");
-
-    /* Pass same device_count and device_indices to solverConfig */
-    CUDSS_CALL_AND_CHECK(cudssConfigSet(solverConfig, CUDSS_CONFIG_DEVICE_COUNT,
-                                        &device_count, sizeof(device_count)),
-                         status, "cudssConfigSet for device_count");
-
-    CUDSS_CALL_AND_CHECK(cudssConfigSet(solverConfig, CUDSS_CONFIG_DEVICE_INDICES,
-                                        device_indices, device_count * sizeof(int)),
-                         status, "cudssConfigSet for device_count");
-
-
     CUDSS_CALL_AND_CHECK(cudssDataCreate(handle, &solverData), status, "cudssDataCreate");
+    int deterministicMode = 0;
+    CUDSS_CALL_AND_CHECK(cudssConfigSet(solverConfig, CUDSS_CONFIG_DETERMINISTIC_MODE,
+                                        &deterministicMode, sizeof(deterministicMode)),
+                         status, "cudssConfigSet for deterministic mode");
 
     /* Create matrix objects for the right-hand side b and solution x (as dense matrices).
      */
@@ -253,10 +266,10 @@ int main(int argc, char *argv[]) {
     int64_t nrows = n, ncols = n;
     int     ldb = nrows, ldx = ncols;
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateDn(&b, nrows, nrhs, ldb, b_values_d,
-                                             CUDSS_R_64F, CUDSS_LAYOUT_COL_MAJOR),
+                                             CUDSS_R_64F_64F, CUDSS_LAYOUT_COL_MAJOR),
                          status, "cudssMatrixCreateDn for b");
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateDn(&x, ncols, nrhs, ldx, x_values_d,
-                                             CUDSS_R_64F, CUDSS_LAYOUT_COL_MAJOR),
+                                             CUDSS_R_64F_64F, CUDSS_LAYOUT_COL_MAJOR),
                          status, "cudssMatrixCreateDn for x");
 
     /* Create a matrix object for the sparse input matrix. */
@@ -266,47 +279,21 @@ int main(int argc, char *argv[]) {
     cudssIndexBase_t      base  = CUDSS_BASE_ZERO;
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateCsr(&A, nrows, ncols, nnz, csr_offsets_d, NULL,
                                               csr_columns_d, csr_values_d, CUDSS_R_32I,
-                                              CUDSS_R_32I, CUDSS_R_64F, mtype, mview,
+                                              CUDSS_R_32I, CUDSS_R_64F_64F, mtype, mview,
                                               base),
                          status, "cudssMatrixCreateCsr");
 
-    /* Symbolic factorization */
+    /* Reordering and symbolic factorization */
     CUDSS_CALL_AND_CHECK(
         cudssExecute(handle, CUDSS_PHASE_ANALYSIS, solverConfig, solverData, A, x, b),
         status, "cudssExecute for analysis");
-
-    /* Query CUDSS_DATA_HYBRID_DEVICE_MEMORY_MIN should be done for each device
-     * separately by calling cudaSetDevice() prior to cudssDataGet.
-     * Same for getting CUDSS_DATA_MEMORY_ESTIMATES.
-     * Same for setting CUDSS_CONFIG_HYBRID_DEVICE_MEMORY_LIMIT with cudssConfigSet()
-     */
-    int default_device = 0;
-    cudaGetDevice(&default_device);
-    for (int dev_id = 0; dev_id < device_count; dev_id++) {
-        cudaSetDevice(device_indices[dev_id]);
-
-        int64_t hybrid_device_memory_limit = 0;
-        size_t  sizeWritten;
-        CUDSS_CALL_AND_CHECK(
-            cudssDataGet(handle, solverData, CUDSS_DATA_HYBRID_DEVICE_MEMORY_MIN,
-                         &hybrid_device_memory_limit, sizeof(hybrid_device_memory_limit),
-                         &sizeWritten),
-            status, "cudssDataGet for the memory estimates");
-
-        printf("dev_id = %d CUDSS_DATA_HYBRID_DEVICE_MEMORY_MIN %ld bytes\n",
-               device_indices[dev_id], hybrid_device_memory_limit);
-    }
-    /* cuDSS requires all API calls to be made on the default device, so
-     * resetting device context.
-     */
-    cudaSetDevice(default_device);
 
     /* Factorization */
     CUDSS_CALL_AND_CHECK(cudssExecute(handle, CUDSS_PHASE_FACTORIZATION, solverConfig,
                                       solverData, A, x, b),
                          status, "cudssExecute for factor");
 
-    /* Solving */
+    /* Solve */
     CUDSS_CALL_AND_CHECK(
         cudssExecute(handle, CUDSS_PHASE_SOLVE, solverConfig, solverData, A, x, b),
         status, "cudssExecute for solve");
@@ -320,30 +307,31 @@ int main(int argc, char *argv[]) {
     CUDSS_CALL_AND_CHECK(cudssConfigDestroy(solverConfig), status, "cudssConfigDestroy");
     CUDSS_CALL_AND_CHECK(cudssDestroy(handle), status, "cudssHandleDestroy");
 
-    /* Synchronize and destroy per-device streams */
-    CUDA_CALL_AND_CHECK(cudaGetDevice(&current_device), "cudaGetDevice");
-    for (int i = 0; i < device_count; i++) {
-        CUDA_CALL_AND_CHECK(cudaSetDevice(device_indices[i]), "cudaSetDevice");
-        CUDA_CALL_AND_CHECK(cudaStreamSynchronize(device_streams[i]),
-                            "cudaStreamSynchronize");
-        CUDA_CALL_AND_CHECK(cudaStreamDestroy(device_streams[i]), "cudaStreamDestroy");
-    }
-    CUDA_CALL_AND_CHECK(cudaSetDevice(current_device), "cudaSetDevice restore");
+    CUDA_CALL_AND_CHECK(cudaStreamSynchronize(stream), "cudaStreamSynchronize");
 
-    /* Print the solution and compare against the exact solution */
-    CUDA_CALL_AND_CHECK(cudaMemcpy(x_values_h, x_values_d, nrhs * n * sizeof(double),
+    /* Copy solution x to host and validate against the expected solution */
+    CUDA_CALL_AND_CHECK(cudaMemcpy(x_values_h, x_values_d,
+                                   nrhs * n * sizeof(cudss_fp64mp2_t),
                                    cudaMemcpyDeviceToHost),
                         "cudaMemcpy for x_values");
 
-    int passed = 1;
+    constexpr double PASS_THRESHOLD = 1.e-30;
+    int              passed         = 1;
     for (int i = 0; i < n; i++) {
-        printf("x[%d] = %1.4f expected %1.4f\n", i, x_values_h[i], double(i + 1));
-        if (fabs(x_values_h[i] - (i + 1)) > 2.e-15)
+        const double delta =
+            dabs(high_precision_sub(x_values_h[i], expected_solution[i]));
+        printf("x[%d] = (%1.14e, %+1.14e) expected (%1.14e, %+1.14e); delta = %1.14e\n",
+               i, x_values_h[i].hi, x_values_h[i].lo, expected_solution[i].hi,
+               expected_solution[i].lo, delta);
+        if (delta > PASS_THRESHOLD) {
+            printf("FAILED validation: solution error at x[%d] exceeds example pass "
+                   "threshold (delta = %1.14e > %1.14e)\n",
+                   i, delta, PASS_THRESHOLD);
             passed = 0;
+        }
     }
 
     /* Release the data allocated on the user side */
-
     CUDSS_EXAMPLE_FREE;
 
     if (status == CUDSS_STATUS_SUCCESS && passed) {

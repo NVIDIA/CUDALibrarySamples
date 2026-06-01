@@ -4,7 +4,7 @@
 
 This folder demonstrates main cuDSS APIs usage.
 
-Note: samples are updated to work with the latest version of cuDSS available (currently: 0.7.0) and might be incompatible with older versions.
+Note: samples are updated to work with the latest version of cuDSS available (currently: 0.8.0) and might be incompatible with older versions.
 For further details, please check the release notes in the official documentation.
 
 [cuDSS Documentation](https://docs.nvidia.com/cuda/cudss/index.html)
@@ -101,3 +101,9 @@ For further details, please check the release notes in the official documentatio
 * [Helper for testing the threading layer library](test_threading_layer/)
 
     The sample demonstrates how one can check functional health of a threading backend and the associated threading layer library of cuDSS (available since cudss 0.7.0)
+
+* [Higher than double-precision solve](simple_high_precision/)
+
+    The sample demonstrates how to use cuDSS for solving with higher than double-precision (available since cudss 0.8.0)
+
+    Note: This requires a GPU with compute capability 9.0 or higher.

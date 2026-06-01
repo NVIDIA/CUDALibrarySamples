@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,13 +15,13 @@
  * limitations under the License.
  */
 
-
 #include <assert.h>
 #include <cuda_runtime.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <cublas_v2.h>
 #include <cusolverDn.h>
 
 #include "cudss.h"
@@ -38,6 +38,7 @@
         A is the sparse input matrix,
         b is the (dense) right-hand side vector (or matrix),
         x is the (dense) solution vector (or matrix).
+    But in this example, the system is not solved.
     To solve the full system while also extracting the Schur complement,
     the Schur complement system must be solved outside of cuDSS (e.g.,
     using cuSOLVER in case when the Schur complement is dense).
@@ -361,12 +362,12 @@ int main(int argc, char *argv[]) {
     cudssMatrix_t x, b;
 
     int64_t nrows = n, ncols = n;
-    int64_t ldb = ncols, ldx = nrows;
-    CUDSS_CALL_AND_CHECK(cudssMatrixCreateDn(&b, ncols, nrhs, ldb, b_values_d, CUDA_R_64F,
-                                             CUDSS_LAYOUT_COL_MAJOR),
+    int64_t ldb = nrows, ldx = ncols;
+    CUDSS_CALL_AND_CHECK(cudssMatrixCreateDn(&b, nrows, nrhs, ldb, b_values_d,
+                                             CUDSS_R_64F, CUDSS_LAYOUT_COL_MAJOR),
                          status, "cudssMatrixCreateDn for b");
-    CUDSS_CALL_AND_CHECK(cudssMatrixCreateDn(&x, nrows, nrhs, ldx, x_values_d, CUDA_R_64F,
-                                             CUDSS_LAYOUT_COL_MAJOR),
+    CUDSS_CALL_AND_CHECK(cudssMatrixCreateDn(&x, ncols, nrhs, ldx, x_values_d,
+                                             CUDSS_R_64F, CUDSS_LAYOUT_COL_MAJOR),
                          status, "cudssMatrixCreateDn for x");
 
     /* Create a matrix object for the sparse input matrix. */
@@ -376,8 +377,9 @@ int main(int argc, char *argv[]) {
     cudssIndexBase_t      base  = CUDSS_BASE_ZERO;
 
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateCsr(&A, nrows, ncols, nnz, csr_offsets_d, NULL,
-                                              csr_columns_d, csr_values_d, CUDA_R_32I,
-                                              CUDA_R_64F, mtype, mview, base),
+                                              csr_columns_d, csr_values_d, CUDSS_R_32I,
+                                              CUDSS_R_32I, CUDSS_R_64F, mtype, mview,
+                                              base),
                          status, "cudssMatrixCreateCsr");
 
     /* Analysis (reordering and symbolic factorization) */
@@ -429,7 +431,7 @@ int main(int argc, char *argv[]) {
         "cudaMalloc for schur_matrix_values");
 
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateDn(&S, schur_nrows, schur_ncols, schur_ld,
-                                             schur_matrix_values_d, CUDA_R_64F,
+                                             schur_matrix_values_d, CUDSS_R_64F,
                                              CUDSS_LAYOUT_COL_MAJOR),
                          status, "cudssMatrixCreateDn for the Schur complement matrix");
 
