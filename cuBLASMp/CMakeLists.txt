@@ -41,6 +41,8 @@ function(build_sample sample_name)
 
     target_link_libraries(${sample_name} PUBLIC
         cudart
+        cublas
+        cublasLt
         ${CUBLASMP_LIBRARIES}
         ${MPI_CXX_LIBRARIES}
         ${NCCL_LIBRARIES}

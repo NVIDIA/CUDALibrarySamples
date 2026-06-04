@@ -138,7 +138,16 @@ Individual operations may use only a subset of these options, and not every data
 | `-scaleA`, `-scaleB`, `-scaleD`, `-scaleDOut` | Scaling modes (`scalar_fp32`, `vec16_ue4m3`, `vec32_ue8m0`, `outer_vec_fp32`, `vec128_fp32`, `blk128x128_fp32`) |
 | `-gridLayout` | Process grid layout (`c` column-major, `r` row-major) |
 | `-emulationStrategy` | FP emulation strategy (`default`, `performant`, `eager`) |
+| `-checkResult` | Enable result verification (`true` or `false`; default: `true`) |
+| `-no-check` | Disable result verification |
 | `-cycles` | Number of iterations for timing |
 | `-warmup` | Number of warmup iterations |
 | `-verbose` | Print detailed output |
 | `-help` | Print all available options |
+
+### Matmul Scaling Modes
+
+The `matmul_ag`, `matmul_rs`, and `matmul_ar` samples support both Hopper FP8 scaling modes
+(`vec128_fp32`, `blk128x128_fp32`, `outer_vec_fp32`) and Blackwell block scaling modes
+(`vec32_ue8m0`, `vec16_ue4m3`). Support for a given datatype and scaling-mode combination depends on the
+GPU architecture, CUDA Toolkit, and cuBLASLt support available at runtime.

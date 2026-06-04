@@ -93,8 +93,8 @@ void generate_distributed_matrix(
                 const int64_t locJ = tileJ / npcol;
                 T* ptr = a + locI * mb + locJ * nb * lld;
 
-                const int64_t tile_m = std::min({ m, mb, m - tileI * mb });
-                const int64_t tile_n = std::min({ n, nb, n - tileJ * nb });
+                const int64_t tile_m = std::min(mb, m - i * mb);
+                const int64_t tile_n = std::min(nb, n - j * nb);
 
                 for (int64_t k = 0; k < tile_m; k++)
                 {

@@ -121,10 +121,10 @@ int main(int argc, char* argv[])
             loc_a_m,
             ta ? 1 : nranks,
             ta ? nranks : 1,
-            ta ? 1 : rank,
-            ta ? rank : 1);
-        generate_random_matrix(k, n, h_W0.data(), loc_b_m, loc_b_n, 1, 1, loc_b_m, 1, nranks, 1, rank);
-        generate_random_matrix(m, n, h_X1.data(), loc_c_m, loc_c_n, 1, 1, loc_c_m, nranks, 1, rank, 1);
+            ta ? 0 : rank,
+            ta ? rank : 0);
+        generate_random_matrix(k, n, h_W0.data(), loc_b_m, loc_b_n, 1, 1, loc_b_m, 1, nranks, 0, rank);
+        generate_random_matrix(m, n, h_X1.data(), loc_c_m, loc_c_n, 1, 1, loc_c_m, nranks, 1, rank, 0);
 
         input_t* d_X0 = nullptr;
         input_t* d_W0 = nullptr;
@@ -310,9 +310,9 @@ int main(int argc, char* argv[])
             loc_a_m,
             ta ? nranks : 1,
             ta ? 1 : nranks,
-            ta ? rank : 1,
-            ta ? 1 : rank);
-        generate_random_matrix(m, n, h_X2.data(), loc_c_m, loc_c_n, 1, 1, loc_c_m, 1, nranks, 1, rank);
+            ta ? rank : 0,
+            ta ? 0 : rank);
+        generate_random_matrix(m, n, h_X2.data(), loc_c_m, loc_c_n, 1, 1, loc_c_m, 1, nranks, 0, rank);
 
         input_t* d_W1 = nullptr;
 

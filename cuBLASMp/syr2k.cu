@@ -28,6 +28,155 @@
 #include "helpers.h"
 #include "matrix_generator.hxx"
 
+template <typename T>
+static bool check_syr2k_result(
+    cublasMpHandle_t mp_handle,
+    ncclComm_t comm,
+    cudaStream_t stream,
+    int rank,
+    cublasMpGrid_t grid,
+    int nprow,
+    int npcol,
+    int myprow,
+    int mypcol,
+    cublasFillMode_t uplo,
+    cublasOperation_t trans,
+    int64_t n,
+    int64_t k,
+    const T* alpha,
+    T* d_A,
+    int64_t ia,
+    int64_t ja,
+    cublasMpMatrixDescriptor_t descA,
+    T* d_B,
+    int64_t ib,
+    int64_t jb,
+    cublasMpMatrixDescriptor_t descB,
+    const T* beta,
+    T* d_C_ref,
+    T* d_C,
+    int64_t ic,
+    int64_t jc,
+    cublasMpMatrixDescriptor_t descC)
+{
+    static_assert(std::is_same_v<T, double>, "syr2k sample reference check supports double only");
+
+    const int64_t a_rows = trans == CUBLAS_OP_N ? n : k;
+    const int64_t a_cols = trans == CUBLAS_OP_N ? k : n;
+    T* full_A = nullptr;
+    T* full_B = nullptr;
+    T* full_C_ref = nullptr;
+    T* full_C_result = nullptr;
+    int64_t full_A_lld = 0;
+    int64_t full_B_lld = 0;
+    int64_t full_C_ref_lld = 0;
+    int64_t full_C_result_lld = 0;
+
+    gather_matrix(
+        mp_handle,
+        comm,
+        stream,
+        a_rows,
+        a_cols,
+        d_A,
+        ia,
+        ja,
+        descA,
+        grid,
+        nprow,
+        npcol,
+        myprow,
+        mypcol,
+        &full_A,
+        &full_A_lld);
+    gather_matrix(
+        mp_handle,
+        comm,
+        stream,
+        a_rows,
+        a_cols,
+        d_B,
+        ib,
+        jb,
+        descB,
+        grid,
+        nprow,
+        npcol,
+        myprow,
+        mypcol,
+        &full_B,
+        &full_B_lld);
+    gather_matrix(
+        mp_handle,
+        comm,
+        stream,
+        n,
+        n,
+        d_C_ref,
+        ic,
+        jc,
+        descC,
+        grid,
+        nprow,
+        npcol,
+        myprow,
+        mypcol,
+        &full_C_ref,
+        &full_C_ref_lld);
+    gather_matrix(
+        mp_handle,
+        comm,
+        stream,
+        n,
+        n,
+        d_C,
+        ic,
+        jc,
+        descC,
+        grid,
+        nprow,
+        npcol,
+        myprow,
+        mypcol,
+        &full_C_result,
+        &full_C_result_lld);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+
+    bool passed = true;
+    if (rank == 0)
+    {
+        cublasHandle_t cublas_handle = nullptr;
+        CUBLAS_CHECK(cublasCreate(&cublas_handle));
+        CUBLAS_CHECK(cublasSetStream(cublas_handle, stream));
+        if constexpr (std::is_same_v<T, double>)
+        {
+            CUBLAS_CHECK(cublasDsyr2k(
+                cublas_handle,
+                uplo,
+                trans,
+                static_cast<int>(n),
+                static_cast<int>(k),
+                alpha,
+                full_A,
+                static_cast<int>(full_A_lld),
+                full_B,
+                static_cast<int>(full_B_lld),
+                beta,
+                full_C_ref,
+                static_cast<int>(full_C_ref_lld)));
+        }
+        passed = allclose_device("syr2k", full_C_result, full_C_result_lld, full_C_ref, full_C_ref_lld, n, n, stream);
+        CUBLAS_CHECK(cublasDestroy(cublas_handle));
+    }
+    CUDA_CHECK(cudaFree(full_A));
+    CUDA_CHECK(cudaFree(full_B));
+    CUDA_CHECK(cudaFree(full_C_ref));
+    CUDA_CHECK(cudaFree(full_C_result));
+    int passed_int = passed ? 1 : 0;
+    MPI_CHECK(MPI_Bcast(&passed_int, 1, MPI_INT, 0, MPI_COMM_WORLD));
+    return passed_int != 0;
+}
+
 int main(int argc, char* argv[])
 {
     Options opts = { .m = 10,
@@ -54,7 +203,6 @@ int main(int argc, char* argv[])
 
     opts.parse(argc, argv);
     opts.validate();
-    opts.print();
 
     MPI_Init(nullptr, nullptr);
 
@@ -114,6 +262,7 @@ int main(int argc, char* argv[])
     double* d_A = nullptr;
     double* d_B = nullptr;
     double* d_C = nullptr;
+    double* d_C_ref = nullptr;
 
     double* d_work = nullptr;
 
@@ -150,10 +299,12 @@ int main(int argc, char* argv[])
     CUDA_CHECK(cudaMalloc(&d_A, llda * loc_n_a * sizeof(double)));
     CUDA_CHECK(cudaMalloc(&d_B, lldb * loc_n_b * sizeof(double)));
     CUDA_CHECK(cudaMalloc(&d_C, lldc * loc_n_c * sizeof(double)));
+    CUDA_CHECK(cudaMalloc(&d_C_ref, lldc * loc_n_c * sizeof(double)));
 
     CUDA_CHECK(cudaMemcpyAsync(d_A, h_A.data(), llda * loc_n_a * sizeof(double), cudaMemcpyHostToDevice, stream));
     CUDA_CHECK(cudaMemcpyAsync(d_B, h_B.data(), lldb * loc_n_b * sizeof(double), cudaMemcpyHostToDevice, stream));
     CUDA_CHECK(cudaMemcpyAsync(d_C, h_C.data(), lldc * loc_n_c * sizeof(double), cudaMemcpyHostToDevice, stream));
+    CUDA_CHECK(cudaMemcpyAsync(d_C_ref, h_C.data(), lldc * loc_n_c * sizeof(double), cudaMemcpyHostToDevice, stream));
 
     CUBLASMP_CHECK(cublasMpGridCreate(
         nprow,
@@ -263,6 +414,64 @@ int main(int argc, char* argv[])
     CUDA_CHECK(cudaEventDestroy(start));
     CUDA_CHECK(cudaEventDestroy(stop));
 
+    // Reset C to the clean input before the single verification call; the timing loop mutates C repeatedly.
+    CUDA_CHECK(cudaMemcpyAsync(d_C, d_C_ref, lldc * loc_n_c * sizeof(double), cudaMemcpyDeviceToDevice, stream));
+    CUBLASMP_CHECK(cublasMpSyr2k(
+        handle,
+        CUBLAS_FILL_MODE_LOWER,
+        CUBLAS_OP_N,
+        n,
+        k,
+        &alpha,
+        d_A,
+        ia,
+        ja,
+        descA,
+        d_B,
+        ib,
+        jb,
+        descB,
+        &beta,
+        d_C,
+        ic,
+        jc,
+        descC,
+        cublas_compute_type,
+        d_work,
+        workspaceInBytesOnDevice,
+        h_work.data(),
+        workspaceInBytesOnHost));
+
+    const bool passed = !opts.check_result || check_syr2k_result(
+                                                  handle,
+                                                  comm,
+                                                  stream,
+                                                  rank,
+                                                  grid,
+                                                  nprow,
+                                                  npcol,
+                                                  myprow,
+                                                  mypcol,
+                                                  CUBLAS_FILL_MODE_LOWER,
+                                                  CUBLAS_OP_N,
+                                                  n,
+                                                  k,
+                                                  &alpha,
+                                                  d_A,
+                                                  ia,
+                                                  ja,
+                                                  descA,
+                                                  d_B,
+                                                  ib,
+                                                  jb,
+                                                  descB,
+                                                  &beta,
+                                                  d_C_ref,
+                                                  d_C,
+                                                  ic,
+                                                  jc,
+                                                  descC);
+
     CUBLASMP_CHECK(cublasMpMatrixDescriptorDestroy(descA));
     CUBLASMP_CHECK(cublasMpMatrixDescriptorDestroy(descB));
     CUBLASMP_CHECK(cublasMpMatrixDescriptorDestroy(descC));
@@ -274,6 +483,7 @@ int main(int argc, char* argv[])
     CUDA_CHECK(cudaFree(d_A));
     CUDA_CHECK(cudaFree(d_B));
     CUDA_CHECK(cudaFree(d_C));
+    CUDA_CHECK(cudaFree(d_C_ref));
     CUDA_CHECK(cudaFree(d_work));
 
     NCCL_CHECK(ncclCommFinalize(comm));
@@ -287,8 +497,8 @@ int main(int argc, char* argv[])
 
     if (rank == 0)
     {
-        printf("[SUCCEEDED]\n");
+        printf(passed ? "[SUCCEEDED]\n" : "[FAILED]\n");
     }
 
-    return 0;
+    return passed ? EXIT_SUCCESS : EXIT_FAILURE;
 };

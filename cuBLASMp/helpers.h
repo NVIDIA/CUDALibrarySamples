@@ -17,14 +17,20 @@
 
 #pragma once
 
+#include <cublasLt.h>
+#include <cublas_v2.h>
 #include <cuda_fp4.h>
 #include <cuda_fp8.h>
 #include <mpi.h>
 #include <string.h>
 
+#include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdint>
+#include <limits>
 #include <stdexcept>
+#include <type_traits>
 #include <vector>
 
 #define MPI_CHECK(call)                                                                                                \
@@ -67,6 +73,46 @@
         if (status != CUBLASMP_STATUS_SUCCESS)                                                                         \
         {                                                                                                              \
             fprintf(stderr, "cuBLASMp error at %s:%d : %d\n", __FILE__, __LINE__, status);                             \
+            exit(EXIT_FAILURE);                                                                                        \
+        }                                                                                                              \
+    } while (0)
+
+#define CUBLASMP_CHECK_STATUS(status_value)                                                                            \
+    do                                                                                                                 \
+    {                                                                                                                  \
+        const cublasMpStatus_t cublasmp_status_ = (status_value);                                                      \
+        if (cublasmp_status_ != CUBLASMP_STATUS_SUCCESS)                                                               \
+        {                                                                                                              \
+            fprintf(stderr, "cuBLASMp error at %s:%d : %d\n", __FILE__, __LINE__, cublasmp_status_);                   \
+            exit(EXIT_FAILURE);                                                                                        \
+        }                                                                                                              \
+    } while (0)
+
+static inline bool skip_if_cublasmp_not_supported(
+    const char* sample_name,
+    const char* call_name,
+    cublasMpStatus_t status,
+    int rank)
+{
+    if (status != CUBLASMP_STATUS_NOT_SUPPORTED)
+    {
+        return false;
+    }
+
+    if (rank == 0)
+    {
+        fprintf(stderr, "%s: %s returned NOT_SUPPORTED, skipping\n", sample_name, call_name);
+    }
+    return true;
+}
+
+#define CUBLAS_CHECK(call)                                                                                             \
+    do                                                                                                                 \
+    {                                                                                                                  \
+        cublasStatus_t status = call;                                                                                  \
+        if (status != CUBLAS_STATUS_SUCCESS)                                                                           \
+        {                                                                                                              \
+            fprintf(stderr, "cuBLAS error at %s:%d : %s\n", __FILE__, __LINE__, cublasGetStatusString(status));        \
             exit(EXIT_FAILURE);                                                                                        \
         }                                                                                                              \
     } while (0)
@@ -134,6 +180,23 @@ cudaDataType_t string_to_cuda_data_type(const char* type)
     else
     {
         throw std::runtime_error("unsupported datatype");
+    }
+}
+
+bool string_to_bool(const char* value)
+{
+    if (strcmp(value, "true") == 0 || strcmp(value, "1") == 0 || strcmp(value, "yes") == 0 || strcmp(value, "on") == 0)
+    {
+        return true;
+    }
+    else if (
+        strcmp(value, "false") == 0 || strcmp(value, "0") == 0 || strcmp(value, "no") == 0 || strcmp(value, "off") == 0)
+    {
+        return false;
+    }
+    else
+    {
+        throw std::runtime_error("unsupported boolean value");
     }
 }
 
@@ -230,12 +293,16 @@ void* allocate_and_init_scaling_factors(int64_t m, int64_t n, cublasMpMatmulMatr
 
     void* d_scale = nullptr;
     CUDA_CHECK(cudaMalloc(&d_scale, scale_size));
+    const int seed = (scale_mode == CUBLASMP_MATMUL_MATRIX_SCALE_SCALAR_FP32 ||
+                      scale_mode == CUBLASMP_MATMUL_MATRIX_SCALE_OUTER_VEC_FP32)
+                         ? 0
+                         : rank;
 
     switch (scale_mode)
     {
         case CUBLASMP_MATMUL_MATRIX_SCALE_SCALAR_FP32:
         {
-            generate_values(rank, reinterpret_cast<float*>(d_scale), 1, true, 1, 10);
+            generate_values(seed, reinterpret_cast<float*>(d_scale), 1, true, 1, 10);
             break;
         }
 
@@ -243,21 +310,21 @@ void* allocate_and_init_scaling_factors(int64_t m, int64_t n, cublasMpMatmulMatr
         case CUBLASMP_MATMUL_MATRIX_SCALE_VEC128_FP32:
         case CUBLASMP_MATMUL_MATRIX_SCALE_BLK128x128_FP32:
         {
-            generate_values(rank, reinterpret_cast<float*>(d_scale), scale_size / sizeof(float), true, 1, 10);
+            generate_values(seed, reinterpret_cast<float*>(d_scale), scale_size / sizeof(float), true, 1, 10);
             break;
         }
 
         case CUBLASMP_MATMUL_MATRIX_SCALE_VEC16_UE4M3:
         {
             generate_values(
-                rank, reinterpret_cast<__nv_fp8_e4m3*>(d_scale), scale_size / sizeof(__nv_fp8_e4m3), true, 1, 10);
+                seed, reinterpret_cast<__nv_fp8_e4m3*>(d_scale), scale_size / sizeof(__nv_fp8_e4m3), true, 1, 10);
             break;
         }
 
         case CUBLASMP_MATMUL_MATRIX_SCALE_VEC32_UE8M0:
         {
             generate_values(
-                rank, reinterpret_cast<__nv_fp8_e8m0*>(d_scale), scale_size / sizeof(__nv_fp8_e8m0), true, 1, 10);
+                seed, reinterpret_cast<__nv_fp8_e8m0*>(d_scale), scale_size / sizeof(__nv_fp8_e8m0), true, 1, 10);
             break;
         }
 
@@ -317,6 +384,7 @@ struct Options
 
     // others
     bool verbose = false;
+    bool check_result = true;
     int cycles = 1;
     int warmup = 0;
 
@@ -361,6 +429,8 @@ struct Options
             "    -q <int>\n"
             "    -gridLayout <char> (c, r)\n"
             "    -emulationStrategy <string> (default, performant, eager)\n"
+            "    -checkResult <bool> (true, false)\n"
+            "    -no-check\n"
             "    -cycles <int>\n"
             "    -warmup <int>\n"
             "    -verbose\n"
@@ -380,7 +450,7 @@ struct Options
             "p=%d q=%d gridLayout=%c "
             "emulationStrategy=%s "
             "cycles=%d warmup=%d "
-            "verbose=%s\n",
+            "verbose=%s checkResult=%s\n",
             m,
             n,
             k,
@@ -412,7 +482,8 @@ struct Options
             emulationStrategy,
             cycles,
             warmup,
-            verbose ? "true" : "false");
+            verbose ? "true" : "false",
+            check_result ? "true" : "false");
     }
 
     void parse(int argc, char** argv)
@@ -547,6 +618,14 @@ struct Options
             {
                 emulationStrategy = argv[++i];
             }
+            else if (strcmp(argv[i], "-checkResult") == 0)
+            {
+                check_result = string_to_bool(argv[++i]);
+            }
+            else if (strcmp(argv[i], "-no-check") == 0)
+            {
+                check_result = false;
+            }
             else if (strcmp(argv[i], "-help") == 0)
             {
                 printHelp();
@@ -630,4 +709,347 @@ static bool deviceSupportsFp4()
     cudaDeviceProp prop;
     CUDA_CHECK(cudaGetDeviceProperties(&prop, local_device));
     return prop.major >= 10;
+}
+
+static inline bool is_fp8(cudaDataType_t type)
+{
+    return type == CUDA_R_8F_E4M3 || type == CUDA_R_8F_E5M2;
+}
+
+static inline bool is_fp4(cudaDataType_t type)
+{
+    return type == CUDA_R_4F_E2M1;
+}
+
+template <typename T>
+static inline double default_rtol()
+{
+    if constexpr (std::is_same_v<T, double>)
+    {
+        return 1e-12;
+    }
+    else if constexpr (std::is_same_v<T, float>)
+    {
+        return 5e-5;
+    }
+    else if constexpr (std::is_same_v<T, __half>)
+    {
+        return 3e-3;
+    }
+    else if constexpr (std::is_same_v<T, __nv_bfloat16>)
+    {
+        return 2e-2;
+    }
+    else if constexpr (std::is_same_v<T, __nv_fp8_e4m3> || std::is_same_v<T, __nv_fp8_e5m2>)
+    {
+        return 6.5e-1;
+    }
+    else if constexpr (std::is_same_v<T, __nv_fp4_e2m1>)
+    {
+        return 7e-1;
+    }
+    else
+    {
+        return 1e-5;
+    }
+}
+
+template <typename T>
+static inline double default_atol()
+{
+    if constexpr (std::is_same_v<T, double>)
+    {
+        return 1e-12;
+    }
+    else if constexpr (std::is_same_v<T, float>)
+    {
+        return 1e-6;
+    }
+    else if constexpr (std::is_same_v<T, __half>)
+    {
+        return 5e-3;
+    }
+    else if constexpr (std::is_same_v<T, __nv_bfloat16>)
+    {
+        return 8e-3;
+    }
+    else if constexpr (std::is_same_v<T, __nv_fp8_e4m3> || std::is_same_v<T, __nv_fp8_e5m2>)
+    {
+        return 5e-2;
+    }
+    else if constexpr (std::is_same_v<T, __nv_fp4_e2m1>)
+    {
+        return 5e-1;
+    }
+    else
+    {
+        return 1e-6;
+    }
+}
+
+template <typename T>
+static inline double to_double(T val)
+{
+    if constexpr (std::is_same_v<T, __half>)
+    {
+        return static_cast<double>(__half2float(val));
+    }
+    else if constexpr (std::is_same_v<T, __nv_bfloat16>)
+    {
+        return static_cast<double>(__bfloat162float(val));
+    }
+    else
+    {
+        return static_cast<double>(val);
+    }
+}
+
+template <typename T>
+static inline double matrix_value_to_double(const T* values, int64_t idx)
+{
+    if constexpr (std::is_same_v<T, __nv_fp4_e2m1>)
+    {
+        return static_cast<double>(fp4x2::read_element(values, idx));
+    }
+    else
+    {
+        return to_double(values[idx]);
+    }
+}
+
+struct AllcloseIdentityProlog
+{
+    template <typename T>
+    double operator()(const T* values, int64_t idx, int64_t /*row*/, int64_t /*col*/) const
+    {
+        return matrix_value_to_double(values, idx);
+    }
+};
+
+template <typename T, typename ResultProlog, typename ReferenceProlog>
+static bool allclose_host(
+    const char* name,
+    const T* result,
+    int64_t result_lld,
+    const T* reference,
+    int64_t reference_lld,
+    int64_t rows,
+    int64_t cols,
+    double rtol,
+    double atol,
+    ResultProlog result_prolog,
+    ReferenceProlog reference_prolog)
+{
+    double max_abs = 0.0;
+    double max_rel = 0.0;
+    int64_t bad_row = -1;
+    int64_t bad_col = -1;
+    double bad_result = 0.0;
+    double bad_reference = 0.0;
+
+    for (int64_t col = 0; col < cols; ++col)
+    {
+        for (int64_t row = 0; row < rows; ++row)
+        {
+            const double r = result_prolog(result, row + col * result_lld, row, col);
+            const double ref = reference_prolog(reference, row + col * reference_lld, row, col);
+            const double diff = std::abs(r - ref);
+            const double allowed = atol + rtol * std::abs(ref);
+            const double rel = diff / std::max(std::abs(ref), std::numeric_limits<double>::min());
+            max_abs = std::max(max_abs, diff);
+            max_rel = std::max(max_rel, rel);
+            if ((std::isnan(r) || std::isnan(ref) || diff > allowed) && bad_row < 0)
+            {
+                bad_row = row;
+                bad_col = col;
+                bad_result = r;
+                bad_reference = ref;
+            }
+        }
+    }
+
+    if (bad_row >= 0)
+    {
+        fprintf(
+            stderr,
+            "Verification %s: FAILED at (%ld,%ld), actual=%0.17g expected=%0.17g max_abs=%E max_rel=%E "
+            "rtol=%E atol=%E\n",
+            name,
+            static_cast<long>(bad_row),
+            static_cast<long>(bad_col),
+            bad_result,
+            bad_reference,
+            max_abs,
+            max_rel,
+            rtol,
+            atol);
+        return false;
+    }
+
+    printf("Verification %s: PASSED max_abs=%E max_rel=%E\n", name, max_abs, max_rel);
+    return true;
+}
+
+template <typename T>
+static void gather_matrix(
+    cublasMpHandle_t handle,
+    ncclComm_t comm,
+    cudaStream_t stream,
+    int64_t m,
+    int64_t n,
+    T* src,
+    int64_t ia,
+    int64_t ja,
+    cublasMpMatrixDescriptor_t src_desc,
+    cublasMpGrid_t grid,
+    int nprow,
+    int npcol,
+    int myprow,
+    int mypcol,
+    T** dst,
+    int64_t* dst_lld)
+{
+    constexpr int rsrc = 0;
+    constexpr int csrc = 0;
+    const int64_t loc_rows = cublasMpNumroc(m, m, myprow, rsrc, nprow);
+    const int64_t loc_cols = cublasMpNumroc(n, n, mypcol, csrc, npcol);
+    *dst_lld = std::max<int64_t>(1, loc_rows);
+    if constexpr (std::is_same_v<T, __nv_fp4_e2m1>)
+    {
+        *dst_lld = roundup(std::max<int64_t>(2, *dst_lld), 2);
+    }
+    const int64_t alloc_cols = std::max<int64_t>(1, loc_cols);
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(dst), (*dst_lld) * alloc_cols * sizeof(T)));
+
+    cublasMpMatrixDescriptor_t dst_desc = nullptr;
+    CUBLASMP_CHECK(
+        cublasMpMatrixDescriptorCreate(m, n, m, n, rsrc, csrc, *dst_lld, CudaTypeTraits<T>::typeEnum, grid, &dst_desc));
+
+    size_t workspace_device = 0;
+    size_t workspace_host = 0;
+    CUBLASMP_CHECK(cublasMpGemr2D_bufferSize(
+        handle, m, n, src, ia, ja, src_desc, *dst, 1, 1, dst_desc, &workspace_device, &workspace_host, comm));
+
+    void* d_work = nullptr;
+    if (workspace_device > 0)
+    {
+        CUDA_CHECK(cudaMalloc(&d_work, workspace_device));
+    }
+    std::vector<int8_t> h_work(workspace_host);
+
+    CUBLASMP_CHECK(cublasMpGemr2D(
+        handle,
+        m,
+        n,
+        src,
+        ia,
+        ja,
+        src_desc,
+        *dst,
+        1,
+        1,
+        dst_desc,
+        d_work,
+        workspace_device,
+        h_work.data(),
+        workspace_host,
+        comm));
+
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+
+    if (d_work)
+    {
+        CUDA_CHECK(cudaFree(d_work));
+    }
+
+    CUBLASMP_CHECK(cublasMpMatrixDescriptorDestroy(dst_desc));
+}
+
+template <typename T>
+static bool allclose_host(
+    const char* name,
+    const T* result,
+    int64_t result_lld,
+    const T* reference,
+    int64_t reference_lld,
+    int64_t rows,
+    int64_t cols,
+    double rtol,
+    double atol)
+{
+    return allclose_host(
+        name,
+        result,
+        result_lld,
+        reference,
+        reference_lld,
+        rows,
+        cols,
+        rtol,
+        atol,
+        AllcloseIdentityProlog {},
+        AllcloseIdentityProlog {});
+}
+
+template <typename T, typename ResultProlog, typename ReferenceProlog>
+static bool allclose_device(
+    const char* name,
+    const T* result,
+    int64_t result_lld,
+    const T* reference,
+    int64_t reference_lld,
+    int64_t rows,
+    int64_t cols,
+    cudaStream_t stream,
+    double rtol,
+    double atol,
+    ResultProlog result_prolog,
+    ReferenceProlog reference_prolog)
+{
+    std::vector<T> h_result(result_lld * cols);
+    std::vector<T> h_reference(reference_lld * cols);
+    CUDA_CHECK(cudaMemcpyAsync(h_result.data(), result, h_result.size() * sizeof(T), cudaMemcpyDeviceToHost, stream));
+    CUDA_CHECK(
+        cudaMemcpyAsync(h_reference.data(), reference, h_reference.size() * sizeof(T), cudaMemcpyDeviceToHost, stream));
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    return allclose_host(
+        name,
+        h_result.data(),
+        result_lld,
+        h_reference.data(),
+        reference_lld,
+        rows,
+        cols,
+        rtol,
+        atol,
+        result_prolog,
+        reference_prolog);
+}
+
+template <typename T>
+static bool allclose_device(
+    const char* name,
+    const T* result,
+    int64_t result_lld,
+    const T* reference,
+    int64_t reference_lld,
+    int64_t rows,
+    int64_t cols,
+    cudaStream_t stream,
+    double rtol = default_rtol<T>(),
+    double atol = default_atol<T>())
+{
+    return allclose_device(
+        name,
+        result,
+        result_lld,
+        reference,
+        reference_lld,
+        rows,
+        cols,
+        stream,
+        rtol,
+        atol,
+        AllcloseIdentityProlog {},
+        AllcloseIdentityProlog {});
 }
