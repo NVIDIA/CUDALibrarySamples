@@ -7,7 +7,7 @@ In this example, we apply a low-pass filter to a batch of signals in the frequen
 Three versions of the code are provided:
 * `r2c_c2r_lto_callback_example.cpp` contains the sample code using a load callback with LTO to compute the window function. The LTO callback is compiled offline using nvcc.
 * `r2c_c2r_lto_nvrtc_callback_example.cpp` contains the sample code using a load callback with LTO to compute the window function. The LTO callback is compiled at runtime using NVRTC.
-* `r2c_c2r_callback_example.cu` contains the sample code using a 'legacy' (non-LTO) load callback to compute the window function. The callback does not use LTO and requires separate device linking against the cuFFT static library.
+* `r2c_c2r_legacy_callback_example.cu` contains the sample code using a 'legacy' (non-LTO) load callback to compute the window function. The callback does not use LTO and requires separate device linking against the cuFFT static library.
 
 Other source files included:
 * `r2c_c2r_lto_callback_device.cu` contains the callback device function used in the LTO and LTO + NVRTC examples.

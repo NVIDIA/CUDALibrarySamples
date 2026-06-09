@@ -2,7 +2,7 @@
 
 ## Description
 
-In this example a two-dimensional complex-to-real transform is applied to the input data arranged according to the requirements of the default FFTW padding mode.
+In this example an in-place two-dimensional complex-to-real transform is applied to the input data arranged according to the requirements of the default FFTW padding mode. Then an in-place two-dimensional real-to-complex transform is applied to the normalized output of the first transform.
 
 ## Supported SM Architectures
 

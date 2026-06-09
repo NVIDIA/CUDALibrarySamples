@@ -2,7 +2,7 @@
 
 ## Description
 
-In this example a one-dimensional real-to-complex transform is applied to the input data.
+In this example a one-dimensional real-to-complex transform is applied to the input data, followed by a 1D complex-to-real transform on the normalized output of the first transform.
 
 ## Supported SM Architectures
 

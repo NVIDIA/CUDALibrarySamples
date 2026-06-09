@@ -10,9 +10,9 @@ This folder demonstrates cuFFT APIs usage.
 
 ##### 1D FFT R2C example
 
-* [cuFFT 1D R2C](1d_r2c/)
+* [cuFFT 1D R2C:C2R](1d_r2c_c2r/)
 
-    The sample compute 1D FFT using R2C. See example for detailed description.
+    The sample compute 1D FFT using R2C and C2R. See example for detailed description.
 
 ##### 1D FFT C2C example
 
@@ -22,9 +22,9 @@ This folder demonstrates cuFFT APIs usage.
     
 ##### 2D FFT C2R example
 
-* [cuFFT 2D C2R](2d_c2r/)
+* [cuFFT 2D C2R:R2C](2d_c2r_r2c/)
 
-    The sample compute 2D FFT using C2R. See example for detailed description.
+    The sample compute 2D FFT using C2R and R2C. See example for detailed description.
 
 ##### 3D FFT C2C example
 
@@ -50,9 +50,9 @@ This folder demonstrates cuFFT APIs usage.
 
     The sample compute MultiGPU 3D FFT using R2C and C2R. See example for detailed description.
 
-##### cuFFT LTO EA R2C:C2R example
+##### cuFFT LTO callback R2C:C2R example
 
-* [cuFFT LTO EA R2C:C2R](lto_ea/)
+* [cuFFT LTO R2C:C2R](lto_callback_window_1d/)
 
     The sample computes a low-pass filter using using R2C and C2R with LTO callbacks. See example for detailed description.
 
