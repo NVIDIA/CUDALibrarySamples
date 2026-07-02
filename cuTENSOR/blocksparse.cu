@@ -1,97 +1,41 @@
 /*
- * Copyright (c) 2024, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause
  *
- * NVIDIA CORPORATION and its licensors retain all intellectual property
- * and proprietary rights in and to this software, related documentation
- * and any modifications thereto.  Any use, reproduction, disclosure or
- * distribution of this software and related documentation without an express
- * license agreement from NVIDIA CORPORATION is strictly prohibited.
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice, this
+ * list of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above copyright notice,
+ * this list of conditions and the following disclaimer in the documentation
+ * and/or other materials provided with the distribution.
+ *
+ * 3. Neither the name of the copyright holder nor the names of its
+ * contributors may be used to endorse or promote products derived from
+ * this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#include <random>
-#include <memory>
+
 #include <vector>
 #include <iostream>
 #include <algorithm>
 #include <unordered_map>
 
-#include <cuda_runtime.h>
 #include <cutensor.h>
 
-// Handle cuTENSOR errors
-#define HANDLE_ERROR(x)                                                           \
-{                                                                                 \
-    const cutensorStatus_t err = (x);                                             \
-    if ( err != CUTENSOR_STATUS_SUCCESS )                                         \
-    { throw std::runtime_error { std::string { cutensorGetErrorString(err) } }; } \
-};
-
-// Handle CUDA errors.
-#define HANDLE_CUDA_ERROR(x)                                                  \
-{                                                                             \
-    const cudaError_t err = (x);                                              \
-    if ( err != cudaSuccess )                                                 \
-    { throw std::runtime_error { std::string { cudaGetErrorString(err) } }; } \
-};
-
-template <typename T>
-using cuda_ptr = std::unique_ptr<T,decltype(&cudaFree)>;
-
-template <typename T>
-cuda_ptr<T> cuda_alloc( size_t count )
-{
-    void* result;
-    cudaError_t err = cudaMalloc( &result, sizeof(T)*count );
-    if ( err != cudaSuccess ) throw std::bad_alloc {};
-    else return cuda_ptr<T> { reinterpret_cast<T*>(result), &cudaFree };
-}
-
-// Useful for automatic clearing of resources.
-template <typename F>
-class Guard
-{
-    F f;
-    bool invoke;
-public:
-    explicit Guard(F x) noexcept: f(std::move(x)), invoke(true) {}
-    Guard(Guard &&g) noexcept: f(std::move(g.f)), invoke(g.invoke) { g.invoke=false; }
-
-    Guard(const Guard&) = delete;
-    Guard& operator=(const Guard&) = delete;
-
-    ~Guard() noexcept
-    {
-        if (invoke) f();
-    }
-};
-
-template <class F>
-inline Guard<F> finally(const F& f) noexcept
-{
-    return Guard<F>(f);
-}
-
-template <class F>
-inline Guard<F> finally(F&& f) noexcept
-{
-    return Guard<F>(std::forward<F>(f));
-}
-
-
-
-std::mt19937 get_seeded_random_engine() 
-{
-    using     rand_type = std::random_device::result_type;
-    using mersenne_type = std::mt19937::result_type;
-    constexpr size_t N  = std::mt19937::state_size * sizeof(mersenne_type);
-    constexpr size_t M  =  1 + (N-1)/sizeof(rand_type);
-
-    rand_type random_data[M];
-    std::random_device source;
-    std::generate(random_data,random_data+M,std::ref(source));
-    std::seed_seq seed(random_data,random_data+M);
-
-    return std::mt19937( seed );
-}
+#include "utils.cuh"
 
 
 int main()
@@ -102,14 +46,11 @@ try
     using        StrideType = int64_t;
     using SectionExtentType = int64_t;
 
-    // Random number generator.
-    std::mt19937 eng = get_seeded_random_engine();
-    std::uniform_real_distribution<double> dist(0.,1.);
-    auto rand = [&eng,&dist]() { return dist(eng); };
+    randomgen<double> rand;
 
     // Initialise the library.
     cutensorHandle_t handle;
-    HANDLE_ERROR(cutensorCreate(&handle));
+    handle_error(cutensorCreate(&handle));
     auto guardHandle = finally( [&handle]() { cutensorDestroy(handle); } );
 
     //////////////////////////////////////
@@ -162,17 +103,16 @@ try
         }
         const StrideType totalSize { offsets[numNonZeroBlocks] };
 
-        cuda_ptr<double> buf { cuda_alloc<double>(totalSize) };
-        std::vector<double> tmp( totalSize );
-        std::generate( tmp.begin(), tmp.end(), rand );
-        HANDLE_CUDA_ERROR(cudaMemcpy(buf.get(),tmp.data(),totalSize*sizeof(double),cudaMemcpyHostToDevice));
-        tmp.clear();
+        auto buf = cuda_alloc     <double>(totalSize);
+        auto tmp = cuda_host_alloc<double>(totalSize);
+        std::generate( tmp.get(), tmp.get() + totalSize, rand );
+        handle_error(cudaMemcpy(buf.get(),tmp.get(),totalSize*sizeof(double),cudaMemcpyHostToDevice));
 
         dev.resize(numNonZeroBlocks);
         for ( uint64_t i = 0; i < numNonZeroBlocks; ++i )
             dev[i] = buf.get() + offsets[i];
 
-        HANDLE_ERROR(cutensorCreateBlockSparseTensorDescriptor
+        handle_error(cutensorCreateBlockSparseTensorDescriptor
         (
             handle, &desc,
             numModes, numNonZeroBlocks, numSections.data(), extents.data(),
@@ -247,7 +187,7 @@ try
     ///////////////////////////////
 
     cutensorOperationDescriptor_t desc;
-    HANDLE_ERROR(cutensorCreateBlockSparseContraction(handle, &desc,
+    handle_error(cutensorCreateBlockSparseContraction(handle, &desc,
                 descA, modeA.data(), CUTENSOR_OP_IDENTITY,
                 descB, modeB.data(), CUTENSOR_OP_IDENTITY,
                 descC, modeC.data(), CUTENSOR_OP_IDENTITY,
@@ -261,22 +201,22 @@ try
     // Query workspace estimate. For block-sparse contraction plans, this is estimate is exact.
     uint64_t workspaceSize = 0;
     const cutensorWorksizePreference_t workspacePref = CUTENSOR_WORKSPACE_DEFAULT;
-    HANDLE_ERROR(cutensorEstimateWorkspaceSize(handle,desc,planPref,workspacePref,&workspaceSize));
+    handle_error(cutensorEstimateWorkspaceSize(handle,desc,planPref,workspacePref,&workspaceSize));
 
     cuda_ptr<char> work = cuda_alloc<char>(workspaceSize);
 
     // Create Contraction Plan
     cutensorPlan_t plan;
-    HANDLE_ERROR(cutensorCreatePlan(handle,&plan,desc,planPref,workspaceSize));
+    handle_error(cutensorCreatePlan(handle,&plan,desc,planPref,workspaceSize));
     auto guardPlan = finally( [&plan]() { cutensorDestroyPlan(plan); } );
 
     // Execute
     cudaStream_t stream;
-    HANDLE_CUDA_ERROR(cudaStreamCreate(&stream));
+    handle_error(cudaStreamCreate(&stream));
     auto guardStream = finally( [&stream]() { cudaStreamDestroy(stream); } );
 
     double alpha = 1., beta = 0.;
-    HANDLE_ERROR(cutensorBlockSparseContract(handle, plan,
+    handle_error(cutensorBlockSparseContract(handle, plan,
                 (void*) &alpha, (const void *const *) devA.data(), (const void *const *) devB.data(),
                 (void*) &beta,  (const void *const *) devC.data(), (      void *const *) devC.data(), 
                 (void*) work.get(), workspaceSize, stream));

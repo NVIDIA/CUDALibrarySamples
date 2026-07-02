@@ -1,31 +1,32 @@
-/*  
- * Copyright (c) 2019-2023, NVIDIA CORPORATION.  All rights reserved.
- * 
- * 
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2019-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are
- * met:
- *  - Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- *  - Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- *  - Neither the name(s) of the copyright holder(s) nor the names of its
- *    contributors may be used to endorse or promote products derived
- *    from this software without specific prior written permission.
- * 
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR 
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice, this
+ * list of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above copyright notice,
+ * this list of conditions and the following disclaimer in the documentation
+ * and/or other materials provided with the distribution.
+ *
+ * 3. Neither the name of the copyright holder nor the names of its
+ * contributors may be used to endorse or promote products derived from
+ * this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */  
+ */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -40,61 +41,20 @@
 #include <cuda_runtime.h>
 #include <cutensor.h>
 
-#define HANDLE_ERROR(x)                                                   \
-{ auto const __err = x;                                                   \
-  if( __err != CUTENSOR_STATUS_SUCCESS )                                  \
-  { printf("Error: %d %s\n", __LINE__, cutensorGetErrorString(__err)); exit(-1); } \
-};
-
-#define HANDLE_CUDA_ERROR(x)                                          \
-{ auto const __err = x;                                               \
-  if( __err != cudaSuccess )                                          \
-  { printf("Error: %d %s\n", __LINE__, cudaGetErrorString(__err)); exit(-1); } \
-};
-
-struct GPUTimer
-{
-    GPUTimer() 
-    {
-        cudaEventCreate(&start_);
-        cudaEventCreate(&stop_);
-        cudaEventRecord(start_, nullptr);
-    }
-
-    ~GPUTimer() 
-    {
-        cudaEventDestroy(start_);
-        cudaEventDestroy(stop_);
-    }
-
-    void start() 
-    {
-        cudaEventRecord(start_, nullptr);
-    }
-
-    float seconds() 
-    {
-        cudaEventRecord(stop_, nullptr);
-        cudaEventSynchronize(stop_);
-        float time;
-        cudaEventElapsedTime(&time, start_, stop_);
-        return static_cast<float>(time * 1e-3);
-    }
-    private:
-    cudaEvent_t start_, stop_;
-};
+#include "utils.cuh"
 
 
 int main()
+try
 {
     typedef float floatTypeA;
     typedef float floatTypeB;
     typedef float floatTypeC;
     typedef float floatTypeCompute;
 
-    cutensorDataType_t          const typeA       = CUTENSOR_R_32F;
-    cutensorDataType_t          const typeB       = CUTENSOR_R_32F;
-    cutensorDataType_t          const typeC       = CUTENSOR_R_32F;
+    cudaDataType_t              const typeA       = CUDA_R_32F;
+    cudaDataType_t              const typeB       = CUDA_R_32F;
+    cudaDataType_t              const typeC       = CUDA_R_32F;
     cutensorComputeDescriptor_t const descCompute = CUTENSOR_COMPUTE_DESC_32F;
 
     floatTypeCompute alpha = (floatTypeCompute)1.1f;
@@ -145,94 +105,86 @@ int main()
     size_t sizeC = sizeof(floatTypeC) * elementsC;
     printf("Total memory: %.2f GiB\n", (sizeA + sizeB + sizeC)/1024./1024./1024);
 
-    void *A_d, *B_d, *C_d, *D_d;
-    HANDLE_CUDA_ERROR(cudaMalloc((void**) &A_d, sizeA));
-    HANDLE_CUDA_ERROR(cudaMalloc((void**) &B_d, sizeB));
-    HANDLE_CUDA_ERROR(cudaMalloc((void**) &C_d, sizeC));
-    HANDLE_CUDA_ERROR(cudaMalloc((void**) &D_d, sizeC));
+    auto A_d = cuda_alloc     <floatTypeA>(elementsA); 
+    auto B_d = cuda_alloc     <floatTypeB>(elementsB); 
+    auto C_d = cuda_alloc     <floatTypeC>(elementsC); 
+    auto D_d = cuda_alloc     <floatTypeC>(elementsC); 
+
+    auto A   = cuda_host_alloc<floatTypeA>(elementsA); 
+    auto B   = cuda_host_alloc<floatTypeB>(elementsB); 
+    auto C   = cuda_host_alloc<floatTypeC>(elementsC); 
 
     const uint32_t kAlignment = 256; // Alignment of the global-memory device pointers (bytes)
-    assert(uintptr_t(A_d) % kAlignment == 0);
-    assert(uintptr_t(B_d) % kAlignment == 0);
-    assert(uintptr_t(C_d) % kAlignment == 0);
-    assert(uintptr_t(D_d) % kAlignment == 0);
-
-    floatTypeA *A = (floatTypeA*) malloc(sizeof(floatTypeA) * elementsA);
-    floatTypeB *B = (floatTypeB*) malloc(sizeof(floatTypeB) * elementsB);
-    floatTypeC *C = (floatTypeC*) malloc(sizeof(floatTypeC) * elementsC);
-
-    if (A == nullptr || B == nullptr || C == nullptr)
-    {
-        printf("Error: Host allocation of A, B, or C.\n");
-        return -1;
-    }
+    assert(uintptr_t(A_d.get()) % kAlignment == 0);
+    assert(uintptr_t(B_d.get()) % kAlignment == 0);
+    assert(uintptr_t(C_d.get()) % kAlignment == 0);
+    assert(uintptr_t(D_d.get()) % kAlignment == 0);
 
     /*******************
      * Initialize data
      *******************/
 
-    for (size_t i = 0; i < elementsA; i++)
-        A[i] = (((float) rand())/RAND_MAX)*100;
-    for (size_t i = 0; i < elementsB; i++)
-        B[i] = (((float) rand())/RAND_MAX)*100;
-    for (size_t i = 0; i < elementsC; i++)
-        C[i] = (((float) rand())/RAND_MAX)*100;
+    std::generate(A.get(),A.get()+elementsA, randomgen<floatTypeA>() );
+    std::generate(B.get(),B.get()+elementsB, randomgen<floatTypeB>() );
+    std::generate(C.get(),C.get()+elementsC, randomgen<floatTypeC>() );
 
-    HANDLE_CUDA_ERROR(cudaMemcpy2DAsync(C_d, sizeC, C, sizeC, sizeC, 1, cudaMemcpyDefault, nullptr));
-    HANDLE_CUDA_ERROR(cudaMemcpy2DAsync(D_d, sizeC, C, sizeC, sizeC, 1, cudaMemcpyDefault, nullptr));
-    HANDLE_CUDA_ERROR(cudaMemcpy2DAsync(A_d, sizeA, A, sizeA, sizeA, 1, cudaMemcpyDefault, nullptr));
-    HANDLE_CUDA_ERROR(cudaMemcpy2DAsync(B_d, sizeB, B, sizeB, sizeB, 1, cudaMemcpyDefault, nullptr));
+    handle_error(cudaMemcpy2DAsync(C_d.get(), sizeC, C.get(), sizeC, sizeC, 1, cudaMemcpyHostToDevice, nullptr));
+    handle_error(cudaMemcpy2DAsync(D_d.get(), sizeC, C.get(), sizeC, sizeC, 1, cudaMemcpyHostToDevice, nullptr));
+    handle_error(cudaMemcpy2DAsync(A_d.get(), sizeA, A.get(), sizeA, sizeA, 1, cudaMemcpyHostToDevice, nullptr));
+    handle_error(cudaMemcpy2DAsync(B_d.get(), sizeB, B.get(), sizeB, sizeB, 1, cudaMemcpyHostToDevice, nullptr));
 
     /*************************
      * Memcpy perf 
      *************************/
 
     double minTimeMEMCPY = 1e100;
-    HANDLE_CUDA_ERROR(cudaDeviceSynchronize());
+    handle_error(cudaDeviceSynchronize());
     GPUTimer timer;
-    timer.start();
-    HANDLE_CUDA_ERROR(cudaMemcpy2DAsync(D_d, sizeC, C_d, sizeC, sizeC, 1, cudaMemcpyDefault, nullptr));
-    HANDLE_CUDA_ERROR(cudaDeviceSynchronize());
-    minTimeMEMCPY = timer.seconds();
+    handle_error(cudaMemcpy2DAsync(D_d.get(), sizeC, C_d.get(), sizeC, sizeC, 1, cudaMemcpyDeviceToDevice, nullptr));
+    minTimeMEMCPY = timer.seconds(); // timer synchronizes.
 
     /*************************
      * cuTENSOR
      *************************/
 
     cutensorHandle_t handle;
-    HANDLE_ERROR(cutensorCreate(&handle));
+    handle_error(cutensorCreate(&handle));
+    auto guardHandle = finally( [&handle]() { cutensorDestroy(handle); } );
 
     /**********************
      * Create Tensor Descriptors
      **********************/
 
     cutensorTensorDescriptor_t  descA;
-    HANDLE_ERROR(cutensorCreateTensorDescriptor(handle,
+    handle_error(cutensorCreateTensorDescriptor(handle,
                                                 &descA, nmodeA, extentA.data(),
                                                 nullptr /* stride */,
                                                 typeA,
                                                 kAlignment));
+    auto guardDescA = finally( [&descA]() { cutensorDestroyTensorDescriptor(descA); } );
 
     cutensorTensorDescriptor_t  descB;
-    HANDLE_ERROR(cutensorCreateTensorDescriptor(handle,
+    handle_error(cutensorCreateTensorDescriptor(handle,
                                                 &descB, nmodeB, extentB.data(),
                                                 nullptr /* stride */,
                                                 typeB,
                                                 kAlignment));
+    auto guardDescB = finally( [&descB]() { cutensorDestroyTensorDescriptor(descB); } );
 
     cutensorTensorDescriptor_t  descC;
-    HANDLE_ERROR(cutensorCreateTensorDescriptor(handle,
+    handle_error(cutensorCreateTensorDescriptor(handle,
                                                 &descC, nmodeC, extentC.data(),
                                                 nullptr /* stride */,
                                                 typeC,
                                                 kAlignment));
+    auto guardDescC = finally( [&descC]() { cutensorDestroyTensorDescriptor(descC); } );
 
     /*******************************
      * Create Elementwise Trinary Descriptor
      *******************************/
 
     cutensorOperationDescriptor_t desc;
-    HANDLE_ERROR(cutensorCreateElementwiseTrinary(handle, 
+    handle_error(cutensorCreateElementwiseTrinary(handle, 
                                                   &desc,
                                                   descA, modeA.data(), /* unary operator A */ CUTENSOR_OP_IDENTITY,
                                                   descB, modeB.data(), /* unary operator B */ CUTENSOR_OP_IDENTITY,
@@ -241,6 +193,7 @@ int main()
                                                   /* binary operator AC  */ CUTENSOR_OP_ADD,
                                                   /* binary operator ABC */ CUTENSOR_OP_ADD,
                                                   descCompute));
+    auto guardDesc = finally( [desc]() { cutensorDestroyOperationDescriptor(desc); } );
 
     /**************************
     * Set the algorithm to use
@@ -249,40 +202,43 @@ int main()
     const cutensorAlgo_t algo = CUTENSOR_ALGO_DEFAULT;
 
     cutensorPlanPreference_t  planPref;
-    HANDLE_ERROR(cutensorCreatePlanPreference(handle,
+    handle_error(cutensorCreatePlanPreference(handle,
                                               &planPref,
                                               algo,
                                               CUTENSOR_JIT_MODE_NONE));
+    auto guardPlanPref = finally( [&planPref]() { cutensorDestroyPlanPreference(planPref); } );
 
     /**************************
      * Create Plan
      **************************/
 
     cutensorPlan_t  plan;
-    HANDLE_ERROR(cutensorCreatePlan(handle,
+    handle_error(cutensorCreatePlan(handle,
                                     &plan,
                                     desc,
                                     planPref,
                                     0 /*workspaceSizeEstimate*/));
+    auto guardPlan = finally( [&plan]() { cutensorDestroyPlan(plan); } );
 
     /**********************
      * Run
      **********************/
 
     cudaStream_t stream;
-    HANDLE_CUDA_ERROR(cudaStreamCreate(&stream));
+    handle_error(cudaStreamCreate(&stream));
+    auto guardStream = finally( [&stream](){ cudaStreamDestroy(stream); } );
 
     double minTimeCUTENSOR = 1e100;
     for (int i = 0; i < 3; i++)
     {
-        HANDLE_CUDA_ERROR(cudaMemcpy2DAsync(D_d, sizeC, C, sizeC, sizeC, 1, cudaMemcpyDefault, nullptr));
-        timer.start();
-        HANDLE_ERROR(cutensorElementwiseTrinaryExecute(handle, plan,
-                                                (void*)&alpha, A_d,
-                                                (void*)&beta , B_d,
-                                                (void*)&gamma, C_d,
-                                                               D_d, stream));
-        auto time = timer.seconds();
+        handle_error(cudaMemcpy2DAsync(D_d.get(), sizeC, C.get(), sizeC, sizeC, 1, cudaMemcpyHostToDevice, stream));
+        timer.start(stream);
+        handle_error(cutensorElementwiseTrinaryExecute(handle, plan,
+                                                (void*)&alpha, A_d.get(),
+                                                (void*)&beta , B_d.get(),
+                                                (void*)&gamma, C_d.get(),
+                                                               D_d.get(), stream));
+        auto time = timer.seconds(stream);
         minTimeCUTENSOR = (minTimeCUTENSOR < time)? minTimeCUTENSOR : time;
     }
 
@@ -296,21 +252,17 @@ int main()
     printf("cuTensor: %.2f GB/s\n", transferedBytes/ minTimeCUTENSOR);
     printf("memcpy: %.2f GB/s\n", 2 * sizeC / minTimeMEMCPY / 1e9 );
 
-    HANDLE_ERROR(cutensorDestroy(handle));
-    HANDLE_ERROR(cutensorDestroyPlan(plan));
-    HANDLE_ERROR(cutensorDestroyOperationDescriptor(desc));
-    HANDLE_ERROR(cutensorDestroyTensorDescriptor(descA));
-    HANDLE_ERROR(cutensorDestroyTensorDescriptor(descB));
-    HANDLE_ERROR(cutensorDestroyTensorDescriptor(descC));
-    HANDLE_CUDA_ERROR(cudaStreamDestroy(stream));
-
-    if (A) free(A);
-    if (B) free(B);
-    if (C) free(C);
-    if (A_d) cudaFree(A_d);
-    if (B_d) cudaFree(B_d);
-    if (C_d) cudaFree(C_d);
-    if (D_d) cudaFree(D_d);
-
-    return 0;
+    return EXIT_SUCCESS;
 }
+catch ( std::exception &ex )
+{
+    std::cerr << "Exception caught! Exiting." << std::endl;
+    std::cerr << ex.what() << std::endl;
+    return EXIT_FAILURE;
+}
+catch ( ... )
+{
+    std::cerr << "Unknown exception caught! Exiting." << std::endl;
+    return EXIT_FAILURE;
+}
+

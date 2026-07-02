@@ -1,70 +1,68 @@
-/*  
- * Copyright (c) 2021, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
- * 
- * 
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are
- * met:
- *  - Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- *  - Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- *  - Neither the name(s) of the copyright holder(s) nor the names of its
- *    contributors may be used to endorse or promote products derived
- *    from this software without specific prior written permission.
- * 
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR 
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice, this
+ * list of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above copyright notice,
+ * this list of conditions and the following disclaimer in the documentation
+ * and/or other materials provided with the distribution.
+ *
+ * 3. Neither the name of the copyright holder nor the names of its
+ * contributors may be used to endorse or promote products derived from
+ * this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */  
+ */
 
 #include <algorithm>
 #include <array>
 #include <cassert>
 #include <cstdint>
 #include <functional>
+#include <iostream>
 #include <string>
 #include <vector>
-#include <array>
-#include <string>
 
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
-#include "cutensor.h"
+#include <cutensor.h>
 
-#define HANDLE_ERROR(x) { const auto err = x;\
-    if (err != CUTENSOR_STATUS_SUCCESS) {printf("Error: %s in line %d\n", cutensorGetErrorString(err), __LINE__); exit(-1); } }
-#define HANDLE_CUDA_ERROR(x) { const auto err = x; if( err != cudaSuccess ) { printf("Error: %d in line %d\n", err, __LINE__); exit(-1); } }
+#include "utils.cuh"
 
 template<typename U>
 struct CuTensorTypeTraits;
 
 template<>
 struct CuTensorTypeTraits<double> {
-  static cutensorDataType_t getDataType() {return CUTENSOR_R_64F;}
+  static cudaDataType_t getDataType() {return CUDA_R_64F;}
   static cutensorComputeDescriptor_t getComputeDesc() {return CUTENSOR_COMPUTE_DESC_64F;}
   typedef double ScalarType;
 };
 
 template<>
 struct CuTensorTypeTraits<float> {
-  static cutensorDataType_t getDataType() {return CUTENSOR_R_32F;}
+  static cudaDataType_t getDataType() {return CUDA_R_32F;}
   static cutensorComputeDescriptor_t getComputeDesc() {return CUTENSOR_COMPUTE_DESC_32F;}
   typedef float ScalarType;
 };
 
 template<>
 struct CuTensorTypeTraits<__half> {
-  static cutensorDataType_t getDataType() {return CUTENSOR_R_16F;}
+  static cudaDataType_t getDataType() {return CUDA_R_16F;}
   static cutensorComputeDescriptor_t getComputeDesc() {return CUTENSOR_COMPUTE_DESC_16F;}
   typedef float ScalarType;
 };
@@ -268,7 +266,7 @@ struct Einsum
     {
         if (!isInitialized_) return false;
 
-        cutensorDataType_t cutensorType = CuTensorTypeTraits<ComputeType>::getDataType();
+        cudaDataType_t cutensorType = CuTensorTypeTraits<ComputeType>::getDataType();
         const cutensorComputeDescriptor_t descCompute = CuTensorTypeTraits<ComputeType>::getComputeDesc();
 
         const uint32_t kAlignment = 128; // Alignment of the global-memory device pointers (bytes)
@@ -277,72 +275,76 @@ struct Einsum
         assert(uintptr_t(C_raw) % kAlignment == 0);
 
         cutensorTensorDescriptor_t descA;
-        HANDLE_ERROR(cutensorCreateTensorDescriptor(handle,
+        handle_error(cutensorCreateTensorDescriptor(handle,
                     &descA,
                     numModesA_,
                     extentA_.data(),
                     NULL,/*stride*/
                     cutensorType, kAlignment));
+        auto guardDescA = finally( [&descA]() { cutensorDestroyTensorDescriptor(descA); } );
 
         cutensorTensorDescriptor_t descC;
-        HANDLE_ERROR(cutensorCreateTensorDescriptor(handle,
+        handle_error(cutensorCreateTensorDescriptor(handle,
                     &descC,
                     numModesC_,
                     extentC_.data(),
                     NULL,/*stride*/
                     cutensorType, kAlignment));
+        auto guardDescC = finally( [&descC]() { cutensorDestroyTensorDescriptor(descC); } );
 
 
         /**************************
          * Set the algorithm to use
          ***************************/
         cutensorPlanPreference_t planPref;
-        HANDLE_ERROR(cutensorCreatePlanPreference(
+        handle_error(cutensorCreatePlanPreference(
                     handle,
                     &planPref,
                     CUTENSOR_ALGO_DEFAULT,
                     CUTENSOR_JIT_MODE_NONE));
-
-        cutensorPlan_t plan;
-        cutensorOperationDescriptor_t desc;
-        cutensorTensorDescriptor_t descB = nullptr;
+        auto guardPlanPref = finally( [&planPref]() { cutensorDestroyPlanPreference(planPref); } );
 
         if (numModesB_ > 0)
         {
             // dispatch to contraction
-
-            HANDLE_ERROR(cutensorCreateTensorDescriptor(handle,
+            cutensorTensorDescriptor_t descB;
+            handle_error(cutensorCreateTensorDescriptor(handle,
                     &descB,
                     numModesB_,
                     extentB_.data(),
                     NULL,/*stride*/
                     cutensorType, kAlignment));
+            auto guardDescB = finally( [&descB]() { cutensorDestroyTensorDescriptor(descB); } );
 
             /*******************************
              * Create Contraction Descriptor
              *******************************/
 
-            HANDLE_ERROR(cutensorCreateContraction(handle, 
+            cutensorOperationDescriptor_t desc;
+            handle_error(cutensorCreateContraction(handle, 
                         &desc,
                         descA, modesA_.data(), /* unary operator A*/CUTENSOR_OP_IDENTITY,
                         descB, modesB_.data(), /* unary operator B*/CUTENSOR_OP_IDENTITY,
                         descC, modesC_.data(), /* unary operator C*/CUTENSOR_OP_IDENTITY,
                         descC, modesC_.data(),
                         descCompute));
+            auto guardDesc = finally( [&desc]() { cutensorDestroyOperationDescriptor(desc); } );
 
             /**************************
              * Create Contraction Plan
              **************************/
-            HANDLE_ERROR(cutensorCreatePlan(handle,
+            cutensorPlan_t plan;
+            handle_error(cutensorCreatePlan(handle,
                         &plan,
                         desc,
                         planPref,
                         kWorksize_));
+            auto guardPlan = finally( [&plan]() { cutensorDestroyPlan(plan); } );
 
             typename CuTensorTypeTraits<ComputeType>::ScalarType alpha = 1;
             typename CuTensorTypeTraits<ComputeType>::ScalarType beta = 0;
 
-            HANDLE_ERROR(cutensorContract(handle,
+            handle_error(cutensorContract(handle,
                                plan,
                                (void*) &alpha, A_raw, B_raw,
                                (void*) &beta,  C_raw, C_raw, 
@@ -353,36 +355,35 @@ struct Einsum
             /*******************************
              * Create Contraction Descriptor
              *******************************/
-            HANDLE_ERROR(cutensorCreateReduction(
+            cutensorOperationDescriptor_t desc;
+            handle_error(cutensorCreateReduction(
                  handle, &desc,
                  descA, modesA_.data(), CUTENSOR_OP_IDENTITY,
                  descC, modesC_.data(), CUTENSOR_OP_IDENTITY,
                  descC, modesC_.data(),
                  CUTENSOR_OP_ADD, descCompute));
+            auto guardDesc = finally( [&desc]() { cutensorDestroyOperationDescriptor(desc); } );
 
             /**************************
              * Create Contraction Plan
              **************************/
-            HANDLE_ERROR(cutensorCreatePlan(handle,
+            cutensorPlan_t plan;
+            handle_error(cutensorCreatePlan(handle,
                         &plan,
                         desc,
                         planPref,
                         kWorksize_));
+            auto guardPlan = finally( [&plan]() { cutensorDestroyPlan(plan); } );
 
             // dispatch to reduction
             typename CuTensorTypeTraits<ComputeType>::ScalarType alpha = 1;
             typename CuTensorTypeTraits<ComputeType>::ScalarType beta = 0;
 
-            HANDLE_ERROR(cutensorReduce(handle, plan,
+            handle_error(cutensorReduce(handle, plan,
                     (const void*)&alpha, A_raw,
                     (const void*)&beta,  C_raw, 
                     C_raw, work_raw, kWorksize_, stream));
         }
-        HANDLE_ERROR(cutensorDestroyOperationDescriptor(desc));
-        HANDLE_ERROR(cutensorDestroyTensorDescriptor(descA));
-        HANDLE_ERROR(cutensorDestroyTensorDescriptor(descB));
-        HANDLE_ERROR(cutensorDestroyTensorDescriptor(descC));
-        HANDLE_ERROR(cutensorDestroyPlan(plan));
         return true;
     }
 
@@ -429,18 +430,12 @@ void einsum(cutensorHandle_t handle,
         totalElementsC *= e;
     }
 
-    void* A_raw, *B_raw, *output_raw, *workspace_raw;
-    HANDLE_CUDA_ERROR(cudaMalloc(&A_raw, sizeof(Compute) * totalElementsA));
-    HANDLE_CUDA_ERROR(cudaMalloc(&B_raw, sizeof(Compute) * totalElementsB));
-    HANDLE_CUDA_ERROR(cudaMalloc(&output_raw, sizeof(Compute) * totalElementsC));
-    HANDLE_CUDA_ERROR(cudaMalloc(&workspace_raw, myEinsum.getWorksize()));
-
-    auto ret = myEinsum.execute(handle, A_raw, B_raw, output_raw, workspace_raw, 0);
-
-    cudaFree(A_raw);
-    cudaFree(B_raw);
-    cudaFree(output_raw);
-    cudaFree(workspace_raw);
+    auto         A_raw = cuda_alloc<Compute>(totalElementsA);
+    auto         B_raw = cuda_alloc<Compute>(totalElementsB);
+    auto    output_raw = cuda_alloc<Compute>(totalElementsC);
+    auto workspace_raw = cuda_alloc<char>   (myEinsum.getWorksize());
+    
+    auto ret = myEinsum.execute(handle, A_raw.get(), B_raw.get(), output_raw.get(), workspace_raw.get(), 0);
 
     if (!ret) {
         printf("%s: not supported\n", subscripts.c_str());
@@ -450,15 +445,17 @@ void einsum(cutensorHandle_t handle,
 }
 
 int main()
+try
 {
     cutensorHandle_t handle;
-    cutensorCreate(&handle);
+    handle_error( cutensorCreate(&handle) );
+    auto guardHandle = finally( [&handle]() { cutensorDestroy(handle); } );
 
     /**********************
      * Setup planCache (optional)
      **********************/
     constexpr int32_t numCachelines = 1024;
-    HANDLE_ERROR( cutensorHandleResizePlanCache(handle, numCachelines) );
+    handle_error( cutensorHandleResizePlanCache(handle, numCachelines) );
   
     einsum(handle, {2, 4, 5}, {4, 8, 7}, "ijn,jmk->inkm"); // contraction (explict)
     einsum(handle, {2, 4, 5}, {4, 8, 7}, "ijn,jmk"); // contraction (implicit)
@@ -466,8 +463,17 @@ int main()
     einsum(handle, {2, 4, 5}, {}, "nij->ijn");  // permutation (same as previous example, but explicit)
     einsum(handle, {2, 4, 5}, {}, "nij->ji"); // reduction
 
-    // Detach cache and free-up resources
-    HANDLE_ERROR(cutensorDestroy(handle));
-
-    return 0;
+    return EXIT_SUCCESS;
 }
+catch ( std::exception &ex )
+{
+    std::cerr << "Exception caught! Exiting." << std::endl;
+    std::cerr << ex.what() << std::endl;
+    return EXIT_FAILURE;
+}
+catch ( ... )
+{
+    std::cerr << "Unknown exception caught! Exiting." << std::endl;
+    return EXIT_FAILURE;
+}
+

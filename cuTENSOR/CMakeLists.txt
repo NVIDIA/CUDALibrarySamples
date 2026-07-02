@@ -1,34 +1,34 @@
-# 
-# Copyright (c) 2019, NVIDIA CORPORATION.  All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2019-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: BSD-3-Clause
 #
-# 
 # Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are
-# met:
-#  - Redistributions of source code must retain the above copyright
-#    notice, this list of conditions and the following disclaimer.
-#  - Redistributions in binary form must reproduce the above copyright
-#    notice, this list of conditions and the following disclaimer in the
-#    documentation and/or other materials provided with the distribution.
-#  - Neither the name(s) of the copyright holder(s) nor the names of its
-#    contributors may be used to endorse or promote products derived
-#    from this software without specific prior written permission.
-# 
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR 
-# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-# HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice, this
+# list of conditions and the following disclaimer.
+#
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+# this list of conditions and the following disclaimer in the documentation
+# and/or other materials provided with the distribution.
+#
+# 3. Neither the name of the copyright holder nor the names of its
+# contributors may be used to endorse or promote products derived from
+# this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-# 
+#
 
 # ---[ Check cmake version.
-cmake_minimum_required(VERSION 3.20.0 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.24.0 FATAL_ERROR)
 cmake_policy(SET CMP0104 NEW)
 
 # ---[ Project specification.
@@ -52,8 +52,7 @@ endif()
 # cuTENSOR_example dependencies
 # ##########################################
 
-find_package(CUDA 12.0 REQUIRED)
-include_directories("${CUDA_INCLUDE_DIRS}")
+find_package(CUDAToolkit 12.0 REQUIRED)
 
 if(NOT DEFINED ENV{CUTENSOR_ROOT} AND NOT DEFINED CUTENSOR_ROOT)
   message(FATAL_ERROR "CUTENSOR_ROOT not set!")
@@ -75,7 +74,7 @@ if(NOT TARGET cutensor)
   else()
     set(CUTENSOR_LIBRARY_NAME "libcutensor.so")
   endif()
-  set(LIB_DIR "/lib/${CUDA_VERSION_MAJOR}")
+  set(LIB_DIR "/lib/${CUDAToolkit_VERSION_MAJOR}")
   if(NOT EXISTS "${CUTENSOR_ROOT}${LIB_DIR}")
       set(LIB_DIR "/lib")
   endif()
@@ -103,10 +102,15 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Global CUDA CXX flags/options
-set(CUDA_HOST_COMPILER ${CMAKE_CXX_COMPILER})
 set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_EXTENSIONS OFF)
+
+# Default to building for the host machine's GPU when no architecture is
+# specified on the command line (CMake 3.24+).
+if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+    set(CMAKE_CUDA_ARCHITECTURES native)
+endif()
 
 # ##########################################
 # cuTENSOR_example target
@@ -117,15 +121,15 @@ function(add_cutensor_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
     get_filename_component(EXAMPLE_TARGET ${EXAMPLE_MAIN_SOURCE} NAME_WE)
     add_executable(${EXAMPLE_TARGET} ${EXAMPLE_SOURCES})
     target_include_directories(${EXAMPLE_TARGET}
-        PUBLIC
-            ${CUDA_INCLUDE_DIRS}
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}
             ${CUTENSOR_ROOT}/include
     )
     target_link_libraries(${EXAMPLE_TARGET}
-        PUBLIC
+        PRIVATE
             cutensor
-            cudart
-            cublasLt
+            CUDA::cudart
+            CUDA::cublasLt
     )
     set_target_properties(${EXAMPLE_TARGET} PROPERTIES
         POSITION_INDEPENDENT_CODE ON
@@ -143,6 +147,10 @@ function(add_cutensor_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
     add_dependencies(${GROUP_TARGET} ${EXAMPLE_TARGET})
 endfunction()
 
+# By default put binaries in build/bin (pre-install). Must be set before any
+# add_executable() so the targets pick it up at creation time.
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
 add_custom_target(cutensor_examples)
 
 add_cutensor_example(cutensor_examples "cuTENSOR.example.einsum" einsum.cu)
@@ -158,17 +166,10 @@ add_cutensor_example(cutensor_examples "cuTENSOR.example.elementwise_trinary" el
 add_cutensor_example(cutensor_examples "cuTENSOR.example.reduction" reduction.cu)
 
 # ##########################################
-# cuTENSOR_example directories
-# ##########################################
-
-# By default put binaries in build/bin (pre-install)
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-
-# ##########################################
 # Install examples
 # ##########################################
 
-IF(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
-  SET(CMAKE_INSTALL_PREFIX ${CMAKE_BINARY_DIR} CACHE PATH "" FORCE)
-ENDIF()
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+  set(CMAKE_INSTALL_PREFIX ${CMAKE_BINARY_DIR} CACHE PATH "" FORCE)
+endif()
 
