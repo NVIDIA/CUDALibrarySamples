@@ -25,7 +25,7 @@
 
 #include <cuda_runtime_api.h>
 #include <cufftXt.h>
-#include "r2c_c2r_reference.h"
+#include "r2c_c2r_windowing_reference.h"
 #include "common.h"
 #include "nvrtc_helper.h"
 #include "callback_params.h"
@@ -48,7 +48,7 @@ int test_r2c_window_c2r() {
 
 	// NOTE: Use NVRTC to compile the callback function to LTO
 	std::vector<char> callback_buffer;
-	compile_file_to_lto(callback_buffer, CALLBACK_CODE_PATH("r2c_c2r_lto_callback_device.cu"));
+	compile_file_to_lto(callback_buffer, CALLBACK_CODE_PATH("r2c_c2r_windowing_lto_callback_device.cu"));
 
 	// Create a CUFFT plan for the forward transform, and a cuFFT plan for the inverse transform with load callback
 	cufftHandle forward_plan, inverse_plan_cb;

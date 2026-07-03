@@ -19,18 +19,38 @@
 
 /*
  * Example showing the use of LTO callbacks with CUFFT to perform
- * truncation with zero padding.
+ * normalization and truncation with zero padding.
  *
 */
 
 #include <cuda_runtime_api.h>
 #include <cufftXt.h>
-#include "r2c_c2r_reference.h"
 #include "common.h"
+#include "r2c_c2r_windowing_reference.h"
 #include "callback_params.h"
 
-// NOTE: Header containing the compiled LTO callback device function in a C array, generated with bin2c
-#include "r2c_c2r_lto_callback_device_fatbin.h"
+// This is the store callback routine. It filters high frequencies
+// based on a truncation window specified by the user
+// NOTE: unlike the LTO version, the callback function can have
+// any name
+__constant__ unsigned cmem_window_size = window_size;
+__constant__ unsigned cmem_signal_size = complex_signal_size;
+__device__ cufftComplex windowing_callback(void *input,
+                                           size_t index,
+                                           void *info,
+                                           void *sharedmem) {
+ 	cufftComplex* cb_output = static_cast<cufftComplex*>(input);
+#ifdef CB_USE_CONSTANT_MEMORY
+	const unsigned sample = index % cmem_signal_size;
+	return (sample < cmem_window_size) ? cb_output[index] : cufftComplex{0.f, 0.f};
+#else
+	const cb_params* params = static_cast<const cb_params*>(info);
+	const unsigned sample = index % params->signal_size;
+	return (sample < params->window_size) ? cb_output[index] : cufftComplex{0.f, 0.f};
+#endif
+}
+
+__device__ cufftCallbackLoadC device_callback_ptr = windowing_callback;
 
 static_assert(window_size < (signal_size/2 + 1), "The window size must be smaller than the signal size in complex space");
 
@@ -57,10 +77,15 @@ int test_r2c_window_c2r() {
 	CHECK_ERROR(cufftCreate(&forward_plan));
 	CHECK_ERROR(cufftCreate(&inverse_plan_cb));
 
-	// NOTE: LTO callbacks must be set before plan creation and cannot be unset (yet)
+	CHECK_ERROR(cufftMakePlan1d(forward_plan, signal_size, CUFFT_R2C, batches, &work_size));
+	CHECK_ERROR(cufftMakePlan1d(inverse_plan_cb, signal_size, CUFFT_C2R, batches, &work_size));
+
+	// NOTE: The host needs to get a copy of the device pointer to the callback. Not required for LTO callback
+	cufftCallbackLoadC host_callback_ptr;
+	CHECK_ERROR(cudaMemcpyFromSymbol(&host_callback_ptr, device_callback_ptr, sizeof(host_callback_ptr)));
+
 #ifdef CB_USE_CONSTANT_MEMORY
 	cb_params *device_params = nullptr;
-	std::string callback_name = "windowing_constant_memory_callback";
 #else
 	// Define a structure used to pass in the window size
 	cb_params host_params;
@@ -71,19 +96,9 @@ int test_r2c_window_c2r() {
 	cb_params *device_params;
 	CHECK_ERROR(cudaMalloc((void **)&device_params, sizeof(cb_params)));
 	CHECK_ERROR(cudaMemcpy(device_params, &host_params, sizeof(cb_params), cudaMemcpyHostToDevice));
-
-	std::string callback_name = "windowing_callback";
 #endif
-	size_t lto_callback_fatbin_size = sizeof(window_callback);
-	CHECK_ERROR(cufftXtSetJITCallback(inverse_plan_cb,
-                                      callback_name.c_str(),
-                                      (void*)window_callback,
-                                      lto_callback_fatbin_size,
-                                      CUFFT_CB_LD_COMPLEX,
-                                      (void **)&device_params));
-
-	CHECK_ERROR(cufftMakePlan1d(forward_plan, signal_size, CUFFT_R2C, batches, &work_size));
-	CHECK_ERROR(cufftMakePlan1d(inverse_plan_cb, signal_size, CUFFT_C2R, batches, &work_size));
+	// Now associate the load callback with the plan.
+	CHECK_ERROR(cufftXtSetCallback(inverse_plan_cb, (void **)&host_callback_ptr, CUFFT_CB_LD_COMPLEX, (void **)&device_params));
 
 	// Transform signal forward
 	printf("Transforming signal cufftExecR2C\n");
@@ -105,10 +120,10 @@ int test_r2c_window_c2r() {
 	CHECK_ERROR(cudaFree(device_params));
 
 	// Compute reference
-	if(reference_r2c_window_c2r(batches, signal_size, window_size, &input_signals[0][0], &reference[0][0]) != PASS_VALUE) {
+	if (reference_r2c_window_c2r(batches, signal_size, window_size, &input_signals[0][0], &reference[0][0]) != PASS_VALUE) {
 		printf("Failed to compute the reference");
 		return ERROR_VALUE;
-	};
+	}
 
 	double l2_error = compute_error<float>(&reference[0][0], &output_signals[0][0], batches, signal_size);
 	printf("L2 error: %e\n", l2_error);
@@ -120,14 +135,14 @@ int test_r2c_window_c2r() {
 // Program main
 ////////////////////////////////////////////////////////////////////////////////
 int main(int argc, char **argv) {
-    struct cudaDeviceProp properties;
-    int device;
-    CHECK_ERROR(cudaGetDevice(&device));
-    CHECK_ERROR(cudaGetDeviceProperties(&properties, device));
-    if (!(properties.major >= 5)) {
-        printf("cuFFT with LTO requires CUDA architecture SM5.0 or higher\n");
-        return ERROR_VALUE;
-    }
+	struct cudaDeviceProp properties;
+	int device;
+	CHECK_ERROR(cudaGetDevice(&device));
+	CHECK_ERROR(cudaGetDeviceProperties(&properties, device));
+	if (!(properties.major >= 5)) {
+		printf("cuFFT with LTO requires CUDA architecture SM5.0 or higher\n");
+		return ERROR_VALUE;
+	}
 
-    return test_r2c_window_c2r();
+	return test_r2c_window_c2r();
 }

@@ -41,59 +41,60 @@ set(GENCODE_FLAGS_LTO --generate-code arch=compute_${CUDA_LTO_ARCHITECTURE},code
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-add_executable(r2c_c2r_lto_callback_example)
-add_executable(r2c_c2r_lto_nvrtc_callback_example)
-add_executable(r2c_c2r_legacy_callback_example)
+add_executable(r2c_c2r_windowing_lto_callback_example)
+add_executable(r2c_c2r_windowing_lto_nvrtc_callback_example)
+add_executable(r2c_c2r_windowing_legacy_callback_example)
 
-target_include_directories(r2c_c2r_lto_callback_example
+target_include_directories(r2c_c2r_windowing_lto_callback_example
                            PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
                            ${CMAKE_SOURCE_DIR}/src
                            ${CMAKE_BINARY_DIR})
-target_include_directories(r2c_c2r_lto_nvrtc_callback_example
+target_include_directories(r2c_c2r_windowing_lto_nvrtc_callback_example
                            PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
                            ${CMAKE_SOURCE_DIR}/src
                            ${CMAKE_BINARY_DIR})
-target_include_directories(r2c_c2r_legacy_callback_example
+target_include_directories(r2c_c2r_windowing_legacy_callback_example
                            PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
                            ${CMAKE_SOURCE_DIR}/src
                            ${CMAKE_BINARY_DIR})
 
-target_sources(r2c_c2r_lto_callback_example
-               PRIVATE ${PROJECT_SOURCE_DIR}/src/r2c_c2r_lto_callback_example.cpp
+target_sources(r2c_c2r_windowing_lto_callback_example
+               PRIVATE ${PROJECT_SOURCE_DIR}/src/r2c_c2r_windowing_lto_callback_example.cpp
                        ${PROJECT_SOURCE_DIR}/src/common.cpp
-                       ${PROJECT_SOURCE_DIR}/src/r2c_c2r_reference.cu
-                       ${CMAKE_BINARY_DIR}/r2c_c2r_lto_callback_device_fatbin.h)
+                       ${PROJECT_SOURCE_DIR}/src/r2c_c2r_windowing_reference.cu
+                       ${CMAKE_BINARY_DIR}/r2c_c2r_windowing_lto_callback_device_fatbin.h)
 
-target_sources(r2c_c2r_lto_nvrtc_callback_example
-               PRIVATE ${PROJECT_SOURCE_DIR}/src/r2c_c2r_lto_nvrtc_callback_example.cpp
+target_sources(r2c_c2r_windowing_lto_nvrtc_callback_example
+               PRIVATE ${PROJECT_SOURCE_DIR}/src/r2c_c2r_windowing_lto_nvrtc_callback_example.cpp
                        ${PROJECT_SOURCE_DIR}/src/common.cpp
-                       ${PROJECT_SOURCE_DIR}/src/r2c_c2r_reference.cu)
+                       ${PROJECT_SOURCE_DIR}/src/r2c_c2r_windowing_reference.cu)
 
-target_sources(r2c_c2r_legacy_callback_example
-               PRIVATE ${PROJECT_SOURCE_DIR}/src/r2c_c2r_legacy_callback_example.cu
+target_sources(r2c_c2r_windowing_legacy_callback_example
+               PRIVATE ${PROJECT_SOURCE_DIR}/src/r2c_c2r_windowing_legacy_callback_example.cu
                        ${PROJECT_SOURCE_DIR}/src/common.cpp
-                       ${PROJECT_SOURCE_DIR}/src/r2c_c2r_reference.cu)
+                       ${PROJECT_SOURCE_DIR}/src/r2c_c2r_windowing_reference.cu)
 
 if(CB_USE_CONSTANT_MEMORY)
-  target_compile_definitions(r2c_c2r_legacy_callback_example PRIVATE CB_USE_CONSTANT_MEMORY)
-  target_compile_definitions(r2c_c2r_lto_callback_example PRIVATE CB_USE_CONSTANT_MEMORY)
-  target_compile_definitions(r2c_c2r_lto_nvrtc_callback_example PRIVATE CB_USE_CONSTANT_MEMORY)
+  target_compile_definitions(r2c_c2r_windowing_legacy_callback_example PRIVATE CB_USE_CONSTANT_MEMORY)
+  target_compile_definitions(r2c_c2r_windowing_lto_callback_example PRIVATE CB_USE_CONSTANT_MEMORY)
+  target_compile_definitions(r2c_c2r_windowing_lto_nvrtc_callback_example PRIVATE CB_USE_CONSTANT_MEMORY)
 endif()
 
-target_compile_definitions(r2c_c2r_lto_nvrtc_callback_example PRIVATE CUDA_ARCH=${CUDA_LTO_ARCHITECTURE} CUDA_PATH=${CUDAToolkit_BIN_DIR}/.. -DSOURCE_PATH=${CMAKE_SOURCE_DIR}/src)
+target_compile_definitions(r2c_c2r_windowing_lto_nvrtc_callback_example PRIVATE CUDA_ARCH=${CUDA_LTO_ARCHITECTURE} CUDA_PATH=${CUDAToolkit_BIN_DIR}/.. -DSOURCE_PATH=${CMAKE_SOURCE_DIR}/src)
 
-set_target_properties(r2c_c2r_legacy_callback_example PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON
+set_target_properties(r2c_c2r_windowing_legacy_callback_example PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON
                                                                  CUDA_SEPARABLE_COMPILATION ON)
 
 message(STATUS "CMAKE_BINARY_DIR: ${CMAKE_BINARY_DIR}")
 add_custom_command(
-    OUTPUT  ${CMAKE_BINARY_DIR}/r2c_c2r_lto_callback_device.fatbin ${CMAKE_BINARY_DIR}/r2c_c2r_lto_callback_device_fatbin.h
-    DEPENDS ${CMAKE_SOURCE_DIR}/src/r2c_c2r_lto_callback_device.cu
-    COMMAND ${CMAKE_CUDA_COMPILER} --std=c++11 ${GENCODE_FLAGS_LTO} -dc -fatbin ${CMAKE_SOURCE_DIR}/src/r2c_c2r_lto_callback_device.cu -o ${CMAKE_BINARY_DIR}/r2c_c2r_lto_callback_device.fatbin
-    COMMAND ${CUDAToolkit_BIN_DIR}/bin2c --name window_callback --type longlong ${CMAKE_BINARY_DIR}/r2c_c2r_lto_callback_device.fatbin > ${CMAKE_BINARY_DIR}/r2c_c2r_lto_callback_device_fatbin.h
+    OUTPUT  ${CMAKE_BINARY_DIR}/r2c_c2r_windowing_lto_callback_device.fatbin ${CMAKE_BINARY_DIR}/r2c_c2r_windowing_lto_callback_device_fatbin.h
+    DEPENDS ${CMAKE_SOURCE_DIR}/src/r2c_c2r_windowing_lto_callback_device.cu
+    COMMAND ${CMAKE_CUDA_COMPILER} --std=c++11 ${GENCODE_FLAGS_LTO} -dc -fatbin ${CMAKE_SOURCE_DIR}/src/r2c_c2r_windowing_lto_callback_device.cu -o ${CMAKE_BINARY_DIR}/r2c_c2r_windowing_lto_callback_device.fatbin
+    COMMAND ${CUDAToolkit_BIN_DIR}/bin2c --name window_callback --type longlong ${CMAKE_BINARY_DIR}/r2c_c2r_windowing_lto_callback_device.fatbin > ${CMAKE_BINARY_DIR}/r2c_c2r_windowing_lto_callback_device_fatbin.h
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-target_link_libraries(r2c_c2r_lto_callback_example PRIVATE CUDA::cufft CUDA::cudart CUDA::nvJitLink)
-target_link_libraries(r2c_c2r_lto_nvrtc_callback_example PRIVATE CUDA::cufft CUDA::cudart CUDA::nvJitLink CUDA::nvrtc)
-target_link_libraries(r2c_c2r_legacy_callback_example PRIVATE CUDA::cufft_static CUDA::cudart CUDA::culibos)
+
+target_link_libraries(r2c_c2r_windowing_lto_callback_example PRIVATE CUDA::cufft CUDA::cudart CUDA::nvJitLink)
+target_link_libraries(r2c_c2r_windowing_lto_nvrtc_callback_example PRIVATE CUDA::cufft CUDA::cudart CUDA::nvJitLink CUDA::nvrtc)
+target_link_libraries(r2c_c2r_windowing_legacy_callback_example PRIVATE CUDA::cufft_static CUDA::cudart CUDA::culibos)

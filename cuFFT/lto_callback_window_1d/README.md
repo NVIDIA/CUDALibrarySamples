@@ -5,13 +5,13 @@
 In this example, we apply a low-pass filter to a batch of signals in the frequency domain. Specifically, the sample code creates a forward (R2C, Real-To-Complex) plan and an inverse (C2R, Complex-To-Real) plan. The low-pass filter is implemented via a load callback in the inverse plan, where values under a certain threshold (specified by the user as a window dimension) are loaded normally, and every other value is zeroed.
 
 Three versions of the code are provided:
-* `r2c_c2r_lto_callback_example.cpp` contains the sample code using a load callback with LTO to compute the window function. The LTO callback is compiled offline using nvcc.
-* `r2c_c2r_lto_nvrtc_callback_example.cpp` contains the sample code using a load callback with LTO to compute the window function. The LTO callback is compiled at runtime using NVRTC.
-* `r2c_c2r_legacy_callback_example.cu` contains the sample code using a 'legacy' (non-LTO) load callback to compute the window function. The callback does not use LTO and requires separate device linking against the cuFFT static library.
+* `r2c_c2r_windowing_lto_callback_example.cpp` contains the sample code using a load callback with LTO to compute the window function. The LTO callback is compiled offline using nvcc.
+* `r2c_c2r_windowing_lto_nvrtc_callback_example.cpp` contains the sample code using a load callback with LTO to compute the window function. The LTO callback is compiled at runtime using NVRTC.
+* `r2c_c2r_windowing_legacy_callback_example.cu` contains the sample code using a 'legacy' (non-LTO) load callback to compute the window function. The callback does not use LTO and requires separate device linking against the cuFFT static library.
 
 Other source files included:
-* `r2c_c2r_lto_callback_device.cu` contains the callback device function used in the LTO and LTO + NVRTC examples.
-* `r2c_c2r_reference.cu` contains the code used as reference for the samples. The reference computes the window function using a separate kernel, rather than callbacks.
+* `r2c_c2r_windowing_lto_callback_device.cu` contains the callback device function used in the LTO and LTO + NVRTC examples.
+* `r2c_c2r_windowing_reference.cu` contains the code used as reference for the samples. The reference computes the window function using a separate kernel, rather than callbacks.
 * `nvrtc_helper.h` contains the required code to do runtime compilation of the LTO callback using NVRTC.
 * `common.cpp` and `common.h` include some helper functions, like methods to perform the initialization of the signal in the time domain..
 
@@ -63,15 +63,15 @@ make
 
 ## Running the examples
 ```
-./bin/r2c_c2r_lto_callback_example
-./bin/r2c_c2r_lto_nvrtc_callback_example
-./bin/r2c_c2r_callback_example
+./bin/r2c_c2r_windowing_lto_callback_example
+./bin/r2c_c2r_windowing_lto_nvrtc_callback_example
+./bin/r2c_c2r_windowing_legacy_callback_example
 ```
 
 Sample of output
 
 ```
-$ ./bin/r2c_c2r_lto_callback_example 
+$ ./bin/r2c_c2r_windowing_lto_callback_example 
 Transforming signal cufftExecR2C
 Transforming signal cufftExecC2R
 Transforming reference cufftExecR2C
