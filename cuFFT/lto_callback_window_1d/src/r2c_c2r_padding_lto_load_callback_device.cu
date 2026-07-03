@@ -22,12 +22,7 @@
  */
 
 #include <cufftXt.h>
-
-// Callback parameters structure for padding
-struct PaddingCallbackParams {
-    unsigned int signal_size;
-    unsigned int padded_signal_size;
-};
+#include "callback_params.h"
 
 // Load callback for R2C: returns 0 for indices beyond signal_size
 __device__ cufftReal padding_load_callback(void* dataIn,

@@ -22,12 +22,7 @@
  */
 
 #include <cufftXt.h>
-
-// Callback parameters structure for padding
-struct PaddingCallbackParams {
-    unsigned int signal_size;
-    unsigned int padded_signal_size;
-};
+#include "callback_params.h"
 
 // Store callback for C2R: only stores first signal_size elements, zeros the rest
 __device__ void padding_store_callback(void* dataOut,

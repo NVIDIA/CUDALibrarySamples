@@ -25,6 +25,12 @@ struct cb_params {
 	unsigned signal_size;
 };
 
+// Callback parameters structure for padding
+struct PaddingCallbackParams {
+    unsigned int signal_size;
+    unsigned int padded_signal_size;
+};
+
 // Problem input parameters
 constexpr unsigned batches              = 830;
 constexpr unsigned signal_size          = 328;
