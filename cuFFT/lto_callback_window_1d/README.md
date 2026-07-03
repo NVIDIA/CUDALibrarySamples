@@ -2,18 +2,33 @@
 
 ## Description
 
-In this example, we apply a low-pass filter to a batch of signals in the frequency domain. Specifically, the sample code creates a forward (R2C, Real-To-Complex) plan and an inverse (C2R, Complex-To-Real) plan. The low-pass filter is implemented via a load callback in the inverse plan, where values under a certain threshold (specified by the user as a window dimension) are loaded normally, and every other value is zeroed.
+This directory contains examples demonstrating the use of cuFFT callbacks with both legacy and LTO (Link-Time Optimization) approaches. Two different use cases are provided: windowing and zero-padding.
 
-Three versions of the code are provided:
+### Windowing Examples
+
+In the windowing examples, we apply a low-pass filter to a batch of signals in the frequency domain. Specifically, the sample code creates a forward (R2C, Real-To-Complex) plan and an inverse (C2R, Complex-To-Real) plan. The low-pass filter is implemented via a **load callback** in the inverse plan, where values under a certain threshold (specified by the user as a window dimension) are loaded normally, and every other value is zeroed.
+
+Three versions of the windowing code are provided:
 * `r2c_c2r_windowing_lto_callback_example.cpp` contains the sample code using a load callback with LTO to compute the window function. The LTO callback is compiled offline using nvcc.
 * `r2c_c2r_windowing_lto_nvrtc_callback_example.cpp` contains the sample code using a load callback with LTO to compute the window function. The LTO callback is compiled at runtime using NVRTC.
 * `r2c_c2r_windowing_legacy_callback_example.cu` contains the sample code using a 'legacy' (non-LTO) load callback to compute the window function. The callback does not use LTO and requires separate device linking against the cuFFT static library.
 
+### Padding Examples
+
+In the padding examples, we demonstrate the use of **both load and store callbacks** to implement zero-padding. The load callback is applied on the forward (R2C) plan to pad the input with zeros, and the store callback is applied on the inverse (C2R) plan to truncate the output to the original size and normalize.
+
+Two versions of the padding code are provided:
+* `r2c_c2r_padding_lto_callback_example.cpp` contains the sample code using LTO callbacks to implement zero-padding. The LTO callback is compiled offline using nvcc.
+* `r2c_c2r_padding_legacy_callback_example.cu` contains the sample code using legacy callbacks to implement zero-padding. The callback does not use LTO and requires separate device linking against the cuFFT static library.
+
 Other source files included:
-* `r2c_c2r_windowing_lto_callback_device.cu` contains the callback device function used in the LTO and LTO + NVRTC examples.
-* `r2c_c2r_windowing_reference.cu` contains the code used as reference for the samples. The reference computes the window function using a separate kernel, rather than callbacks.
+* `r2c_c2r_windowing_lto_callback_device.cu` contains the callback device function used in the windowing LTO and LTO + NVRTC examples.
+* `r2c_c2r_padding_lto_load_callback_device.cu` contains the load callback device function used in the padding LTO example.
+* `r2c_c2r_padding_lto_store_callback_device.cu` contains the store callback device function used in the padding LTO example.
+* `r2c_c2r_windowing_reference.cu` contains the code used as reference for the windowing samples. The reference computes the window function using a separate kernel, rather than callbacks.
+* `r2c_c2r_padding_reference.cu` contains the code used as reference for the padding samples. The reference computes the zero-padding using separate kernels, rather than callbacks.
 * `nvrtc_helper.h` contains the required code to do runtime compilation of the LTO callback using NVRTC.
-* `common.cpp` and `common.h` include some helper functions, like methods to perform the initialization of the signal in the time domain..
+* `common.cpp` and `common.h` include some helper functions, like methods to perform the initialization of the signal in the time domain.
 
 ## Supported SM Architectures
 
@@ -62,18 +77,37 @@ make
 ```
 
 ## Running the examples
+
+### Windowing examples
 ```
 ./bin/r2c_c2r_windowing_lto_callback_example
 ./bin/r2c_c2r_windowing_lto_nvrtc_callback_example
 ./bin/r2c_c2r_windowing_legacy_callback_example
 ```
 
-Sample of output
+### Padding examples
+```
+./bin/r2c_c2r_padding_lto_callback_example
+./bin/r2c_c2r_padding_legacy_callback_example
+```
+
+Sample of output (windowing)
 
 ```
 $ ./bin/r2c_c2r_windowing_lto_callback_example 
 Transforming signal cufftExecR2C
 Transforming signal cufftExecC2R
+Transforming reference cufftExecR2C
+Transforming reference cufftExecC2R
+L2 error: 0.000000e+00
+```
+
+Sample of output (padding)
+
+```
+$ ./bin/r2c_c2r_padding_lto_callback_example 
+Transforming signal cufftExecR2C with padding load callback
+Transforming signal cufftExecC2R with padding store callback
 Transforming reference cufftExecR2C
 Transforming reference cufftExecC2R
 L2 error: 0.000000e+00
