@@ -82,5 +82,4 @@ double compute_error_padding(T* ref, T* out, unsigned batches, unsigned signal_s
 
 // Initialize input signals
 void init_input_signals(unsigned batches, unsigned signal_size, float* signals);
-void init_input_signals_padding(unsigned batches, unsigned signal_size, float* signals);
 #endif // _COMMON__H_
