@@ -27,12 +27,6 @@
 #include "r2c_c2r_padding_reference.h"
 #include "callback_params.h"
 
-// Callback parameters structure for padding
-struct PaddingCallbackParams {
-    unsigned int signal_size;
-    unsigned int padded_signal_size;
-};
-
 // Load callback for R2C: returns 0 for indices beyond signal_size
 __device__ cufftReal padding_load_callback_r2c(void* input,
                                              size_t index,
@@ -146,6 +140,11 @@ int test_r2c_padding_c2r() {
         delete[] input_signals;
         delete[] output_signals;
         delete[] reference;
+        cufftDestroy(forward_plan);
+        cufftDestroy(inverse_plan);
+        cudaFree(device_signals);
+        cudaFree(device_complex);
+        cudaFree(device_params);
         return ERROR_VALUE;
     }
 

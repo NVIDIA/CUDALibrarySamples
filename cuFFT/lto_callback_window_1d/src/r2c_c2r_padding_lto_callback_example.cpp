@@ -31,12 +31,6 @@
 #include "r2c_c2r_padding_load_callback_fatbin.h"
 #include "r2c_c2r_padding_store_callback_fatbin.h"
 
-// Callback parameters structure for padding
-struct PaddingCallbackParams {
-    unsigned int signal_size;
-    unsigned int padded_signal_size;
-};
-
 static_assert(padded_signal_size > signal_size, "The padded size must be larger than the signal size");
 
 int test_r2c_padding_c2r() {
@@ -120,6 +114,11 @@ int test_r2c_padding_c2r() {
         delete[] input_signals;
         delete[] output_signals;
         delete[] reference;
+        cufftDestroy(forward_plan);
+        cufftDestroy(inverse_plan);
+        cudaFree(device_signals);
+        cudaFree(device_complex);
+        cudaFree(device_params);
         return ERROR_VALUE;
     }
 
