@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,7 +15,7 @@
 
 cmake_minimum_required(VERSION 3.17 FATAL_ERROR)
 
-project(nvj2k_decode_tile_partial LANGUAGES CXX CUDA)
+project(nvjpeg2k_decode_tile_partial LANGUAGES CXX CUDA)
 
 find_package(CUDAToolkit REQUIRED)
 
@@ -47,13 +47,13 @@ include_directories(
 )
 
 
-set(EXAMPLES_DESCRIPTOR_SOURCES "nvj2k_DecodeTilePartial.cpp")
+set(EXAMPLES_DESCRIPTOR_SOURCES "nvjpeg2k_decode_tile_partial.cpp")
 
-add_executable(nvj2k_decode_tile_partial ${EXAMPLES_DESCRIPTOR_SOURCES})
+add_executable(nvjpeg2k_decode_tile_partial ${EXAMPLES_DESCRIPTOR_SOURCES})
 
 if(UNIX)
   set(FILESYS -lstdc++fs)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 endif()
 
-target_link_libraries(nvj2k_decode_tile_partial PUBLIC ${NVJPEG2K_LIB} CUDA::cudart ${FILESYS})
+target_link_libraries(nvjpeg2k_decode_tile_partial PUBLIC ${NVJPEG2K_LIB} CUDA::cudart ${FILESYS})

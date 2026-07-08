@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2020-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,7 +19,7 @@
 #include "nvjpeg2k_dec_pipelined.h"
 
 int write_image(std::string output_path, std::string filename, const nvjpeg2kImage_t &imgdesc, int width, int height,
-               uint32_t num_components, uint8_t precision, uint8_t sgn, bool verbose)
+               uint32_t num_components, uint8_t precision, uint8_t sgn, bool verbose, bool is_nlt3)
 {
     // Get the file name, without extension.
     // This will be used to rename the output file.
@@ -33,6 +33,17 @@ int write_image(std::string output_path, std::string filename, const nvjpeg2kIma
                                                 : sFileName.substr(0, position);
 
     int err = EXIT_FAILURE;
+    if (is_nlt3)
+    {
+        std::string fname(output_path + separator + sFileName + ".pfm");
+        err = writePFM(fname.c_str(), imgdesc, width, height, num_components);
+        if (err)
+        {
+            std::cout << "Cannot write output file: " << fname << std::endl;
+        }
+        return err;
+    }
+
     // For single component image output as PGM
     if (num_components == 1)
     {
@@ -150,29 +161,62 @@ int prepare_buffers(FileData &file_data, std::vector<size_t> &file_len,
             std::cout<<"Num Components > "<< NUM_COMPONENTS<<"not supported by this sample"<<std::endl;
             return EXIT_FAILURE;
         }
-        for (uint32_t c = 0; c < image_info.num_components; c++) 
+        for (uint32_t c = 0; c < image_info.num_components; c++)
         {
             CHECK_NVJPEG2K(nvjpeg2kStreamGetImageComponentInfo(params.jpeg2k_streams[i], &image_comp_info[c], c));
         }
 
         ibuf[i].num_comps = image_info.num_components;
-        // realloc output buffer if required
-        for (uint32_t c = 0; c < image_info.num_components; c++) 
+        ibuf[i].is_nlt3 = false;
+        uint8_t nlt_bit_depth = image_comp_info[0].precision;
+#if NVJPEG2K_HAS_NLT3_DECODE
+        nvjpeg2kNLTInfo_t nlt_info;
+        if (nvjpeg2kStreamGetComponentNLTInfo(params.jpeg2k_streams[i], 0, &nlt_info) == NVJPEG2K_STATUS_SUCCESS)
         {
-            uint32_t bytes_per_element = (image_comp_info[0].precision+7)/8;
-            if( image_comp_info[0].precision <= 8)
+            ibuf[i].is_nlt3 = (nlt_info.type == NVJPEG2K_NLT_TYPE3);
+            nlt_bit_depth = nlt_info.bit_depth;
+        }
+#endif
+
+        if(ibuf[i].is_nlt3)
+        {
+#if NVJPEG2K_HAS_NLT3_DECODE
+            if(nlt_bit_depth == 16)
             {
-                ibuf[i].pixel_type = NVJPEG2K_UINT8;
+                ibuf[i].pixel_type = NVJPEG2K_FP16;
             }
-            else if(image_comp_info[0].precision <= MAX_PRECISION)
+            else if(nlt_bit_depth > 16 && nlt_bit_depth <= 32)
             {
-                ibuf[i].pixel_type = image_comp_info[0].sgn ? NVJPEG2K_INT16 : NVJPEG2K_UINT16;
+                ibuf[i].pixel_type = NVJPEG2K_FP32;
             }
-            else 
+            else
             {
-                std::cout<<"Precision > "<< MAX_PRECISION<<" not supported by this sample"<<std::endl;
+                std::cout<<"NLT bit depth "<< static_cast<int>(nlt_bit_depth) <<" not supported by this sample"<<std::endl;
                 return EXIT_FAILURE;
             }
+#else
+            std::cout<<"NLT type 3 decode requires nvJPEG2000 0.11 or newer"<<std::endl;
+            return EXIT_FAILURE;
+#endif
+        }
+        else if( image_comp_info[0].precision <= 8)
+        {
+            ibuf[i].pixel_type = NVJPEG2K_UINT8;
+        }
+        else if(image_comp_info[0].precision <= MAX_PRECISION)
+        {
+            ibuf[i].pixel_type = image_comp_info[0].sgn ? NVJPEG2K_INT16 : NVJPEG2K_UINT16;
+        }
+        else
+        {
+            std::cout<<"Precision > "<< MAX_PRECISION<<" not supported by this sample"<<std::endl;
+            return EXIT_FAILURE;
+        }
+
+        uint32_t bytes_per_element = bytes_per_sample(ibuf[i].pixel_type);
+        // realloc output buffer if required
+        for (uint32_t c = 0; c < image_info.num_components; c++)
+        {
             // for JPEG 2000 bitstreams with 420/422 subsampling, this sample enables RGB output
             // we are allocating assuming that all component dimensions are the same
             size_t aw = bytes_per_element * image_info.image_width;
@@ -199,15 +243,16 @@ int free_buffers(std::vector<nvjpeg2kImageSample_t> &ibuf)
     {
         for(int c = 0; c < NUM_COMPONENTS; c++)
         {
-            if(buf.component[0])
+            if(buf.component[c])
             {
-                CHECK_CUDA(cudaFree(buf.component[0]));
+                CHECK_CUDA(cudaFree(buf.component[c]));
             }
-            buf.component[0] = nullptr;
-            buf.comp_sz[0] = 0;
-            buf.pitch_in_bytes[0] = 0;
+            buf.component[c] = nullptr;
+            buf.comp_sz[c] = 0;
+            buf.pitch_in_bytes[c] = 0;
         }
         buf.num_comps = 0;
+        buf.is_nlt3 = false;
     }
     return EXIT_SUCCESS;
 }
@@ -273,6 +318,7 @@ int decode_images(FileNames &current_names, std::vector<nvjpeg2kImageSample_t> &
     CHECK_CUDA(cudaEventElapsedTime(&loopTime, startEvent, stopEvent));
     time += static_cast<double>(loopTime/1000.0); // loopTime is in milliseconds
     
+    int result = EXIT_SUCCESS;
     if (params.write_decoded)
     {
         for( int i = 0; i < params.batch_size; i++)
@@ -283,9 +329,12 @@ int decode_images(FileNames &current_names, std::vector<nvjpeg2kImageSample_t> &
              // assume all components have the same precision
             CHECK_NVJPEG2K(nvjpeg2kStreamGetImageComponentInfo(params.jpeg2k_streams[i], &comp_info, 0));
 
-            write_image(params.output_dir, current_names[i], nvjpeg2k_output[i], image_info.image_width, 
-                image_info.image_height, image_info.num_components, comp_info.precision, 
-                comp_info.sgn, params.verbose);
+            if(write_image(params.output_dir, current_names[i], nvjpeg2k_output[i], image_info.image_width,
+                image_info.image_height, image_info.num_components, comp_info.precision,
+                comp_info.sgn, params.verbose, out[i].is_nlt3))
+            {
+                result = EXIT_FAILURE;
+            }
         }
     }
     
@@ -297,7 +346,7 @@ int decode_images(FileNames &current_names, std::vector<nvjpeg2kImageSample_t> &
     CHECK_CUDA(cudaEventDestroy(stopEvent));
     CHECK_CUDA(cudaEventDestroy(startEvent));
     
-    return EXIT_SUCCESS;
+    return result;
 }
 
 double process_images(FileNames &image_names, decode_params_t &params,
@@ -322,19 +371,29 @@ double process_images(FileNames &image_names, decode_params_t &params,
 
     double test_time = 0;
     int warmup = 0;
+    int result = EXIT_SUCCESS;
     while (total_processed < params.total_images)
     {
         if (read_next_batch(image_names, params.batch_size, file_iter, file_data,
                             file_len, current_names, params.verbose))
-            return EXIT_FAILURE;
+        {
+            result = EXIT_FAILURE;
+            break;
+        }
         double parsetime = 0;
         if (prepare_buffers(file_data, file_len, iout,
                         current_names, params, parsetime))
-            return EXIT_FAILURE;
+        {
+            result = EXIT_FAILURE;
+            break;
+        }
 
         double time = 0;
         if (decode_images(current_names, iout, params, time))
-            return EXIT_FAILURE;
+        {
+            result = EXIT_FAILURE;
+            break;
+        }
         if (warmup < params.warmup)
         {
             warmup++;
@@ -352,9 +411,9 @@ double process_images(FileNames &image_names, decode_params_t &params,
     }
 
     if(free_buffers(iout))
-        EXIT_FAILURE;
+        result = EXIT_FAILURE;
 
-    return EXIT_SUCCESS;
+    return result;
 }
 
 int main(int argc, const char *argv[])
@@ -366,7 +425,7 @@ int main(int argc, const char *argv[])
     {
         std::cout << "Usage: " << argv[0]
                   << " -i images_dir [-b batch_size] [-t total_images] "
-                     "[-w warmup_iterations] [-o output_dir] [-v verbose]";
+                     "[-w warmup_iterations] [-o output_dir] [-v verbose]\n";
         std::cout << "Parameters: " << std::endl;
         std::cout << "\timages_dir\t:\tPath to single image or directory of images"
                   << std::endl;
@@ -382,7 +441,7 @@ int main(int argc, const char *argv[])
                      "without measuring performance"
                   << std::endl;
         std::cout
-            << "\toutput_dir\t:\tWrite decoded images in BMP/PGM format to this directory"
+            << "\toutput_dir\t:\tWrite decoded images in BMP/PGM/PFM format to this directory"
             << std::endl;
         std::cout
             << "\tverbose\t\t:\tLog verbose messages to console"

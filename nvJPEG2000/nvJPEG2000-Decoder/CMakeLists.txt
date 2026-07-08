@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,7 +15,7 @@
 
 cmake_minimum_required(VERSION 3.17 FATAL_ERROR)
 
-project(nvjpeg2000_sample LANGUAGES CXX CUDA)
+project(nvjpeg2k_decode LANGUAGES CXX CUDA)
 
 find_package(CUDAToolkit REQUIRED)
 
@@ -47,13 +47,13 @@ include_directories(
 )
 
 
-set(EXAMPLES_DESCRIPTOR_SOURCES "nvjpeg2000DecodeSample.cpp")
+set(EXAMPLES_DESCRIPTOR_SOURCES "nvjpeg2k_decode.cpp")
 
-add_executable(nvjpeg2000_decode_sample ${EXAMPLES_DESCRIPTOR_SOURCES})
+add_executable(nvjpeg2k_decode ${EXAMPLES_DESCRIPTOR_SOURCES})
 
 if(UNIX)
   set(FILESYS -lstdc++fs)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 endif()
 
-target_link_libraries(nvjpeg2000_decode_sample PUBLIC ${NVJPEG2K_LIB} CUDA::cudart ${FILESYS})
+target_link_libraries(nvjpeg2k_decode PUBLIC ${NVJPEG2K_LIB} CUDA::cudart ${FILESYS})

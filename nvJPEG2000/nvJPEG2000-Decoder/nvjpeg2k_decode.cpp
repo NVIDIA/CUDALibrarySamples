@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2020-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,10 +16,10 @@
  */
 
 
-#include "nvjpeg2000DecodeSample.h"
+#include "nvjpeg2k_decode.h"
 
 int write_image(std::string output_path, std::string filename, const nvjpeg2kImage_t &imgdesc, int width, int height,
-               uint32_t num_components, uint8_t precision, uint8_t sgn, bool verbose)
+               uint32_t num_components, uint8_t precision, uint8_t sgn, bool verbose, bool is_nlt3)
 {
     // Get the file name, without extension.
     // This will be used to rename the output file.
@@ -33,6 +33,17 @@ int write_image(std::string output_path, std::string filename, const nvjpeg2kIma
                                                 : sFileName.substr(0, position);
 
     int err = EXIT_FAILURE;
+    if (is_nlt3)
+    {
+        std::string fname(output_path + separator + sFileName + ".pfm");
+        err = writePFM(fname.c_str(), imgdesc, width, height, num_components);
+        if (err)
+        {
+            std::cout << "Cannot write output file: " << fname << std::endl;
+        }
+        return err;
+    }
+
     // For single component image output as PGM
     if (num_components == 1)
     {
@@ -181,8 +192,14 @@ int decode_images(FileNames &current_names, const FileData &img_data, const std:
     nvjpeg2kImageInfo_t image_info;
     std::vector<nvjpeg2kImageComponentInfo_t> image_comp_info;
     std::vector<unsigned short *> decode_output_u16;
+    std::vector<short *> decode_output_s16;
     std::vector<unsigned char *> decode_output_u8;
+#if NVJPEG2K_HAS_NLT3_DECODE
+    std::vector<__half *> decode_output_h16;
+    std::vector<float *> decode_output_f32;
+#endif
     std::vector<size_t> decode_output_pitch;
+    int result = EXIT_SUCCESS;
     for( int i =0; i < params.batch_size; i++)
     {
         auto io_start = perfclock::now();
@@ -201,13 +218,54 @@ int decode_images(FileNames &current_names, const FileData &img_data, const std:
             //<< image_comp_info[c].component_height << std::endl;
         }
 
+        bool is_nlt3 = false;
+        uint8_t nlt_bit_depth = image_comp_info[0].precision;
+#if NVJPEG2K_HAS_NLT3_DECODE
+        nvjpeg2kNLTInfo_t nlt_info;
+        if (nvjpeg2kStreamGetComponentNLTInfo(params.jpeg2k_stream, 0, &nlt_info) == NVJPEG2K_STATUS_SUCCESS)
+        {
+            is_nlt3 = (nlt_info.type == NVJPEG2K_NLT_TYPE3);
+            nlt_bit_depth = nlt_info.bit_depth;
+        }
+#endif
+
         decode_output_pitch.resize(image_info.num_components);
         output_image.pitch_in_bytes = decode_output_pitch.data();
+#if NVJPEG2K_HAS_NLT3_DECODE
+        if (is_nlt3 && nlt_bit_depth == 16)
+        {
+            decode_output_h16.resize(image_info.num_components);
+            output_image.pixel_data = (void **)decode_output_h16.data();
+            output_image.pixel_type = NVJPEG2K_FP16;
+            bytes_per_element = 2;
+        }
+        else if (is_nlt3 && nlt_bit_depth > 16 && nlt_bit_depth <= 32)
+        {
+            decode_output_f32.resize(image_info.num_components);
+            output_image.pixel_data = (void **)decode_output_f32.data();
+            output_image.pixel_type = NVJPEG2K_FP32;
+            bytes_per_element = 4;
+        }
+        else if (is_nlt3)
+        {
+            std::cout << "NLT bit depth " << static_cast<int>(nlt_bit_depth) << " not supported" << std::endl;
+            return EXIT_FAILURE;
+        }
+        else
+#endif
         if (image_comp_info[0].precision > 8 && image_comp_info[0].precision <= 16)
         {
-            decode_output_u16.resize(image_info.num_components);
-            output_image.pixel_data = (void **)decode_output_u16.data();
             output_image.pixel_type = image_comp_info[0].sgn ? NVJPEG2K_INT16 : NVJPEG2K_UINT16;
+            if(image_comp_info[0].sgn)
+            {
+                decode_output_s16.resize(image_info.num_components);
+                output_image.pixel_data = (void **)decode_output_s16.data();
+            }
+            else
+            {
+                decode_output_u16.resize(image_info.num_components);
+                output_image.pixel_data = (void **)decode_output_u16.data();
+            }
             bytes_per_element = 2;
         }
         else if (image_comp_info[0].precision == 8)
@@ -219,7 +277,7 @@ int decode_images(FileNames &current_names, const FileData &img_data, const std:
         }
         else
         {
-            std::cout << "Precision value " << image_comp_info[0].precision << " not supported" << std::endl;
+            std::cout << "Precision value " << static_cast<int>(image_comp_info[0].precision) << " not supported" << std::endl;
             return EXIT_FAILURE;
         }
 
@@ -252,21 +310,28 @@ int decode_images(FileNames &current_names, const FileData &img_data, const std:
                     continue;
                 }
             }
-            write_image(params.output_dir, current_names[i], output_image, image_info.image_width, 
-                image_info.image_height, image_info.num_components, image_comp_info[0].precision, 
-                image_comp_info[0].sgn, params.verbose);
+            if(write_image(params.output_dir, current_names[i], output_image, image_info.image_width,
+                image_info.image_height, image_info.num_components, image_comp_info[0].precision,
+                image_comp_info[0].sgn, params.verbose, is_nlt3))
+            {
+                result = EXIT_FAILURE;
+            }
         }
 
         if(free_output_buffers(output_image))
         {
             return EXIT_FAILURE;
         }
+        if(result)
+        {
+            break;
+        }
     }
 
     CHECK_NVJPEG2K(nvjpeg2kDecodeParamsDestroy(decode_params));
     CHECK_CUDA(cudaEventDestroy(startEvent));
     CHECK_CUDA(cudaEventDestroy(stopEvent));
-    return EXIT_SUCCESS;
+    return result;
 }
 
 double process_images(FileNames &image_names, decode_params_t &params,
@@ -288,15 +353,22 @@ double process_images(FileNames &image_names, decode_params_t &params,
 
     double test_time = 0;
     int warmup = 0;
+    int result = EXIT_SUCCESS;
     while (total_processed < params.total_images)
     {
         if (read_next_batch(image_names, params.batch_size, file_iter, file_data,
                             file_len, current_names, params.verbose))
-            return EXIT_FAILURE;
+        {
+            result = EXIT_FAILURE;
+            break;
+        }
 
         double time = 0;
         if (decode_images(current_names, file_data, file_len, params, time))
-            return EXIT_FAILURE;
+        {
+            result = EXIT_FAILURE;
+            break;
+        }
         if (warmup < params.warmup)
         {
             warmup++;
@@ -311,7 +383,7 @@ double process_images(FileNames &image_names, decode_params_t &params,
 
     CHECK_CUDA(cudaStreamDestroy(params.stream));
 
-    return EXIT_SUCCESS;
+    return result;
 }
 
 int main(int argc, const char *argv[])
@@ -339,7 +411,7 @@ int main(int argc, const char *argv[])
         std::cout << "\twarmup_iterations:\tRun these many batches first "
                      "without measuring performance"
                   << std::endl;
-        std::cout << "\toutput_dir\t:\tWrite decoded images in BMP/PGM format to this directory"
+        std::cout << "\toutput_dir\t:\tWrite decoded images in BMP/PGM/PFM format to this directory"
                   << std::endl;   
         std::cout << "\trgb_output\t:\tUse this flag when decoding images with 420/422 subsampling"<<std::endl
                   << "\t\t\t\tsuch that the nvJPEG2000 library generates RGB output"

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,11 +16,11 @@
  */
 
 
-#include "nvj2k_DecodeTilePartial.h"
+#include "nvjpeg2k_decode_tile_partial.h"
 
 template<typename T>
 int write_image(std::string output_path, std::string filename, const T &imgdesc, int width, int height,
-               uint32_t num_components, uint8_t precision, uint8_t sgn, bool verbose)
+               uint32_t num_components, uint8_t precision, uint8_t sgn, bool verbose, bool is_nlt3)
 {
     // Get the file name, without extension.
     // This will be used to rename the output file.
@@ -34,6 +34,16 @@ int write_image(std::string output_path, std::string filename, const T &imgdesc,
                                                 : sFileName.substr(0, position);
 
     int err = EXIT_SUCCESS;
+    if (is_nlt3)
+    {
+        std::string fname(output_path + separator + sFileName + ".pfm");
+        err = writePFM(fname.c_str(), imgdesc, width, height, num_components);
+        if (err)
+        {
+            std::cout << "Cannot write output file: " << fname << std::endl;
+        }
+        return err;
+    }
     
     // For single component image output as PGM channel
     if (num_components == 1)
@@ -152,29 +162,62 @@ int prepare_buffers(FileData &file_data, std::vector<size_t> &file_len,
             std::cout<<"Num Components > "<< NUM_COMPONENTS<<"not supported by this sample"<<std::endl;
             return EXIT_FAILURE;
         }
-        for (uint32_t c = 0; c < image_info.num_components; c++) 
+        for (uint32_t c = 0; c < image_info.num_components; c++)
         {
             CHECK_NVJPEG2K(nvjpeg2kStreamGetImageComponentInfo(params.jpeg2k_streams[i], &image_comp_info[c], c));
         }
 
         ibuf[i].num_comps = image_info.num_components;
-        // realloc output buffer if required
-        for (uint32_t c = 0; c < image_info.num_components; c++) 
+        ibuf[i].is_nlt3 = false;
+        uint8_t nlt_bit_depth = image_comp_info[0].precision;
+#if NVJPEG2K_HAS_NLT3_DECODE
+        nvjpeg2kNLTInfo_t nlt_info;
+        if (nvjpeg2kStreamGetComponentNLTInfo(params.jpeg2k_streams[i], 0, &nlt_info) == NVJPEG2K_STATUS_SUCCESS)
         {
-            uint32_t bytes_per_element = (image_comp_info[0].precision+7)/8;
-            if( image_comp_info[0].precision <= 8)
+            ibuf[i].is_nlt3 = (nlt_info.type == NVJPEG2K_NLT_TYPE3);
+            nlt_bit_depth = nlt_info.bit_depth;
+        }
+#endif
+
+        if(ibuf[i].is_nlt3)
+        {
+#if NVJPEG2K_HAS_NLT3_DECODE
+            if(nlt_bit_depth == 16)
             {
-                ibuf[i].pixel_type = NVJPEG2K_UINT8;
+                ibuf[i].pixel_type = NVJPEG2K_FP16;
             }
-            else if(image_comp_info[0].precision <= MAX_PRECISION)
+            else if(nlt_bit_depth > 16 && nlt_bit_depth <= 32)
             {
-                ibuf[i].pixel_type = image_comp_info[0].sgn ? NVJPEG2K_INT16 : NVJPEG2K_UINT16;
+                ibuf[i].pixel_type = NVJPEG2K_FP32;
             }
-            else 
+            else
             {
-                std::cout<<"Precision > "<< MAX_PRECISION<<" not supported by this sample"<<std::endl;
+                std::cout<<"NLT bit depth "<< static_cast<int>(nlt_bit_depth) <<" not supported by this sample"<<std::endl;
                 return EXIT_FAILURE;
             }
+#else
+            std::cout<<"NLT type 3 decode requires nvJPEG2000 0.11 or newer"<<std::endl;
+            return EXIT_FAILURE;
+#endif
+        }
+        else if( image_comp_info[0].precision <= 8)
+        {
+            ibuf[i].pixel_type = NVJPEG2K_UINT8;
+        }
+        else if(image_comp_info[0].precision <= MAX_PRECISION)
+        {
+            ibuf[i].pixel_type = image_comp_info[0].sgn ? NVJPEG2K_INT16 : NVJPEG2K_UINT16;
+        }
+        else
+        {
+            std::cout<<"Precision > "<< MAX_PRECISION<<" not supported by this sample"<<std::endl;
+            return EXIT_FAILURE;
+        }
+
+        uint32_t bytes_per_element = bytes_per_sample(ibuf[i].pixel_type);
+        // realloc output buffer if required
+        for (uint32_t c = 0; c < image_info.num_components; c++)
+        {
             // for JPEG 2000 bitstreams with 420/422 subsampling, this sample enables RGB output
             // we are allocating assuming that all component dimensions are the same
             size_t aw = bytes_per_element * image_info.image_width;
@@ -210,6 +253,7 @@ int free_buffers(std::vector<nvjpeg2kImageSample_t> &ibuf)
             buf.pitch_in_bytes[c] = 0;
         }
         buf.num_comps = 0;
+        buf.is_nlt3 = false;
     }
     return EXIT_SUCCESS;
 }
@@ -295,7 +339,7 @@ int decode_images_partial(FileNames &current_names, std::vector<nvjpeg2kImageSam
             auto& decode_data = tile_window_data[i];
             tile_decode_out.num_comps = out[batch_id].num_comps;
             tile_decode_out.pixel_type = out[batch_id].pixel_type;
-            uint32_t bytes_per_comp = tile_decode_out.pixel_type == NVJPEG2K_UINT8 ? 1 : 2;
+            uint32_t bytes_per_comp = bytes_per_sample(tile_decode_out.pixel_type);
             for(uint32_t c = 0; c < out[batch_id].num_comps; c++)
             {
                 size_t pitch_in_bytes = out[batch_id].pitch_in_bytes[c];
@@ -340,6 +384,7 @@ int decode_images_partial(FileNames &current_names, std::vector<nvjpeg2kImageSam
     CHECK_CUDA(cudaEventElapsedTime(&loopTime, startEvent, stopEvent));
     time += static_cast<double>(loopTime/1000.0); // loopTime is in milliseconds
     
+    int result = EXIT_SUCCESS;
     if (params.write_decoded)
     {
         for( int i = 0; i < params.batch_size; i++)
@@ -349,9 +394,12 @@ int decode_images_partial(FileNames &current_names, std::vector<nvjpeg2kImageSam
             CHECK_NVJPEG2K(nvjpeg2kStreamGetImageInfo(params.jpeg2k_streams[i], &image_info));
             // assume all components have the same precision
             CHECK_NVJPEG2K(nvjpeg2kStreamGetImageComponentInfo(params.jpeg2k_streams[i], &comp_info, 0));
-            write_image(params.output_dir, current_names[i], out[i], params.win_x1 - params.win_x0, 
+            if(write_image(params.output_dir, current_names[i], out[i], params.win_x1 - params.win_x0,
                 params.win_y1 - params.win_y0, image_info.num_components, comp_info.precision,
-                comp_info.sgn, params.verbose);
+                comp_info.sgn, params.verbose, out[i].is_nlt3))
+            {
+                result = EXIT_FAILURE;
+            }
         }
     }
 
@@ -363,7 +411,7 @@ int decode_images_partial(FileNames &current_names, std::vector<nvjpeg2kImageSam
     CHECK_CUDA(cudaEventDestroy(startEvent));
     CHECK_NVJPEG2K(nvjpeg2kDecodeParamsDestroy(decode_params));
     
-    return EXIT_SUCCESS;
+    return result;
 }
 
 
@@ -406,7 +454,7 @@ int decode_images(FileNames &current_names, std::vector<nvjpeg2kImageSample> &ou
                 nvjpeg2kImageSample tile_decode_out;
                 tile_decode_out.num_comps = out[batch_id].num_comps;
                 tile_decode_out.pixel_type = out[batch_id].pixel_type;
-                uint32_t bytes_per_comp = tile_decode_out.pixel_type == NVJPEG2K_UINT8 ? 1 : 2;
+                uint32_t bytes_per_comp = bytes_per_sample(tile_decode_out.pixel_type);
                 for(uint32_t c = 0; c < out[batch_id].num_comps; c++)
                 {
                     size_t pitch_in_bytes = out[batch_id].pitch_in_bytes[c];
@@ -446,6 +494,7 @@ int decode_images(FileNames &current_names, std::vector<nvjpeg2kImageSample> &ou
     CHECK_CUDA(cudaEventElapsedTime(&loopTime, startEvent, stopEvent));
     time += static_cast<double>(loopTime/1000.0); // loopTime is in milliseconds
     
+    int result = EXIT_SUCCESS;
     if (params.write_decoded)
     {
         for( int i = 0; i < params.batch_size; i++)
@@ -456,9 +505,12 @@ int decode_images(FileNames &current_names, std::vector<nvjpeg2kImageSample> &ou
             // assume all components have the same precision
             CHECK_NVJPEG2K(nvjpeg2kStreamGetImageComponentInfo(params.jpeg2k_streams[i], &comp_info, 0));
             
-            write_image(params.output_dir, current_names[i], out[i], image_info.image_width, 
+            if(write_image(params.output_dir, current_names[i], out[i], image_info.image_width,
                 image_info.image_height, image_info.num_components, comp_info.precision,
-                comp_info.sgn, params.verbose);
+                comp_info.sgn, params.verbose, out[i].is_nlt3))
+            {
+                result = EXIT_FAILURE;
+            }
         }
     }
 
@@ -470,7 +522,7 @@ int decode_images(FileNames &current_names, std::vector<nvjpeg2kImageSample> &ou
     CHECK_CUDA(cudaEventDestroy(startEvent));
     CHECK_NVJPEG2K(nvjpeg2kDecodeParamsDestroy(decode_params));
 
-    return EXIT_SUCCESS;
+    return result;
 }
 
 double process_images(FileNames &image_names, decode_params_t &params,
@@ -495,15 +547,22 @@ double process_images(FileNames &image_names, decode_params_t &params,
 
     double test_time = 0;
     int warmup = 0;
+    int result = EXIT_SUCCESS;
     while (total_processed < params.total_images)
     {
         if (read_next_batch(image_names, params.batch_size, file_iter, file_data,
                             file_len, current_names, params.verbose))
-            return EXIT_FAILURE;
+        {
+            result = EXIT_FAILURE;
+            break;
+        }
         double parsetime = 0;
         if (prepare_buffers(file_data, file_len, iout,
                         current_names, params, parsetime))
-            return EXIT_FAILURE;
+        {
+            result = EXIT_FAILURE;
+            break;
+        }
 
         double time = 0;
         int ret_val = 0;
@@ -517,7 +576,8 @@ double process_images(FileNames &image_names, decode_params_t &params,
         }
         if(ret_val)
         {
-            return EXIT_FAILURE;
+            result = EXIT_FAILURE;
+            break;
         }
         if (warmup < params.warmup)
         {
@@ -536,9 +596,9 @@ double process_images(FileNames &image_names, decode_params_t &params,
     }
 
     if(free_buffers(iout))
-        EXIT_FAILURE;
+        result = EXIT_FAILURE;
 
-    return EXIT_SUCCESS;
+    return result;
 }
 
 int parseDecodeCoordinates(const char* argv, decode_params_t& params)
@@ -607,7 +667,7 @@ int main(int argc, const char *argv[])
                   << "to be decoded"
                   << std::endl;
         std::cout
-            << "\toutput_dir\t:\tWrite decoded images in BMP/PGM format to this directory"
+            << "\toutput_dir\t:\tWrite decoded images in BMP/PGM/PFM format to this directory"
             << std::endl;
         std::cout
             << "\tverbose\t\t:\tLog verbose messages to console"

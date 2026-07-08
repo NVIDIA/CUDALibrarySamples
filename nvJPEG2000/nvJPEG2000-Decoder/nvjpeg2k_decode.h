@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -43,6 +43,13 @@ namespace fs = std::experimental::filesystem::v1;
 #include <cuda_runtime_api.h>
 #include <nvjpeg2k.h>
 
+#if (NVJPEG2K_VER_MAJOR > 0) || (NVJPEG2K_VER_MAJOR == 0 && NVJPEG2K_VER_MINOR >= 11)
+#define NVJPEG2K_HAS_NLT3_DECODE 1
+#include <cuda_fp16.h>
+#else
+#define NVJPEG2K_HAS_NLT3_DECODE 0
+#endif
+
 #define CHECK_CUDA(call)                                                                                          \
     {                                                                                                             \
         cudaError_t _e = (call);                                                                                  \
@@ -65,31 +72,6 @@ namespace fs = std::experimental::filesystem::v1;
 
 typedef std::chrono::high_resolution_clock perfclock;
 
-constexpr int PIPELINE_STAGES = 10;
-constexpr int MAX_PRECISION = 16;
-constexpr int NUM_COMPONENTS = 4;
-
-typedef struct nvjpeg2kImageSample
-{
-    nvjpeg2kImageSample():
-        pixel_type(NVJPEG2K_UINT8),
-        num_comps(0)
-    {
-        for( int c = 0; c < NUM_COMPONENTS; c++)
-        {
-            pixel_data[c] = nullptr;
-            pitch_in_bytes[c] = 0;
-            comp_sz[c] = 0;
-        }
-    }
-    
-    void *pixel_data[NUM_COMPONENTS];
-    size_t pitch_in_bytes[NUM_COMPONENTS];
-    size_t comp_sz[NUM_COMPONENTS];
-    nvjpeg2kImageType_t pixel_type;
-    uint32_t num_comps;
-} nvjpeg2kImageSample_t;
-
 int dev_malloc(void **p, size_t s) { return (int)cudaMalloc(p, s); }
 
 int dev_free(void *p) { return (int)cudaFree(p); }
@@ -101,6 +83,25 @@ int host_free(void *p) { return (int)cudaFreeHost(p); }
 typedef std::vector<std::string> FileNames;
 typedef std::vector<std::vector<char>> FileData;
 
+inline int bytes_per_sample(nvjpeg2kImageType_t pixel_type)
+{
+    if(pixel_type == NVJPEG2K_UINT16 || pixel_type == NVJPEG2K_INT16)
+    {
+        return 2;
+    }
+#if NVJPEG2K_HAS_NLT3_DECODE
+    if(pixel_type == NVJPEG2K_FP16)
+    {
+        return 2;
+    }
+    if(pixel_type == NVJPEG2K_FP32)
+    {
+        return 4;
+    }
+#endif
+    return 1;
+}
+
 struct decode_params_t
 {
     std::string input_dir;
@@ -108,23 +109,16 @@ struct decode_params_t
     int total_images;
     int dev;
     int warmup;
+    int rgb_output;
 
-    nvjpeg2kDecodeState_t nvjpeg2k_decode_states[PIPELINE_STAGES];
+    nvjpeg2kDecodeState_t nvjpeg2k_decode_state;
     nvjpeg2kHandle_t nvjpeg2k_handle;
-    cudaStream_t stream[PIPELINE_STAGES];
-    std::vector<nvjpeg2kStream_t> jpeg2k_streams;
+    cudaStream_t stream;
+    nvjpeg2kStream_t jpeg2k_stream;
     bool verbose;
     bool write_decoded;
     std::string output_dir;
-
-    unsigned int win_x0;
-    unsigned int win_x1;
-    unsigned int win_y0;
-    unsigned int win_y1;
-    bool partial_decode;
 };
-
-
 
 int read_next_batch(FileNames &image_names, int batch_size,
                     FileNames::iterator &cur_iter, FileData &raw_data,
@@ -292,6 +286,89 @@ int getInputDir(std::string &input_dir, const char *executable_path)
     return found;
 }
 
+template <typename T>
+int writePFM(const char *filename, const T &imgdesc, int nWidth, int nHeight, uint32_t num_components)
+{
+#if NVJPEG2K_HAS_NLT3_DECODE
+    const bool is_fp16 = (imgdesc.pixel_type == NVJPEG2K_FP16);
+    if (!is_fp16 && imgdesc.pixel_type != NVJPEG2K_FP32)
+    {
+        std::cerr << "writePFM expects FP16 or FP32 pixel_type" << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    if(num_components != 1 && num_components != 3 && num_components != 4)
+    {
+        std::cerr << "writePFM expects 1, 3, or 4 components" << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    const size_t num_pixels = static_cast<size_t>(nWidth) * static_cast<size_t>(nHeight);
+    std::vector<std::vector<float>> channels(num_components, std::vector<float>(num_pixels));
+    if(is_fp16)
+    {
+        const size_t src_row_bytes = static_cast<size_t>(nWidth) * sizeof(__half);
+        std::vector<__half> tmp(num_pixels);
+        for(uint32_t c = 0; c < num_components; c++)
+        {
+            CHECK_CUDA(cudaMemcpy2D(tmp.data(), src_row_bytes, imgdesc.pixel_data[c], imgdesc.pitch_in_bytes[c],
+                src_row_bytes, nHeight, cudaMemcpyDeviceToHost));
+            for(size_t i = 0; i < num_pixels; i++)
+            {
+                channels[c][i] = __half2float(tmp[i]);
+            }
+        }
+    }
+    else
+    {
+        const size_t row_bytes = static_cast<size_t>(nWidth) * sizeof(float);
+        for(uint32_t c = 0; c < num_components; c++)
+        {
+            CHECK_CUDA(cudaMemcpy2D(channels[c].data(), row_bytes, imgdesc.pixel_data[c],
+                imgdesc.pitch_in_bytes[c], row_bytes, nHeight, cudaMemcpyDeviceToHost));
+        }
+    }
+
+    FILE *fp = fopen(filename, "wb");
+    if (!fp)
+    {
+        std::cerr << "Cannot open output file: " << filename << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    fprintf(fp, "%s\n%d %d\n-1.000000\n", num_components == 1 ? "Pf" : "PF", nWidth, nHeight);
+    const uint32_t comps_to_write = num_components == 1 ? 1u : 3u;
+    std::vector<float> row_buffer(static_cast<size_t>(nWidth) * comps_to_write);
+    for(int64_t y = nHeight - 1; y >= 0; y--)
+    {
+        float *dst = row_buffer.data();
+        for(int x = 0; x < nWidth; x++)
+        {
+            for(uint32_t c = 0; c < comps_to_write; c++)
+            {
+                *dst++ = channels[c][static_cast<size_t>(y) * nWidth + x];
+            }
+        }
+        if(fwrite(row_buffer.data(), sizeof(float), row_buffer.size(), fp) != row_buffer.size())
+        {
+            std::cerr << "Cannot write output file: " << filename << std::endl;
+            fclose(fp);
+            return EXIT_FAILURE;
+        }
+    }
+    fclose(fp);
+    return EXIT_SUCCESS;
+#else
+    (void)filename;
+    (void)imgdesc;
+    (void)nWidth;
+    (void)nHeight;
+    (void)num_components;
+    std::cerr << "PFM output requires nvJPEG2000 0.11 or newer" << std::endl;
+    return EXIT_FAILURE;
+#endif
+}
+
 #define CLAMP_PIXEL(x,a,b) ((x) < (a) ? (a) : ((x) > (b) ? (b) : (x)))
 // write ppm, input - RGB, device
 template <typename D>
@@ -327,7 +404,8 @@ int writePPM(const char *filename,
     fprintf(outfile,"P6\n#nvJPEG2000\n");
     fprintf(outfile,"%d %d\n", width, height);
     fprintf(outfile,"%d\n", (1 << precision) - 1);
-    
+    const size_t ppm_row_bytes = static_cast<size_t>(width) * 3 * ((precision + 7) / 8);
+
     for (uint32_t y = 0;  y <  height; y++)
     {
         uint32_t idx = 0;
@@ -361,7 +439,12 @@ int writePPM(const char *filename,
                 pixelRow[idx++] = static_cast<uint8_t>((b) & 0xff);
             }
         }
-        fwrite(pixelRow.data(), 1, width * 3 * ((precision +7)/8), outfile);
+        if(fwrite(pixelRow.data(), 1, ppm_row_bytes, outfile) != ppm_row_bytes)
+        {
+            std::cerr << "Cannot write output file: " << filename << std::endl;
+            fclose(outfile);
+            return EXIT_FAILURE;
+        }
     }
     fclose(outfile);
     return 0;
@@ -510,6 +593,7 @@ int writeBMP(const char *filename,
     //
     // Headers done, now write the data...
     //
+    const size_t bmp_row_bytes = static_cast<size_t>(width) * 3;
     for (y = height - 1; y >= 0; y--) // BMP image format is written from bottom to top...
     {
         for (x = 0; x < width; x++)
@@ -534,7 +618,12 @@ int writeBMP(const char *filename,
             pixelRow[x * 3 + 1] = green;
             pixelRow[x * 3 + 2] = red;
         }
-        fwrite(pixelRow.data(), 1, width * 3, outfile);
+        if(fwrite(pixelRow.data(), 1, bmp_row_bytes, outfile) != bmp_row_bytes)
+        {
+            std::cerr << "Cannot write output file: " << filename << std::endl;
+            fclose(outfile);
+            return EXIT_FAILURE;
+        }
         if (extrabytes) // See above - BMP lines must be of lengths divisible by 4.
         {
             for (n = 1; n <= extrabytes; n++)

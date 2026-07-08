@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,7 +17,10 @@
 
 
 #include "nvjpeg2k_encode.h"
+#include <cerrno>
 #include <cmath>
+#include <cstdlib>
+#include <limits>
 #include <sstream>
 
 struct bmpHeader
@@ -159,7 +162,7 @@ int read_yuv(std::ifstream& file_input, Image& image, encode_params_t& params)
     char extra;
     if(file_input.read(&extra,1))
     {
-        std::cout<<"WARNING - failed to read the entire file"<<std::endl;
+        std::cout<<"WARNING - unexpected trailing data in file"<<std::endl;
     }
     
     return EXIT_SUCCESS;
@@ -276,9 +279,372 @@ int read_pnm(std::ifstream&  file_input, Image& image)
     char extra;
     if(file_input.read(&extra,1))
     {
-        std::cout<<"WARNING - failed to read the entire file"<<std::endl;
+        std::cout<<"WARNING - unexpected trailing data in file"<<std::endl;
     }
     return EXIT_SUCCESS;
+}
+
+std::string get_file_extension(const std::string& filename)
+{
+    std::string ext = fs::path(filename).extension().string();
+    if(ext.empty() || ext == ".")
+    {
+        return "";
+    }
+
+    ext.erase(0, 1);
+    std::transform(ext.begin(), ext.end(), ext.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return ext;
+}
+
+bool read_pfm_token(std::ifstream& file_input, std::string& token)
+{
+    while(file_input >> std::ws && file_input.peek() == '#')
+    {
+        file_input.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+    }
+    return static_cast<bool>(file_input >> token);
+}
+
+bool consume_pfm_header_separator(std::ifstream& file_input)
+{
+    char separator = '\0';
+    if(!file_input.get(separator))
+    {
+        return false;
+    }
+    if(separator == '\r')
+    {
+        // Treat CRLF as a single header separator before reading binary raster data.
+        if(file_input.peek() == '\n')
+        {
+            file_input.ignore(1);
+        }
+        return true;
+    }
+    return std::isspace(static_cast<unsigned char>(separator)) != 0;
+}
+
+bool checked_multiply_size(size_t a, size_t b, size_t& result)
+{
+    if(a != 0 && b > (std::numeric_limits<size_t>::max)() / a)
+    {
+        return false;
+    }
+    result = a * b;
+    return true;
+}
+
+bool parse_pfm_dimension(const std::string& token, uint32_t& dimension)
+{
+    if(token.empty())
+    {
+        return false;
+    }
+
+    uint32_t value = 0;
+    for(unsigned char c : token)
+    {
+        if(c < '0' || c > '9')
+        {
+            return false;
+        }
+
+        uint32_t digit = c - '0';
+        if(value > ((std::numeric_limits<uint32_t>::max)() - digit) / 10)
+        {
+            return false;
+        }
+        value = value * 10 + digit;
+    }
+
+    if(value == 0)
+    {
+        return false;
+    }
+    dimension = value;
+    return true;
+}
+
+bool parse_pfm_scale(const std::string& token, float& scale)
+{
+    if(token.empty())
+    {
+        return false;
+    }
+
+    char* end = nullptr;
+    errno = 0;
+    scale = std::strtof(token.c_str(), &end);
+    if(end != token.c_str() + token.size() || errno == ERANGE || !std::isfinite(scale) || scale == 0.0f)
+    {
+        return false;
+    }
+
+    return true;
+}
+
+bool validate_pfm_sizes(const nvjpeg2kImageInfo_t& info, uint8_t pfm_precision,
+    size_t& row_sample_count, size_t& row_bytes)
+{
+    if(info.image_width == 0 || info.image_height == 0 || info.num_components == 0)
+    {
+        return false;
+    }
+
+    size_t num_pixels = 0;
+    if(!checked_multiply_size(static_cast<size_t>(info.image_width),
+        static_cast<size_t>(info.image_height), num_pixels))
+    {
+        return false;
+    }
+
+    size_t num_samples = 0;
+    if(!checked_multiply_size(num_pixels, static_cast<size_t>(info.num_components), num_samples))
+    {
+        return false;
+    }
+
+    size_t sample_bytes = 0;
+    if(!checked_multiply_size(num_samples, sizeof(float), sample_bytes) || sample_bytes == 0)
+    {
+        return false;
+    }
+
+    if(!checked_multiply_size(static_cast<size_t>(info.image_width),
+        static_cast<size_t>(info.num_components), row_sample_count))
+    {
+        return false;
+    }
+
+    if(!checked_multiply_size(row_sample_count, sizeof(float), row_bytes))
+    {
+        return false;
+    }
+
+    if(row_bytes > static_cast<size_t>((std::numeric_limits<std::streamsize>::max)()))
+    {
+        return false;
+    }
+
+    size_t output_pitch = 0;
+    size_t output_component_bytes = 0;
+    const size_t output_bytes_per_sample = pfm_precision == 16 ? sizeof(uint16_t) : sizeof(float);
+    return checked_multiply_size(static_cast<size_t>(info.image_width), output_bytes_per_sample, output_pitch) &&
+           checked_multiply_size(static_cast<size_t>(info.image_height), output_pitch, output_component_bytes) &&
+           output_component_bytes != 0;
+}
+
+uint32_t swap_u32(uint32_t value)
+{
+    return ((value & 0x000000ffu) << 24) |
+           ((value & 0x0000ff00u) << 8)  |
+           ((value & 0x00ff0000u) >> 8)  |
+           ((value & 0xff000000u) >> 24);
+}
+
+float swap_float(float value)
+{
+    uint32_t bits;
+    memcpy(&bits, &value, sizeof(bits));
+    bits = swap_u32(bits);
+    memcpy(&value, &bits, sizeof(value));
+    return value;
+}
+
+#if NVJPEG2K_HAS_NLT3_ENCODE
+void write_pfm_sample(float sample, float& pixel)
+{
+    pixel = sample;
+}
+
+void write_pfm_sample(float sample, __half& pixel)
+{
+    pixel = __float2half(sample);
+}
+
+template <typename PixelType>
+void copy_pfm_row_to_image(const float* row_samples, nvjpeg2kImage_t& img,
+    const nvjpeg2kImageInfo_t& info, uint32_t dst_y, bool swap_endian)
+{
+    for(uint32_t c = 0; c < info.num_components; c++)
+    {
+        PixelType* dst = reinterpret_cast<PixelType*>(img.pixel_data[c]) +
+            static_cast<size_t>(dst_y) * (img.pitch_in_bytes[c] / sizeof(PixelType));
+        for(uint32_t x = 0; x < info.image_width; x++)
+        {
+            float sample = row_samples[static_cast<size_t>(x) * info.num_components + c];
+            if(swap_endian)
+            {
+                sample = swap_float(sample);
+            }
+            write_pfm_sample(sample, dst[x]);
+        }
+    }
+}
+
+template <typename PixelType>
+int read_pfm_rows(std::ifstream& file_input, nvjpeg2kImage_t& img,
+    const nvjpeg2kImageInfo_t& info, size_t row_sample_count, size_t row_bytes, bool swap_endian)
+{
+    std::vector<float> row_samples;
+    if(row_sample_count > row_samples.max_size())
+    {
+        std::cout << "Invalid pfm image dimensions" << std::endl;
+        return EXIT_FAILURE;
+    }
+    row_samples.resize(row_sample_count);
+    std::streamsize row_bytes_to_read = static_cast<std::streamsize>(row_bytes);
+
+    for(uint32_t pfm_y = 0; pfm_y < info.image_height; pfm_y++)
+    {
+        if(!file_input.read(reinterpret_cast<char*>(row_samples.data()), row_bytes_to_read))
+        {
+            std::cout << "failed to read pfm image from file" << std::endl;
+            return EXIT_FAILURE;
+        }
+
+        uint32_t dst_y = info.image_height - 1 - pfm_y;
+        copy_pfm_row_to_image<PixelType>(row_samples.data(), img, info, dst_y, swap_endian);
+    }
+
+    return EXIT_SUCCESS;
+}
+#endif
+
+int read_pfm(std::ifstream& file_input, Image& image, encode_params_t& params)
+{
+#if NVJPEG2K_HAS_NLT3_ENCODE
+    std::string token;
+    if(!read_pfm_token(file_input, token))
+    {
+        std::cout << "Invalid pfm file" << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    nvjpeg2kImageInfo_t info = {};
+    nvjpeg2kColorSpace_t color_space;
+    if(token == "Pf")
+    {
+        info.num_components = 1;
+        color_space = NVJPEG2K_COLORSPACE_GRAY;
+    }
+    else if(token == "PF")
+    {
+        info.num_components = 3;
+        color_space = NVJPEG2K_COLORSPACE_SRGB;
+    }
+    else
+    {
+        std::cout << "pfm format not supported" << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    if(!read_pfm_token(file_input, token))
+    {
+        std::cout << "Invalid pfm width" << std::endl;
+        return EXIT_FAILURE;
+    }
+    if(!parse_pfm_dimension(token, info.image_width))
+    {
+        std::cout << "Invalid pfm width" << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    if(!read_pfm_token(file_input, token))
+    {
+        std::cout << "Invalid pfm height" << std::endl;
+        return EXIT_FAILURE;
+    }
+    if(!parse_pfm_dimension(token, info.image_height))
+    {
+        std::cout << "Invalid pfm height" << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    if(!read_pfm_token(file_input, token))
+    {
+        std::cout << "Invalid pfm scale" << std::endl;
+        return EXIT_FAILURE;
+    }
+    float scale = 0.0f;
+    if(!parse_pfm_scale(token, scale))
+    {
+        std::cout << "Invalid pfm scale" << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    if(!consume_pfm_header_separator(file_input))
+    {
+        std::cout << "Invalid pfm scale" << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    if(params.pfm_precision != 16 && params.pfm_precision != 32)
+    {
+        std::cout << "Invalid pfm precision. Supported values are 16 and 32" << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    size_t row_sample_count = 0;
+    size_t row_bytes = 0;
+    if(!validate_pfm_sizes(info, params.pfm_precision, row_sample_count, row_bytes))
+    {
+        std::cout << "Invalid pfm image dimensions" << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    std::vector<nvjpeg2kImageComponentInfo_t> comp_info(info.num_components);
+    for(auto& comp : comp_info)
+    {
+        comp.component_width  = info.image_width;
+        comp.component_height = info.image_height;
+        comp.precision = params.pfm_precision;
+        comp.sgn = 0;
+    }
+
+    nvjpeg2kImageType_t pixel_type = params.pfm_precision == 16 ? NVJPEG2K_FP16 : NVJPEG2K_FP32;
+    if(image.initialize(info, comp_info.data(), color_space, pixel_type))
+    {
+        return EXIT_FAILURE;
+    }
+    image.setNltType3(params.pfm_precision);
+
+    bool file_little_endian = scale < 0.0f;
+    const uint16_t endian_probe = 1;
+    bool host_little_endian = *reinterpret_cast<const uint8_t*>(&endian_probe) == 1;
+    bool swap_endian = file_little_endian != host_little_endian;
+
+    auto& img = image.getImageHost();
+    if(img.pixel_type == NVJPEG2K_FP16)
+    {
+        if(read_pfm_rows<__half>(file_input, img, info, row_sample_count, row_bytes, swap_endian))
+        {
+            return EXIT_FAILURE;
+        }
+    }
+    else
+    {
+        if(read_pfm_rows<float>(file_input, img, info, row_sample_count, row_bytes, swap_endian))
+        {
+            return EXIT_FAILURE;
+        }
+    }
+
+    char extra;
+    if(file_input.read(&extra, 1))
+    {
+        std::cout << "WARNING - unexpected trailing data in file" << std::endl;
+    }
+    return EXIT_SUCCESS;
+#else
+    (void)file_input;
+    (void)image;
+    (void)params;
+    std::cout << "PFM input requires nvJPEG2000 0.11 or newer" << std::endl;
+    return EXIT_FAILURE;
+#endif
 }
 
 
@@ -303,7 +669,7 @@ int read_next_batch(FileNames &image_names, int batch_size,
             std::cerr << "No valid images left in the input list, exit" << std::endl;
             return EXIT_FAILURE;
         }
-        std::string ext = cur_iter->substr(cur_iter->find_last_of(".") + 1);
+        std::string ext = get_file_extension(*cur_iter);
         std::ifstream image_file(cur_iter->c_str(), std::ios::in | std::ios::binary);
 
         if (!(image_file.is_open()))
@@ -317,6 +683,13 @@ int read_next_batch(FileNames &image_names, int batch_size,
         if(ext == "pgm" || ext == "ppm")
         {
             if(read_pnm(image_file, input_images[counter]))
+            {
+                return EXIT_FAILURE;
+            }
+        }
+        else if(ext == "pfm")
+        {
+            if(read_pfm(image_file, input_images[counter], params))
             {
                 return EXIT_FAILURE;
             }
@@ -367,21 +740,58 @@ void populate_encoderconfig(nvjpeg2kEncodeConfig_t& enc_config, Image& input_ima
     enc_config.image_comp_info = input_image.getnvjpeg2kCompInfo();
     enc_config.code_block_w = (uint32_t)params.cblk_w;
     enc_config.code_block_h = (uint32_t)params.cblk_h;
-    enc_config.irreversible = (uint32_t)params.is_irreversible;
-    enc_config.mct_mode = enc_config.color_space == NVJPEG2K_COLORSPACE_SRGB ? 1 : 0;
+    enc_config.irreversible = input_image.isNltType3() ? 0 : (uint32_t)params.is_irreversible;
+    enc_config.mct_mode = (enc_config.color_space == NVJPEG2K_COLORSPACE_SRGB && !input_image.isNltType3()) ? 1 : 0;
     enc_config.prog_order = NVJPEG2K_LRCP;
     enc_config.num_resolutions = 6;
 
-    if (params.use_ht) {
+    if (params.use_ht || input_image.isNltType3()) {
         enc_config.rsiz = NVJPEG2K_RSIZ_HT;
         enc_config.encode_modes = NVJPEG2K_MODE_HT;
     }
+}
+
+bool is_128x32_code_block(const encode_params_t& params)
+{
+    return params.cblk_w == 128 && params.cblk_h == 32;
+}
+
+int validate_encoderconfig(Image& input_image, encode_params_t& params)
+{
+    if(input_image.isNltType3())
+    {
+        if(params.is_irreversible)
+        {
+            std::cout << "PFM input uses NLT type 3 and requires the reversible wavelet" << std::endl;
+            return EXIT_FAILURE;
+        }
+        if(params.quality_value != 0)
+        {
+            std::cout << "Quality options are not supported with PFM input" << std::endl;
+            return EXIT_FAILURE;
+        }
+    }
+    else if(is_128x32_code_block(params))
+    {
+        std::cout << "128x32 code block size is only supported with PFM input" << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    return EXIT_SUCCESS;
 }
 
 int encode_images(Image* input_images, encode_params_t &params, BitStreamData &bitstreams, double &time)
 {
     cudaEvent_t startEvent = NULL, stopEvent = NULL;
     float loopTime = 0;
+
+    for(int batch_id = 0; batch_id < params.batch_size; batch_id++)
+    {
+        if(validate_encoderconfig(input_images[batch_id], params))
+        {
+            return EXIT_FAILURE;
+        }
+    }
     
     CHECK_CUDA(cudaEventCreateWithFlags(&startEvent, cudaEventBlockingSync));
     CHECK_CUDA(cudaEventCreateWithFlags(&stopEvent, cudaEventBlockingSync));
@@ -394,6 +804,28 @@ int encode_images(Image* input_images, encode_params_t &params, BitStreamData &b
         populate_encoderconfig(enc_config, input_images[batch_id], params);
 
         CHECK_NVJPEG2K(nvjpeg2kEncodeParamsSetEncodeConfig(params.enc_params, &enc_config));
+#if NVJPEG2K_HAS_NLT3_ENCODE
+        if(input_images[batch_id].isNltType3())
+        {
+            std::vector<nvjpeg2kNLTInfo_t> nlt_info(enc_config.num_components);
+            for(auto& info : nlt_info)
+            {
+                info.type = NVJPEG2K_NLT_TYPE3;
+                info.bit_depth = input_images[batch_id].getNltBitDepth();
+            }
+            CHECK_NVJPEG2K(nvjpeg2kEncodeParamsSetNLTInfo(params.enc_params, nlt_info.data(), enc_config.num_components));
+        }
+        else
+        {
+            CHECK_NVJPEG2K(nvjpeg2kEncodeParamsSetNLTInfo(params.enc_params, NULL, 0));
+        }
+#else
+        if(input_images[batch_id].isNltType3())
+        {
+            std::cout << "NLT type 3 encoding requires nvJPEG2000 0.11 or newer" << std::endl;
+            return EXIT_FAILURE;
+        }
+#endif
         if (params.quality_value != 0) {
             CHECK_NVJPEG2K(nvjpeg2kEncodeParamsSpecifyQuality(params.enc_params, params.quality_type, params.quality_value));
         }
@@ -420,7 +852,7 @@ int encode_images(Image* input_images, encode_params_t &params, BitStreamData &b
     return EXIT_SUCCESS;
 }
 
-int write_output(BitStreamData &bitstreams, FileNames &filenames, encode_params_t& params) 
+int write_output(BitStreamData &bitstreams, FileNames &filenames, Image* input_images, encode_params_t& params)
 {
     for (int batch_id = 0; batch_id < params.batch_size; batch_id++) 
     {
@@ -437,11 +869,13 @@ int write_output(BitStreamData &bitstreams, FileNames &filenames, encode_params_
                                                     : sFileName.substr(0, position);
         const char* wavelet_type []= {"revWavelet","irrevWavelet"};
         const char* ht_type []= {"legacy", "HT"};
+        int actual_irreversible = input_images[batch_id].isNltType3() ? 0 : params.is_irreversible;
+        int actual_ht = (params.use_ht || input_images[batch_id].isNltType3()) ? 1 : 0;
         std::string fname(params.output_dir + "/" + sFileName 
                          + "_qt" + std::to_string(params.quality_type)
                          + "_qv" + std::to_string(params.quality_value)
-                         + "_"+ wavelet_type[params.is_irreversible]
-                         + "_"+ ht_type[params.use_ht]
+                         + "_"+ wavelet_type[actual_irreversible]
+                         + "_"+ ht_type[actual_ht]
                          + "_blksz"+ std::to_string((int)params.cblk_w)+"x"+std::to_string((int)params.cblk_h)
                          +".jp2");
 
@@ -488,7 +922,7 @@ double process_images(FileNames &image_names, encode_params_t &params,
         }   
         if(params.write_bitstream) 
         {
-            if( write_output(bitsteam_output, current_names, params))
+            if( write_output(bitsteam_output, current_names, input_images.data(), params))
             {
                 return EXIT_FAILURE;
             }
@@ -518,10 +952,18 @@ double process_images(FileNames &image_names, encode_params_t &params,
 
 int parse_blk_size(const char* blk_size, encode_params_t& params)
 {
-    std::istringstream img(blk_size);
+    std::string block_size(blk_size);
+    for (char &c : block_size)
+    {
+        if(c == 'x' || c == 'X')
+        {
+            c = ',';
+        }
+    }
+
+    std::istringstream img(block_size);
     std::string temp;
     int idx = 0;
-    std:: string sub_sampling = "unknown";
     while(getline(img, temp,','))
     {
         if( idx == 0)
@@ -534,15 +976,11 @@ int parse_blk_size(const char* blk_size, encode_params_t& params)
         }
         idx++;
     }
-    if(params.cblk_w != params.cblk_h)
+    if(idx != 2 || !((params.cblk_w == 32 && params.cblk_h == 32) ||
+                     (params.cblk_w == 64 && params.cblk_h == 64) ||
+                     (params.cblk_w == 128 && params.cblk_h == 32)))
     {
-        std::cout<<"Only square code block sizes supported"<<std::endl;
-        return EXIT_FAILURE;
-    }
-
-    if(params.cblk_w > 64 ||  params.cblk_h > 64)
-    {
-        std::cout<<"Invalid codeblock sizes"<<std::endl;
+        std::cout<<"Supported code block sizes are 32x32, 64x64 and 128x32"<<std::endl;
         return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;
@@ -645,6 +1083,7 @@ int main(int argc, const char *argv[])
                   << "[-I] [-cblk cblk_w,cblk_h]"<<std::endl
                   << "\t[-w warmup_iterations] [-o output_dir] [-ht] "<<std::endl
                   << "\t[-q_factor value] [-quantization value] [-psnr value]"<<std::endl
+                  << "\t[-pfm_precision 16|32]"<<std::endl
                   << "\t[-img_fmt img_w,img_h,num_comp,precision,chromaformat]"
                   << " (-img_fmt is mandatory for raw yuv files)"<<std::endl
                   << "\teg: for an 8 bit image of size 1920x1080 with 420 subsampling: "
@@ -663,14 +1102,16 @@ int main(int argc, const char *argv[])
                   << "\t\t\t\tfloating point, bigger the value, the lower the result quality."<<std::endl;
         std::cout << "\t-psnr\t\t:\tSet `value` as target PSNR value: positive floating point.\n"
                   << "\t\t\t\tCannot be used with -ht option "<<std::endl;
+        std::cout << "\t-pfm_precision\t:\tSet NLT bit depth for PFM input. Supported values are 16 and 32."
+                  << "\n\t\t\t\tDefault is 32"<<std::endl;
         std::cout << "\tcblk_w,cblk_h\t:\tCode block width and code block height"<<std::endl
-                  << "\t\t\t\tvalid values are 32,32 and 64,64 "<<std::endl;
+                  << "\t\t\t\tvalid values are 32x32 and 64x64. PFM input also supports 128x32"<<std::endl;
         std::cout << "\twarmup_iterations:\tRun these many batches first without measuring performance" << std::endl;
         std::cout << "\toutput_dir\t:\tWrite compressed jpeg 2000 files  to this directory" << std::endl;
         return EXIT_SUCCESS;
     }
 
-    encode_params_t params;
+    encode_params_t params = {};
 
     params.input_dir = "./";
     if ((pidx = findParamIndex(argv, argc, "-i")) != -1)
@@ -720,6 +1161,18 @@ int main(int argc, const char *argv[])
         params.img_fmt_init = true;
     }
 
+    params.pfm_precision = 32;
+    if ((pidx = findParamIndex(argv, argc, "-pfm_precision")) != -1)
+    {
+        int pfm_precision = std::atoi(argv[pidx + 1]);
+        if(pfm_precision != 16 && pfm_precision != 32)
+        {
+            std::cout << "-pfm_precision must be 16 or 32" << std::endl;
+            return EXIT_FAILURE;
+        }
+        params.pfm_precision = static_cast<uint8_t>(pfm_precision);
+    }
+
     params.use_ht = 0;
     if ((pidx = findParamIndex(argv, argc, "-ht")) != -1)
     {
@@ -734,6 +1187,7 @@ int main(int argc, const char *argv[])
 
     // 0 means do not set quality, use default instead
     params.quality_value = 0;
+    params.quality_type = NVJPEG2K_QUALITY_TYPE_TARGET_PSNR;
     if ((pidx = findParamIndex(argv, argc, "-q_factor")) != -1)
     {
         params.quality_value = atof(argv[pidx + 1]);
@@ -788,14 +1242,16 @@ int main(int argc, const char *argv[])
         }
     }
 
+    // read source images
+    FileNames image_names;
+    if(readInput(params.input_dir, image_names))
+    {
+        return EXIT_FAILURE;
+    }
 
     CHECK_NVJPEG2K(nvjpeg2kEncoderCreateSimple(&params.enc_handle));
     CHECK_NVJPEG2K(nvjpeg2kEncodeStateCreate(params.enc_handle, &params.enc_state));
     CHECK_NVJPEG2K(nvjpeg2kEncodeParamsCreate(&params.enc_params));
-
-    // read source images
-    FileNames image_names;
-    readInput(params.input_dir, image_names);
 
     if (params.total_images == -1)
     {

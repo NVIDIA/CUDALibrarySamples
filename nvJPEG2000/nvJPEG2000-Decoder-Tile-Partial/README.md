@@ -50,17 +50,18 @@ $ make
 
 
 # Usage
-./nvj2k_decode_tile_partial -h
+./nvjpeg2k_decode_tile_partial -h
 
 ```
-Usage: ./nvj2k_decode_tile_partial -i images_dir [-b batch_size] [-t total_images] [-w warmup_iterations] [-o output_dir] [-da x0,y0,x1,y1]Parameters: 
+Usage: ./nvjpeg2k_decode_tile_partial -i images_dir [-b batch_size] [-t total_images] [-w warmup_iterations] [-o output_dir] [-da decode_area_of_interest] [-v verbose]
+Parameters:
 	images_dir	:	Path to single image or directory of images
 	batch_size	:	Decode images from input by batches of specified size
 	total_images	:	Decode these many images, if there are fewer images 
 				in the input than total images, decoder will loop over the input
 	warmup_iterations:	Run these many batches first without measuring performance
-	output_dir	:	Write decoded images in BMP/PGM format to this directory
-	-da x0,y0,x1,y1 : Decode Area of Interest. The  coordinates are relative to the image origin
+	decode_area_of_interest: Image coordinates specifying an area to be decoded
+	output_dir	:	Write decoded images in BMP/PGM/PFM format to this directory
+	verbose		:	Log verbose messages to console
 
 ```
-

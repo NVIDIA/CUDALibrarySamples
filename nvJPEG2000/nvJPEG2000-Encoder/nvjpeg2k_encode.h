@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,6 +22,8 @@
 #include <vector>
 #include <algorithm>
 #include <cstring>
+#include <cctype>
+#include <limits>
 
 #if defined(WIN32) || defined(_WIN32) || defined(WIN64) || defined(_WIN64)
 #include <windows.h>
@@ -41,6 +43,13 @@ namespace fs = std::experimental::filesystem::v1;
 
 #include <cuda_runtime_api.h>
 #include <nvjpeg2k.h>
+
+#if (NVJPEG2K_VER_MAJOR > 0) || (NVJPEG2K_VER_MAJOR == 0 && NVJPEG2K_VER_MINOR >= 11)
+#define NVJPEG2K_HAS_NLT3_ENCODE 1
+#include <cuda_fp16.h>
+#else
+#define NVJPEG2K_HAS_NLT3_ENCODE 0
+#endif
 
 #define CHECK_CUDA(call)                                                                                          \
     {                                                                                                             \
@@ -83,6 +92,18 @@ class Image
     nvjpeg2kImageInfo_t info_;
     std::vector<nvjpeg2kImageComponentInfo_t> comp_info_;
     nvjpeg2kColorSpace_t color_space_;
+    bool nlt_type3_;
+    uint8_t nlt_bit_depth_;
+
+    static bool checkedMultiply(size_t a, size_t b, size_t& result)
+    {
+        if(a != 0 && b > (std::numeric_limits<size_t>::max)() / a)
+        {
+            return false;
+        }
+        result = a * b;
+        return true;
+    }
 
     void  clear()
     {
@@ -95,6 +116,27 @@ class Image
         image_h_.pitch_in_bytes = nullptr;
         image_h_.pixel_type = NVJPEG2K_UINT8;
         capacity_ = 0;
+        nlt_type3_ = false;
+        nlt_bit_depth_ = 0;
+    }
+
+    int bytes_per_element(nvjpeg2kImageType_t pixel_type)
+    {
+        if(pixel_type == NVJPEG2K_UINT16 || pixel_type == NVJPEG2K_INT16)
+        {
+            return 2;
+        }
+#if NVJPEG2K_HAS_NLT3_ENCODE
+        if(pixel_type == NVJPEG2K_FP16)
+        {
+            return 2;
+        }
+        if(pixel_type == NVJPEG2K_FP32)
+        {
+            return 4;
+        }
+#endif
+        return 1;
     }
 
     public:
@@ -124,24 +166,53 @@ class Image
         return comp_info_.data();
     }
 
+    bool isNltType3()
+    {
+        return nlt_type3_;
+    }
+
+    uint8_t getNltBitDepth()
+    {
+        return nlt_bit_depth_;
+    }
+
+    void setNltType3(uint8_t bit_depth)
+    {
+        nlt_type3_ = true;
+        nlt_bit_depth_ = bit_depth;
+    }
+
     Image ()
     {
-        image_d_.num_components = 0;
-        image_d_.pixel_data = nullptr;
-        image_d_.pitch_in_bytes = nullptr;
-        image_d_.pixel_type = NVJPEG2K_UINT8;
-        image_h_.num_components = 0;
-        image_h_.pixel_data = nullptr;
-        image_h_.pitch_in_bytes = nullptr;
-        image_h_.pixel_type = NVJPEG2K_UINT8;
-        capacity_ = 0;
+        clear();
     }
 
     int initialize(nvjpeg2kImageInfo_t& img_info, nvjpeg2kImageComponentInfo_t *img_comp_info, nvjpeg2kColorSpace_t color_space)
     {
+        nvjpeg2kImageType_t pixel_type = NVJPEG2K_UINT8;
+        if(img_comp_info[0].precision <= 8)
+        {
+            pixel_type = NVJPEG2K_UINT8;
+        }
+        else if(img_comp_info[0].precision > 8 && img_comp_info[0].precision <= 16)
+        {
+            pixel_type = NVJPEG2K_UINT16;
+        }
+        else
+        {
+            return EXIT_FAILURE;
+        }
+        return initialize(img_info, img_comp_info, color_space, pixel_type);
+    }
+
+    int initialize(nvjpeg2kImageInfo_t& img_info, nvjpeg2kImageComponentInfo_t *img_comp_info,
+        nvjpeg2kColorSpace_t color_space, nvjpeg2kImageType_t pixel_type)
+    {
         memcpy(&info_, &img_info, sizeof(img_info));
         comp_info_.resize(info_.num_components);
         color_space_ = color_space;
+        nlt_type3_ = false;
+        nlt_bit_depth_ = 0;
         for(uint32_t c = 0; c < info_.num_components; c++)
         {
             memcpy(&comp_info_[c], &img_comp_info[c], sizeof(comp_info_[c]));
@@ -161,34 +232,38 @@ class Image
         image_h_.pixel_data     = pixel_data_h_.data();
         image_h_.pitch_in_bytes = pitch_in_bytes_h_.data();
 
-        if(comp_info_[0].precision <= 8)
-        {
-            image_d_.pixel_type = NVJPEG2K_UINT8;
-            image_h_.pixel_type = NVJPEG2K_UINT8;
-        } 
-        else if(comp_info_[0].precision > 8  && comp_info_[0].precision <= 16) 
-        {
-            image_d_.pixel_type = NVJPEG2K_UINT16;
-            image_h_.pixel_type = NVJPEG2K_UINT16;
-        }
-        else
-        {
-            return EXIT_FAILURE;
-        }
+        image_d_.pixel_type = pixel_type;
+        image_h_.pixel_type = pixel_type;
    
         image_d_.num_components = info_.num_components;
         image_h_.num_components = image_d_.num_components;
-        int bytes_per_element = 1;
-        if(image_d_.pixel_type == NVJPEG2K_UINT16)
-        {
-            bytes_per_element = 2;
-        }
+        int bytes_per_element = this->bytes_per_element(image_d_.pixel_type);
 
         for(uint32_t c = 0; c < info_.num_components;c++)
         {
+            if(comp_info_[c].component_width == 0 || comp_info_[c].component_height == 0)
+            {
+                std::cout << "Invalid image dimensions" << std::endl;
+                return EXIT_FAILURE;
+            }
+
+            size_t pitch_in_bytes = 0;
+            if(!checkedMultiply(static_cast<size_t>(comp_info_[c].component_width),
+                static_cast<size_t>(bytes_per_element), pitch_in_bytes))
+            {
+                std::cout << "Invalid image dimensions" << std::endl;
+                return EXIT_FAILURE;
+            }
+
+            size_t comp_size = 0;
+            if(!checkedMultiply(static_cast<size_t>(comp_info_[c].component_height), pitch_in_bytes, comp_size))
+            {
+                std::cout << "Invalid image dimensions" << std::endl;
+                return EXIT_FAILURE;
+            }
+
             image_d_.pitch_in_bytes[c] = 
-            image_h_.pitch_in_bytes[c] = comp_info_[c].component_width * bytes_per_element;
-            size_t comp_size = comp_info_[c].component_height * image_d_.pitch_in_bytes[c];
+            image_h_.pitch_in_bytes[c] = pitch_in_bytes;
             if( comp_size > pixel_data_size_[c])
             {
                 if(image_d_.pixel_data[c])
@@ -229,15 +304,10 @@ class Image
     
     int copyToDevice()
     {
-        int bytes_per_comp = 1;
-        if(image_d_.pixel_type == NVJPEG2K_UINT16)
-        {
-            bytes_per_comp = 2;
-        }
         for (uint32_t c = 0; c < image_d_.num_components; c++)
         {
             CHECK_CUDA(cudaMemcpy2D(image_d_.pixel_data[c], image_d_.pitch_in_bytes[c], image_h_.pixel_data[c], image_h_.pitch_in_bytes[c], 
-                comp_info_[c].component_width * bytes_per_comp,
+                image_d_.pitch_in_bytes[c],
                 comp_info_[c].component_height, cudaMemcpyHostToDevice));
             CHECK_CUDA(cudaDeviceSynchronize());
         }
@@ -267,6 +337,7 @@ struct encode_params_t
     std::string output_dir;
     bool write_bitstream;
     bool img_fmt_init;
+    uint8_t pfm_precision;
 };
 
 double Wtime(void)

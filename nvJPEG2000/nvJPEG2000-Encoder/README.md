@@ -56,6 +56,7 @@ $ make
 Usage: ./nvjpeg2k_encode -i images_dir [-b batch_size] [-t total_images] [-I] [-cblk cblk_w,cblk_h]
         [-w warmup_iterations] [-o output_dir] [-ht]
         [-q_factor value] [-quantization value] [-psnr value]
+        [-pfm_precision 16|32]
         [-img_fmt img_w,img_h,num_comp,precision,chromaformat] (-img_fmt is mandatory for raw yuv files)
         eg: for an 8 bit image of size 1920x1080 with 420 subsampling: -img-dims 1920,1080,3,8,chroma420
 Parameters:
@@ -71,8 +72,10 @@ Parameters:
                                 floating point, bigger the value, the lower the result quality.
         -psnr           :       Set `value` as target PSNR value: positive floating point.
                                 Cannot be used with -ht option
+        -pfm_precision  :       Set NLT bit depth for PFM input. Supported values are 16 and 32.
+                                Default is 32
         cblk_w,cblk_h   :       Code block width and code block height
-                                valid values are 32,32 and 64,64
+                                valid values are 32x32 and 64x64. PFM input also supports 128x32
         warmup_iterations:      Run these many batches first without measuring performance
         output_dir      :       Write compressed jpeg 2000 files  to this directory
 

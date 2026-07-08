@@ -50,16 +50,20 @@ $ make
 
 
 # Usage
-./nvjpeg2k_decode_sample -h
+./nvjpeg2k_decode -h
 
 ```
-Usage: ./nvjpeg2k_decode_sample -i images_dir [-b batch_size] [-t total_images] [-w warmup_iterations] [-o output_dir] Parameters: 
+Usage: ./nvjpeg2k_decode -i images_dir [-b batch_size] [-t total_images] [-w warmup_iterations] [-o output_dir] [-v verbose] [-rgb_output]
+Parameters:
 	images_dir	:	Path to single image or directory of images
 	batch_size	:	Decode images from input by batches of specified size
 	total_images	:	Decode these many images, if there are fewer images 
 				in the input than total images, decoder will loop over the input
 	warmup_iterations:	Run these many batches first without measuring performance
-	output_dir	:	Write decoded images in BMP/PGM format to this directory
+	output_dir	:	Write decoded images in BMP/PGM/PFM format to this directory
+	rgb_output	:	Use this flag when decoding images with 420/422 subsampling
+				such that the nvJPEG2000 library generates RGB output
+	verbose		:	Log verbose messages to console
 
 ```
 Example:
@@ -67,11 +71,11 @@ Example:
 Sample example output on GV100, Ubuntu 16.04, CUDA 11.0
 
 ```
-$ ./nvjpeg2k_decode_sample -i ../images/2k_image_lossless/2k_lossless.jp2 -o .
+$ ./nvjpeg2k_decode -i ../images/2k_image_lossless/2k_lossless.jp2 -o .
 ```
 
 ```
-3 channel images are written out as bmp files and 1 channels images are written out as .pgm files
+3 channel integer images are written out as .bmp files, 1 channel integer images are written out as .pgm files, and NLT type 3 images are written out as .pfm files.
 Decoding images in directory: ../images/2k_image_lossless/2k_lossless.jp2, total 1, batchsize 1
 Total decoding time: 0.029807
 Avg decoding time per image: 0.029807
@@ -81,12 +85,12 @@ Avg decoding time per batch: 0.029807
 ```
 
 ```
-$ ./nvjpeg2k_decode_sample -i ../images/medical_image_lossless/MG_MLO-001.jp2 -o .
+$ ./nvjpeg2k_decode -i ../images/medical_image_lossless/MG_MLO-001.jp2 -o .
 
 ```
 
 ```
-3 channel images are written out as bmp files and 1 channels images are written out as .pgm files
+3 channel integer images are written out as .bmp files, 1 channel integer images are written out as .pgm files, and NLT type 3 images are written out as .pfm files.
 Decoding images in directory: ../images/medical_image_lossless/MG_MLO-001.jp2, total 1, batchsize 1
 Total decoding time: 0.0498233
 Avg decoding time per image: 0.0498233
@@ -94,4 +98,3 @@ Avg images per sec: 20.0709
 Avg decoding time per batch: 0.0498233
 
 ```
-

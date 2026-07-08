@@ -53,13 +53,14 @@ $ make
 ./nvjpeg2k_dec_pipelined -h
 
 ```
-Usage: ./nvjpeg2k_dec_pipelined -i images_dir [-b batch_size] [-t total_images] [-w warmup_iterations] [-o output_dir] Parameters: 
+Usage: ./nvjpeg2k_dec_pipelined -i images_dir [-b batch_size] [-t total_images] [-w warmup_iterations] [-o output_dir] [-v verbose]
+Parameters:
 	images_dir	:	Path to single image or directory of images
 	batch_size	:	Decode images from input by batches of specified size
 	total_images	:	Decode these many images, if there are fewer images 
 				in the input than total images, decoder will loop over the input
 	warmup_iterations:	Run these many batches first without measuring performance
-	output_dir	:	Write decoded images in BMP/PGM format to this directory
+	output_dir	:	Write decoded images in BMP/PGM/PFM format to this directory
+	verbose		:	Log verbose messages to console
 
 ```
-
