@@ -19,7 +19,6 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <assert.h>
 #include <math.h>
 
 #include <mpi.h>
@@ -105,6 +104,8 @@ int main(int argc, char* argv[])
     parse(&opts, argc, argv);
     validate(&opts);
 
+    int sample_ok = 1;
+
     /* Initialize MPI library */
     MPI_Init(NULL, NULL);
 
@@ -121,8 +122,8 @@ int main(int argc, char* argv[])
     const int64_t JA = opts.ja;
 
     /* Define grid of processors */
-    const int numRowDevices = opts.p;
-    const int numColDevices = opts.q;
+    const int nprow = opts.p;
+    const int npcol = opts.q;
 
     /* Convert grid layout to cusolverMp grid mapping */
     const cusolverMpGridMapping_t gridLayout =
@@ -132,9 +133,9 @@ int main(int argc, char* argv[])
     /* Current implementation only allows RSRC,CSRC=(0,0) */
     const uint32_t RSRCA = 0;
     const uint32_t CSRCA = 0;
-    assert(RSRCA == 0 && CSRCA == 0); // only RSRCA==0 and CSRC==0 are supported
+    SAMPLE_ASSERT(RSRCA == 0 && CSRCA == 0); // only RSRCA==0 and CSRC==0 are supported
 
-    /* Get rank id and rank size of the comm. */
+    /* Get MPI rank id and communicator size. */
     int commSize, rank;
     MPI_Comm_size(MPI_COMM_WORLD, &commSize);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -142,7 +143,7 @@ int main(int argc, char* argv[])
     if (rank == 0) print(&opts);
 
     /* Library handles */
-    cusolverMpHandle_t cusolverMpHandle = NULL;
+    cusolverMpHandle_t handle = NULL;
 
     /* Error codes */
     cusolverStatus_t cusolverStat = CUSOLVER_STATUS_SUCCESS;
@@ -150,7 +151,7 @@ int main(int argc, char* argv[])
     cudaError_t      cudaStat     = cudaSuccess;
 
     /* User defined stream */
-    cudaStream_t localStream = NULL;
+    cudaStream_t stream = NULL;
 
     /*
      * localDeviceId is the deviceId from rank's point of view. This is
@@ -160,31 +161,20 @@ int main(int argc, char* argv[])
     const int localDeviceId = getLocalRank();
 
     cudaStat = cudaSetDevice(localDeviceId);
-    assert(cudaStat == cudaSuccess);
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
     cudaStat = cudaFree(0);
-    assert(cudaStat == cudaSuccess);
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
 
     /* Create communicator */
-    ncclUniqueId id;
-
-    if (rank == 0)
-    {
-        ncclGetUniqueId(&id);
-    }
-
-    MPI_Bcast((void*)&id, sizeof(id), MPI_BYTE, 0, MPI_COMM_WORLD);
-
-    ncclComm_t comm;
-    ncclStat = ncclCommInitRank(&comm, commSize, id, rank);
-    assert(ncclStat == ncclSuccess);
+    ncclComm_t ncclComm = createNcclComm(commSize, rank);
 
     /* Create local stream */
-    cudaStat = cudaStreamCreate(&localStream);
-    assert(cudaStat == cudaSuccess);
+    cudaStat = cudaStreamCreate(&stream);
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
 
     /* Initialize cusolverMp library handle */
-    cusolverStat = cusolverMpCreate(&cusolverMpHandle, localDeviceId, localStream);
-    assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
+    cusolverStat = cusolverMpCreate(&handle, localDeviceId, stream);
+    SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
     /* cusolverMp grids */
     cusolverMpGrid_t gridA = NULL;
@@ -219,7 +209,7 @@ int main(int argc, char* argv[])
     /* =========================================== */
 
     /* Single process per device */
-    assert((numRowDevices * numColDevices) <= commSize);
+    SAMPLE_ASSERT((nprow * npcol) == commSize);
 
     /* =========================================== */
     /*          Create inputs on master rank       */
@@ -228,9 +218,8 @@ int main(int argc, char* argv[])
     const int64_t lda   = (IA - 1) + M;
     const int64_t colsA = (JA - 1) + N;
 
-    double* h_A   = NULL;
-    double* h_QR  = NULL;
-    double* h_tau = NULL;
+    double* h_A  = NULL;
+    double* h_QR = NULL;
 
     void* d_global_Q   = NULL;
     void* d_global_tau = NULL;
@@ -247,8 +236,6 @@ int main(int argc, char* argv[])
         {
             print_host_matrix(lda, colsA, h_A, lda, "Input matrix A");
         }
-
-        h_tau = (double*)malloc(lda * sizeof(double));
     }
 
     /* =========================================== */
@@ -259,13 +246,13 @@ int main(int argc, char* argv[])
     int myRowRank, myColRank;
     if (gridLayout == CUSOLVERMP_GRID_MAPPING_COL_MAJOR)
     {
-        myRowRank = rank % numRowDevices;
-        myColRank = rank / numRowDevices;
+        myRowRank = rank % nprow;
+        myColRank = rank / nprow;
     }
     else
     {
-        myRowRank = rank / numColDevices;
-        myColRank = rank % numColDevices;
+        myRowRank = rank / npcol;
+        myColRank = rank % npcol;
     }
 
     /*
@@ -278,8 +265,8 @@ int main(int argc, char* argv[])
      *
      * This limitation will be removed on the official release.
      */
-    const int64_t LLDA       = cusolverMpNUMROC(lda, MA, myRowRank, RSRCA, numRowDevices);
-    const int64_t localColsA = cusolverMpNUMROC(colsA, NA, myColRank, CSRCA, numColDevices);
+    const int64_t LLDA       = cusolverMpNUMROC(lda, MA, myRowRank, RSRCA, nprow);
+    const int64_t localColsA = cusolverMpNUMROC(colsA, NA, myColRank, CSRCA, npcol);
 
     /*
      * Compute number of tiles per rank to store local portion of B
@@ -293,13 +280,13 @@ int main(int argc, char* argv[])
      */
     /* Allocate global d_A */
     cudaStat = cudaMalloc((void**)&d_A, localColsA * LLDA * sizeof(double));
-    assert(cudaStat == cudaSuccess);
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
 
     /* =========================================== */
     /*          CREATE GRID DESCRIPTORS            */
     /* =========================================== */
-    cusolverStat = cusolverMpCreateDeviceGrid(cusolverMpHandle, &gridA, comm, numRowDevices, numColDevices, gridLayout);
-    assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
+    cusolverStat = cusolverMpCreateDeviceGrid(handle, &gridA, ncclComm, nprow, npcol, gridLayout);
+    SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
     /* =========================================== */
     /*        CREATE MATRIX DESCRIPTORS            */
@@ -307,31 +294,31 @@ int main(int argc, char* argv[])
     cusolverStat = cusolverMpCreateMatrixDesc(
             &descrA, gridA, CUDA_R_64F, (IA - 1) + M, (JA - 1) + N, MA, NA, RSRCA, CSRCA, LLDA);
 
-    assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
+    SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
     /* Allocate global d_tau */
     cudaStat = cudaMalloc((void**)&d_tau, localColsA * sizeof(double));
-    assert(cudaStat == cudaSuccess);
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
 
     /* =========================================== */
     /*             ALLOCATE D_INFO                 */
     /* =========================================== */
 
     cudaStat = cudaMalloc((void**)&d_info_geqrf, sizeof(int));
-    assert(cudaStat == cudaSuccess);
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
 
     /* =========================================== */
     /*                RESET D_INFO                 */
     /* =========================================== */
 
     cudaStat = cudaMemset(d_info_geqrf, 0, sizeof(int));
-    assert(cudaStat == cudaSuccess);
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
 
     /* =========================================== */
     /*     QUERY WORKSPACE SIZE FOR MP ROUTINES    */
     /* =========================================== */
 
-    cusolverStat = cusolverMpGeqrf_bufferSize(cusolverMpHandle,
+    cusolverStat = cusolverMpGeqrf_bufferSize(handle,
                                               M,
                                               N,
                                               d_A,
@@ -341,23 +328,23 @@ int main(int argc, char* argv[])
                                               CUDA_R_64F,
                                               &workspaceInBytesOnDevice_geqrf,
                                               &workspaceInBytesOnHost_geqrf);
-    assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
+    SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
     /* =========================================== */
     /*         ALLOCATE Pgeqrf WORKSPACE            */
     /* =========================================== */
 
     cudaStat = cudaMalloc((void**)&d_work_geqrf, workspaceInBytesOnDevice_geqrf);
-    assert(cudaStat == cudaSuccess);
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
 
     h_work_geqrf = (void*)malloc(workspaceInBytesOnHost_geqrf);
-    assert(h_work_geqrf != NULL);
+    SAMPLE_ASSERT(h_work_geqrf != NULL);
 
 
     /* =========================================== */
     /*      SCATTER MATRICES A AND B FROM MASTER   */
     /* =========================================== */
-    cusolverStat = cusolverMpMatrixScatterH2D(cusolverMpHandle,
+    cusolverStat = cusolverMpMatrixScatterH2D(handle,
                                               lda,
                                               colsA,
                                               (void*)d_A, /* routine requires void** */
@@ -367,18 +354,18 @@ int main(int argc, char* argv[])
                                               0, /* root rank */
                                               (void*)h_A,
                                               lda);
-    assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
+    SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
     /* sync wait for data to arrive to device */
-    cudaStat = cudaStreamSynchronize(localStream);
-    assert(cudaStat == cudaSuccess);
+    cudaStat = cudaStreamSynchronize(stream);
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
 
 
     /* =========================================== */
     /*                   CALL Pgeqrf               */
     /* =========================================== */
 
-    cusolverStat = cusolverMpGeqrf(cusolverMpHandle,
+    cusolverStat = cusolverMpGeqrf(handle,
                                    M,
                                    N,
                                    d_A,
@@ -394,20 +381,25 @@ int main(int argc, char* argv[])
                                    d_info_geqrf);
 
     /* sync after cusolverMpgeqrf */
-    cudaStat = cudaStreamSynchronize(localStream);
-    assert(cudaStat == cudaSuccess);
+    cudaStat = cudaStreamSynchronize(stream);
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
 
 
     /* copy d_info_geqrf to host */
-    cudaStat = cudaMemcpyAsync(&h_info_geqrf, d_info_geqrf, sizeof(int), cudaMemcpyDeviceToHost, localStream);
-    assert(cudaStat == cudaSuccess);
+    cudaStat = cudaMemcpyAsync(&h_info_geqrf, d_info_geqrf, sizeof(int), cudaMemcpyDeviceToHost, stream);
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
+
+    /* make h_info_geqrf visible on the host, then verify the factorization succeeded */
+    cudaStat = cudaStreamSynchronize(stream);
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
+    SAMPLE_ASSERT(h_info_geqrf == 0);
 
     /* =========================================== */
     /*      GATHER MATRICES A AND B FROM MASTER    */
     /* =========================================== */
 
     /* Copy solution to h_A */
-    cusolverStat = cusolverMpMatrixGatherD2H(cusolverMpHandle,
+    cusolverStat = cusolverMpMatrixGatherD2H(handle,
                                              lda,
                                              colsA,
                                              (void*)d_A,
@@ -417,11 +409,11 @@ int main(int argc, char* argv[])
                                              0, /* master rank, destination */
                                              (void*)h_QR,
                                              lda);
-    assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
+    SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
     /* sync wait for data to arrive to host */
-    cudaStat = cudaStreamSynchronize(localStream);
-    assert(cudaStat == cudaSuccess);
+    cudaStat = cudaStreamSynchronize(stream);
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
 
     /* =========================================== */
     /*            PRINT A ON RANK 0                */
@@ -438,23 +430,22 @@ int main(int argc, char* argv[])
     if (rank == 0)
     {
         cudaStat = cudaMalloc((void**)&d_global_Q, lda * colsA * sizeof(double));
-        assert(cudaStat == cudaSuccess);
+        SAMPLE_ASSERT(cudaStat == cudaSuccess);
         cudaStat = cudaMalloc((void**)&d_global_tau, colsA * sizeof(double));
-        assert(cudaStat == cudaSuccess);
+        SAMPLE_ASSERT(cudaStat == cudaSuccess);
 
         cudaStat = cudaMemcpy(d_global_Q, h_A, sizeof(double) * lda * colsA, cudaMemcpyHostToDevice);
-        assert(cudaStat == cudaSuccess);
+        SAMPLE_ASSERT(cudaStat == cudaSuccess);
 
         // compare to 1 gpu cusolverDnGeqrf
         cusolverDnParams_t dn_geqrf_params = NULL;
         cusolverStat                       = cusolverDnCreateParams(&dn_geqrf_params);
-        // cusolverDnHandle_t cudenseHandle = cusolverMpHandle->cusolverDnH;
 
         cusolverDnHandle_t cudenseHandle;
         cusolverStat = cusolverDnCreate(&cudenseHandle);
-        assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
-        cusolverStat = cusolverDnSetStream(cudenseHandle, localStream);
-        assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
+        SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
+        cusolverStat = cusolverDnSetStream(cudenseHandle, stream);
+        SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
         const void* d_global_Q_ptr = (double*)d_global_Q + ((IA - 1) + (JA - 1) * lda);
 
@@ -474,14 +465,14 @@ int main(int argc, char* argv[])
                                                    &workspaceInBytesOnDevice_geqrf_dn,
                                                    &workspaceInBytesOnHost_geqrf_dn);
 
-        assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
+        SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
         if (workspaceInBytesOnDevice_geqrf_dn > workspaceInBytesOnDevice_geqrf)
         {
             cudaStat = cudaFree(d_work_geqrf);
-            assert(cudaStat == cudaSuccess);
+            SAMPLE_ASSERT(cudaStat == cudaSuccess);
             cudaStat = cudaMalloc((void**)&d_work_geqrf, workspaceInBytesOnDevice_geqrf_dn);
-            assert(cudaStat == cudaSuccess);
+            SAMPLE_ASSERT(cudaStat == cudaSuccess);
             workspaceInBytesOnDevice_geqrf = workspaceInBytesOnDevice_geqrf_dn;
         }
 
@@ -489,7 +480,7 @@ int main(int argc, char* argv[])
         {
             free(h_work_geqrf);
             h_work_geqrf = (void*)malloc(workspaceInBytesOnHost_geqrf_dn);
-            assert(h_work_geqrf != NULL);
+            SAMPLE_ASSERT(h_work_geqrf != NULL);
             workspaceInBytesOnHost_geqrf = workspaceInBytesOnHost_geqrf_dn;
         }
 
@@ -511,10 +502,10 @@ int main(int argc, char* argv[])
                 workspaceInBytesOnHost_geqrf,
                 d_info_geqrf);
 
-        assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
+        SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
         cudaStat = cudaMemcpy(h_A, d_global_Q, sizeof(double) * lda * colsA, cudaMemcpyDeviceToHost);
-        assert(cudaStat == cudaSuccess);
+        SAMPLE_ASSERT(cudaStat == cudaSuccess);
 
         if (opts.verbose)
         {
@@ -546,29 +537,31 @@ int main(int argc, char* argv[])
             print_host_matrix(lda, colsA, h_A, lda, "difference");
         }
 
+        sample_ok = sample_ok && (failed_abs == 0);
         printf("passed_abs %d failed_abs %d passed %d failed %d\n", passed_abs, failed_abs, passed, failed);
+        printf("  GEQRF check: %s\n", failed_abs == 0 ? "PASS" : "FAIL");
 
         /* Clean up the additional GPU arrays */
         if (d_global_Q)
         {
             cudaStat = cudaFree(d_global_Q);
-            assert(cudaStat == cudaSuccess);
+            SAMPLE_ASSERT(cudaStat == cudaSuccess);
             d_global_Q = NULL;
         }
 
         if (d_global_tau)
         {
             cudaStat = cudaFree(d_global_tau);
-            assert(cudaStat == cudaSuccess);
+            SAMPLE_ASSERT(cudaStat == cudaSuccess);
             d_global_tau = NULL;
         }
 
         /* Clean up cusolverDn handle */
         cusolverStat = cusolverDnDestroy(cudenseHandle);
-        assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
+        SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
         cusolverStat = cusolverDnDestroyParams(dn_geqrf_params);
-        assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
+        SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
     }
 
     /* =========================================== */
@@ -587,12 +580,6 @@ int main(int argc, char* argv[])
             free(h_QR);
             h_QR = NULL;
         }
-
-        if (h_tau)
-        {
-            free(h_tau);
-            h_tau = NULL;
-        }
     }
 
     /* =========================================== */
@@ -600,14 +587,14 @@ int main(int argc, char* argv[])
     /* =========================================== */
 
     cusolverStat = cusolverMpDestroyMatrixDesc(descrA);
-    assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
+    SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
     /* =========================================== */
     /*             DESTROY MATRIX GRIDS            */
     /* =========================================== */
 
     cusolverStat = cusolverMpDestroyGrid(gridA);
-    assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
+    SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
     /* =========================================== */
     /*          DEALLOCATE DEVICE WORKSPACE        */
@@ -616,28 +603,28 @@ int main(int argc, char* argv[])
     if (d_A != NULL)
     {
         cudaStat = cudaFree(d_A);
-        assert(cudaStat == cudaSuccess);
+        SAMPLE_ASSERT(cudaStat == cudaSuccess);
         d_A = NULL;
     }
 
     if (d_tau != NULL)
     {
         cudaStat = cudaFree(d_tau);
-        assert(cudaStat == cudaSuccess);
+        SAMPLE_ASSERT(cudaStat == cudaSuccess);
         d_tau = NULL;
     }
 
     if (d_work_geqrf != NULL)
     {
         cudaStat = cudaFree(d_work_geqrf);
-        assert(cudaStat == cudaSuccess);
+        SAMPLE_ASSERT(cudaStat == cudaSuccess);
         d_work_geqrf = NULL;
     }
 
     if (d_info_geqrf != NULL)
     {
         cudaStat = cudaFree(d_info_geqrf);
-        assert(cudaStat == cudaSuccess);
+        SAMPLE_ASSERT(cudaStat == cudaSuccess);
         d_info_geqrf = NULL;
     }
 
@@ -655,31 +642,32 @@ int main(int argc, char* argv[])
     /* =========================================== */
 
     /* Destroy cusolverMp handle */
-    cusolverStat = cusolverMpDestroy(cusolverMpHandle);
-    assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
+    cusolverStat = cusolverMpDestroy(handle);
+    SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
     /* sync before ncclCommDestroy */
-    cudaStat = cudaStreamSynchronize(localStream);
-    assert(cudaStat == cudaSuccess);
+    cudaStat = cudaStreamSynchronize(stream);
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
 
     /* destroy nccl communicator */
-    ncclStat = ncclCommDestroy(comm);
-    assert(ncclStat == ncclSuccess);
+    ncclStat = ncclCommDestroy(ncclComm);
+    SAMPLE_ASSERT(ncclStat == ncclSuccess);
 
     /* destroy user stream */
-    cudaStat = cudaStreamDestroy(localStream);
-    assert(cudaStat == cudaSuccess);
+    cudaStat = cudaStreamDestroy(stream);
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
 
     /* MPI barrier before MPI_Finalize */
     MPI_Barrier(MPI_COMM_WORLD);
+    sample_ok = sample_all_ranks_succeeded(sample_ok);
 
     /* Finalize MPI environment */
     MPI_Finalize();
 
     if (rank == 0)
     {
-        printf("[SUCCEEDED]\n");
+        printf("%s\n", sample_ok ? "[SUCCEEDED]" : "[FAILED]");
     }
 
-    return 0;
+    return sample_ok ? 0 : 1;
 }

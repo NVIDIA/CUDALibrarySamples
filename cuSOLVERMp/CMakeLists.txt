@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +18,9 @@ cmake_minimum_required(VERSION 3.16)
 project(cusolvermp_samples LANGUAGES C CXX CUDA)
 
 find_package(MPI REQUIRED)
+
+set(CUBLASMP_LINK_DIRECTORIES "" CACHE PATH "cuBLASMp library directory")
+set(CUBLASMP_LIBRARIES cublasmp CACHE STRING "cuBLASMp library needed by cuSOLVERMp")
 
 set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
@@ -49,6 +52,7 @@ function(build_sample sample_file_name)
         ${CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES}
         ${CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES}/stubs
         ${CUSOLVERMP_LINK_DIRECTORIES}
+        ${CUBLASMP_LINK_DIRECTORIES}
     )
 
     target_link_libraries(${sample_name} PUBLIC
@@ -59,6 +63,7 @@ function(build_sample sample_file_name)
         cublasLt
         cusolver
         cusolverMp
+        ${CUBLASMP_LIBRARIES}
         cuda
         nvidia-ml
         m
@@ -76,10 +81,15 @@ build_sample("mp_potrf_potrs_fp32.c")
 build_sample("mp_potrf_potrs_fp32emulation.c")
 build_sample("mp_geqrf.c")
 build_sample("mp_geqrf_orgqr.c")
+build_sample("mp_ormqr.c")
+build_sample("mp_sytrd_stedc_ormtr.c")
 build_sample("mp_syevd.c")
+build_sample("mp_sygst.c")
 build_sample("mp_sygvd.c")
 build_sample("mp_gels.c")
 build_sample("mp_laset.c")
+build_sample("mp_polar.c")
+build_sample("mp_gesvd.c")
 
 # C++ ( __nv_bfloat16 is c++ object and it requires a C++ compiler)
 build_sample("mp_newton_schulz.cpp")

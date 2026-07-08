@@ -18,9 +18,62 @@
 
 #pragma once
 
+#include <nccl.h>
 #include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <mpi.h>
+
+static inline void sample_abort_failed_check(const char* file, int line, const char* condition)
+{
+    int mpi_initialized = 0;
+    int mpi_finalized   = 0;
+    int rank            = -1;
+
+    MPI_Initialized(&mpi_initialized);
+    MPI_Finalized(&mpi_finalized);
+    if (mpi_initialized && !mpi_finalized)
+    {
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    }
+
+    /* Fatal one-shot path: print from the rank that observed the failure.
+     * The rank-0-only convention belongs to normal PASS/FAIL summaries. */
+    fprintf(stderr, "[rank %d] %s:%d: sample check failed: %s\n", rank, file, line, condition);
+    fflush(stderr);
+
+    if (mpi_initialized && !mpi_finalized)
+    {
+        MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+    }
+    abort();
+}
+
+/* Sample-wide check macro. Requires an `int sample_ok` variable in the
+ * enclosing scope (every sample declares it at the top of main). The
+ * condition is evaluated exactly once; its result is folded into
+ * `sample_ok` for the final all-ranks PASS/FAIL reduction, and any failure
+ * aborts the whole MPI job immediately so no rank is left waiting in a
+ * later collective. */
+#define SAMPLE_ASSERT(condition)                                                                                       \
+    do                                                                                                                 \
+    {                                                                                                                  \
+        const int sample_assert_result = (condition);                                                                  \
+        sample_ok                      = sample_ok && sample_assert_result;                                            \
+        if (!sample_assert_result)                                                                                     \
+        {                                                                                                              \
+            sample_abort_failed_check(__FILE__, __LINE__, #condition);                                                 \
+        }                                                                                                              \
+    } while (0)
+
+static inline int sample_all_ranks_succeeded(int local_ok)
+{
+    int global_ok = 0;
+    local_ok      = local_ok ? 1 : 0;
+    MPI_Allreduce(&local_ok, &global_ok, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
+    return global_ok;
+}
 
 typedef struct _Options
 {
@@ -285,4 +338,33 @@ static inline int getLocalRank()
     MPI_Comm_free(&localComm);
 
     return localRank;
+}
+
+static inline ncclComm_t createNcclComm(int commSize, int rank)
+{
+    ncclUniqueId ncclId;
+    ncclResult_t ncclStat = ncclSuccess;
+    if (rank == 0)
+    {
+        ncclStat = ncclGetUniqueId(&ncclId);
+    }
+
+    int ncclIdStatus = (ncclStat == ncclSuccess) ? 0 : 1;
+    MPI_Bcast(&ncclIdStatus, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    if (ncclIdStatus != 0)
+    {
+        if (rank == 0)
+        {
+            fprintf(stderr, "Error: ncclGetUniqueId failed: %s\n", ncclGetErrorString(ncclStat));
+        }
+        MPI_Abort(MPI_COMM_WORLD, 1);
+        return NULL;
+    }
+
+    MPI_Bcast((void*)&ncclId, sizeof(ncclId), MPI_BYTE, 0, MPI_COMM_WORLD);
+
+    ncclComm_t ncclComm;
+    ncclStat = ncclCommInitRank(&ncclComm, commSize, ncclId, rank);
+    if (ncclStat != ncclSuccess) sample_abort_failed_check(__FILE__, __LINE__, "ncclStat == ncclSuccess");
+    return ncclComm;
 }

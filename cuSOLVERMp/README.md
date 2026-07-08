@@ -22,15 +22,25 @@ Distributed decompositions and linear system solutions
 
 [Dense matrix Symmetric Generalized Eigensolver](mp_sygvd.c)
 
+[Dense matrix symmetric-definite transformation](mp_sygst.c)
+
+[Dense matrix SYTRD + STEDC + ORMTR workflow](mp_sytrd_stedc_ormtr.c)
+
 [Dense matrix QR factorization](mp_geqrf.c)
 
 [Dense matrix QR factorization with explicit Q formation](mp_geqrf_orgqr.c)
+
+[Dense matrix QR reflector application](mp_ormqr.c)
 
 [Dense matrix QR factorization and linear system solve](mp_gels.c)
 
 [Dense matrix initialization (LASET)](mp_laset.c)
 
-[Newton Schulz Iterations](mp_newton_schulz.cpp)
+[Dense matrix polar decomposition](mp_polar.c)
+
+[Dense matrix Singular Value Decomposition (polar-based)](mp_gesvd.c)
+
+[Newton-Schulz Iterations](mp_newton_schulz.cpp)
 
 Examples are bootstrapped by MPI and use it to set up distributed data. Those examples are intended just to show how API is used and not for performance benchmarking. For same reasons process grid defaults to `2x1` in the examples, however you can change it using `-p` and `-q` command line parameters.
 
@@ -73,7 +83,7 @@ In these samples each process will use CUDA device ID equal to the local MPI ran
 
 ### Prerequisites
 
-cuSOLVERMp is distributed through [NVIDIA Developer Zone](https://developer.nvidia.com/cusolvermp), PyPI ([CUDA 12](https://pypi.org/project/nvidia-cusolvermp-cu12), [CUDA 13](https://pypi.org/project/nvidia-cusolvermp-cu13)), [Conda](https://anaconda.org/nvidia/cusolvermp) and [HPC SDK](https://developer.nvidia.com/hpc-sdk). cuSOLVERMp requires CUDA Toolkit and NCCL to be installed on the system. The samples require C++11 compatible compiler.
+cuSOLVERMp is distributed through [NVIDIA Developer Zone](https://developer.nvidia.com/cusolvermp), PyPI ([CUDA 12](https://pypi.org/project/nvidia-cusolvermp-cu12), [CUDA 13](https://pypi.org/project/nvidia-cusolvermp-cu13)), [Conda](https://anaconda.org/nvidia/cusolvermp) and [HPC SDK](https://developer.nvidia.com/hpc-sdk). cuSOLVERMp requires CUDA Toolkit, NCCL, and cuBLASMp to be installed on the system. The samples require a C++17 compatible compiler.
 
 ### Building
 
@@ -85,9 +95,10 @@ cd build
 export HPCXROOT=<path/to/hpcx>
 export CUSOLVERMP_HOME=<path/to/cusolvermp>
 export NCCL_HOME=<path/to/nccl>
+export CUBLASMP_HOME=<path/to/cublasmp>
 source ${HPCXROOT}/hpcx-mt-init-ompi.sh
 hpcx_load
-cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_ARCHITECTURES="75;80;90;100;120" -DCUSOLVERMP_INCLUDE_DIRECTORIES=${CUSOLVERMP_HOME}/include -DCUSOLVERMP_LINK_DIRECTORIES=${CUSOLVERMP_HOME}/lib/ -DNCCL_INCLUDE_DIR=${NCCL_HOME}/include -DNCCL_LIBRARIES=${NCCL_HOME}/lib/libnccl.so
+cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_ARCHITECTURES="75;80;90;100;120" -DCUSOLVERMP_INCLUDE_DIRECTORIES=${CUSOLVERMP_HOME}/include -DCUSOLVERMP_LINK_DIRECTORIES=${CUSOLVERMP_HOME}/lib/ -DNCCL_INCLUDE_DIR=${NCCL_HOME}/include -DNCCL_LIBRARIES=${NCCL_HOME}/lib/libnccl.so -DCUBLASMP_LINK_DIRECTORIES=${CUBLASMP_HOME}/lib -DCUBLASMP_LIBRARIES=${CUBLASMP_HOME}/lib/libcublasmp.so
 make -j
 ```
 
@@ -113,16 +124,34 @@ Run examples with mpi command and number of processes according to process grid 
 
 `mpirun -n 2 ./mp_sygvd`
 
+`mpirun -n 2 ./mp_sygst`
+
+`mpirun -n 4 ./mp_sygst -p 2 -q 2 -n 128 -mbA 32 -nbA 32 -mbB 32 -nbB 32`
+
+`mpirun -n 2 ./mp_sytrd_stedc_ormtr`
+
+`mpirun -n 4 ./mp_sytrd_stedc_ormtr -p 2 -q 2 -n 64 -mbA 16 -nbA 16 -mbQ 16 -nbQ 16`
+
 `mpirun -n 2 ./mp_geqrf`
 
 `mpirun -n 2 ./mp_geqrf_orgqr`
 
 `mpirun -n 4 ./mp_geqrf_orgqr -p 2 -q 2 -m 100 -n 50 -mbA 32 -nbA 32`
 
+`mpirun -n 2 ./mp_ormqr`
+
+`mpirun -n 4 ./mp_ormqr -p 2 -q 2 -m 128 -n 64 -nrhs 64 -mbA 32 -nbA 32 -mbB 32 -nbB 32`
+
 `mpirun -n 2 ./mp_gels`
 
 `mpirun -n 2 ./mp_laset`
 
 `mpirun -n 4 ./mp_laset -p 2 -q 2 -n 20 -mbA 4 -nbA 4`
+
+`mpirun -n 2 ./mp_polar`
+
+`mpirun -n 2 ./mp_gesvd`
+
+`mpirun -n 4 ./mp_gesvd -p 2 -q 2 -m 256 -n 128 -mbA 32 -nbA 32`
 
 `mpirun -n 2 ./mp_newton_schulz -p 2 -q 1 -m 16384 -n 2048`

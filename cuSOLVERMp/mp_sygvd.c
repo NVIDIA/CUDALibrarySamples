@@ -18,7 +18,6 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <assert.h>
 #include <time.h>
 #include <math.h>
 
@@ -91,6 +90,8 @@ int main(int argc, char* argv[])
     parse(&opts, argc, argv);
     validate(&opts);
 
+    int sample_ok = 1;
+
     /* Initialize MPI library */
     MPI_Init(NULL, NULL);
 
@@ -114,8 +115,8 @@ int main(int argc, char* argv[])
     const int64_t nbZ = opts.nbZ == 1 ? nbA : opts.nbZ;
 
     /* Define grid of processors */
-    const int                     numRowDevices = opts.p;
-    const int                     numColDevices = opts.q;
+    const int                     nprow = opts.p;
+    const int                     npcol = opts.q;
     const cusolverMpGridMapping_t gridLayout =
             (opts.grid_layout == 'C' || opts.grid_layout == 'c' ? CUSOLVERMP_GRID_MAPPING_COL_MAJOR
                                                                 : CUSOLVERMP_GRID_MAPPING_ROW_MAJOR);
@@ -128,7 +129,7 @@ int main(int argc, char* argv[])
     const uint32_t rsrcz = 0;
     const uint32_t csrcz = 0;
 
-    /* Get rank id and rank size of the comm. */
+    /* Get MPI rank id and communicator size. */
     int commSize, rank;
     MPI_Comm_size(MPI_COMM_WORLD, &commSize);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -146,19 +147,11 @@ int main(int argc, char* argv[])
         /* check using the same square block sizes for all */
         const bool use_same_square_blocksize =
                 ((mbA == nbA) && (mbA == mbB && mbA == nbB) && (mbA == mbZ && mbA == nbZ));
-        if (!use_same_square_blocksize)
-        {
-            fprintf(stderr, "Error: blocksizes are not the same square\n");
-            exit(1);
-        }
+        SAMPLE_ASSERT(use_same_square_blocksize && "SYGVD sample requires matching square A/B/Z block sizes");
 
         /* current implementation constraint using ia=1, ja=1 */
         const bool use_unit_global_offsets = ((ia == 1 && ja == 1) && (ib == 1 && jb == 1) && (iz == 1 && jz == 1));
-        if (!use_unit_global_offsets)
-        {
-            fprintf(stderr, "Error: current implementation does not support non-unit offsets i.e., ia, ja, etc.\n");
-            exit(1);
-        }
+        SAMPLE_ASSERT(use_unit_global_offsets && "SYGVD sample requires ia=ja=ib=jb=iz=jz=1");
     }
 
     /*
@@ -166,486 +159,466 @@ int main(int argc, char* argv[])
      */
     int         localRank = getLocalRank();
     cudaError_t cudaStat  = cudaSetDevice(localRank);
-    assert(cudaStat == cudaSuccess);
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
     cudaStat = cudaFree(0);
-    assert(cudaStat == cudaSuccess);
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
 
+    /* compute process grid index */
+    int myRowRank, myColRank;
+    if (gridLayout == CUSOLVERMP_GRID_MAPPING_COL_MAJOR)
     {
-        /* compute process grid index */
-        int myRowRank, myColRank;
-        if (gridLayout == CUSOLVERMP_GRID_MAPPING_COL_MAJOR)
-        {
-            myRowRank = rank % numRowDevices;
-            myColRank = rank / numRowDevices;
-        }
-        else
-        {
-            myRowRank = rank / numColDevices;
-            myColRank = rank % numColDevices;
-        }
-
-        /* Error codes */
-        cusolverStatus_t cusolverStat = CUSOLVER_STATUS_SUCCESS;
-        ncclResult_t     ncclStat     = ncclSuccess;
-        cudaError_t      cudaStat     = cudaSuccess;
-
-        cudaStat = cudaSetDevice(localRank);
-        assert(cudaStat == cudaSuccess);
-
-        /* Create communicator */
-        ncclUniqueId id;
-
-        if (rank == 0)
-        {
-            ncclGetUniqueId(&id);
-        }
-
-        MPI_Bcast((void*)&id, sizeof(id), MPI_BYTE, 0, MPI_COMM_WORLD);
-
-        ncclComm_t comm;
-        ncclStat = ncclCommInitRank(&comm, commSize, id, rank);
-        assert(ncclStat == ncclSuccess);
-
-        /* Create local stream */
-        cudaStream_t localStream = NULL;
-
-        cudaStat = cudaStreamCreate(&localStream);
-        assert(cudaStat == cudaSuccess);
-
-        /* Initialize cusolverMp library handle */
-        cusolverMpHandle_t cusolverMpHandle = NULL;
-
-        cusolverStat = cusolverMpCreate(&cusolverMpHandle, localRank, localStream);
-        assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
-
-        /* cusolverMp grid */
-        cusolverMpGrid_t grid = NULL;
-
-        /* cusolverMp matrix descriptors */
-        cusolverMpMatrixDescriptor_t descA = NULL;
-        cusolverMpMatrixDescriptor_t descB = NULL;
-        cusolverMpMatrixDescriptor_t descZ = NULL;
-
-        /* Distributed matrices */
-        void* d_A = NULL;
-        void* d_B = NULL;
-        void* d_D = NULL;
-        void* d_Z = NULL;
-
-        /* Distributed device workspace */
-        void* d_sygvdWork = NULL;
-
-        /* Distributed host workspace */
-        void* h_sygvdWork = NULL;
-
-        /* size of workspace on device */
-        size_t sygvdWorkspaceInBytesOnDevice = 0;
-
-        /* size of workspace on host */
-        size_t sygvdWorkspaceInBytesOnHost = 0;
-
-        /* error codes from cusolverMp (device) */
-        int* d_sygvdInfo = NULL;
-
-        /* error codes from cusolverMp (host) */
-        int h_sygvdInfo = 0;
-
-        /* =========================================== */
-        /*          Create inputs on master rank       */
-        /* =========================================== */
-
-        /* Single process per device */
-        assert((numRowDevices * numColDevices) <= commSize);
-
-        /* =========================================== */
-        /*          Create inputs on master rank       */
-        /* =========================================== */
-
-        /* current implementation requires A, B, and Z matrices are aligned each other i.e., use the same ia, ja */
-        const int64_t m_global = (ia - 1) + m;
-        const int64_t n_global = (ja - 1) + m;
-
-        double* h_A = NULL;
-        double* h_B = NULL;
-        double* h_D = NULL;
-        double* h_Z = NULL;
-
-        if (rank == 0)
-        {
-            /* allocate host workspace */
-            h_A = (double*)malloc(m_global * n_global * sizeof(double));
-            h_B = (double*)malloc(m_global * n_global * sizeof(double));
-            h_D = (double*)malloc(m_global * sizeof(double));
-            h_Z = (double*)malloc(m_global * n_global * sizeof(double));
-
-            /* clean the allocated memory */
-            memset(h_A, 0, m_global * n_global * sizeof(double));
-            memset(h_B, 0, m_global * n_global * sizeof(double));
-            memset(h_D, 0, m_global * sizeof(double));
-            memset(h_Z, 0, m_global * n_global * sizeof(double));
-
-            /* pointer offsets */
-            double* AA = &h_A[(ia - 1) + (ja - 1) * m_global];
-            double* BB = &h_B[(ib - 1) + (jb - 1) * m_global];
-
-            /* set A[ia:ia+n, ja:ja+n] = diagonal dominant random lower triangular matrix */
-            generate_diagonal_dominant_symmetric_matrix(m, AA, m_global);
-            generate_diagonal_dominant_symmetric_matrix(m, BB, m_global);
-
-            /* print input matrices */
-            if (verbose)
-            {
-                print_host_matrix(m_global, n_global, h_A, m_global, "Input matrix A");
-                print_host_matrix(m_global, n_global, h_B, m_global, "Input matrix B");
-            }
-        }
-
-        /* compute the local dimensions device buffers */
-        const int64_t m_local_A = cusolverMpNUMROC(m_global, mbA, myRowRank, rsrca, numRowDevices);
-        const int64_t n_local_A = cusolverMpNUMROC(n_global, nbA, myColRank, csrca, numColDevices);
-
-        const int64_t m_local_B = cusolverMpNUMROC(m_global, mbB, myRowRank, rsrcb, numRowDevices);
-        const int64_t n_local_B = cusolverMpNUMROC(n_global, nbB, myColRank, csrcb, numColDevices);
-
-        const int64_t m_local_Z = cusolverMpNUMROC(m_global, mbZ, myRowRank, rsrcz, numRowDevices);
-        const int64_t n_local_Z = cusolverMpNUMROC(n_global, nbZ, myColRank, csrcz, numColDevices);
-
-        /* Allocate local d_A, d_B, d_D, d_Z */
-        cudaStat = cudaMalloc((void**)&d_A, m_local_A * n_local_A * sizeof(double));
-        assert(cudaStat == cudaSuccess);
-
-        cudaStat = cudaMalloc((void**)&d_B, m_local_B * n_local_B * sizeof(double));
-        assert(cudaStat == cudaSuccess);
-
-        cudaStat = cudaMalloc((void**)&d_D, m_global * sizeof(double));
-        assert(cudaStat == cudaSuccess);
-
-        cudaStat = cudaMalloc((void**)&d_Z, m_local_Z * n_local_Z * sizeof(double));
-        assert(cudaStat == cudaSuccess);
-
-        /* =========================================== */
-        /*          CREATE GRID DESCRIPTORS            */
-        /* =========================================== */
-        cusolverStat =
-                cusolverMpCreateDeviceGrid(cusolverMpHandle, &grid, comm, numRowDevices, numColDevices, gridLayout);
-        assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
-
-        /* =========================================== */
-        /*        CREATE MATRIX DESCRIPTORS            */
-        /* =========================================== */
-        cusolverStat = cusolverMpCreateMatrixDesc(
-                &descA, grid, CUDA_R_64F, m_global, n_global, mbA, nbA, rsrca, csrca, m_local_A);
-        assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
-
-        cusolverStat = cusolverMpCreateMatrixDesc(
-                &descB, grid, CUDA_R_64F, m_global, n_global, mbB, nbB, rsrcb, csrcb, m_local_B);
-        assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
-
-        cusolverStat = cusolverMpCreateMatrixDesc(
-                &descZ, grid, CUDA_R_64F, m_global, n_global, mbZ, nbZ, rsrcz, csrcz, m_local_Z);
-        assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
-
-        /* =========================================== */
-        /*             ALLOCATE D_INFO                 */
-        /* =========================================== */
-
-        cudaStat = cudaMalloc((void**)&d_sygvdInfo, sizeof(int));
-        assert(cudaStat == cudaSuccess);
-
-        /* =========================================== */
-        /*                RESET D_INFO                 */
-        /* =========================================== */
-
-        cudaStat = cudaMemset(d_sygvdInfo, 0, sizeof(int));
-        assert(cudaStat == cudaSuccess);
-
-        /* =========================================== */
-        /*      SCATTER MATRICES A AND B FROM MASTER   */
-        /* =========================================== */
-        cusolverStat = cusolverMpMatrixScatterH2D(cusolverMpHandle,
-                                                  m_global,
-                                                  n_global,
-                                                  (void*)d_A,
-                                                  ia,
-                                                  ja,
-                                                  descA,
-                                                  0, /* root rank */
-                                                  (void*)h_A,
-                                                  m_global);
-        assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
-
-        /* sync wait for data to arrive to device */
-        cudaStat = cudaStreamSynchronize(localStream);
-        assert(cudaStat == cudaSuccess);
-
-        cusolverStat = cusolverMpMatrixScatterH2D(cusolverMpHandle,
-                                                  m_global,
-                                                  n_global,
-                                                  (void*)d_B,
-                                                  ib,
-                                                  jb,
-                                                  descB,
-                                                  0, /* root rank */
-                                                  (void*)h_B,
-                                                  m_global);
-        assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
-
-        /* sync wait for data to arrive to device */
-        cudaStat = cudaStreamSynchronize(localStream);
-        assert(cudaStat == cudaSuccess);
-
-        /* =========================================== */
-        /*     QUERY WORKSPACE SIZE FOR MP ROUTINES    */
-        /* =========================================== */
-
-        cusolverStat = cusolverMpSygvd_bufferSize(cusolverMpHandle,
-                                                  CUSOLVER_EIG_TYPE_1,
-                                                  CUSOLVER_EIG_MODE_VECTOR,
-                                                  CUBLAS_FILL_MODE_LOWER,
-                                                  m,
-                                                  ia,
-                                                  ja,
-                                                  descA,
-                                                  ib,
-                                                  jb,
-                                                  descB,
-                                                  iz,
-                                                  jz,
-                                                  descZ,
-                                                  CUDA_R_64F,
-                                                  &sygvdWorkspaceInBytesOnDevice,
-                                                  &sygvdWorkspaceInBytesOnHost);
-        assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
-
-        /* =========================================== */
-        /*         ALLOCATE Psygvd WORKSPACE            */
-        /* =========================================== */
-
-        cudaStat = cudaMalloc((void**)&d_sygvdWork, sygvdWorkspaceInBytesOnDevice);
-        assert(cudaStat == cudaSuccess);
-
-        h_sygvdWork = (void*)malloc(sygvdWorkspaceInBytesOnHost);
-        assert(h_sygvdWork != NULL);
-
-        /* sync wait for data to arrive to device */
-        cudaStat = cudaStreamSynchronize(localStream);
-        assert(cudaStat == cudaSuccess);
-
-        /* =========================================== */
-        /*                   CALL psygvd               */
-        /* =========================================== */
-
-        cusolverStat = cusolverMpSygvd(cusolverMpHandle,
-                                       CUSOLVER_EIG_TYPE_1,
-                                       CUSOLVER_EIG_MODE_VECTOR,
-                                       CUBLAS_FILL_MODE_LOWER,
-                                       m,
-                                       d_A,
-                                       ia,
-                                       ja,
-                                       descA,
-                                       d_B,
-                                       ib,
-                                       jb,
-                                       descB,
-                                       d_D,
-                                       d_Z,
-                                       iz,
-                                       jz,
-                                       descZ,
-                                       CUDA_R_64F,
-                                       d_sygvdWork,
-                                       sygvdWorkspaceInBytesOnDevice,
-                                       h_sygvdWork,
-                                       sygvdWorkspaceInBytesOnHost,
-                                       d_sygvdInfo);
-        assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
-
-        /* sync after cusolverMpsygvd */
-        cudaStat = cudaStreamSynchronize(localStream);
-        assert(cudaStat == cudaSuccess);
-
-        /* copy d_sygvdInfo to host */
-        cudaStat = cudaMemcpyAsync(&h_sygvdInfo, d_sygvdInfo, sizeof(int), cudaMemcpyDeviceToHost, localStream);
-        assert(cudaStat == cudaSuccess);
-
-        /* wait for d_sygvdInfo copy */
-        cudaStat = cudaStreamSynchronize(localStream);
-        assert(cudaStat == cudaSuccess);
-
-        /* check return value of cusolverMpsygvd */
-        assert(h_sygvdInfo == 0);
-
-        /* =================================== */
-        /*      GATHER MATRICES Z TO MASTER    */
-        /* =================================== */
-
-        /* copy eigen vectors to h_Z */
-        cusolverStat = cusolverMpMatrixGatherD2H(cusolverMpHandle,
-                                                 m_global,
-                                                 n_global,
-                                                 (void*)d_Z,
-                                                 iz,
-                                                 jz,
-                                                 descZ,
-                                                 0, /* master rank, destination */
-                                                 (void*)h_Z,
-                                                 m_global);
-        assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
-
-        if (rank == 0)
-        {
-            /* copy d_D to host */
-            cudaStat = cudaMemcpyAsync(h_D, d_D, m_global * sizeof(double), cudaMemcpyDeviceToHost, localStream);
-            assert(cudaStat == cudaSuccess);
-        }
-
-        /* sync wait for data to arrive to host */
-        cudaStat = cudaStreamSynchronize(localStream);
-        assert(cudaStat == cudaSuccess);
-
-        if (rank == 0)
-        {
-            if (verbose)
-            {
-                print_host_matrix(m_global, 1, h_D, m_global, "Output eigen values");
-                print_host_matrix(m_global, n_global, h_Z, m_global, "Output matrix eigen vectors");
-            }
-        }
-
-        /* =========================================== */
-        /*        CLEAN UP HOST WORKSPACE ON MASTER    */
-        /* =========================================== */
-        if (rank == 0)
-        {
-            if (h_A)
-            {
-                free(h_A);
-                h_A = NULL;
-            }
-
-            if (h_B)
-            {
-                free(h_B);
-                h_B = NULL;
-            }
-
-            if (h_D)
-            {
-                free(h_D);
-                h_D = NULL;
-            }
-
-            if (h_Z)
-            {
-                free(h_Z);
-                h_Z = NULL;
-            }
-
-            if (h_sygvdWork)
-            {
-                free(h_sygvdWork);
-                h_sygvdWork = NULL;
-            }
-        }
-
-        /* =========================================== */
-        /*           DESTROY MATRIX DESCRIPTORS        */
-        /* =========================================== */
-
-        cusolverStat = cusolverMpDestroyMatrixDesc(descA);
-        assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
-
-        cusolverStat = cusolverMpDestroyMatrixDesc(descB);
-        assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
-
-        cusolverStat = cusolverMpDestroyMatrixDesc(descZ);
-        assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
-
-        /* =========================================== */
-        /*             DESTROY MATRIX GRIDS            */
-        /* =========================================== */
-
-        cusolverStat = cusolverMpDestroyGrid(grid);
-        assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
-
-        /* =========================================== */
-        /*          DEALLOCATE DEVICE WORKSPACE        */
-        /* =========================================== */
-
-        if (d_A)
-        {
-            cudaStat = cudaFree(d_A);
-            assert(cudaStat == cudaSuccess);
-            d_A = NULL;
-        }
-
-        if (d_B)
-        {
-            cudaStat = cudaFree(d_B);
-            assert(cudaStat == cudaSuccess);
-            d_B = NULL;
-        }
-
-        if (d_D)
-        {
-            cudaStat = cudaFree(d_D);
-            assert(cudaStat == cudaSuccess);
-            d_D = NULL;
-        }
-
-        if (d_Z)
-        {
-            cudaStat = cudaFree(d_Z);
-            assert(cudaStat == cudaSuccess);
-            d_Z = NULL;
-        }
-
-        if (d_sygvdWork)
-        {
-            cudaStat = cudaFree(d_sygvdWork);
-            assert(cudaStat == cudaSuccess);
-            d_sygvdWork = NULL;
-        }
-
-        if (d_sygvdInfo)
-        {
-            cudaStat = cudaFree(d_sygvdInfo);
-            assert(cudaStat == cudaSuccess);
-            d_sygvdInfo = NULL;
-        }
-
-        /* =========================================== */
-        /*                      CLEANUP                */
-        /* =========================================== */
-
-        /* Destroy cusolverMp handle */
-        cusolverStat = cusolverMpDestroy(cusolverMpHandle);
-        assert(cusolverStat == CUSOLVER_STATUS_SUCCESS);
-
-        /* sync before ncclCommDestroy */
-        cudaStat = cudaStreamSynchronize(localStream);
-        assert(cudaStat == cudaSuccess);
-
-        /* destroy nccl communicator */
-        ncclStat = ncclCommDestroy(comm);
-        assert(ncclStat == ncclSuccess);
-
-        /* destroy user stream */
-        cudaStat = cudaStreamDestroy(localStream);
-        assert(cudaStat == cudaSuccess);
+        myRowRank = rank % nprow;
+        myColRank = rank / nprow;
     }
+    else
+    {
+        myRowRank = rank / npcol;
+        myColRank = rank % npcol;
+    }
+
+    /* Error codes */
+    cusolverStatus_t cusolverStat = CUSOLVER_STATUS_SUCCESS;
+    ncclResult_t     ncclStat     = ncclSuccess;
+
+    /* Create communicator */
+    ncclComm_t ncclComm = createNcclComm(commSize, rank);
+
+    /* Create local stream */
+    cudaStream_t stream = NULL;
+
+    cudaStat = cudaStreamCreate(&stream);
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
+
+    /* Initialize cusolverMp library handle */
+    cusolverMpHandle_t handle = NULL;
+
+    cusolverStat = cusolverMpCreate(&handle, localRank, stream);
+    SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
+
+    /* cusolverMp grid */
+    cusolverMpGrid_t grid = NULL;
+
+    /* cusolverMp matrix descriptors */
+    cusolverMpMatrixDescriptor_t descA = NULL;
+    cusolverMpMatrixDescriptor_t descB = NULL;
+    cusolverMpMatrixDescriptor_t descZ = NULL;
+
+    /* Distributed matrices */
+    void* d_A = NULL;
+    void* d_B = NULL;
+    void* d_D = NULL;
+    void* d_Z = NULL;
+
+    /* Distributed device workspace */
+    void* d_sygvdWork = NULL;
+
+    /* Distributed host workspace */
+    void* h_sygvdWork = NULL;
+
+    /* size of workspace on device */
+    size_t sygvdWorkspaceInBytesOnDevice = 0;
+
+    /* size of workspace on host */
+    size_t sygvdWorkspaceInBytesOnHost = 0;
+
+    /* error codes from cusolverMp (device) */
+    int* d_sygvdInfo = NULL;
+
+    /* error codes from cusolverMp (host) */
+    int h_sygvdInfo = 0;
+
+    /* =========================================== */
+    /*          Create inputs on master rank       */
+    /* =========================================== */
+
+    /* Single process per device */
+    SAMPLE_ASSERT((nprow * npcol) == commSize);
+
+    /* =========================================== */
+    /*          Create inputs on master rank       */
+    /* =========================================== */
+
+    /* current implementation requires A, B, and Z matrices are aligned each other i.e., use the same ia, ja */
+    const int64_t m_global = (ia - 1) + m;
+    const int64_t n_global = (ja - 1) + m;
+
+    double* h_A = NULL;
+    double* h_B = NULL;
+    double* h_D = NULL;
+    double* h_Z = NULL;
+
+    if (rank == 0)
+    {
+        /* allocate host workspace */
+        h_A = (double*)malloc(m_global * n_global * sizeof(double));
+        h_B = (double*)malloc(m_global * n_global * sizeof(double));
+        h_D = (double*)malloc(m_global * sizeof(double));
+        h_Z = (double*)malloc(m_global * n_global * sizeof(double));
+
+        /* clean the allocated memory */
+        memset(h_A, 0, m_global * n_global * sizeof(double));
+        memset(h_B, 0, m_global * n_global * sizeof(double));
+        memset(h_D, 0, m_global * sizeof(double));
+        memset(h_Z, 0, m_global * n_global * sizeof(double));
+
+        /* pointer offsets */
+        double* AA = &h_A[(ia - 1) + (ja - 1) * m_global];
+        double* BB = &h_B[(ib - 1) + (jb - 1) * m_global];
+
+        /* set A[ia:ia+n, ja:ja+n] = diagonal dominant random lower triangular matrix */
+        generate_diagonal_dominant_symmetric_matrix(m, AA, m_global);
+        generate_diagonal_dominant_symmetric_matrix(m, BB, m_global);
+
+        /* print input matrices */
+        if (verbose)
+        {
+            print_host_matrix(m_global, n_global, h_A, m_global, "Input matrix A");
+            print_host_matrix(m_global, n_global, h_B, m_global, "Input matrix B");
+        }
+    }
+
+    /* compute the local dimensions device buffers */
+    const int64_t m_local_A = cusolverMpNUMROC(m_global, mbA, myRowRank, rsrca, nprow);
+    const int64_t n_local_A = cusolverMpNUMROC(n_global, nbA, myColRank, csrca, npcol);
+
+    const int64_t m_local_B = cusolverMpNUMROC(m_global, mbB, myRowRank, rsrcb, nprow);
+    const int64_t n_local_B = cusolverMpNUMROC(n_global, nbB, myColRank, csrcb, npcol);
+
+    const int64_t m_local_Z = cusolverMpNUMROC(m_global, mbZ, myRowRank, rsrcz, nprow);
+    const int64_t n_local_Z = cusolverMpNUMROC(n_global, nbZ, myColRank, csrcz, npcol);
+
+    /* Allocate local d_A, d_B, d_D, d_Z */
+    cudaStat = cudaMalloc((void**)&d_A, m_local_A * n_local_A * sizeof(double));
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
+
+    cudaStat = cudaMalloc((void**)&d_B, m_local_B * n_local_B * sizeof(double));
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
+
+    cudaStat = cudaMalloc((void**)&d_D, m_global * sizeof(double));
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
+
+    cudaStat = cudaMalloc((void**)&d_Z, m_local_Z * n_local_Z * sizeof(double));
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
+
+    /* =========================================== */
+    /*          CREATE GRID DESCRIPTORS            */
+    /* =========================================== */
+    cusolverStat = cusolverMpCreateDeviceGrid(handle, &grid, ncclComm, nprow, npcol, gridLayout);
+    SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
+
+    /* =========================================== */
+    /*        CREATE MATRIX DESCRIPTORS            */
+    /* =========================================== */
+    cusolverStat =
+            cusolverMpCreateMatrixDesc(&descA, grid, CUDA_R_64F, m_global, n_global, mbA, nbA, rsrca, csrca, m_local_A);
+    SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
+
+    cusolverStat =
+            cusolverMpCreateMatrixDesc(&descB, grid, CUDA_R_64F, m_global, n_global, mbB, nbB, rsrcb, csrcb, m_local_B);
+    SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
+
+    cusolverStat =
+            cusolverMpCreateMatrixDesc(&descZ, grid, CUDA_R_64F, m_global, n_global, mbZ, nbZ, rsrcz, csrcz, m_local_Z);
+    SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
+
+    /* =========================================== */
+    /*             ALLOCATE D_INFO                 */
+    /* =========================================== */
+
+    cudaStat = cudaMalloc((void**)&d_sygvdInfo, sizeof(int));
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
+
+    /* =========================================== */
+    /*                RESET D_INFO                 */
+    /* =========================================== */
+
+    cudaStat = cudaMemset(d_sygvdInfo, 0, sizeof(int));
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
+
+    /* =========================================== */
+    /*      SCATTER MATRICES A AND B FROM MASTER   */
+    /* =========================================== */
+    cusolverStat = cusolverMpMatrixScatterH2D(handle,
+                                              m_global,
+                                              n_global,
+                                              (void*)d_A,
+                                              ia,
+                                              ja,
+                                              descA,
+                                              0, /* root rank */
+                                              (void*)h_A,
+                                              m_global);
+    SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
+
+    /* sync wait for data to arrive to device */
+    cudaStat = cudaStreamSynchronize(stream);
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
+
+    cusolverStat = cusolverMpMatrixScatterH2D(handle,
+                                              m_global,
+                                              n_global,
+                                              (void*)d_B,
+                                              ib,
+                                              jb,
+                                              descB,
+                                              0, /* root rank */
+                                              (void*)h_B,
+                                              m_global);
+    SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
+
+    /* sync wait for data to arrive to device */
+    cudaStat = cudaStreamSynchronize(stream);
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
+
+    /* =========================================== */
+    /*     QUERY WORKSPACE SIZE FOR MP ROUTINES    */
+    /* =========================================== */
+
+    cusolverStat = cusolverMpSygvd_bufferSize(handle,
+                                              CUSOLVER_EIG_TYPE_1,
+                                              CUSOLVER_EIG_MODE_VECTOR,
+                                              CUBLAS_FILL_MODE_LOWER,
+                                              m,
+                                              ia,
+                                              ja,
+                                              descA,
+                                              ib,
+                                              jb,
+                                              descB,
+                                              iz,
+                                              jz,
+                                              descZ,
+                                              CUDA_R_64F,
+                                              &sygvdWorkspaceInBytesOnDevice,
+                                              &sygvdWorkspaceInBytesOnHost);
+    SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
+
+    /* =========================================== */
+    /*         ALLOCATE Psygvd WORKSPACE            */
+    /* =========================================== */
+
+    cudaStat = cudaMalloc((void**)&d_sygvdWork, sygvdWorkspaceInBytesOnDevice);
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
+
+    h_sygvdWork = (void*)malloc(sygvdWorkspaceInBytesOnHost);
+    SAMPLE_ASSERT(h_sygvdWork != NULL);
+
+    /* sync wait for data to arrive to device */
+    cudaStat = cudaStreamSynchronize(stream);
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
+
+    /* =========================================== */
+    /*                   CALL psygvd               */
+    /* =========================================== */
+
+    cusolverStat = cusolverMpSygvd(handle,
+                                   CUSOLVER_EIG_TYPE_1,
+                                   CUSOLVER_EIG_MODE_VECTOR,
+                                   CUBLAS_FILL_MODE_LOWER,
+                                   m,
+                                   d_A,
+                                   ia,
+                                   ja,
+                                   descA,
+                                   d_B,
+                                   ib,
+                                   jb,
+                                   descB,
+                                   d_D,
+                                   d_Z,
+                                   iz,
+                                   jz,
+                                   descZ,
+                                   CUDA_R_64F,
+                                   d_sygvdWork,
+                                   sygvdWorkspaceInBytesOnDevice,
+                                   h_sygvdWork,
+                                   sygvdWorkspaceInBytesOnHost,
+                                   d_sygvdInfo);
+    SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
+
+    /* sync after cusolverMpsygvd */
+    cudaStat = cudaStreamSynchronize(stream);
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
+
+    /* check return value of cusolverMpsygvd */
+    cudaStat = cudaMemcpyAsync(&h_sygvdInfo, d_sygvdInfo, sizeof(int), cudaMemcpyDeviceToHost, stream);
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
+    cudaStat = cudaStreamSynchronize(stream);
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
+    SAMPLE_ASSERT(h_sygvdInfo == 0);
+
+    /* =================================== */
+    /*      GATHER MATRICES Z TO MASTER    */
+    /* =================================== */
+
+    /* copy eigen vectors to h_Z */
+    cusolverStat = cusolverMpMatrixGatherD2H(handle,
+                                             m_global,
+                                             n_global,
+                                             (void*)d_Z,
+                                             iz,
+                                             jz,
+                                             descZ,
+                                             0, /* master rank, destination */
+                                             (void*)h_Z,
+                                             m_global);
+    SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
+
+    if (rank == 0)
+    {
+        /* copy d_D to host */
+        cudaStat = cudaMemcpyAsync(h_D, d_D, m_global * sizeof(double), cudaMemcpyDeviceToHost, stream);
+        SAMPLE_ASSERT(cudaStat == cudaSuccess);
+    }
+
+    /* sync wait for data to arrive to host */
+    cudaStat = cudaStreamSynchronize(stream);
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
+
+    if (rank == 0)
+    {
+        if (verbose)
+        {
+            print_host_matrix(m_global, 1, h_D, m_global, "Output eigen values");
+            print_host_matrix(m_global, n_global, h_Z, m_global, "Output matrix eigen vectors");
+        }
+    }
+
+    /* =========================================== */
+    /*        CLEAN UP HOST MATRICES ON MASTER     */
+    /* =========================================== */
+    if (rank == 0)
+    {
+        if (h_A)
+        {
+            free(h_A);
+            h_A = NULL;
+        }
+
+        if (h_B)
+        {
+            free(h_B);
+            h_B = NULL;
+        }
+
+        if (h_D)
+        {
+            free(h_D);
+            h_D = NULL;
+        }
+
+        if (h_Z)
+        {
+            free(h_Z);
+            h_Z = NULL;
+        }
+    }
+
+    /* The SYGVD host workspace is allocated independently on every rank. */
+    if (h_sygvdWork)
+    {
+        free(h_sygvdWork);
+        h_sygvdWork = NULL;
+    }
+
+    /* =========================================== */
+    /*           DESTROY MATRIX DESCRIPTORS        */
+    /* =========================================== */
+
+    cusolverStat = cusolverMpDestroyMatrixDesc(descA);
+    SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
+
+    cusolverStat = cusolverMpDestroyMatrixDesc(descB);
+    SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
+
+    cusolverStat = cusolverMpDestroyMatrixDesc(descZ);
+    SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
+
+    /* =========================================== */
+    /*             DESTROY MATRIX GRIDS            */
+    /* =========================================== */
+
+    cusolverStat = cusolverMpDestroyGrid(grid);
+    SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
+
+    /* =========================================== */
+    /*          DEALLOCATE DEVICE WORKSPACE        */
+    /* =========================================== */
+
+    if (d_A)
+    {
+        cudaStat = cudaFree(d_A);
+        SAMPLE_ASSERT(cudaStat == cudaSuccess);
+        d_A = NULL;
+    }
+
+    if (d_B)
+    {
+        cudaStat = cudaFree(d_B);
+        SAMPLE_ASSERT(cudaStat == cudaSuccess);
+        d_B = NULL;
+    }
+
+    if (d_D)
+    {
+        cudaStat = cudaFree(d_D);
+        SAMPLE_ASSERT(cudaStat == cudaSuccess);
+        d_D = NULL;
+    }
+
+    if (d_Z)
+    {
+        cudaStat = cudaFree(d_Z);
+        SAMPLE_ASSERT(cudaStat == cudaSuccess);
+        d_Z = NULL;
+    }
+
+    if (d_sygvdWork)
+    {
+        cudaStat = cudaFree(d_sygvdWork);
+        SAMPLE_ASSERT(cudaStat == cudaSuccess);
+        d_sygvdWork = NULL;
+    }
+
+    if (d_sygvdInfo)
+    {
+        cudaStat = cudaFree(d_sygvdInfo);
+        SAMPLE_ASSERT(cudaStat == cudaSuccess);
+        d_sygvdInfo = NULL;
+    }
+
+    /* =========================================== */
+    /*                      CLEANUP                */
+    /* =========================================== */
+
+    /* Destroy cusolverMp handle */
+    cusolverStat = cusolverMpDestroy(handle);
+    SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
+
+    /* sync before ncclCommDestroy */
+    cudaStat = cudaStreamSynchronize(stream);
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
+
+    /* destroy nccl communicator */
+    ncclStat = ncclCommDestroy(ncclComm);
+    SAMPLE_ASSERT(ncclStat == ncclSuccess);
+
+    /* destroy user stream */
+    cudaStat = cudaStreamDestroy(stream);
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
 
     /* MPI barrier before MPI_Finalize */
     MPI_Barrier(MPI_COMM_WORLD);
+    sample_ok = sample_all_ranks_succeeded(sample_ok);
 
     /* Finalize MPI environment */
     MPI_Finalize();
 
     if (rank == 0)
     {
-        printf("[SUCCEEDED]\n");
+        printf("%s\n", sample_ok ? "[SUCCEEDED]" : "[FAILED]");
     }
 
-    return 0;
+    return sample_ok ? 0 : 1;
 }
