@@ -15,7 +15,7 @@
 
 cmake_minimum_required(VERSION 3.17 FATAL_ERROR)
 
-project(nvtiff_decode_encode LANGUAGES CXX)
+project(nvtiff_image_info LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -35,11 +35,12 @@ if(NOT NVTIFF_LIB)
 endif()
 message(STATUS "Using nvTIFF library: ${NVTIFF_LIB}")
 
-add_executable(nvtiff_decode_encode nvtiff_decode_encode.cpp)
-target_include_directories(nvtiff_decode_encode PRIVATE
+add_executable(nvtiff_image_info nvtiff_image_info.cpp)
+target_include_directories(nvtiff_image_info PRIVATE
     ${NVTIFF_PATH}/include
+    ${CUDAToolkit_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}/../common)
-target_link_libraries(nvtiff_decode_encode PRIVATE ${NVTIFF_LIB} CUDA::cudart)
+target_link_libraries(nvtiff_image_info PRIVATE ${NVTIFF_LIB})
 if(UNIX)
-    target_compile_options(nvtiff_decode_encode PRIVATE -Wall)
+    target_compile_options(nvtiff_image_info PRIVATE -Wall)
 endif()
