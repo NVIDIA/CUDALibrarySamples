@@ -1,4 +1,19 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # Run all cuEST C API examples.
 #
 # Usage:
@@ -102,20 +117,30 @@ run examples/1_basic_data_structures/xc_grid_general/xc_grid_general      "$XYZ"
 # 2_one_electron_integrals
 run examples/2_one_electron_integrals/one_electron_integrals/one_electron_integrals  "$XYZ" "$GBS"
 run examples/2_one_electron_integrals/one_electron_gradients/one_electron_gradients  "$XYZ" "$GBS"
+run examples/2_one_electron_integrals/property_integrals/property_integrals          "$XYZ" "$GBS"
+run examples/2_one_electron_integrals/property_gradients/property_gradients          "$XYZ" "$GBS"
 
 # 3_density_fitting
 run examples/3_density_fitting/core_df_jk/core_df_jk                          "$XYZ" "$GBS" "$AUX_GBS"
 run examples/3_density_fitting/core_df_jk_gradients/core_df_jk_gradients      "$XYZ" "$GBS" "$AUX_GBS"
+run examples/3_density_fitting/df_mo_integrals/df_mo_integrals                "$XYZ" "$GBS" "$AUX_GBS"
+run examples/3_density_fitting/nonsymmetric_core_df_k/nonsymmetric_core_df_k  "$XYZ" "$GBS" "$AUX_GBS"
 
 # 4_exchange_correlation
 run examples/4_exchange_correlation/local_xc_potential/local_xc_potential      "$XYZ" "$GBS"
 run examples/4_exchange_correlation/local_xc_gradient/local_xc_gradient        "$XYZ" "$GBS"
 run examples/4_exchange_correlation/nonlocal_xc_potential/nonlocal_xc_potential "$XYZ" "$GBS"
 run examples/4_exchange_correlation/nonlocal_xc_gradient/nonlocal_xc_gradient  "$XYZ" "$GBS"
+run examples/4_exchange_correlation/advanced_local_xc_potential/advanced_local_xc_potential "$XYZ" "$GBS"
+run examples/4_exchange_correlation/advanced_local_xc_gradient/advanced_local_xc_gradient   "$XYZ" "$GBS"
 
 # 5_effective_core_potentials
 run examples/5_effective_core_potentials/ecp_integrals/ecp_integrals  "$XYZ_ECP" "$GBS" "$ECP_GBS"
 run examples/5_effective_core_potentials/ecp_gradients/ecp_gradients  "$XYZ_ECP" "$GBS" "$ECP_GBS"
+
+# 6_pcm
+run examples/6_pcm/pcm_potential/pcm_potential  "$XYZ" "$GBS"
+run examples/6_pcm/pcm_gradients/pcm_gradients  "$XYZ" "$GBS"
 
 echo "============================================================"
 echo " Results: $PASS passed, $FAIL failed, $SKIP skipped"

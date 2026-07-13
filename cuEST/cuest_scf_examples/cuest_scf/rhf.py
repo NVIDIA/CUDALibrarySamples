@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,6 +19,7 @@ from .memoized_property import memoized_property
 
 from .molecule import Molecule
 from .ao_basis import AOBasis
+from .ecp_basis import ECPBasis
 from .sad_guess import SADGuess
 from .diis import DIIS
 from .xc_functionals import XCFunctionalInfo
@@ -27,6 +28,7 @@ from .cuda_utility import CudaUtility
 
 from .cuest_handle import CuestHandle
 from .cuest_ao_basis import CuestAOBasis
+from .cuest_ecp_basis import CuestECPBasis
 from .cuest_molecular_grid import CuestMolecularGrid
 from .cuest_ao_pair_list import CuestAOPairList
 from .cuest_oe_int_plan import CuestOEIntPlan
@@ -37,9 +39,13 @@ from .cuest_xc_int_plan import CuestXCIntPlan
 from .cuest_xc_int_compute import CuestXCIntCompute
 from .cuest_pcm_int_plan import CuestPCMIntPlan
 from .cuest_pcm_int_compute import CuestPCMIntCompute
+from .cuest_ecp_int_plan import CuestECPIntPlan
+from .cuest_ecp_int_compute import CuestECPIntCompute
 
 from .gpu_matrix import GPUMatrix
 from .gpu_matrix_utility import GPUMatrixUtility
+
+from .timer import Timer
 
 import time
 
@@ -55,10 +61,13 @@ class RHF(object):
         primary : AOBasis,
         auxiliary : AOBasis,
         minao : AOBasis,
+        ecp_basis : ECPBasis = None, 
         primary_name : str = None,
         auxiliary_name : str = None,
         minao_name : str = None,
+        ecp_basis_name : str = None, 
         print_level : int = 2,
+        print_timings : bool = True,
         threshold_pq : float = 1.0E-12,
         threshold_canonical : float = 1.0E-6,
         df_fitting_eigenvalue_cutoff : float = 1.0e-12,
@@ -66,10 +75,10 @@ class RHF(object):
         maxiter : int = 100,
         g_convergence : float = 1.0E-6,
         xc_threshold_collocation : float = 1.0e-18,
-        xc_grid_level : int = 2,
+        xc_grid_level : int | tuple[int, int] = 2,
         xc_grid_family : str = "GRID",
         nlc_threshold_collocation : float = 1.0e-18,
-        nlc_grid_level : int = 1,
+        nlc_grid_level : int | tuple[int, int] = 1,
         nlc_grid_family : str = "GRID",
         dfk_int8_slice_count_start : int = 6,
         dfk_int8_modulus_count_start : int = 5,
@@ -81,6 +90,8 @@ class RHF(object):
         pcm_convergence_tol: float = 1e-10,
         pcm_num_angular_points_per_hydrogen_atom: int = 110,
         pcm_num_angular_points_per_heavy_atom: int = 194,
+        benchmark: bool = False,
+        level_shift: float = 0.0,
         ):
 
 
@@ -94,10 +105,12 @@ class RHF(object):
         self.primary = primary
         self.auxiliary = auxiliary
         self.minao = minao
+        self.ecp_basis = ecp_basis
 
         self.primary_name = primary_name
         self.auxiliary_name = auxiliary_name
         self.minao_name = minao_name
+        self.ecp_basis_name = ecp_basis_name
 
         self.xc_threshold_collocation = xc_threshold_collocation
         self.xc_grid_level = xc_grid_level
@@ -108,6 +121,7 @@ class RHF(object):
         self.nlc_grid_family = nlc_grid_family
 
         self.print_level = print_level
+        self.print_timings = print_timings
 
         self.threshold_pq = threshold_pq
         self.threshold_canonical = threshold_canonical
@@ -123,29 +137,55 @@ class RHF(object):
         self.pcm_cutoff = pcm_cutoff
         self.pcm_convergence_tol = pcm_convergence_tol
         self.pcm_q = None
+        self.benchmark = benchmark
+        self.level_shift = level_shift
 
         self.dfk_int8_slice_count_start = dfk_int8_slice_count_start
         self.dfk_int8_modulus_count_start = dfk_int8_modulus_count_start
         self.dfk_int8_slice_count_end = dfk_int8_slice_count_end
         self.dfk_int8_modulus_count_end = dfk_int8_modulus_count_end
 
+        # See if we're activating PCM
+        self.do_pcm = self.pcm_epsilon != 1.0
+        if self.pcm_epsilon < 1.0:
+            raise RuntimeError('pcm_epsilon < 1.0')
+
+        # See if we have ECPs
+        self.do_ecp = False
+        if self.ecp_basis is not None:
+            self.do_ecp = self.ecp_basis.is_active
+
         if primary.natom != molecule.natom: raise RuntimeError('primary.natom != molecule.natom')
         if auxiliary.natom != molecule.natom: raise RuntimeError('auxiliary.natom != molecule.natom')
         if minao.natom != molecule.natom: raise RuntimeError('minao.natom != molecule.natom')
+        if self.do_ecp:
+            if ecp_basis.natom != molecule.natom: raise RuntimeError('ecp_basis.natom != molecule.natom')
 
         self.sizes = {}
         self.scalars = {}
         self.tensors = {}
 
+        self.timer = Timer()
+
         self.is_solved = False
         self.is_converged = False
 
         self.gpu_xyz = GPUMatrix.from_numpy(self.molecule.xyz)
-        self.gpu_Z = GPUMatrix.from_numpy(self.molecule.Z.reshape(-1,1))
-        GPUMatrixUtility.scale(
-            matrix=self.gpu_Z,
-            scale=-1.0,
+
+        # Store the effective Z if ECPs are present real Z otherwise
+        self.gpu_Z = GPUMatrix.from_numpy(self.molecule.Z.reshape(-1, 1).astype(np.float64))
+        GPUMatrixUtility.dscal(
+            alpha=-1.0, 
+            x=self.gpu_Z,
             )
+        if self.do_ecp:
+            nelectron = np.array([atom.nelectron for atom in self.ecp_basis.atoms], dtype=np.float64).reshape(-1, 1)
+            GPUMatrixUtility.daxpy(
+                alpha=1.0, 
+                x=GPUMatrix.from_numpy(nelectron), 
+                y=self.gpu_Z,
+                )
+        self.Zeff = self.gpu_Z.to_numpy()
 
     # => Cuest Objects <= #
 
@@ -162,6 +202,16 @@ class RHF(object):
             handle=self.cuest_handle, 
             basis=self.auxiliary,
             )
+
+    @memoized_property
+    def cuest_ecp_basis(self):
+        if self.do_ecp:
+            return CuestECPBasis(
+                handle=self.cuest_handle, 
+                ecp_basis=self.ecp_basis,
+                )
+        else:
+            return None
 
     @memoized_property
     def cuest_xc_grid(self):
@@ -208,6 +258,8 @@ class RHF(object):
             auxiliary=self.cuest_auxiliary,
             ao_pair_list=self.cuest_ao_pair_list,
             exchange_scale=self.cuest_xc_int_plan.exchange_scale,
+            lrc_exchange_scale=self.cuest_xc_int_plan.lrc_exchange_scale,
+            lrc_omega=self.cuest_xc_int_plan.lrc_omega,
             df_fitting_eigenvalue_cutoff=self.df_fitting_eigenvalue_cutoff,
             )
 
@@ -233,9 +285,7 @@ class RHF(object):
 
     @memoized_property
     def cuest_pcm_int_plan(self):
-        if self.pcm_epsilon<=1.0:
-            return None
-        else:
+        if self.do_pcm:
             return CuestPCMIntPlan(
                 handle=self.cuest_handle,
                 intPlan=self.cuest_oe_int_plan,
@@ -244,15 +294,26 @@ class RHF(object):
                 epsilon=self.pcm_epsilon,
                 x_prefactor=self.pcm_x_prefactor,
                 Ns=self.molecule.N,
-                effective_nuclear_charges=self.molecule.Z,
+                effective_nuclear_charges=-1.0 * self.Zeff,
                 cutoff=self.pcm_cutoff,
                 convergence_tol=self.pcm_convergence_tol,
                 ) 
+        else:
+            return None
 
-    @property
-    def do_pcm(self):
-        return self.cuest_pcm_int_plan is not None
-
+    @memoized_property
+    def cuest_ecp_int_plan(self):
+        if self.do_ecp:
+            return CuestECPIntPlan(
+                handle=self.cuest_handle,
+                basis=self.cuest_primary,
+                xyzs=self.molecule.xyz,
+                numECPAtoms=self.cuest_ecp_basis.num_active_ecp,
+                activeIndices=self.cuest_ecp_basis.ecp_indices,
+                activeAtoms=self.cuest_ecp_basis.ecp_atoms,
+                ) 
+        else:
+            return None
 
     # => Integrals <= #
 
@@ -309,6 +370,48 @@ class RHF(object):
 
         return V
 
+    def compute_dipole(self):
+
+        origin = [0.0,0.0,0.0]
+        orders = [0,0,0]
+
+        M = []
+        for n in range(3):
+            Mtemp = GPUMatrix(
+                nrows=self.primary.nao,
+                ncols=self.primary.nao,
+                )
+
+            orders[n] = 1
+            CuestOEIntCompute.multipole(
+                handle=self.cuest_handle,
+                oe_int_plan=self.cuest_oe_int_plan,
+                multipoleOrder=orders,
+                origin=origin,
+                Mptr=Mtemp.pointer,
+                )
+            orders[n] = 0
+
+            M.append(Mtemp)
+
+        return M
+    
+    def compute_ecp_potential(self):
+
+        Vecp = GPUMatrix(
+            nrows=self.primary.nao,
+            ncols=self.primary.nao,
+            dtype=np.double,
+            )
+
+        CuestECPIntCompute.compute_ecp_potential(
+            handle=self.cuest_handle,
+            ecp_int_plan=self.cuest_ecp_int_plan,
+            Vptr=Vecp.pointer,
+            )
+
+        return Vecp
+
     def compute_coulomb(
         self,   
         D,
@@ -338,7 +441,7 @@ class RHF(object):
             dtype=np.double,
             )
 
-        if self.cuest_df_int_plan.exchange_scale == 0.0:
+        if self.cuest_df_int_plan.exchange_scale == 0.0 and self.cuest_df_int_plan.lrc_exchange_scale == 0.0:
             K.zero()
             return K
 
@@ -353,6 +456,90 @@ class RHF(object):
             )
 
         return K
+
+    def compute_nonsymmetric_exchange(
+        self,   
+        Cocc_left : GPUMatrix,
+        Coccs_right : list,
+        ):
+
+        nocc = Cocc_left.shape[0]
+        nao = self.primary.nao
+        nRight = len(Coccs_right)
+
+        # Return zeros if no exchange to calculate
+        if self.cuest_df_int_plan.exchange_scale == 0.0 and self.cuest_df_int_plan.lrc_exchange_scale == 0.0:
+            Kout = []
+            for i in range(nRight):
+                Ktemp = GPUMatrix(
+                    nrows=nao,
+                    ncols=nao,
+                    dtype=np.double,
+                    )
+                Ktemp.zero()
+                Kout.append(Ktemp)
+            return Kout
+
+        for i, C in enumerate(Coccs_right):
+            if C.shape != (nocc, nao):
+                raise ValueError(
+                    f'Coccs_right[{i}] has shape {C.shape}, expected ({nocc}, {nao})'
+                    )
+
+        # Pack right coefficients into a single device array
+        Cocc_right_concatenated = GPUMatrix(
+            nrows=nRight,
+            ncols=nocc * nao,
+            dtype=np.double,
+            )
+        for i in range(nRight):
+            GPUMatrixUtility.dcopy(
+                n=nocc * nao,
+                x=Coccs_right[i],
+                offx=0,
+                incx=1,
+                y=Cocc_right_concatenated,
+                offy=i * nocc * nao,
+                incy=1,
+                )
+
+        # Device array to recieve the computed K matrices
+        K_out_concatenated = GPUMatrix(
+            nrows=nRight,
+            ncols=nao * nao,
+            dtype=np.double,
+            )
+
+        # Compute the exchange matrices
+        CuestDFIntCompute.nonsymmetric_exchange(
+            handle=self.cuest_handle,
+            df_int_plan=self.cuest_df_int_plan,
+            nRight=nRight,
+            nocc=nocc,
+            Cocc_left_ptr=Cocc_left.pointer,
+            Cocc_right_ptrs=Cocc_right_concatenated.pointer,
+            Kptrs=K_out_concatenated.pointer,
+            )
+
+        # Unpack the result into a list of K matrices
+        Kout = []
+        for i in range(nRight):
+            Kout.append(GPUMatrix(
+                nrows=nao,
+                ncols=nao,
+                dtype=np.double,
+                ))
+            GPUMatrixUtility.dcopy(
+                n=nao * nao,
+                x=K_out_concatenated,
+                offx=i * nao * nao,
+                incx=1,
+                y=Kout[i],
+                offy=0,
+                incy=1,
+                )
+
+        return Kout
 
     def compute_local_exchange_correlation(
         self,   
@@ -539,6 +726,26 @@ class RHF(object):
 
         return Gbasis
 
+    def compute_ecp_gradient(
+        self, 
+        D,
+        ):
+        
+        Gecp = GPUMatrix(
+            nrows=self.primary.natom,
+            ncols=3,
+            dtype=np.double,
+            )
+
+        CuestECPIntCompute.compute_ecp_gradient(
+            handle=self.cuest_handle,
+            ecp_int_plan=self.cuest_ecp_int_plan,
+            Dptr=D.pointer,
+            Gptr=Gecp.pointer,
+            )
+
+        return Gecp
+
     def compute_coulomb_and_exchange_gradient(
         self,   
         *,
@@ -623,48 +830,103 @@ class RHF(object):
     
     def solve(self):
 
+        self.timer.start(key='solve', stream_handle=self.cuest_handle.stream_handle)
+
         self.is_solved = False
         self.is_converged = False
-
-        self.header()
 
         # Plan initializations (to cleanly separate from iterations).  The orthogonalization
         # calls for S, so most of these are automatically instantiated in that routine.  Build
         # them here to get an idea of how long they take.
+
+        # These functions have no dependencies
+        self.timer.start(key='primary_basis', stream_handle=self.cuest_handle.stream_handle)
+        _ = self.cuest_primary
+        self.timer.stop(key='primary_basis', stream_handle=self.cuest_handle.stream_handle)
+
+        self.timer.start(key='auxiliary_basis', stream_handle=self.cuest_handle.stream_handle)
+        _ = self.cuest_auxiliary
+        self.timer.stop(key='auxiliary_basis', stream_handle=self.cuest_handle.stream_handle)
+
+        self.timer.start(key='xc_grid', stream_handle=self.cuest_handle.stream_handle)
+        _ = self.cuest_xc_grid
+        self.timer.stop(key='xc_grid', stream_handle=self.cuest_handle.stream_handle)
+
+        self.timer.start(key='nlc_grid', stream_handle=self.cuest_handle.stream_handle)
+        _ = self.cuest_nlc_grid
+        self.timer.stop(key='nlc_grid', stream_handle=self.cuest_handle.stream_handle)
+
+        # Depends on cuest_primary
+        self.timer.start(key='ao_pair_list', stream_handle=self.cuest_handle.stream_handle)
         _ = self.cuest_ao_pair_list
+        self.timer.stop(key='ao_pair_list', stream_handle=self.cuest_handle.stream_handle)
 
+        # Depends on cuest_primary and cuest_ao_pair_list
+        self.timer.start(key='oe_int_plan', stream_handle=self.cuest_handle.stream_handle)
         _ = self.cuest_oe_int_plan
+        self.timer.stop(key='oe_int_plan', stream_handle=self.cuest_handle.stream_handle)
 
+        # Depends on cuest_primary and cuest_xc_grid
+        self.timer.start(key='xc_int_plan', stream_handle=self.cuest_handle.stream_handle)
         _ = self.cuest_xc_int_plan
+        self.timer.stop(key='xc_int_plan', stream_handle=self.cuest_handle.stream_handle)
 
-        start = time.time()
+        # Depends on cuest_primary, cuest_auxiliary, cuest_ao_pair_list, and cuest_xc_int_plan
+        self.timer.start(key='df_int_plan', stream_handle=self.cuest_handle.stream_handle)
         _ = self.cuest_df_int_plan
-        stop = time.time()
-        
+        self.timer.stop(key='df_int_plan', stream_handle=self.cuest_handle.stream_handle)
+
+        # Depends on cuest_primary and cuest_nlc_grid
+        self.timer.start(key='nlc_int_plan', stream_handle=self.cuest_handle.stream_handle)
         _ = self.cuest_nlc_int_plan
+        self.timer.stop(key='nlc_int_plan', stream_handle=self.cuest_handle.stream_handle)
 
+        # Depends on cuest_oe_int_plan
+        self.timer.start(key='pcm_int_plan', stream_handle=self.cuest_handle.stream_handle)
         _ = self.cuest_pcm_int_plan
+        self.timer.stop(key='pcm_int_plan', stream_handle=self.cuest_handle.stream_handle)
 
+        self.header()
+
+        if self.benchmark:
+            self.timer.start(key="init cuest_ecp_int_plan", stream_handle=self.cuest_handle.stream_handle)
+        _ = self.cuest_ecp_int_plan
+        if self.benchmark:
+            self.timer.stop(key="init cuest_ecp_int_plan", stream_handle=self.cuest_handle.stream_handle)
+
+        if self.benchmark:
+            self.timer.start(key="compute_guess", stream_handle=self.cuest_handle.stream_handle)
         self.compute_guess()
+        if self.benchmark:
+            self.timer.stop(key="compute_guess", stream_handle=self.cuest_handle.stream_handle)
 
+        self.timer.start(key='orthogonalize', stream_handle=self.cuest_handle.stream_handle)
         self.compute_orthogonalization()
+        self.timer.stop(key='orthogonalize', stream_handle=self.cuest_handle.stream_handle)
 
+        if self.benchmark:
+            self.timer.start(key="occupations", stream_handle=self.cuest_handle.stream_handle)
         self.compute_occupations()
+        if self.benchmark:
+            self.timer.stop(key="occupations", stream_handle=self.cuest_handle.stream_handle)
 
         if self.print_level > 0:
-            print('DFIntPlan Initialize Time: %11.3E [s]' % (stop - start))
+            print('DFIntPlan Initialize Time: %11.3E [s]' % (self.timer._times['df_int_plan']))
             print('')
 
+        if self.benchmark:
+            self.timer.start(key="solve_diis", stream_handle=self.cuest_handle.stream_handle)
         self.solve_diis()
+
+        self.timer.stop(key='solve', stream_handle=self.cuest_handle.stream_handle)
 
         self.trailer()
 
         self.is_solved = True
 
+
     def header(self):
     
-        self.start_time = time.time()
-        
         if self.print_level:
             print('==> cuEST RHF (Python) <==\n')
     
@@ -701,12 +963,19 @@ class RHF(object):
                 print('')
                 print(self.cuest_pcm_int_plan)
 
+            if self.do_ecp:
+                print('ECP Basis: %s' % (self.ecp_basis_name if self.ecp_basis_name is not None else ''))
+                print('')
+                print(self.ecp_basis)
+
     def trailer(self):
 
         if self.print_level:
-            print('cuEST RHF Time: %11.3E [s]\n' % (time.time() - self.start_time))
-        
-        del self.start_time
+            print('cuEST RHF Time: %11.3E [s]\n' % (self.timer.times['solve']))
+
+        if self.print_timings:
+            print('cuEST RHF Timing breakdown:')
+            print(self.timer.string())
         
         if self.print_level:
             print('==> End cuEST RHF (Python) <==\n')
@@ -720,6 +989,9 @@ class RHF(object):
             molecule=self.molecule,
             primary=self.primary,
             minao=self.minao,
+            ecp_basis=self.ecp_basis,
+            charge=self.charge,
+            multiplicity=1,
             )
 
         # For now this will be size (nminao, nao), which is usually larger than
@@ -735,7 +1007,9 @@ class RHF(object):
         if self.print_level > 0:
             print('Orthogonalization:\n')
 
+        self.timer.start(key='S', stream_handle=self.cuest_handle.stream_handle)
         S = self.compute_overlap()
+        self.timer.stop(key='S', stream_handle=self.cuest_handle.stream_handle)
 
         s, U = GPUMatrixUtility.eigh(matrix=S)
         s = s.to_numpy().reshape(-1)
@@ -767,7 +1041,7 @@ class RHF(object):
         if self.print_level > 0:
             print('Occupations:\n')
 
-        Q = np.sum(self.molecule.Z) - self.charge
+        Q = -np.sum(self.Zeff) - self.charge
         nocc = int(Q / 2)
         
         if 2 * nocc != Q: raise RuntimeError('molecule is not closed shell')
@@ -785,7 +1059,7 @@ class RHF(object):
     def compute_Enuc(self):
             
         xyz = self.molecule.xyz
-        Z = self.molecule.Z
+        Z = -1.0 * self.Zeff.reshape((self.molecule.natom,))
 
         Enuc = 0.0
         for A in range(xyz.shape[0]):
@@ -799,10 +1073,22 @@ class RHF(object):
                 Enuc += 0.5 * ZA * ZB / rAB
         return Enuc
 
+    def compute_nuc_dipole(self):
+    
+        xyz = self.molecule.xyz
+        Z = self.molecule.Z
+    
+        munuc = np.zeros(3)
+        for A in range(xyz.shape[0]):
+            xyzA = xyz[A, :]
+            ZA = Z[A]
+            munuc += ZA * xyzA
+        return munuc
+
     def compute_Enuc_gradient(self):
 
         xyz = self.molecule.xyz
-        Z = self.molecule.Z
+        Z = -1.0 * self.Zeff.reshape((self.molecule.natom,))
 
         Gnuc = np.zeros((self.molecule.natom, 3))
         for A in range(xyz.shape[0]):
@@ -854,6 +1140,7 @@ class RHF(object):
 
         # PCM Initialization
 
+        self.timer.start(key='PCM', stream_handle=self.cuest_handle.stream_handle)
         if self.do_pcm:
             self.pcm_q = GPUMatrix(
                 nrows=self.cuest_pcm_int_plan.npoint,
@@ -862,6 +1149,7 @@ class RHF(object):
                 initialize=True,
                 )
             self.pcm_q.zero()
+        self.timer.stop(key='PCM', stream_handle=self.cuest_handle.stream_handle)
 
         # External Nuclear-repulsion energy
 
@@ -877,12 +1165,23 @@ class RHF(object):
 
         # Core Hamiltonian
 
+        self.timer.start(key='T', stream_handle=self.cuest_handle.stream_handle)
         T = self.compute_kinetic()
+        self.timer.stop(key='T', stream_handle=self.cuest_handle.stream_handle)
+
+        self.timer.start(key='V', stream_handle=self.cuest_handle.stream_handle)
         V = self.compute_potential()
+        self.timer.stop(key='V', stream_handle=self.cuest_handle.stream_handle)
 
         # NOTE: This is typically where other static external potential terms
         # are added, e.g., ECP, QM/MM electrostatics, external perturbations,
         # etc.
+        if self.do_ecp:
+            if self.benchmark:
+                self.timer.start(key="compute_ecp_potential", stream_handle=self.cuest_handle.stream_handle)
+            Vecp = self.compute_ecp_potential()
+            if self.benchmark:
+                self.timer.stop(key="compute_ecp_potential", stream_handle=self.cuest_handle.stream_handle)
 
         H = T.clone()
         GPUMatrixUtility.daxpy(
@@ -890,6 +1189,12 @@ class RHF(object):
             x=V,
             y=H,
             )
+        if self.do_ecp:
+            GPUMatrixUtility.daxpy(
+                alpha=1.0,
+                x=Vecp,
+                y=H,
+                )
 
         diis = DIIS(max_nvector=self.diis_max_nvector)
 
@@ -911,7 +1216,12 @@ class RHF(object):
         Eold = 0.0
         E = 0.0
         dG = 1.0
-        print('%-4s: %24s %11s %11s %8s' % ('Iter', 'Energy', 'dE', 'dG', 'Time[s]'))
+        U2_occ_prev = None
+        dG_best = float('inf')
+        dG_no_improve = 0
+        skip_diis = False
+        if self.print_level:
+            print('%-4s: %24s %11s %11s %8s' % ('Iter', 'Energy', 'dE', 'dG', 'Time[s]'))
         for iteration in range(self.maxiter):
 
             D = self.tensors['D'] 
@@ -935,17 +1245,25 @@ class RHF(object):
 
             # Fock Matrix
 
+            self.timer.start(key='J', stream_handle=self.cuest_handle.stream_handle)
             J = self.compute_coulomb(D=D)
+            self.timer.stop(key='J', stream_handle=self.cuest_handle.stream_handle)
 
+            self.timer.start(key='K', stream_handle=self.cuest_handle.stream_handle)
             K = self.compute_exchange(
                 Cocc=Cocc,
                 dfk_int8_slice_count=dfk_int8_slice_count,
                 dfk_int8_modulus_count=dfk_int8_modulus_count,
                 )
+            self.timer.stop(key='K', stream_handle=self.cuest_handle.stream_handle)
 
+            self.timer.start(key='Vxc', stream_handle=self.cuest_handle.stream_handle)
             Exc, Vxc = self.compute_local_exchange_correlation(Cocc=Cocc)
+            self.timer.stop(key='Vxc', stream_handle=self.cuest_handle.stream_handle)
 
+            self.timer.start(key='VV10', stream_handle=self.cuest_handle.stream_handle)
             Enlc, Vnlc = self.compute_nonlocal_exchange_correlation(Cocc=Cocc)
+            self.timer.stop(key='VV10', stream_handle=self.cuest_handle.stream_handle)
 
             # NOTE: This is typically where other electron-dependent Fock
             # matrix terms are added, e.g., PCM, wK.
@@ -976,18 +1294,19 @@ class RHF(object):
                 )
 
             # Include PCM
+            self.timer.start(key='PCM', stream_handle=self.cuest_handle.stream_handle)
             if self.do_pcm:
                 # PCM expects the total density, so temporarily scale by 2.0
-                GPUMatrixUtility.scale(
-                    matrix=D,
-                    scale=2.0,
+                GPUMatrixUtility.dscal(
+                    alpha=2.0,
+                    x=D,
                     )
                 Epcm, Vpcm, q_out = self.compute_pcm_energy_and_potential(
                     q=self.pcm_q, 
                     D=D)
-                GPUMatrixUtility.scale(
-                    matrix=D,
-                    scale=0.5,
+                GPUMatrixUtility.dscal(
+                    alpha=0.5,
+                    x=D,
                     )
 
                 self.pcm_q = q_out
@@ -998,6 +1317,7 @@ class RHF(object):
                     x=Vpcm,
                     y=F,
                     )
+            self.timer.stop(key='PCM', stream_handle=self.cuest_handle.stream_handle)
 
             E += Exc
             E += Enlc
@@ -1088,14 +1408,27 @@ class RHF(object):
             if iteration >= self.maxiter - 1:
                 break
 
+            # reset history if dG hasn't improved for 10 iterations
+            if dG < dG_best * 0.95:
+                dG_best = dG
+                dG_no_improve = 0
+                skip_diis = False
+            else:
+                dG_no_improve += 1
+                if dG_no_improve >= 10:
+                    diis = DIIS(max_nvector=self.diis_max_nvector)
+                    dG_best = dG
+                    dG_no_improve = 0
+                    skip_diis = True
+
             # DIIS Extrapolation (also updates DIIS history)
 
-
-            if iteration > 0:
-                F = diis.iterate(
-                    state_vector=F,
-                    error_vector=G,
+            if iteration > 0 and not skip_diis:
+                F, = diis.iterate(
+                    state_vectors=[F],
+                    error_vectors=[G],
                     )
+            skip_diis = False
 
             # Fock Matrix Diagonalization
 
@@ -1112,7 +1445,19 @@ class RHF(object):
                 transpose2=True,
                 )
 
+            if self.level_shift != 0.0 and U2_occ_prev is not None:
+                F2_np = F2.to_numpy()
+                P_occ = U2_occ_prev @ U2_occ_prev.T
+                F2_np += self.level_shift * (np.eye(F2_np.shape[0]) - P_occ)
+                F2 = GPUMatrix.from_numpy(F2_np)
+
+            self.timer.start(key='diagonalize', stream_handle=self.cuest_handle.stream_handle)
             eps, U2 = GPUMatrixUtility.eigh(matrix=F2)
+            self.timer.stop(key='diagonalize', stream_handle=self.cuest_handle.stream_handle)
+
+            if self.level_shift != 0.0:
+                nocc = self.sizes['nocc']
+                U2_occ_prev = U2.to_numpy()[:, :nocc]
 
             C = GPUMatrixUtility.matrix_multiply(
                 mat1=U2,
@@ -1120,25 +1465,33 @@ class RHF(object):
                 transpose1=True,
                 transpose2=False,
                 )
+            self.tensors['C'] = C
+            self.tensors['eps'] = eps
 
             # New Occupied Orbitals and Density Matrix
 
-            C_np = C.to_numpy()
-            Cocc_np = C_np[:self.sizes['nocc'], :]
-            Cocc = GPUMatrix.from_numpy(Cocc_np)
+            Cocc = GPUMatrix(
+                nrows=self.sizes['nocc'],
+                ncols=C.shape[1],
+                dtype=np.double,
+                )
+            GPUMatrixUtility.dcopy(
+                n=self.sizes['nocc'] * C.shape[1],
+                x=C,
+                offx=0,
+                incx=1,
+                y=Cocc,
+                offy=0,
+                incy=1,
+                )
+            self.tensors['Cocc'] = Cocc
             
-            D = GPUMatrixUtility.matrix_multiply(
+            self.tensors['D'] = GPUMatrixUtility.matrix_multiply(
                 mat1=Cocc,
                 mat2=Cocc,
                 transpose1=True,
                 transpose2=False,
                 )
-            
-            self.tensors['D'] = D
-            self.tensors['Cocc'] = Cocc
-
-            self.tensors['C'] = C
-            self.tensors['eps'] = eps
 
         # => Print Convergence <= #
 
@@ -1166,6 +1519,37 @@ class RHF(object):
     
         return self.scalars['Escf']
 
+    def compute_properties(self):
+
+        if not self.is_solved:
+            self.solve()
+
+        if not self.is_converged:
+            raise RuntimeError('Not converged')
+
+        properties = {}
+
+        D = self.tensors['D']
+
+        # Dipole moment
+        dipole = self.compute_nuc_dipole()
+        mu = self.compute_dipole()
+
+        for i in range(3):
+            dipole[i] -= 2.0 * GPUMatrixUtility.ddot(
+                x=D,
+                y=mu[i],
+                )
+
+        properties['mu_x'] = dipole[0]
+        properties['mu_y'] = dipole[1]
+        properties['mu_z'] = dipole[2]
+
+        if self.print_level:
+            print('SCF Dipole = %14.4E %14.4E %14.4E\n' % (dipole[0],dipole[1],dipole[2],))
+
+        return properties
+
     def compute_gradient(self):
 
         if not self.is_solved:
@@ -1173,9 +1557,11 @@ class RHF(object):
 
         if not self.is_converged:
             raise RuntimeError('Not converged')
-        
+
+        self.timer.start(key='Total Gradient', stream_handle=self.cuest_handle.stream_handle)
+
         # Occupied orbitals / density matrix
-    
+   
         Cocc = self.tensors['Cocc']
         D = self.tensors['D']
 
@@ -1190,75 +1576,104 @@ class RHF(object):
         # Nuclear gradient (classical)
 
         Gnuc = self.compute_Enuc_gradient()
-        GPUMatrixUtility.scale(
-            matrix=Gnuc,
-            scale=+1.0,
+        GPUMatrixUtility.dscal(
+            alpha=+1.0,
+            x=Gnuc,
             )
 
         # Overlap gradient
 
+        self.timer.start(key='dS', stream_handle=self.cuest_handle.stream_handle)
         GS = self.compute_overlap_gradient(W)
-        GPUMatrixUtility.scale(
-            matrix=GS,
-            scale=-2.0,
+        self.timer.stop(key='dS', stream_handle=self.cuest_handle.stream_handle)
+
+        GPUMatrixUtility.dscal(
+            alpha=-2.0,
+            x=GS,
             )
 
         # Kinetic gradient
 
+        self.timer.start(key='dT', stream_handle=self.cuest_handle.stream_handle)
         GT = self.compute_kinetic_gradient(D)
-        GPUMatrixUtility.scale(
-            matrix=GT,
-            scale=+2.0,
+        self.timer.stop(key='dT', stream_handle=self.cuest_handle.stream_handle)
+
+        GPUMatrixUtility.dscal(
+            alpha=+2.0,
+            x=GT,
             )
 
         # Potential gradient
 
+        self.timer.start(key='dV', stream_handle=self.cuest_handle.stream_handle)
         GV = self.compute_potential_gradient(D)
-        GPUMatrixUtility.scale(
-            matrix=GV,
-            scale=+2.0,
+        self.timer.stop(key='dV', stream_handle=self.cuest_handle.stream_handle)
+
+        GPUMatrixUtility.dscal(
+            alpha=+2.0,
+            x=GV,
             )
+
+        # ECP gradient
+
+        Gecp = None
+        if self.do_ecp:
+            Gecp = self.compute_ecp_gradient(D)
+            GPUMatrixUtility.dscal(
+                alpha=+2.0,
+                x=Gecp,
+                )
 
         # United Coulomb + Exchange gradient
 
+        self.timer.start(key='dJK', stream_handle=self.cuest_handle.stream_handle)
         GJK = self.compute_coulomb_and_exchange_gradient(
             scaleJ=+2.0,
             DJ=D,
             scaleK=-1.0,
             CoccsK=[Cocc],
             )
+        self.timer.stop(key='dJK', stream_handle=self.cuest_handle.stream_handle)
 
         # Local exchange-correlation gradient
 
+        self.timer.start(key='dVxc', stream_handle=self.cuest_handle.stream_handle)
         GVxc = self.compute_local_exchange_correlation_gradient(Cocc)
-        GPUMatrixUtility.scale(
-            matrix=GVxc,
-            scale=+1.0,
+        self.timer.stop(key='dVxc', stream_handle=self.cuest_handle.stream_handle)
+
+        GPUMatrixUtility.dscal(
+            alpha=+1.0,
+            x=GVxc,
             )
 
         # Nonlocal exchange-correlation gradient
 
+        self.timer.start(key='dVV10', stream_handle=self.cuest_handle.stream_handle)
         GVnlc = self.compute_nonlocal_exchange_correlation_gradient(Cocc)
-        GPUMatrixUtility.scale(
-            matrix=GVnlc,
-            scale=+1.0,
+        self.timer.stop(key='dVV10', stream_handle=self.cuest_handle.stream_handle)
+
+        GPUMatrixUtility.dscal(
+            alpha=+1.0,
+            x=GVnlc,
             )
 
         # PCM gradient
 
         Gpcm = None
+        self.timer.start(key='dPCM', stream_handle=self.cuest_handle.stream_handle)
         if self.do_pcm:
-            GPUMatrixUtility.scale(
-                matrix=D,
-                scale=2.0,
+            GPUMatrixUtility.dscal(
+                alpha=2.0,
+                x=D,
                 )
             Gpcm = self.compute_pcm_gradient(
                 q=self.pcm_q,
                 D=D)
-            GPUMatrixUtility.scale(
-                matrix=D,
-                scale=0.5,
+            GPUMatrixUtility.dscal(
+                alpha=0.5,
+                x=D,
                 )
+        self.timer.stop(key='dPCM', stream_handle=self.cuest_handle.stream_handle)
 
         G = GPUMatrix(
             nrows=self.primary.natom,
@@ -1287,6 +1702,12 @@ class RHF(object):
             x=GV,
             y=G,
             )
+        if self.do_ecp:
+            GPUMatrixUtility.daxpy(
+                alpha=1.0,
+                x=Gecp,
+                y=G,
+                )
         GPUMatrixUtility.daxpy(
             alpha=1.0,
             x=GJK,
@@ -1309,5 +1730,6 @@ class RHF(object):
                 y=G,
                 )
 
-        return G
+        self.timer.stop(key='Total Gradient', stream_handle=self.cuest_handle.stream_handle)
 
+        return G

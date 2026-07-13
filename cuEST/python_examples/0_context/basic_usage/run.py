@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -61,7 +61,34 @@ cuest_check('Query Handle Max L',
 print('Handle Max L', maxl_handle.value)
 
 # ce.cuestParametersConfigure could be called here to override the default
-# values if required
+# values if required. For example, configure the JIT compiler used for runtime
+# kernel compilation: the cache directory (empty string, the default, uses
+# ~/.cuest_cache/cuest-cuda<N>-v<version>/; must be a trusted, per-user,
+# non-world-writable path) and the number of parallel JIT-compile worker
+# threads (>= 1; default 16). Both take effect at cuestCreate.
+jit_cache_dir = ce.data_string()
+jit_cache_dir.value = '/tmp/cuest-jit-cache'
+cuest_check('Configure JIT cache dir',
+    ce.cuestParametersConfigure(
+        parametersType=ce.CuestParametersType.CUEST_HANDLE_PARAMETERS,
+        parameters=cuest_handle_parameters,
+        attribute=ce.CuestHandleParametersAttributes.CUEST_HANDLE_PARAMETERS_JIT_CACHE_DIR,
+        attributeValue=jit_cache_dir,
+        )
+    )
+
+jit_compile_threads = ce.data_int32_t()
+jit_compile_threads.value = 8
+cuest_check('Configure JIT compile threads',
+    ce.cuestParametersConfigure(
+        parametersType=ce.CuestParametersType.CUEST_HANDLE_PARAMETERS,
+        parameters=cuest_handle_parameters,
+        attribute=ce.CuestHandleParametersAttributes.CUEST_HANDLE_PARAMETERS_JIT_COMPILE_THREADS,
+        attributeValue=jit_compile_threads,
+        )
+    )
+print('Handle JIT cache dir', jit_cache_dir.value)
+print('Handle JIT compile threads', jit_compile_threads.value)
 
 cuest_handle = ce.cuestHandle()
 cuest_check('Create Cuest Handle',

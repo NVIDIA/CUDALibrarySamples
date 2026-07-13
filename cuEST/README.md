@@ -3,12 +3,15 @@
 This directory contains standalone examples for the cuEST library, covering
 the C API, Python API, and the cuEST SCF Python library.
 
+The current version is v0.2, which may be incompatible with older versions.
+For v0.1 examples, please checkout d1ee93e936f161e5f548a5ea3edf45326e56fb59.
+
 For full API documentation, see https://docs.nvidia.com/cuda/cuest/.
 
 ## Prerequisites
 
 - CUDA Toolkit 12 or later
-- Python 3.10 or later
+- Python 3.12 or later
 - An NVIDIA GPU (Ampere or later recommended)
 
 ## Quick Start

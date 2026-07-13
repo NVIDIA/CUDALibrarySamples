@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -94,6 +94,8 @@ rhf.solve()
 
 print('SCF Energy: %24.16E' % (rhf.compute_energy()))
 print('')
+
+#properties = rhf.compute_properties()
 
 #print('SCF Gradient:')
 #print(rhf.compute_gradient().to_numpy())

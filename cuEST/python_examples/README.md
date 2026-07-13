@@ -7,7 +7,7 @@ For full API documentation, see https://docs.nvidia.com/cuda/cuest/.
 ## Prerequisites
 
 - CUDA Toolkit 12 or later
-- Python 3.10 or later
+- Python 3.12 or later
 - NumPy
 
 ## Installation
@@ -49,9 +49,12 @@ python_examples/
     parsers.py                    # XYZ and GBS file parsers
     utilities.py                  # Shell normalization and other utilities
     grid_utils.py                 # Grid utility helpers
+    pcm_utils.py                  # PCM utility helpers
   0_context/                      # Handle creation and multi-stream usage
   1_basic_data_structures/        # AO basis and shell setup
   2_one_electron_integrals/       # Overlap, kinetic, potential integrals and gradients
   3_density_fitting/              # DF-J and DF-K integrals and gradients
   4_exchange_correlation/         # Local and nonlocal XC potential and gradients
+  5_effective_core_potentials/    # ECP integrals and gradients
+  6_pcm/                          # PCM potential and gradients
 ```

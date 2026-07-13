@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -91,6 +91,10 @@ class CuestAOPairList(object):
 
         # Bind the lifetime of persistent_workspace to this object
         self.persistent_workspace = persistent_workspace
+
+        # Keep wrapper dependencies alive while the native cuEST object may
+        # refer to them; this mirrors the C API lifetime requirements.
+        self.basis = basis
 
         self.initialized = True
 

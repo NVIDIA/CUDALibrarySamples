@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -139,7 +139,7 @@ class CuestDFIntCompute(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestDFExchangeComputeWorkspaceQuery failed')
+            raise RuntimeError('cuestDFSymmetricExchangeComputeWorkspaceQuery failed')
 
         temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
 
@@ -155,7 +155,77 @@ class CuestDFIntCompute(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestDFExchangeCompute failed')
+            raise RuntimeError('cuestDFSymmetricExchangeCompute failed')
+        del dfk_compute_parameters
+
+
+    @staticmethod
+    def nonsymmetric_exchange(
+        *,
+        handle : CuestHandle,
+        df_int_plan : CuestDFIntPlan,
+        nRight,
+        nocc,
+        Cocc_left_ptr,
+        Cocc_right_ptrs,
+        Kptrs,
+        ):
+
+        Cocc_left_ptr2 = ce.Pointer()
+        Cocc_left_ptr2.value = np.intp(Cocc_left_ptr)
+
+        Cocc_right_ptr2 = ce.Pointer()
+        Cocc_right_ptr2.value = np.intp(Cocc_right_ptrs)
+
+        Kptr2 = ce.Pointer()
+        Kptr2.value = np.intp(Kptrs)
+
+        # => Workspace query <= #
+
+        dfk_compute_parameters = CuestParameters(parametersType=ce.CuestParametersType.CUEST_DFNONSYMMETRICEXCHANGECOMPUTE_PARAMETERS)
+
+        # Allow the algorithm to use up to 2GB of DRAM
+        # NOTE: Production codes may wish to configure the maximum temporary
+        # workspace memory as a user parameter or heuristic
+        exchangeint_variable_buffer_descriptor = CuestWorkspaceDescriptor(
+            deviceBufferSizeInBytes=2000000000,
+            )
+
+        temporary_workspace_descriptor = CuestWorkspaceDescriptor()
+
+        status = ce.cuestDFNonsymmetricExchangeComputeWorkspaceQuery(
+            handle=handle.handle,
+            plan=df_int_plan.df_int_plan_handle,
+            parameters=dfk_compute_parameters.parameters,
+            variableBufferSize=exchangeint_variable_buffer_descriptor.pointer,
+            temporaryWorkspaceDescriptor=temporary_workspace_descriptor.pointer,
+            numCoefficientMatrices=nRight,
+            numOccupied=nocc,
+            leftCoefficientMatrix=Cocc_left_ptr2,
+            rightCoefficientMatrices=Cocc_right_ptr2,
+            outExchangeMatrices=Kptr2,
+            )
+
+        if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
+            raise RuntimeError('cuestDFNonsymmetricExchangeComputeWorkspaceQuery failed')
+
+        temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
+
+        status = ce.cuestDFNonsymmetricExchangeCompute(
+            handle=handle.handle,
+            plan=df_int_plan.df_int_plan_handle,
+            parameters=dfk_compute_parameters.parameters,
+            variableBufferSize=exchangeint_variable_buffer_descriptor.pointer,
+            temporaryWorkspace=temporary_workspace.pointer,
+            numCoefficientMatrices=nRight,
+            numOccupied=nocc,
+            leftCoefficientMatrix=Cocc_left_ptr2,
+            rightCoefficientMatrices=Cocc_right_ptr2,
+            outExchangeMatrices=Kptr2,
+            )
+
+        if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
+            raise RuntimeError('cuestDFNonsymmetricExchangeCompute failed')
         del dfk_compute_parameters
 
 
@@ -194,7 +264,7 @@ class CuestDFIntCompute(object):
 
         temporary_workspace_descriptor = CuestWorkspaceDescriptor()
 
-        memory_policy_data = ce.data_cuestDFSymmetricDerivativeComputeMemoryPolicy_t(ce.CuestDFSymmetricDerivativeComputeMemoryPolicy.CUEST_DFSYMMETRICDERIVATIVECOMPUTE_MEMORY_POLICY_FULL)
+        memory_policy_data = ce.data_cuestDFSymmetricDerivativeComputeMemoryPolicy_t(ce.CuestDFSymmetricDerivativeComputeMemoryPolicy.CUEST_DFSYMMETRICDERIVATIVECOMPUTE_MEMORY_POLICY_OVERWRITE)
         status = ce.cuestParametersConfigure(
             parametersType=ce.CuestParametersType.CUEST_DFSYMMETRICDERIVATIVECOMPUTE_PARAMETERS,
             parameters=df_grad_compute_parameters.parameters,
@@ -222,43 +292,7 @@ class CuestDFIntCompute(object):
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
             raise RuntimeError('cuestDFSymmetricDerivativeComputeWorkspaceQuery failed')
 
-        try:
-            temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
-
-        except RuntimeError:
-            memory_policy_data = ce.data_cuestDFSymmetricDerivativeComputeMemoryPolicy_t(ce.CuestDFSymmetricDerivativeComputeMemoryPolicy.CUEST_DFSYMMETRICDERIVATIVECOMPUTE_MEMORY_POLICY_BLOCKED)
-            status = ce.cuestParametersConfigure(
-                parametersType=ce.CuestParametersType.CUEST_DFSYMMETRICDERIVATIVECOMPUTE_PARAMETERS,
-                parameters=df_grad_compute_parameters.parameters,
-                attribute=ce.CuestDFSymmetricDerivativeComputeParametersAttributes.CUEST_DFSYMMETRICDERIVATIVECOMPUTE_PARAMETERS_MEMORY_POLICY,
-                attributeValue=memory_policy_data,
-                )
-            if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                raise RuntimeError('cuestParametersConfigure failed')
-
-            status = ce.cuestDFSymmetricDerivativeComputeWorkspaceQuery(
-                handle=handle.handle,
-                plan=df_int_plan.df_int_plan_handle,
-                parameters=df_grad_compute_parameters.parameters,
-                variableBufferSize=variable_buffer_descriptor.pointer,
-                temporaryWorkspaceDescriptor=temporary_workspace_descriptor.pointer,
-                densityScale=scaleJ,
-                densityMatrix=DJptr2,
-                coefficientScale=scaleK,
-                numCoefficientMatrices=len(noccsK),
-                numOccupied=noccsK,
-                coefficientMatrices=CoccsKptr2,
-                outGradient=Gptr2,
-                )
-
-            if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                raise RuntimeError('cuestDFSymmetricDerivativeComputeWorkspaceQuery failed')
-
-            try:
-                temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
-
-            except RuntimeError:
-                raise RuntimeError('Cannot allocate memory for cuestDFSymmetricDerivativeCompute')
+        temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
 
         status = ce.cuestDFSymmetricDerivativeCompute(
             handle=handle.handle,

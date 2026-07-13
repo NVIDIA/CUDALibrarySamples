@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -226,7 +226,7 @@ static ECPShellSet_t *parseECPFileForElement(const char *ecpFilePath, const char
         /* This is the first line of a new atom block */
         /* If we find the target element, set in_target_block, max_L, and nelec */
         if (!in_target_block && nwords == 3) {
-            char block_atom[7];
+            char block_atom[8];
             if (sscanf(line, "%7s %*s %*s", block_atom) == 1) {
                 ecp_to_upper(block_atom);
                 if (strcmp(block_atom, element_upper) == 0) {
@@ -374,7 +374,7 @@ static ECPShellSet_t *parseECPFileForElement(const char *ecpFilePath, const char
         /* This is the first line of a new atom block */
         /* If we find the target element, set in_target_block */
         if (!in_target_block && nwords == 3) {
-            char block_atom[7];
+            char block_atom[8];
             if (sscanf(line, "%7s %*s %*s", block_atom) == 1) {
                 ecp_to_upper(block_atom);
                 if (strcmp(block_atom, element_upper) == 0) {

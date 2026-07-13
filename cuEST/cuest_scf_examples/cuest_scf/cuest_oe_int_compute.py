@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -168,6 +168,55 @@ class CuestOEIntCompute(object):
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
             raise RuntimeError('cuestPotentialCompute failed')
         del potential_compute_parameters
+
+
+    @staticmethod
+    def multipole(
+        *,
+        handle : CuestHandle,
+        oe_int_plan : CuestOEIntPlan,
+        multipoleOrder,
+        origin,
+        Mptr,
+        ):
+
+        Mptr2 = ce.Pointer()
+        Mptr2.value = np.intp(Mptr)
+
+        # => Workspace query <= #
+
+        multipole_compute_parameters = CuestParameters(parametersType=ce.CuestParametersType.CUEST_MULTIPOLECOMPUTE_PARAMETERS)
+
+        temporary_workspace_descriptor = CuestWorkspaceDescriptor()
+
+        status = ce.cuestMultipoleComputeWorkspaceQuery(
+            handle=handle.handle,
+            plan=oe_int_plan.oe_int_plan_handle,
+            parameters=multipole_compute_parameters.parameters,
+            temporaryWorkspaceDescriptor=temporary_workspace_descriptor.pointer,
+            multipoleOrder=multipoleOrder,
+            origin=origin,
+            outMatrix=Mptr2,
+            )
+
+        if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
+            raise RuntimeError('cuestMultipoleComputeWorkspaceQuery failed')
+
+        temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
+
+        status = ce.cuestMultipoleCompute(
+            handle=handle.handle,
+            plan=oe_int_plan.oe_int_plan_handle,
+            parameters=multipole_compute_parameters.parameters,
+            temporaryWorkspace=temporary_workspace.pointer,
+            multipoleOrder=multipoleOrder,
+            origin=origin,
+            outMatrix=Mptr2,
+            )
+
+        if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
+            raise RuntimeError('cuestMultipoleCompute failed')
+        del multipole_compute_parameters
 
 
     @staticmethod

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -43,48 +43,53 @@ class DIIS(object):
     def iterate(
         self,
         *,
-        state_vector : GPUMatrix,
-        error_vector : GPUMatrix,
-        ) -> np.ndarray:
+        state_vectors : list,
+        error_vectors : list,
+        ) -> list:
 
         # Worst-error replacement DIIS history update
-    
         pivot = None
         if self.nvector < self.max_nvector:
             pivot = self.nvector
-            self.state_vectors.append(state_vector.clone())
-            self.error_vectors.append(error_vector.clone())
+            self.state_vectors.append([sv.clone() for sv in state_vectors])
+            self.error_vectors.append([ev.clone() for ev in error_vectors])
         else:
             pivot = np.argmax(np.diag(self.E))
-            self.state_vectors[pivot] = state_vector.clone()
-            self.error_vectors[pivot] = error_vector.clone()
+            self.state_vectors[pivot] = [sv.clone() for sv in state_vectors]
+            self.error_vectors[pivot] = [ev.clone() for ev in error_vectors]
 
         # Error metric inner product update
-
         for ind in range(self.nvector):
-            Eval = GPUMatrixUtility.ddot(
-                x=self.error_vectors[ind],
-                y=self.error_vectors[pivot],
+            Eval = sum(
+                GPUMatrixUtility.ddot(
+                    x=self.error_vectors[ind][k],
+                    y=self.error_vectors[pivot][k],
+                    )
+                for k in range(len(error_vectors))
                 )
             self.E[ind, pivot] = Eval
             self.E[pivot, ind] = Eval
 
         # DIIS extrapolation
-
-        state_vector2 = GPUMatrix(
-            nrows=state_vector.nrows,
-            ncols=state_vector.ncols,
-            dtype=state_vector.dtype,
-            initialize=True,
-            )
         c, L = self.diis_coefficients
-        for ind in range(self.nvector):
-            GPUMatrixUtility.daxpy(
-                alpha=c[ind],
-                x=self.state_vectors[ind],
-                y=state_vector2,
+        result = [
+            GPUMatrix(
+                nrows=sv.nrows,
+                ncols=sv.ncols,
+                dtype=sv.dtype,
+                initialize=True,
                 )
-        return state_vector2
+            for sv in state_vectors
+            ]
+        for ind in range(self.nvector):
+            for k, out in enumerate(result):
+                GPUMatrixUtility.daxpy(
+                    alpha=c[ind],
+                    x=self.state_vectors[ind][k],
+                    y=out,
+                    )
+
+        return result
 
     @property
     def diis_coefficients(self) -> (np.ndarray, float):

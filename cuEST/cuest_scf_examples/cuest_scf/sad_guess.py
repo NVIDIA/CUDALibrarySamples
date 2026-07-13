@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@ import numpy as np
 
 from .molecule import Molecule    
 from .ao_basis import AOBasis
+from .ecp_basis import ECPBasis
 from .sad_atom_structure import SADAtomStructure
 from .sad_guess_atom import SADGuessAtom
 
@@ -50,8 +51,9 @@ class SADGuess(object):
         Cocc = np.zeros((self.minao.nao, self.primary.nao))
         primary_start = 0
         minao_start = 0
+
         for A, sad_guess_atom in enumerate(self.sad_guess_atoms):
-            nocc2 = sad_guess_atom.structure.nocc
+            nocc2 = sad_guess_atom.structure.nocc[sad_guess_atom.nao_ecp:]
             Cocc2 = sad_guess_atom.C
             Focc2 = np.einsum('i,ip->ip', np.sqrt(nocc2), Cocc2)
             nprimary = sad_guess_atom.primary.nao
@@ -71,32 +73,62 @@ class SADGuess(object):
         molecule : Molecule,
         primary : AOBasis,
         minao : AOBasis,
+        ecp_basis : ECPBasis | None = None,
+        charge: int,
+        multiplicity: int,
         ):
 
         if primary.natom != molecule.natom: raise RuntimeError('primary.natom != molecule.natom')
         if minao.natom != molecule.natom: raise RuntimeError('minao.natom != molecule.natom')
 
+        Ntot = int(sum(molecule.N)) - charge
+
+        if multiplicity == 1:
+            if Ntot % 2 != 0:
+                raise RuntimeError(f"RHF requires even number of electrons")
+            Na = Nb = Ntot // 2
+        else:
+            if multiplicity < 1:
+                raise RuntimeError("multiplicity must be >= 1")
+
+            d = multiplicity - 1
+            if (Ntot + d) % 2 != 0:
+                raise RuntimeError(f"can't have {Ntot} electrons and multiplicity {multiplicity}")
+
+            Na = (Ntot + d) // 2
+            Nb = (Ntot - d) // 2
+
         unique_sad_guess_atoms = {}
 
         structures = [SADAtomStructure.build(N=N) for N in molecule.N]
+
+        if ecp_basis is None:
+            nao_ecps = [0] * len(molecule.N)
+        else:
+            nao_ecps = [atom.nelectron // 2 for atom in ecp_basis.atoms]
+
         primary_atoms = primary.atomize()
         minao_atoms = minao.atomize()
 
-        for N, structure, primary_atom, minao_atom in zip(molecule.N, structures, primary_atoms, minao_atoms):
-            if N not in unique_sad_guess_atoms:
+        for N, structure, primary_atom, minao_atom, nao_ecp in zip(molecule.N, structures, primary_atoms, minao_atoms, nao_ecps):
+            key = (N, nao_ecp)
+            if key not in unique_sad_guess_atoms:
                 minao_atom2 = SADGuess.reorder_minao(
                     minao=minao_atom,
                     structure=structure,
                     )
-                unique_sad_guess_atoms[N] = SADGuessAtom(
+                unique_sad_guess_atoms[key] = SADGuessAtom(
                     primary=primary_atom,
                     minao=minao_atom2,
                     structure=structure,
+                    nao_ecp=nao_ecp,
                     )
-
-        return SADGuess(
-            sad_guess_atoms=[unique_sad_guess_atoms[N] for N in molecule.N],
+        sad_guess = SADGuess(
+            sad_guess_atoms=[unique_sad_guess_atoms[(N, nao_ecp)] for N, nao_ecp in zip(molecule.N, nao_ecps)],
             )
+        sad_guess.Na = Na
+        sad_guess.Nb = Nb
+        return sad_guess
              
     """
     Sometimes a GBS file is ordered in its own way, which does not correspond
@@ -131,10 +163,11 @@ class SADGuess(object):
 
         shells = []
         Ns = [0 for L in range(minao.max_L+1)]      
-        for L in structure.Ls:
-            N = Ns[L]
-            index = back_map[N, L]
-            shells.append(minao.shells[0][index].clone())
+        for L, is_core in zip(structure.Ls, structure.core):
+            if not is_core:
+                N = Ns[L]
+                index = back_map[N, L]
+                shells.append(minao.shells[0][index].clone())
             Ns[L] += 1
 
         return AOBasis(shells=[shells])

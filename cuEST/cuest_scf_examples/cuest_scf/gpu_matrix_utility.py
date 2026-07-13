@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,9 +19,14 @@ import atexit
 import nvmath.bindings.cublas as cublas
 import nvmath.bindings.cusolverDn as cusolver
 import nvmath.bindings.cusolver as cusolver_base
+import cuda.bindings.runtime as cuda
+import ctypes
+
 from .gpu_matrix import GPUMatrix
 
-# these handles are module-scoped, making them singletons
+# This is a common trick to ensure an active CUDA context exists
+cuda.cudaFree(0)
+# These handles are module-scoped, making them singletons
 cublas_handle = cublas.create()
 # Read scalar parameters like alpha and beta from CPU RAM
 cublas.set_pointer_mode(
@@ -87,25 +92,65 @@ class GPUMatrixUtility(object):
 
         return c
 
+
     @staticmethod
     def ddot(
         *,
+        n=None,
         x,
+        offx=0,
+        incx=1,
         y,
+        offy=0,
+        incy=1,
         ):
-
+    
+        if n is None:
+            n = x.size
+    
+        assert offx + (n - 1) * incx < x.size
+        assert offy + (n - 1) * incy < y.size
+    
         result = np.empty(1, dtype=np.double)
-
+    
         cublas.ddot(
-            handle = cublas_handle,
-            n=x.size,
-            x=x.pointer,
-            incx=1,
-            y=y.pointer,
-            incy=1,
+            handle=cublas_handle,
+            n=n,
+            x=int(x.pointer) + offx * ctypes.sizeof(ctypes.c_double),
+            incx=incx,
+            y=int(y.pointer) + offy * ctypes.sizeof(ctypes.c_double),
+            incy=incy,
             result=result.ctypes.data,
             )
         return result[0]
+
+
+    @staticmethod
+    def dcopy(
+        *,
+        n=None,
+        x,
+        offx=0,
+        incx=1,
+        y,
+        offy=0,
+        incy=1,
+        ):
+
+        if n is None:
+            n=x.size
+
+        assert offx + (n - 1) * incx < x.size
+        assert offy + (n - 1) * incy < y.size
+
+        cublas.dcopy(
+            handle = cublas_handle,
+            n=n,
+            x=int(x.pointer) + offx * ctypes.sizeof(ctypes.c_double),
+            incx=incx,
+            y=int(y.pointer) + offy * ctypes.sizeof(ctypes.c_double),
+            incy=incy,
+            )
 
 
     @staticmethod
@@ -152,47 +197,118 @@ class GPUMatrixUtility(object):
 
         return C
 
+
     @staticmethod
     def daxpy(
         *,
+        n=None,
         alpha,
         x,
+        offx=0,
+        incx=1,
         y,
+        offy=0,
+        incy=1,
         ):
 
-        alpha=np.array(
+        alpha = np.array(
             alpha,
             dtype=np.double,
             )
-
+    
+        if n is None:
+            n = x.size
+    
+        assert offx + (n - 1) * incx < x.size
+        assert offy + (n - 1) * incy < y.size
+    
         cublas.daxpy(
             handle=cublas_handle,
-            n=x.size,
+            n=n,
             alpha=alpha.ctypes.data,
-            x=x.pointer,
-            incx=1,
-            y=y.pointer,
-            incy=1,
+            x=int(x.pointer) + offx * ctypes.sizeof(ctypes.c_double),
+            incx=incx,
+            y=int(y.pointer) + offy * ctypes.sizeof(ctypes.c_double),
+            incy=incy,
             )
+
 
     @staticmethod
-    def scale(
+    def dscal(
         *,
-        matrix,
-        scale,
+        n=None,
+        alpha,
+        x,
+        offx=0,
+        incx=1,
         ):
-
-        alpha=np.array(
-            scale,
+    
+        alpha = np.array(
+            alpha,
             dtype=np.double,
             )
+    
+        if n is None:
+            n = x.size
+    
+        assert offx + (n - 1) * incx < x.size
+    
         cublas.dscal(
             handle=cublas_handle,
-            n=matrix.size,
+            n=n,
             alpha=alpha.ctypes.data,
-            x=matrix.pointer,
-            incx=1,
+            x=int(x.pointer) + offx * ctypes.sizeof(ctypes.c_double),
+            incx=incx,
             )
+
+
+    @staticmethod
+    def c_dgemm(
+        *,
+        transa : bool,
+        transb : bool,
+        m,
+        n,
+        k,
+        alpha,
+        a,
+        offa,
+        lda,
+        b,
+        offb,
+        ldb,
+        beta,
+        c,
+        offc,
+        ldc,
+        ):
+ 
+        alpha = np.array(
+            alpha,
+            dtype=np.double,
+            )
+        beta = np.array(
+            beta,
+            dtype=np.double,
+            )
+
+        cublas.dgemm(
+            handle=cublas_handle,
+            transa=cublas.Operation.T if transb else cublas.Operation.N,
+            transb=cublas.Operation.T if transa else cublas.Operation.N,
+            m=n,
+            n=m,
+            k=k,
+            alpha=alpha.ctypes.data,
+            a=int(b.pointer) + offb * ctypes.sizeof(ctypes.c_double),
+            lda=ldb,
+            b=int(a.pointer) + offa * ctypes.sizeof(ctypes.c_double),
+            ldb=lda,
+            beta=beta.ctypes.data,
+            c=int(c.pointer) + offc * ctypes.sizeof(ctypes.c_double),
+            ldc=ldc,
+            )
+
 
     @staticmethod
     def eigh(

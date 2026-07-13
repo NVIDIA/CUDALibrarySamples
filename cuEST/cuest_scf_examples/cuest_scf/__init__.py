@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,6 +21,10 @@ from .molecule import Molecule
 
 from .ao_shell import AOShell
 from .ao_basis import AOBasis
+
+from .ecp_atom import ECPAtom
+#from .ecp_shell import ECPShell
+from .ecp_basis import ECPBasis
 
 from .sad_atom_structure import SADAtomStructure
 from .sad_solid_harmonics import SADSolidHarmonics
@@ -51,7 +55,12 @@ from .cuest_xc_int_plan import CuestXCIntPlan
 from .cuest_xc_int_compute import CuestXCIntCompute
 
 from .cuest_pcm_int_compute import CuestPCMIntCompute
+from .cuest_pcm_int_plan import CuestPCMIntPlan
+
+from .cuest_ecp_int_compute import CuestECPIntCompute
+from .cuest_ecp_int_plan import CuestECPIntPlan
 
 from .cuest_molecular_grid import CuestMolecularGrid
 
 from .rhf import RHF
+from .uhf import UHF

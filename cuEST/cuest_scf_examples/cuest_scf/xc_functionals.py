@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,28 +22,47 @@ class XCFunctionalInfo(object):
         functional_name : str,
         ):
 
-        if functional_name.lower() == 'hf':
+        sanitized_name = functional_name.replace('-', '').lower()
+        if sanitized_name == 'hf':
             return ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_HF
-        elif functional_name.lower() == 'b3lyp1':
+        elif sanitized_name == 'b3lyp1':
             return ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_B3LYP1
-        elif functional_name.lower() == 'b3lyp5':
+        elif sanitized_name == 'b3lyp5':
             return ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_B3LYP5
-        elif functional_name.lower() == 'b97':
+        elif sanitized_name == 'b97':
             return ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_B97
-        elif functional_name.lower() == 'blyp':
+        elif sanitized_name == 'blyp':
             return ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_BLYP
-        elif functional_name.lower() == 'm06-l':
+        elif sanitized_name == 'm06l':
             return ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_M06L
-        elif functional_name.lower() == 'pbe':
+        elif sanitized_name == 'pbe':
             return ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_PBE
-        elif functional_name.lower() == 'pbe0':
+        elif sanitized_name == 'pbe0':
             return ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_PBE0
-        elif functional_name.lower() == 'r2scan':
+        elif sanitized_name == 'r2scan':
             return ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_R2SCAN
-        elif functional_name.lower() == 'svwn5':
+        elif sanitized_name == 'svwn5':
             return ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_SVWN5
-        elif functional_name.lower() == 'b97m-v':
+        elif sanitized_name == 'b97mv':
             return ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_B97MV
+        elif sanitized_name == 'lcwpbe':
+            return ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_LCWPBE
+        elif sanitized_name == 'wb97x':
+            return ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_WB97X
+        elif sanitized_name == 'wb97xv':
+            return ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_WB97XV
+        elif sanitized_name == 'wb97mv':
+            return ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_WB97MV
+        elif functional_name.lower() == 'lc-wpbeh':
+            return ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_LCWPBEH
+        elif functional_name.lower() == 'cam-b3lyp':
+            return ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_CAMB3LYP
+        elif functional_name.lower() == 'hse06':
+            return ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_HSE06
+        elif functional_name.lower() == 'm06':
+            return ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_M06
+        elif functional_name.lower() == 'm06-2x':
+            return ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_M062X
         else:
             raise RuntimeError('Unknown DFT functional')
 
@@ -74,6 +93,24 @@ class XCFunctionalInfo(object):
             return 'SVWN5'
         elif functional_enum == ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_B97MV:
             return 'B97M-V'
+        elif functional_enum == ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_LCWPBE:
+            return 'LC-wPBE'
+        elif functional_enum == ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_WB97X:
+            return 'wB97X'
+        elif functional_enum == ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_WB97XV:
+            return 'wB97X-V'
+        elif functional_enum == ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_WB97MV:
+            return 'wB97M-V'
+        elif functional_enum == ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_LCWPBEH:
+            return 'LC-wPBEh'
+        elif functional_enum == ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_CAMB3LYP:
+            return 'CAM-B3LYP'
+        elif functional_enum == ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_HSE06:
+            return 'HSE06'
+        elif functional_enum == ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_M06:
+            return 'M06'
+        elif functional_enum == ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_M062X:
+            return 'M06-2X'
         else:
             raise RuntimeError('Unknown DFT functional')
 

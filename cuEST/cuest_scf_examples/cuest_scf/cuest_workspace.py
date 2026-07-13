@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -43,31 +43,50 @@ class CuestWorkspace():
         self.struct = np.array(1, dtype=self._dtype)
         self.struct['deviceBufferSizeInBytes'] = deviceBufferSizeInBytes
         self.struct['hostBufferSizeInBytes'] = hostBufferSizeInBytes
+        self.struct['deviceBuffer'] = 0
+        self.struct['hostBuffer'] = 0
 
-        if deviceBufferSizeInBytes:
-            self.struct['deviceBuffer'] = CudaUtility.cuda_malloc(size_in_bytes=deviceBufferSizeInBytes)
-        else:
+        try:
+            if deviceBufferSizeInBytes:
+                self.struct['deviceBuffer'] = CudaUtility.cuda_malloc(size_in_bytes=deviceBufferSizeInBytes)
+
+            if hostBufferSizeInBytes:
+                self.struct['hostBuffer'] = CudaUtility.cuda_malloc_host(size_in_bytes=hostBufferSizeInBytes)
+        except Exception:
+            self._free_buffers()
+            raise
+
+        self.initialized = True
+
+    def _free_buffers(
+        self,
+        ):
+
+        if not hasattr(self, 'struct'):
+            return
+
+        device_buffer = int(self.struct['deviceBuffer'])
+        host_buffer = int(self.struct['hostBuffer'])
+
+        if device_buffer:
+            try:
+                CudaUtility.cuda_free(device_buffer)
+            except Exception:
+                pass
             self.struct['deviceBuffer'] = 0
 
-        if hostBufferSizeInBytes:
-            self.struct['hostBuffer'] = CudaUtility.cuda_malloc_host(size_in_bytes=hostBufferSizeInBytes)
-        else:
+        if host_buffer:
+            try:
+                CudaUtility.cuda_free_host(host_buffer)
+            except Exception:
+                pass
             self.struct['hostBuffer'] = 0
-
-        # NOTE: A production code might put separate flags in for device/host
-        self.initialized = True
 
     def __del__(
         self,
         ):
 
-        if not self.initialized: return
-
-        if self.struct['deviceBuffer']:
-            CudaUtility.cuda_free(int(self.struct['deviceBuffer']))
-
-        if self.struct['hostBuffer']:
-            CudaUtility.cuda_free_host(int(self.struct['hostBuffer']))
+        self._free_buffers()
 
     @property
     def pointer(self):

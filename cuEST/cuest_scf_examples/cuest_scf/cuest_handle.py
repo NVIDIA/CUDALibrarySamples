@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -47,6 +47,18 @@ class CuestHandle(object):
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
             raise RuntimeError('cuest_create failed')
 
+        stream_handle = ce.data_cudaStream_t()
+        status = ce.cuestParametersQuery(
+            parametersType=ce.CuestParametersType.CUEST_HANDLE_PARAMETERS,
+            parameters=cuest_handle_parameters.parameters,
+            attribute=ce.CuestHandleParametersAttributes.CUEST_HANDLE_PARAMETERS_CUDASTREAM,
+            attributeValue=stream_handle,
+        )
+        if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
+            raise RuntimeError('cuestParametersQuery failed')
+
+        self.stream_handle = stream_handle.value
+
         self.initialized = True
 
     def __del__(self):
@@ -75,4 +87,3 @@ class CuestHandle(object):
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
             raise RuntimeError('cuest_set_math_mode failed')
-

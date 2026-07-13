@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -45,6 +45,20 @@ try:
 except OSError as err:
     raise RuntimeError("Could not load cuSolver library.") from err
 
+
+def cuda_runtime_major():
+    """Major version of the installed CUDA runtime.
+
+    JIT kernel support is a CUDA 13+ feature: on CUDA 12 cuestCreate skips
+    set_jit_compiler, so the per-context JIT cache dir is never created or
+    validated and no cubins are emitted. Tests that exercise that path guard on
+    this (>= 13).
+    """
+    cudart = ctypes.cdll.LoadLibrary('libcudart.so')
+    version = ctypes.c_int()
+    if cudart.cudaRuntimeGetVersion(ctypes.byref(version)) != 0:
+        raise RuntimeError("cudaRuntimeGetVersion failed")
+    return version.value // 1000
 
 
 def make_stream():

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -256,9 +256,7 @@ class AOBasis(object):
         separator_indices = [k for k, line in enumerate(lines) if re.match(re_separator, line)]
         if len(separator_indices) == 0: 
             raise RuntimeError('No **** separators present')
-        if separator_indices[-1] + 1 != len(lines):
-            raise RuntimeError('Last line must be ****, instead is: %s' % lines[-1])
-        lines = lines[:-1]
+        lines = lines[:separator_indices[-1]+1]
         separator_indices = separator_indices[:-1]
     
         if len(lines) == 0: raise RuntimeError('GBS lines are blank')

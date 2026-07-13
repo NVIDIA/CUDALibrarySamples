@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -102,6 +102,11 @@ class CuestXCIntPlan(object):
 
         # Bind the lifetime of persistent_workspace to this object
         self.persistent_workspace = persistent_workspace
+
+        # Keep wrapper dependencies alive while the native cuEST object may
+        # refer to them; this mirrors the C API lifetime requirements.
+        self.basis = basis
+        self.grid = grid
 
         self.initialized = True
 
@@ -280,13 +285,14 @@ class CuestXCIntPlan(object):
     @property
     def string(self):
         s = ''
-        s += 'XCIntPlan:\n';
+        s += 'XCIntPlan:\n\n';
         if self.engine_description and self.engine_citation:
             s += '%-10s = %s\n' % ('engine', self.engine_description)
-            s += '%-10s = %s\n' % ('citation', self.engine_citation)
-        s += '%-10s = %s\n'     % ('XC brief', self.functional_description)
-        s += '%-10s = %s\n'     % ('citation', self.functional_citation)
-        s += '%-10s = %10s\n'   % ('functional', self.functional_name)
+            s += '%-10s = %s\n\n' % ('citation', self.engine_citation)
+        s += 'XCIntPlan Density Functional:\n\n';
+        s += '%-10s =      %s\n'     % ('XC brief', self.functional_description)
+        s += '%-10s =      %s\n'     % ('citation', self.functional_citation)
+        s += '%-10s =      %s\n'   % ('functional', self.functional_name)
         s += '%-10s = %10.3f\n' % ('hf scale',   self.exchange_scale)
         s += '%-10s = %10.3f\n' % ('lrc scale',  self.lrc_exchange_scale)
         if self.lrc_exchange_scale != 0.0:

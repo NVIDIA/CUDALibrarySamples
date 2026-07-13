@@ -54,6 +54,7 @@ c_examples/
     3_density_fitting/           # DF-J and DF-K integrals and gradients
     4_exchange_correlation/      # Local and nonlocal XC potential and gradients
     5_effective_core_potentials/ # ECP integrals and gradients
+    6_pcm/                       # PCM potential and gradients
 ```
 
 ## Running an Example

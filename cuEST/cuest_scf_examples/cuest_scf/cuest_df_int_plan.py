@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,13 +34,18 @@ class CuestDFIntPlan(object):
         auxiliary : CuestAOBasis,
         ao_pair_list : CuestAOPairList,
         exchange_scale : float = 1.0,
+        lrc_exchange_scale : float = 0.0,
+        lrc_omega : float = 0.0,
         df_fitting_eigenvalue_cutoff : float = 1.0e-12,
+        integral_direct : bool = False,
         ):
 
         self.initialized = False
 
         self.handle = handle
         self.exchange_scale = exchange_scale
+        self.lrc_exchange_scale = lrc_exchange_scale
+        self.lrc_omega = lrc_omega
         self.df_fitting_eigenvalue_cutoff = df_fitting_eigenvalue_cutoff
 
         # NOTE: The CuestDFIntPlan has several defaultable parameters that
@@ -52,7 +57,10 @@ class CuestDFIntPlan(object):
             )
 
         exchange_scale_data = ce.data_double(self.exchange_scale)
+        lrc_exchange_scale_data = ce.data_double(self.lrc_exchange_scale)
+        lrc_omega_data = ce.data_double(self.lrc_omega)
         df_fitting_eigenvalue_cutoff_data = ce.data_double(self.df_fitting_eigenvalue_cutoff)
+        integral_direct_data = ce.data_int32_t(integral_direct)
 
         self.df_int_plan_handle = ce.cuestDFIntPlanHandle()
         status = ce.cuestParametersConfigure(
@@ -67,8 +75,35 @@ class CuestDFIntPlan(object):
         status = ce.cuestParametersConfigure(
             parametersType=ce.CuestParametersType.CUEST_DFINTPLAN_PARAMETERS,
             parameters=df_int_plan_parameters.parameters,
+            attribute=ce.CuestDFIntPlanParametersAttributes.CUEST_DFINTPLAN_PARAMETERS_LRC_EXCHANGE_FRACTION,
+            attributeValue=lrc_exchange_scale_data,
+            )
+        if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
+            raise RuntimeError('cuestParametersConfigure failed')
+
+        status = ce.cuestParametersConfigure(
+            parametersType=ce.CuestParametersType.CUEST_DFINTPLAN_PARAMETERS,
+            parameters=df_int_plan_parameters.parameters,
+            attribute=ce.CuestDFIntPlanParametersAttributes.CUEST_DFINTPLAN_PARAMETERS_LRC_EXCHANGE_OMEGA,
+            attributeValue=lrc_omega_data,
+            )
+        if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
+            raise RuntimeError('cuestParametersConfigure failed')
+
+        status = ce.cuestParametersConfigure(
+            parametersType=ce.CuestParametersType.CUEST_DFINTPLAN_PARAMETERS,
+            parameters=df_int_plan_parameters.parameters,
             attribute=ce.CuestDFIntPlanParametersAttributes.CUEST_DFINTPLAN_PARAMETERS_FITTING_CUTOFF,
             attributeValue=df_fitting_eigenvalue_cutoff_data,
+            )
+        if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
+            raise RuntimeError('cuestParametersConfigure failed')
+
+        status = ce.cuestParametersConfigure(
+            parametersType=ce.CuestParametersType.CUEST_DFINTPLAN_PARAMETERS,
+            parameters=df_int_plan_parameters.parameters,
+            attribute=ce.CuestDFIntPlanParametersAttributes.CUEST_DFINTPLAN_PARAMETERS_THREE_INDEX_INTEGRAL_DIRECT,
+            attributeValue=integral_direct_data,
             )
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
             raise RuntimeError('cuestParametersConfigure failed')
@@ -117,6 +152,12 @@ class CuestDFIntPlan(object):
 
         # Bind the lifetime of persistent_workspace to this object
         self.persistent_workspace = persistent_workspace
+
+        # Keep wrapper dependencies alive while the native cuEST object may
+        # refer to them; this mirrors the C API lifetime requirements.
+        self.primary = primary
+        self.auxiliary = auxiliary
+        self.ao_pair_list = ao_pair_list
 
         self.initialized = True
 

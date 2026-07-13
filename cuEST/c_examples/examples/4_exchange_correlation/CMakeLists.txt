@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,3 +16,5 @@ add_subdirectory(local_xc_potential)
 add_subdirectory(local_xc_gradient)
 add_subdirectory(nonlocal_xc_potential)
 add_subdirectory(nonlocal_xc_gradient)
+add_subdirectory(advanced_local_xc_potential)
+add_subdirectory(advanced_local_xc_gradient)

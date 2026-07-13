@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -596,12 +596,19 @@ class CuestMolecularGrid(object):
     * P.M.W. Gill, B.G. Johnson, J.A. Pople, Chem. Phys. Lett., 209(5-6), 506 (1993)
     * S. Dasgupta and J. M. HerbertJ. Comput. Chem., 38, 869 (2017)
     where valid values are 0 <= n <= 3, where larger numbers yield larger grids.
+
+    family = UNPRUNED: A flat, unpruned grid with the same number of angular
+    (Lebedev) points at every radial node.  No pruning is applied to any atom.
+    The radial quadrature is the Treutler-Ahlrichs rule used by the GRID family.
+    For this family grid_level is the (n_radial, n_angular) pair giving the
+    number of radial nodes and the number of Lebedev angular points per node
+    (e.g. (99, 590) or (75, 302)).
     """
     def __init__(
         self,
         *,
         handle : CuestHandle,
-        grid_level : int,
+        grid_level,
         xyz : np.ndarray,
         Ns : list[int],
         family="GRID",
@@ -610,7 +617,7 @@ class CuestMolecularGrid(object):
         self.initialized = False
         family = family.upper()
 
-        supported_families = ["GRID", "SG"]
+        supported_families = ["GRID", "SG", "UNPRUNED"]
         if family not in supported_families:
             raise RuntimeError(f"Unrecognized grid family '{family}'.  Supported values are {', '.join(supported_families)}")
 
@@ -619,11 +626,25 @@ class CuestMolecularGrid(object):
                 raise RuntimeError("Only grid_level 1 to 5 (inclusive) is supported for the GRID family")
             self.grid_name = f'GRID{grid_level}'
             default_n_angular, default_n_radial, pruning_map = _get_grid_pruning_pattern(grid_level)
-        else:
+        elif family == "SG":
             if grid_level < 0 or grid_level > 3:
                 raise RuntimeError("Only grid_level 0 to 3 (inclusive) is supported for the SG family")
             default_n_angular, default_n_radial, pruning_map = _get_sg_pruning_pattern(grid_level)
             self.grid_name = f'SG{grid_level}'
+        else:
+            # UNPRUNED: grid_level is the (n_radial, n_angular) pair.
+            try:
+                default_n_radial, default_n_angular = grid_level
+            except (TypeError, ValueError):
+                raise RuntimeError(
+                    "For the UNPRUNED family grid_level must be an (n_radial, n_angular) pair"
+                    )
+            if default_n_radial < 1 or default_n_angular < 1:
+                raise RuntimeError("UNPRUNED n_radial and n_angular must be positive")
+            # Empty pruning map -> every atom uses the flat default_n_angular x
+            # default_n_radial grid with the Treutler-Ahlrichs radial quadrature.
+            pruning_map = {}
+            self.grid_name = f'UNPRUNED({default_n_radial},{default_n_angular})'
 
         self.handle = handle
 
@@ -632,8 +653,9 @@ class CuestMolecularGrid(object):
         atomgrids = CuestAtomGridList()
         for atom,N in enumerate(Ns):
             symbol_upper = PeriodicTable.N_to_symbol_upper_table[N]
-            if family == 'GRID':
-                # GRIDn family
+            if family in ('GRID', 'UNPRUNED'):
+                # GRIDn family (and the flat UNPRUNED grid, which has an empty
+                # pruning map so every atom falls through to the default branch)
                 ahlrichs_radius = _symbol_to_ahlrichs_radius(
                     symbol=symbol_upper,
                     )

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -61,3 +61,6 @@ add_subdirectory(4_exchange_correlation)
 
 set(CMAKE_FOLDER "5_effective_core_potentials")
 add_subdirectory(5_effective_core_potentials)
+
+set(CMAKE_FOLDER "6_pcm")
+add_subdirectory(6_pcm)

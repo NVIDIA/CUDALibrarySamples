@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -203,8 +203,9 @@ class CuestPCMIntPlan(object):
             if sym not in _bondi_radii_ang:
                 raise RuntimeError(f"No Bondi radius defined for element {sym}")
         grid_sizes = [num_angular_points_per_hydrogen_atom if s == "H" else num_angular_points_per_heavy_atom for s in symbols_upper]
-        zetas=[_zeta_map[grid_size] for grid_size in grid_sizes]
-        atomic_radii=atomic_radii_scale*np.array([_bondi_radii_ang[symbol_upper] * bohr_per_ang for symbol_upper in symbols_upper])
+        zetas = [_zeta_map[grid_size] for grid_size in grid_sizes]
+        atomic_radii = [atomic_radii_scale * _bondi_radii_ang[symbol_upper] * bohr_per_ang for symbol_upper in symbols_upper]
+        effective_nuclear_charges = np.asarray(effective_nuclear_charges).flatten().tolist()
 
         pcm_int_plan_parameters = CuestParameters(
             parametersType=ce.CuestParametersType.CUEST_PCMINTPLAN_PARAMETERS,
@@ -276,6 +277,10 @@ class CuestPCMIntPlan(object):
 
         # Bind the lifetime of persistent_workspace to this object
         self.persistent_workspace = persistent_workspace
+
+        # Keep wrapper dependencies alive while the native cuEST object may
+        # refer to them; this mirrors the C API lifetime requirements.
+        self.intPlan = intPlan
 
         self.initialized = True
 

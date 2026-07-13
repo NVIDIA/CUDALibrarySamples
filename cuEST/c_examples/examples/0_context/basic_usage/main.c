@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -85,9 +85,47 @@ int main(int argc, char **argv)
         max_rys_points,
         (max_rys_points==0) ? "(zero requests the largest available table)" : " ");
 
+    /*
+     * Optionally configure the JIT compiler used for runtime kernel compilation.
+     * CUEST_HANDLE_PARAMETERS_JIT_CACHE_DIR sets the directory where compiled
+     * kernels are cached (empty string, the default, uses
+     * ~/.cuest_cache/cuest-cuda<N>-v<version>/); it must be a trusted, per-user,
+     * non-world-writable path. CUEST_HANDLE_PARAMETERS_JIT_COMPILE_THREADS sets
+     * the number of parallel JIT-compile worker threads (>= 1; default 16).
+     * Both are passed as their respective types and take effect at cuestCreate.
+     */
+    const char *jit_cache_dir = "/tmp/cuest-jit-cache";
+    int32_t jit_compile_threads = 8;
+    checkCuestErrors(cuestParametersConfigure(
+        CUEST_HANDLE_PARAMETERS,
+        handle_parameters,
+        CUEST_HANDLE_PARAMETERS_JIT_CACHE_DIR,
+        &jit_cache_dir,
+        sizeof(char *)));
+    checkCuestErrors(cuestParametersConfigure(
+        CUEST_HANDLE_PARAMETERS,
+        handle_parameters,
+        CUEST_HANDLE_PARAMETERS_JIT_COMPILE_THREADS,
+        &jit_compile_threads,
+        sizeof(int32_t)));
+
+    /*
+     * A queried string attribute is allocated by cuEST and must be freed by the
+     * caller with C's native free() after use.
+     */
+    char *queried_cache_dir = NULL;
+    checkCuestErrors(cuestParametersQuery(
+        CUEST_HANDLE_PARAMETERS,
+        handle_parameters,
+        CUEST_HANDLE_PARAMETERS_JIT_CACHE_DIR,
+        &queried_cache_dir,
+        sizeof(char *)));
+    fprintf(stdout, "JIT cache directory: %s\n", queried_cache_dir);
+    free(queried_cache_dir);
+
     /* Create the cuEST handle. */
     checkCuestErrors(cuestCreate(
-        handle_parameters, 
+        handle_parameters,
         &handle));
 
     /* The cuEST handle parameters may be destroyed immediately following handle creation. */
