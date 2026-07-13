@@ -306,10 +306,10 @@ int main(int argc, char* argv[])
     cusolverStat = cusolverMpPolarDescriptorCreate(&polarDesc);
     SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
-    /* Requested perturbation. Values <= 0 request no perturbation.
-     * Float input is accepted and stored by the descriptor as double. */
-    float requested_ksi = 0.0f;
-    cusolverStat        = cusolverMpPolarDescriptorSetAttribute(
+    /* Requested perturbation. REQUESTED_KSI is a double attribute;
+     * values <= 0 request no perturbation. */
+    double requested_ksi = 0.0;
+    cusolverStat         = cusolverMpPolarDescriptorSetAttribute(
             polarDesc, CUSOLVERMP_POLAR_DESCRIPTOR_ATTRIBUTE_REQUESTED_KSI, &requested_ksi, sizeof(requested_ksi));
     SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
@@ -464,7 +464,9 @@ int main(int argc, char* argv[])
     /* =========================================== */
     if (rank == 0)
     {
-        double* Up = &h_Up[(ia - 1) + (ja - 1) * globalRowsA];
+        double* Up   = &h_Up[(ia - 1) + (ja - 1) * globalRowsA];
+        double* H    = &h_H[(ih - 1) + (jh - 1) * globalRowsH];
+        double* Aref = &h_Aref[(ia - 1) + (ja - 1) * globalRowsA];
 
         /* Check orthogonality: ||Up^T * Up - I||_F.
          * This sample is real double-only; a complex variant must use Up^H. */
@@ -485,9 +487,30 @@ int main(int argc, char* argv[])
         }
         ortho_err = sqrt(ortho_err);
 
+        /* Check reconstruction: ||A - Up * H||_F / ||A||_F */
+        double a_norm2 = 0.0;
+        double err2    = 0.0;
+        for (int64_t j = 0; j < n; j++)
+        {
+            for (int64_t i = 0; i < m; i++)
+            {
+                double recon = 0.0;
+                for (int64_t k = 0; k < n; k++)
+                {
+                    recon += Up[i + k * globalRowsA] * H[k + j * globalRowsH];
+                }
+                double aij  = Aref[i + j * globalRowsA];
+                double diff = aij - recon;
+                a_norm2 += aij * aij;
+                err2 += diff * diff;
+            }
+        }
+        double recon_err = (a_norm2 > 0.0) ? sqrt(err2) / sqrt(a_norm2) : sqrt(err2);
+
         printf("\nVerification:\n");
-        printf("  ||Up^T*Up - I||_F = %.6e\n", ortho_err);
-        sample_ok = sample_ok && (ortho_err < n * 1e-12);
+        printf("  ||Up^T*Up - I||_F        = %.6e\n", ortho_err);
+        printf("  ||A - Up*H||_F / ||A||_F = %.6e\n", recon_err);
+        sample_ok = sample_ok && (ortho_err < n * 1e-12) && (recon_err < n * 1e-12);
         printf("  Polar check: %s\n", sample_ok ? "PASS" : "FAIL");
     }
 

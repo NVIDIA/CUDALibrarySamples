@@ -96,8 +96,8 @@ int main(int argc, char* argv[])
     const int64_t k   = (m < n) ? m : n;   /* min(m, n) */
     const int64_t mbA = opts.mbA;
     const int64_t nbA = opts.nbA;
-    const int numRowDevices = opts.p;
-    const int numColDevices = opts.q;
+    const int nprow = opts.p;
+    const int npcol = opts.q;
 
     /* ================================================================
      * 2. MPI initialization
@@ -111,7 +111,7 @@ int main(int argc, char* argv[])
     /* Sample-configuration checks run after MPI_Init so a failure routes
      * through MPI_Abort (via SAMPLE_ASSERT) rather than a bare abort(). */
     SAMPLE_ASSERT(mbA == nbA && "tile sizes must be equal (mbA == nbA)");
-    SAMPLE_ASSERT(commSize == numRowDevices * numColDevices);
+    SAMPLE_ASSERT(commSize == nprow * npcol);
 
     if (k == 0)
     {
@@ -133,7 +133,7 @@ int main(int argc, char* argv[])
         printf("  thin SVD: U (%ld x %ld), S (%ld), V^T (%ld x %ld)\n",
                (long)m, (long)k, (long)k, (long)k, (long)n);
         printf("  tile size: %ld x %ld, grid: %d x %d, ranks: %d\n\n",
-               (long)mbA, (long)nbA, numRowDevices, numColDevices, commSize);
+               (long)mbA, (long)nbA, nprow, npcol, commSize);
     }
 
     /* ================================================================
@@ -165,7 +165,7 @@ int main(int argc, char* argv[])
 
     cusolverMpGrid_t grid = NULL;
     cusolverStat = cusolverMpCreateDeviceGrid(handle, &grid, ncclComm,
-                                               numRowDevices, numColDevices, gridLayout);
+                                               nprow, npcol, gridLayout);
     SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
     /* ================================================================
@@ -176,26 +176,26 @@ int main(int argc, char* argv[])
     int myRowRank, myColRank;
     if (gridLayout == CUSOLVERMP_GRID_MAPPING_COL_MAJOR)
     {
-        myRowRank = rank % numRowDevices;
-        myColRank = rank / numRowDevices;
+        myRowRank = rank % nprow;
+        myColRank = rank / nprow;
     }
     else
     {
-        myRowRank = rank / numColDevices;
-        myColRank = rank % numColDevices;
+        myRowRank = rank / npcol;
+        myColRank = rank % npcol;
     }
 
     /* A is M-by-N, U is M-by-K, V^T is K-by-N */
-    const int64_t localRowsA = cusolverMpNUMROC(m, mbA, myRowRank, rsrc, numRowDevices);
-    const int64_t localColsA = cusolverMpNUMROC(n, nbA, myColRank, csrc, numColDevices);
+    const int64_t localRowsA = cusolverMpNUMROC(m, mbA, myRowRank, rsrc, nprow);
+    const int64_t localColsA = cusolverMpNUMROC(n, nbA, myColRank, csrc, npcol);
     const int64_t lldA       = (localRowsA > 0) ? localRowsA : 1;
 
-    const int64_t localRowsU = cusolverMpNUMROC(m, mbA, myRowRank, rsrc, numRowDevices);
-    const int64_t localColsU = cusolverMpNUMROC(k, nbA, myColRank, csrc, numColDevices);
+    const int64_t localRowsU = cusolverMpNUMROC(m, mbA, myRowRank, rsrc, nprow);
+    const int64_t localColsU = cusolverMpNUMROC(k, nbA, myColRank, csrc, npcol);
     const int64_t lldU       = (localRowsU > 0) ? localRowsU : 1;
 
-    const int64_t localRowsVT = cusolverMpNUMROC(k, mbA, myRowRank, rsrc, numRowDevices);
-    const int64_t localColsVT = cusolverMpNUMROC(n, nbA, myColRank, csrc, numColDevices);
+    const int64_t localRowsVT = cusolverMpNUMROC(k, mbA, myRowRank, rsrc, nprow);
+    const int64_t localColsVT = cusolverMpNUMROC(n, nbA, myColRank, csrc, npcol);
     const int64_t lldVT       = (localRowsVT > 0) ? localRowsVT : 1;
 
     /* ================================================================

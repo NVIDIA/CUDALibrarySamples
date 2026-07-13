@@ -497,6 +497,7 @@ int main(int argc, char* argv[])
                                    h_work_getrf,
                                    workspaceInBytesOnHost_getrf,
                                    d_info_getrf);
+    SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
     /* sync after cusolverMpGetrf */
     cudaStat = cudaStreamSynchronize(stream);
@@ -538,6 +539,7 @@ int main(int argc, char* argv[])
                                    h_work_getrs,
                                    workspaceInBytesOnHost_getrs,
                                    d_info_getrs);
+    SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
     /* sync after cusolverMpGetrs */
     cudaStat = cudaStreamSynchronize(stream);
@@ -551,7 +553,7 @@ int main(int argc, char* argv[])
     cudaStat = cudaStreamSynchronize(stream);
     SAMPLE_ASSERT(cudaStat == cudaSuccess);
 
-    /* check return value of cusolverMpGetrf */
+    /* check return value of cusolverMpGetrs */
     SAMPLE_ASSERT(h_info_getrs == 0);
 
     /* =========================================== */
