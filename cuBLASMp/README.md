@@ -90,22 +90,24 @@ make -j
 
 ### Running
 
-The number of MPI processes must equal the process grid size (`p * q`). All samples accept `-help` for a full list of options.
+By default, the number of MPI processes must equal the process grid size (`p * q`). With `-gpus-per-process N`,
+the sample launches up to `N` local GPU worker threads per MPI process, so the process grid can be supplied by fewer
+MPI processes. All samples accept `-help` for a full list of options.
 
 **Tensor Parallelism Matmul** (1D grid, processes along one dimension):
 
 ```bash
 # AllGather + GEMM with FP16
-mpirun -n 2 ./matmul_ag -typeA fp16 -typeB fp16 -typeD fp16 -transA t -transB n
+mpirun -n 2 ./matmul_ag -p 1 -q 2 -typeA fp16 -typeB fp16 -typeD fp16 -transA t -transB n
 
 # GEMM + ReduceScatter with FP16
-mpirun -n 2 ./matmul_rs -typeA fp16 -typeB fp16 -typeD fp16 -transA t -transB n
+mpirun -n 2 ./matmul_rs -p 1 -q 2 -typeA fp16 -typeB fp16 -typeD fp16 -transA t -transB n
 
 # GEMM + AllReduce with FP16
-mpirun -n 2 ./matmul_ar -typeA fp16 -typeB fp16 -typeD fp16 -transA t -transB n
+mpirun -n 2 ./matmul_ar -p 1 -q 2 -typeA fp16 -typeB fp16 -typeD fp16 -transA t -transB n
 
 # End-to-end tensor parallelism
-mpirun -n 2 ./tp_matmul
+mpirun -n 2 ./tp_matmul -p 1 -q 2
 ```
 
 **PBLAS-style operations** (2D grid with `-p` rows and `-q` columns):
@@ -123,6 +125,24 @@ mpirun -n 2 ./tradd -p 2 -q 1
 mpirun -n 2 ./gemr2d -p 2 -q 1
 ```
 
+**Single-process multi-GPU samples** (one MPI process launches multiple local GPU worker threads):
+
+```bash
+# Two local GPU ranks in one MPI process
+mpirun -n 1 ./gemm -gpus-per-process 2 -p 1 -q 2
+
+# Tensor-parallel samples use the same local-rank model
+mpirun -n 1 ./matmul_ag -gpus-per-process 2 -p 1 -q 2 \
+    -typeA fp16 -typeB fp16 -typeD fp16 -transA t -transB n
+
+# Redistribution and addition samples also support SPMG
+mpirun -n 1 ./gemr2d -gpus-per-process 2 -p 1 -q 2
+mpirun -n 1 ./geadd -gpus-per-process 2 -p 1 -q 2
+
+# Use a subset of the available SPMG ranks: two participating ranks out of up to four local GPU workers
+mpirun -n 1 ./gemm -gpus-per-process 4 -p 1 -q 2
+```
+
 ### Common Options
 
 Individual operations may use only a subset of these options, and not every datatype or scaling-mode combination is valid for every sample.
@@ -133,6 +153,7 @@ Individual operations may use only a subset of these options, and not every data
 | `-mbA`, `-nbA`, `-mbB`, `-nbB`, `-mbC`, `-nbC` | Block sizes for the distributed matrices |
 | `-ia`, `-ja`, `-ib`, `-jb`, `-ic`, `-jc` | 1-based starting indices of the operated submatrices |
 | `-p`, `-q` | Process grid dimensions (p rows, q columns) |
+| `-gpus-per-process` | Number of local GPU worker threads per MPI process for SPMG mode |
 | `-typeA`, `-typeB`, `-typeC`, `-typeD` | Data types (`fp16`, `bf16`, `fp32`, `fp64`, `fp8_e4m3`, `fp8_e5m2`, `fp4_e2m1`, `cfp32`, `cfp64`) |
 | `-transA`, `-transB` | Transpose operations (`n`, `t`, `c`) |
 | `-scaleA`, `-scaleB`, `-scaleD`, `-scaleDOut` | Scaling modes (`scalar_fp32`, `vec16_ue4m3`, `vec32_ue8m0`, `outer_vec_fp32`, `vec128_fp32`, `blk128x128_fp32`) |

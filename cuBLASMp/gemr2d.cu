@@ -16,8 +16,8 @@
  */
 
 #include <cublasmp.h>
-#include <mpi.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include <vector>
 
@@ -25,28 +25,9 @@
 #include "matrix_generator.hxx"
 
 template <typename T>
-int run_gemr2d(const Options& opts)
+static Result run_gemr2d(const Options& opts, ncclComm_t comm)
 {
-    int rank, nranks;
-    MPI_Comm_size(MPI_COMM_WORLD, &nranks);
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-
-    const int local_device = getLocalDevice();
-    CUDA_CHECK(cudaSetDevice(local_device));
-    CUDA_CHECK(cudaFree(nullptr));
-
-    ncclUniqueId id;
-
-    if (rank == 0)
-    {
-        NCCL_CHECK(ncclGetUniqueId(&id));
-    }
-
-    MPI_CHECK(MPI_Bcast(&id, sizeof(id), MPI_BYTE, 0, MPI_COMM_WORLD));
-
-    ncclComm_t comm;
-    NCCL_CHECK(ncclCommInitRank(&comm, nranks, id, rank));
-
+    const int rank = get_nccl_rank(comm);
     cudaStream_t stream = nullptr;
     CUDA_CHECK(cudaStreamCreate(&stream));
 
@@ -56,8 +37,7 @@ int run_gemr2d(const Options& opts)
     cublasMpGrid_t grid_pq = nullptr;
     cublasMpGrid_t grid_qp = nullptr;
 
-    const cublasMpGridLayout_t grid_layout =
-        (opts.grid_layout == 'c' ? CUBLASMP_GRID_LAYOUT_COL_MAJOR : CUBLASMP_GRID_LAYOUT_ROW_MAJOR);
+    const cublasMpGridLayout_t grid_layout = char_to_grid_layout(opts.grid_layout);
 
     CUBLASMP_CHECK(cublasMpGridCreate(opts.p, opts.q, grid_layout, comm, &grid_pq));
     CUBLASMP_CHECK(cublasMpGridCreate(opts.q, opts.p, grid_layout, comm, &grid_qp));
@@ -98,8 +78,8 @@ int run_gemr2d(const Options& opts)
     std::vector<T> h_A(loc_a_m * loc_a_n, T(0));
     std::vector<T> h_B(loc_b_m * loc_b_n, T(0));
 
-    generate_random_matrix(m, n, h_A.data(), mbA, nbA, ia, ja, loc_a_m, nprowA, npcolA, myprowA, mypcolA);
-    generate_random_matrix(m, n, h_B.data(), mbB, nbB, ib, jb, loc_b_m, nprowB, npcolB, myprowB, mypcolB);
+    generate_random_matrix(m, n, h_A.data(), mbA, nbA, ia, ja, loc_a_m, nprowA, npcolA, myprowA, mypcolA, rank);
+    generate_random_matrix(m, n, h_B.data(), mbB, nbB, ib, jb, loc_b_m, nprowB, npcolB, myprowB, mypcolB, rank);
 
     T* d_A = nullptr;
     T* d_B = nullptr;
@@ -173,18 +153,10 @@ int run_gemr2d(const Options& opts)
 
     CUBLASMP_CHECK(cublasMpDestroy(handle));
 
-    NCCL_CHECK(ncclCommFinalize(comm));
-    NCCL_CHECK(ncclCommDestroy(comm));
-
     CUDA_CHECK(cudaStreamDestroy(stream));
 
-    if (rank == 0)
-    {
-        printf("[SUCCEEDED]\n");
-    }
-
-    return 0;
-};
+    return Result {};
+}
 
 int main(int argc, char** argv)
 {
@@ -207,25 +179,29 @@ int main(int argc, char** argv)
     };
 
     opts.parse(argc, argv);
+    opts.validate();
 
-    MPI_Init(&argc, &argv);
-
-    if (opts.typeA == CUDA_R_32F && opts.typeB == CUDA_R_32F)
-    {
-        run_gemr2d<float>(opts);
-    }
-    else if (opts.typeA == CUDA_R_64F && opts.typeB == CUDA_R_64F)
-    {
-        run_gemr2d<double>(opts);
-    }
-    else
+    if (!((opts.typeA == CUDA_R_32F && opts.typeB == CUDA_R_32F) ||
+          (opts.typeA == CUDA_R_64F && opts.typeB == CUDA_R_64F)))
     {
         throw std::runtime_error("The gemr2d sample doesn't support the given datatype combination");
     }
 
-    MPI_Barrier(MPI_COMM_WORLD);
+    const int nranks = opts.p * opts.q;
+    Comm comm(nranks, opts.gpus_per_process);
+    const Result result = comm.collective_launch([&](ncclComm_t nccl_comm) {
+        if (opts.typeA == CUDA_R_32F && opts.typeB == CUDA_R_32F)
+        {
+            return run_gemr2d<float>(opts, nccl_comm);
+        }
 
-    MPI_Finalize();
+        return run_gemr2d<double>(opts, nccl_comm);
+    });
 
-    return 0;
+    if (comm.is_root())
+    {
+        printf(status_ok(result.status) ? "[SUCCEEDED]\n" : "[FAILED]\n");
+    }
+
+    return status_ok(result.status) ? EXIT_SUCCESS : EXIT_FAILURE;
 }

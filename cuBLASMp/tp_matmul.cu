@@ -19,7 +19,6 @@
 #include <cublasmp.h>
 #include <cuda_fp8.h>
 #include <math.h>
-#include <mpi.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -29,8 +28,10 @@
 #include "helpers.h"
 #include "matrix_generator.hxx"
 
-int main(int argc, char* argv[])
+static Result run_tp_matmul(const Options& opts, ncclComm_t comm)
 {
+    Result result;
+    const int rank = get_nccl_rank(comm);
     using input_t = __half;
     using output_t = __half;
     using compute_t = float;
@@ -40,27 +41,7 @@ int main(int argc, char* argv[])
     const cublasOperation_t transA = CUBLAS_OP_T;
     const cublasOperation_t transB = CUBLAS_OP_N;
 
-    MPI_Init(nullptr, nullptr);
-
-    int rank, nranks;
-    MPI_Comm_size(MPI_COMM_WORLD, &nranks);
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-
-    const int local_device = getLocalDevice();
-    CUDA_CHECK(cudaSetDevice(local_device));
-    CUDA_CHECK(cudaFree(nullptr));
-
-    ncclUniqueId id;
-
-    if (rank == 0)
-    {
-        NCCL_CHECK(ncclGetUniqueId(&id));
-    }
-
-    MPI_CHECK(MPI_Bcast(&id, sizeof(id), MPI_BYTE, 0, MPI_COMM_WORLD));
-
-    ncclComm_t comm;
-    NCCL_CHECK(ncclCommInitRank(&comm, nranks, id, rank));
+    const int nranks = opts.p * opts.q;
 
     cudaStream_t stream = nullptr;
     CUDA_CHECK(cudaStreamCreate(&stream));
@@ -122,9 +103,10 @@ int main(int argc, char* argv[])
             ta ? 1 : nranks,
             ta ? nranks : 1,
             ta ? 0 : rank,
-            ta ? rank : 0);
-        generate_random_matrix(k, n, h_W0.data(), loc_b_m, loc_b_n, 1, 1, loc_b_m, 1, nranks, 0, rank);
-        generate_random_matrix(m, n, h_X1.data(), loc_c_m, loc_c_n, 1, 1, loc_c_m, nranks, 1, rank, 0);
+            ta ? rank : 0,
+            rank);
+        generate_random_matrix(k, n, h_W0.data(), loc_b_m, loc_b_n, 1, 1, loc_b_m, 1, nranks, 0, rank, rank);
+        generate_random_matrix(m, n, h_X1.data(), loc_c_m, loc_c_n, 1, 1, loc_c_m, nranks, 1, rank, 0, rank);
 
         input_t* d_X0 = nullptr;
         input_t* d_W0 = nullptr;
@@ -209,8 +191,8 @@ int main(int argc, char* argv[])
 
         CUDA_CHECK(cudaStreamSynchronize(stream));
 
-        const int warmup = 5;
-        const int cycles = 10;
+        const int warmup = opts.warmup;
+        const int cycles = opts.cycles;
 
         cudaEvent_t start, stop;
         CUDA_CHECK(cudaEventCreate(&start));
@@ -259,6 +241,7 @@ int main(int argc, char* argv[])
         float elapsed_ms;
         CUDA_CHECK(cudaEventElapsedTime(&elapsed_ms, start, stop));
         const double elapsed = (elapsed_ms / 1000.0) / cycles;
+        result.elapsed = std::max(result.elapsed, elapsed);
 
         if (rank == 0)
         {
@@ -311,8 +294,9 @@ int main(int argc, char* argv[])
             ta ? nranks : 1,
             ta ? 1 : nranks,
             ta ? rank : 0,
-            ta ? 0 : rank);
-        generate_random_matrix(m, n, h_X2.data(), loc_c_m, loc_c_n, 1, 1, loc_c_m, 1, nranks, 0, rank);
+            ta ? 0 : rank,
+            rank);
+        generate_random_matrix(m, n, h_X2.data(), loc_c_m, loc_c_n, 1, 1, loc_c_m, 1, nranks, 0, rank, rank);
 
         input_t* d_W1 = nullptr;
 
@@ -393,8 +377,8 @@ int main(int argc, char* argv[])
 
         CUDA_CHECK(cudaStreamSynchronize(stream));
 
-        const int warmup = 5;
-        const int cycles = 10;
+        const int warmup = opts.warmup;
+        const int cycles = opts.cycles;
 
         cudaEvent_t start, stop;
         CUDA_CHECK(cudaEventCreate(&start));
@@ -443,6 +427,7 @@ int main(int argc, char* argv[])
         float elapsed_ms;
         CUDA_CHECK(cudaEventElapsedTime(&elapsed_ms, start, stop));
         const double elapsed = (elapsed_ms / 1000.0) / cycles;
+        result.elapsed = std::max(result.elapsed, elapsed);
 
         if (rank == 0)
         {
@@ -473,19 +458,52 @@ int main(int argc, char* argv[])
 
     CUBLASMP_CHECK(cublasMpDestroy(handle));
 
-    NCCL_CHECK(ncclCommFinalize(comm));
-    NCCL_CHECK(ncclCommDestroy(comm));
-
     CUDA_CHECK(cudaStreamDestroy(stream));
 
-    MPI_Barrier(MPI_COMM_WORLD);
+    return Result {};
+}
 
-    MPI_Finalize();
+int main(int argc, char* argv[])
+{
+    Options opts = { .m = 0,
+                     .n = 0,
+                     .k = 0,
+                     .mbA = 1,
+                     .nbA = 1,
+                     .mbB = 1,
+                     .nbB = 1,
+                     .mbC = 1,
+                     .nbC = 1,
+                     .ia = 1,
+                     .ja = 1,
+                     .ib = 1,
+                     .jb = 1,
+                     .ic = 1,
+                     .jc = 1,
+                     .p = 1,
+                     .q = 2,
+                     .grid_layout = 'c',
+                     .verbose = false,
+                     .cycles = 10,
+                     .warmup = 5 };
 
-    if (rank == 0)
+    opts.parse(argc, argv);
+    opts.validate();
+
+    if (opts.cycles <= 0)
     {
-        printf("[SUCCEEDED]\n");
+        fprintf(stderr, "Error: -cycles expects a positive integer\n");
+        return EXIT_FAILURE;
     }
 
-    return 0;
-};
+    const int nranks = opts.p * opts.q;
+    Comm comm(nranks, opts.gpus_per_process);
+    const Result result = comm.collective_launch([&](ncclComm_t nccl_comm) { return run_tp_matmul(opts, nccl_comm); });
+
+    if (comm.is_root())
+    {
+        printf(status_ok(result.status) ? "[SUCCEEDED]\n" : "[FAILED]\n");
+    }
+
+    return status_ok(result.status) ? EXIT_SUCCESS : EXIT_FAILURE;
+}

@@ -28,9 +28,13 @@
 #include <cctype>
 #include <cmath>
 #include <cstdint>
+#include <exception>
 #include <limits>
+#include <mutex>
 #include <stdexcept>
+#include <thread>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #define MPI_CHECK(call)                                                                                                \
@@ -264,6 +268,11 @@ inline int64_t roundup(int64_t x, int64_t y)
     return ((x + y - 1) / y) * y;
 }
 
+static inline int ceildiv(int numerator, int denominator)
+{
+    return (numerator + denominator - 1) / denominator;
+}
+
 size_t get_scaling_tensor_size(int64_t m, int64_t n, cublasMpMatmulMatrixScale_t scale_mode)
 {
     switch (scale_mode)
@@ -274,22 +283,17 @@ size_t get_scaling_tensor_size(int64_t m, int64_t n, cublasMpMatmulMatrixScale_t
             return roundup((m + 15) / 16, 4) * roundup(n, 128) * sizeof(__nv_fp8_e4m3);
         case CUBLASMP_MATMUL_MATRIX_SCALE_VEC32_UE8M0:
             return roundup((m + 31) / 32, 4) * roundup(n, 128) * sizeof(__nv_fp8_e8m0);
-        case CUBLASMP_MATMUL_MATRIX_SCALE_VEC128_FP32: return roundup((m + 127) / 128, 4) * n * sizeof(float);
+        case CUBLASMP_MATMUL_MATRIX_SCALE_VEC128_FP32: return ((m + 127) / 128) * roundup(n, 4) * sizeof(float);
         case CUBLASMP_MATMUL_MATRIX_SCALE_BLK128x128_FP32:
             return (roundup((m + 127) / 128, 4) * ((n + 127) / 128)) * sizeof(float);
         default: return 0;
     }
 }
 
-void* allocate_and_init_scaling_factors(int64_t m, int64_t n, cublasMpMatmulMatrixScale_t scale_mode)
+void* allocate_and_init_scaling_factors(int64_t m, int64_t n, cublasMpMatmulMatrixScale_t scale_mode, int rank)
 {
     size_t scale_size = get_scaling_tensor_size(m, n, scale_mode);
     if (scale_size == 0) return nullptr;
-
-    int rank;
-    MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &rank));
-
-    std::srand(rank);
 
     void* d_scale = nullptr;
     CUDA_CHECK(cudaMalloc(&d_scale, scale_size));
@@ -317,7 +321,7 @@ void* allocate_and_init_scaling_factors(int64_t m, int64_t n, cublasMpMatmulMatr
         case CUBLASMP_MATMUL_MATRIX_SCALE_VEC16_UE4M3:
         {
             generate_values(
-                seed, reinterpret_cast<__nv_fp8_e4m3*>(d_scale), scale_size / sizeof(__nv_fp8_e4m3), true, 1, 10);
+                seed, reinterpret_cast<__nv_fp8_e4m3*>(d_scale), scale_size / sizeof(__nv_fp8_e4m3), true, 0.25, 1);
             break;
         }
 
@@ -349,6 +353,16 @@ cublasOperation_t char_to_cublas_operation(char op)
     }
 }
 
+static inline cublasMpGridLayout_t char_to_grid_layout(char layout)
+{
+    switch (std::tolower(layout))
+    {
+        case 'c': return CUBLASMP_GRID_LAYOUT_COL_MAJOR;
+        case 'r': return CUBLASMP_GRID_LAYOUT_ROW_MAJOR;
+        default: throw std::runtime_error("unsupported grid layout");
+    }
+}
+
 struct Options
 {
     // problem properties
@@ -372,6 +386,7 @@ struct Options
     int p;
     int q;
     char grid_layout;
+    int gpus_per_process = 1;
 
     // data types
     cudaDataType_t typeA = CUDA_R_64F;
@@ -398,43 +413,47 @@ struct Options
 
     void printHelp()
     {
-        printf(
-            "Available options:\n"
-            "    -m <int>\n"
-            "    -n <int>\n"
-            "    -k <int>\n"
-            "    -mbA <int>\n"
-            "    -nbA <int>\n"
-            "    -mbB <int>\n"
-            "    -nbB <int>\n"
-            "    -mbC <int>\n"
-            "    -nbC <int>\n"
-            "    -ia <int>\n"
-            "    -ja <int>\n"
-            "    -ib <int>\n"
-            "    -jb <int>\n"
-            "    -ic <int>\n"
-            "    -jc <int>\n"
-            "    -typeA <string> (fp4_e2m1, fp8_e4m3, fp8_e5m2, bf16, fp16, fp32, fp64, cfp32, cfp64)\n"
-            "    -typeB <string> (fp4_e2m1, fp8_e4m3, fp8_e5m2, bf16, fp16, fp32, fp64, cfp32, cfp64)\n"
-            "    -typeC <string> (fp4_e2m1, fp8_e4m3, fp8_e5m2, bf16, fp16, fp32, fp64, cfp32, cfp64)\n"
-            "    -typeD <string> (fp4_e2m1, fp8_e4m3, fp8_e5m2, bf16, fp16, fp32, fp64, cfp32, cfp64)\n"
-            "    -transA <char> (n, t, c)\n"
-            "    -transB <char> (n, t, c)\n"
-            "    -scaleA <string> (scalar_fp32, vec16_ue4m3, vec32_ue8m0, outer_vec_fp32, vec128_fp32, blk128x128_fp32)\n"
-            "    -scaleB <string> (scalar_fp32, vec16_ue4m3, vec32_ue8m0, outer_vec_fp32, vec128_fp32, blk128x128_fp32)\n"
-            "    -scaleD <string> (scalar_fp32, vec16_ue4m3, vec32_ue8m0, outer_vec_fp32, vec128_fp32, blk128x128_fp32)\n"
-            "    -scaleDOut <string> (scalar_fp32, vec16_ue4m3, vec32_ue8m0, outer_vec_fp32, vec128_fp32, blk128x128_fp32)\n"
-            "    -p <int>\n"
-            "    -q <int>\n"
-            "    -gridLayout <char> (c, r)\n"
-            "    -emulationStrategy <string> (default, performant, eager)\n"
-            "    -checkResult <bool> (true, false)\n"
-            "    -no-check\n"
-            "    -cycles <int>\n"
-            "    -warmup <int>\n"
-            "    -verbose\n"
-            "    -help\n");
+        printf("Available options:\n"
+               "    -m <int>\n"
+               "    -n <int>\n"
+               "    -k <int>\n"
+               "    -mbA <int>\n"
+               "    -nbA <int>\n"
+               "    -mbB <int>\n"
+               "    -nbB <int>\n"
+               "    -mbC <int>\n"
+               "    -nbC <int>\n"
+               "    -ia <int>\n"
+               "    -ja <int>\n"
+               "    -ib <int>\n"
+               "    -jb <int>\n"
+               "    -ic <int>\n"
+               "    -jc <int>\n"
+               "    -typeA <string> (fp4_e2m1, fp8_e4m3, fp8_e5m2, bf16, fp16, fp32, fp64, cfp32, cfp64)\n"
+               "    -typeB <string> (fp4_e2m1, fp8_e4m3, fp8_e5m2, bf16, fp16, fp32, fp64, cfp32, cfp64)\n"
+               "    -typeC <string> (fp4_e2m1, fp8_e4m3, fp8_e5m2, bf16, fp16, fp32, fp64, cfp32, cfp64)\n"
+               "    -typeD <string> (fp4_e2m1, fp8_e4m3, fp8_e5m2, bf16, fp16, fp32, fp64, cfp32, cfp64)\n"
+               "    -transA <char> (n, t, c)\n"
+               "    -transB <char> (n, t, c)\n"
+               "    -scaleA <string> (scalar_fp32, vec16_ue4m3, vec32_ue8m0, outer_vec_fp32, vec128_fp32, "
+               "blk128x128_fp32)\n"
+               "    -scaleB <string> (scalar_fp32, vec16_ue4m3, vec32_ue8m0, outer_vec_fp32, vec128_fp32, "
+               "blk128x128_fp32)\n"
+               "    -scaleD <string> (scalar_fp32, vec16_ue4m3, vec32_ue8m0, outer_vec_fp32, vec128_fp32, "
+               "blk128x128_fp32)\n"
+               "    -scaleDOut <string> (scalar_fp32, vec16_ue4m3, vec32_ue8m0, outer_vec_fp32, vec128_fp32, "
+               "blk128x128_fp32)\n"
+               "    -p <int>\n"
+               "    -q <int>\n"
+               "    -gridLayout <char> (c, r)\n"
+               "    -gpus-per-process <int> (number of local GPU worker threads per MPI process; default: 1)\n"
+               "    -emulationStrategy <string> (default, performant, eager)\n"
+               "    -checkResult <bool> (true, false)\n"
+               "    -no-check\n"
+               "    -cycles <int>\n"
+               "    -warmup <int>\n"
+               "    -verbose\n"
+               "    -help\n");
     }
 
     void print()
@@ -447,7 +466,7 @@ struct Options
             "typeA=%d typeB=%d typeC=%d typeD=%d "
             "transA=%d transB=%d "
             "scaleA=%s scaleB=%s scaleD=%s scaleDOut=%s "
-            "p=%d q=%d gridLayout=%c "
+            "p=%d q=%d gridLayout=%c gpusPerProcess=%d "
             "emulationStrategy=%s "
             "cycles=%d warmup=%d "
             "verbose=%s checkResult=%s\n",
@@ -479,6 +498,7 @@ struct Options
             p,
             q,
             grid_layout,
+            gpus_per_process,
             emulationStrategy,
             cycles,
             warmup,
@@ -561,6 +581,15 @@ struct Options
             else if (strcmp(argv[i], "-gridLayout") == 0)
             {
                 grid_layout = *argv[++i];
+            }
+            else if (strcmp(argv[i], "-gpus-per-process") == 0)
+            {
+                if (++i >= argc)
+                {
+                    fprintf(stderr, "Error: -gpus-per-process expects a positive integer\n");
+                    exit(1);
+                }
+                gpus_per_process = atoi(argv[i]);
             }
             else if (strcmp(argv[i], "-typeA") == 0)
             {
@@ -677,10 +706,16 @@ struct Options
             fprintf(stderr, "Error: jc must be a multiple of nbC\n");
             exit(1);
         }
+
+        if (gpus_per_process <= 0)
+        {
+            fprintf(stderr, "Error: -gpus-per-process expects a positive integer\n");
+            exit(1);
+        }
     }
 };
 
-static inline int getLocalDevice()
+static inline int get_local_device()
 {
     int localRank;
     MPI_Comm localComm;
@@ -695,20 +730,455 @@ static inline int getLocalDevice()
     return localRank % deviceCount;
 }
 
-static bool deviceSupportsFp8()
+static inline int get_local_device(int mpiLocalRank, int threadRank, int gpusPerProcess, int deviceCount)
 {
-    int local_device = getLocalDevice();
+    if (deviceCount <= 0)
+    {
+        fprintf(stderr, "Error: no visible CUDA devices\n");
+        exit(EXIT_FAILURE);
+    }
+
+    return gpusPerProcess == 1 ? mpiLocalRank % deviceCount : mpiLocalRank * gpusPerProcess + threadRank;
+}
+
+static inline bool check_local_device_capacity(
+    int mpiLocalRank,
+    int localThreadCount,
+    int gpusPerProcess,
+    int deviceCount)
+{
+    if (deviceCount <= 0)
+    {
+        return false;
+    }
+
+    if (gpusPerProcess == 1)
+    {
+        return true;
+    }
+
+    return mpiLocalRank * gpusPerProcess + localThreadCount <= deviceCount;
+}
+
+static inline int select_local_device(int localDevice)
+{
+    CUDA_CHECK(cudaSetDevice(localDevice));
+    CUDA_CHECK(cudaFree(nullptr));
+    return localDevice;
+}
+
+static inline int select_local_device(int mpiLocalRank, int threadRank, int gpusPerProcess, int deviceCount)
+{
+    return select_local_device(get_local_device(mpiLocalRank, threadRank, gpusPerProcess, deviceCount));
+}
+
+static inline int select_local_device()
+{
+    return select_local_device(get_local_device());
+}
+
+struct Result
+{
+    cublasMpStatus_t status = CUBLASMP_STATUS_SUCCESS;
+    double elapsed = 0.0;
+};
+
+static inline bool status_ok(cublasMpStatus_t status)
+{
+    return status == CUBLASMP_STATUS_SUCCESS || status == CUBLASMP_STATUS_NOT_SUPPORTED;
+}
+
+static inline Result make_result(bool passed, double elapsed = 0.0)
+{
+    return { passed ? CUBLASMP_STATUS_SUCCESS : CUBLASMP_STATUS_EXECUTION_FAILED, elapsed };
+}
+
+static inline Result make_result(cublasMpStatus_t status, double elapsed = 0.0)
+{
+    return { status, elapsed };
+}
+
+struct Comm
+{
+    int world_rank = 0;
+    int world_size = 1;
+    int nranks = 0;
+    int gpus_per_process = 1;
+    int local_thread_count = 0;
+    bool setup_succeeded = true;
+    ncclUniqueId nccl_id {};
+    std::vector<int> ranks;
+    std::vector<int> local_devices;
+    std::vector<ncclComm_t> comms;
+    bool mpi_initialized = false;
+    bool mpi_finalized = false;
+
+    Comm() = default;
+    Comm(int requiredRanks, int gpusPerProcess)
+    {
+        nranks = requiredRanks;
+        gpus_per_process = gpusPerProcess;
+
+        int provided = MPI_THREAD_SINGLE;
+        const int required_threading = gpusPerProcess > 1 ? MPI_THREAD_FUNNELED : MPI_THREAD_SINGLE;
+        MPI_CHECK(MPI_Init_thread(nullptr, nullptr, required_threading, &provided));
+        mpi_initialized = true;
+
+        MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &world_rank));
+        MPI_CHECK(MPI_Comm_size(MPI_COMM_WORLD, &world_size));
+
+        if (provided < required_threading)
+        {
+            if (is_root())
+            {
+                fprintf(stderr, "Error: MPI does not provide the required thread support\n");
+            }
+            setup_succeeded = false;
+            return;
+        }
+
+        const int max_available_ranks = world_size * gpusPerProcess;
+        if (nranks <= 0)
+        {
+            if (is_root())
+            {
+                fprintf(stderr, "Error: -p and -q must define a positive process grid\n");
+            }
+            setup_succeeded = false;
+            return;
+        }
+
+        if (gpusPerProcess == 1 && nranks != world_size)
+        {
+            if (is_root())
+            {
+                fprintf(
+                    stderr,
+                    "Error: process grid requires %d ranks, but the sample was launched with %d MPI processes\n",
+                    nranks,
+                    world_size);
+            }
+            setup_succeeded = false;
+            return;
+        }
+
+        if (nranks > max_available_ranks)
+        {
+            if (is_root())
+            {
+                fprintf(
+                    stderr,
+                    "Error: process grid requires %d ranks, but only %d SPMG ranks are available\n",
+                    nranks,
+                    max_available_ranks);
+            }
+            setup_succeeded = false;
+            return;
+        }
+
+        const int participating_processes = ceildiv(nranks, gpusPerProcess);
+        const int color = (world_rank < participating_processes) ? 0 : MPI_UNDEFINED;
+
+        MPI_Comm spmg_comm = MPI_COMM_NULL;
+        MPI_CHECK(MPI_Comm_split(MPI_COMM_WORLD, color, world_rank, &spmg_comm));
+
+        if (spmg_comm == MPI_COMM_NULL)
+        {
+            return;
+        }
+
+        int mpi_rank = 0;
+        MPI_CHECK(MPI_Comm_rank(spmg_comm, &mpi_rank));
+
+        MPI_Comm local_comm = MPI_COMM_NULL;
+        MPI_CHECK(MPI_Comm_split_type(spmg_comm, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &local_comm));
+        int mpi_local_rank = 0;
+        MPI_CHECK(MPI_Comm_rank(local_comm, &mpi_local_rank));
+        MPI_CHECK(MPI_Comm_free(&local_comm));
+
+        const int first_rank = mpi_rank * gpusPerProcess;
+        local_thread_count = std::min(gpusPerProcess, nranks - first_rank);
+
+        int device_count = 0;
+        CUDA_CHECK(cudaGetDeviceCount(&device_count));
+        const int local_device_ok =
+            check_local_device_capacity(mpi_local_rank, local_thread_count, gpusPerProcess, device_count) ? 1 : 0;
+        int all_device_ok = 0;
+        MPI_CHECK(MPI_Allreduce(&local_device_ok, &all_device_ok, 1, MPI_INT, MPI_MIN, spmg_comm));
+
+        if (!all_device_ok)
+        {
+            if (mpi_rank == 0)
+            {
+                fprintf(stderr, "Error: not enough visible CUDA devices for requested SPMG placement\n");
+            }
+            setup_succeeded = false;
+            MPI_CHECK(MPI_Comm_free(&spmg_comm));
+            return;
+        }
+
+        if (mpi_rank == 0)
+        {
+            NCCL_CHECK(ncclGetUniqueId(&nccl_id));
+        }
+        MPI_CHECK(MPI_Bcast(&nccl_id, sizeof(nccl_id), MPI_BYTE, 0, spmg_comm));
+
+        ranks.resize(local_thread_count);
+        local_devices.resize(local_thread_count);
+        comms.resize(local_thread_count, nullptr);
+
+        for (int thread_rank = 0; thread_rank < local_thread_count; thread_rank++)
+        {
+            ranks[thread_rank] = mpi_rank * gpusPerProcess + thread_rank;
+            local_devices[thread_rank] = get_local_device(mpi_local_rank, thread_rank, gpusPerProcess, device_count);
+        }
+
+        MPI_CHECK(MPI_Comm_free(&spmg_comm));
+    }
+
+    Comm(const Comm&) = delete;
+    Comm& operator=(const Comm&) = delete;
+
+    Comm(Comm&& other) noexcept { *this = std::move(other); }
+
+    Comm& operator=(Comm&& other) noexcept
+    {
+        if (this != &other)
+        {
+            finalize();
+
+            world_rank = other.world_rank;
+            world_size = other.world_size;
+            nranks = other.nranks;
+            gpus_per_process = other.gpus_per_process;
+            local_thread_count = other.local_thread_count;
+            setup_succeeded = other.setup_succeeded;
+            nccl_id = other.nccl_id;
+            ranks = std::move(other.ranks);
+            local_devices = std::move(other.local_devices);
+            comms = std::move(other.comms);
+            mpi_initialized = other.mpi_initialized;
+            mpi_finalized = other.mpi_finalized;
+
+            other.comms.clear();
+            other.mpi_initialized = false;
+            other.mpi_finalized = true;
+        }
+        return *this;
+    }
+
+    ~Comm() { finalize(); }
+
+    bool is_root() const { return world_rank == 0; }
+    bool is_spmg() const { return gpus_per_process > 1; }
+
+    ncclComm_t init_thread(int threadRank)
+    {
+        select_local_device(local_devices[threadRank]);
+        NCCL_CHECK(ncclCommInitRank(&comms[threadRank], nranks, nccl_id, ranks[threadRank]));
+        return comms[threadRank];
+    }
+
+    void finalize_thread(int threadRank)
+    {
+        ncclComm_t& comm = comms[threadRank];
+        if (comm)
+        {
+            select_local_device(local_devices[threadRank]);
+            NCCL_CHECK(ncclCommFinalize(comm));
+            NCCL_CHECK(ncclCommDestroy(comm));
+            comm = nullptr;
+        }
+    }
+
+    void finalize()
+    {
+        for (size_t i = 0; i < comms.size(); i++)
+        {
+            ncclComm_t& comm = comms[i];
+            if (comm)
+            {
+                if (i < local_devices.size())
+                {
+                    select_local_device(local_devices[i]);
+                }
+                NCCL_CHECK(ncclCommFinalize(comm));
+                NCCL_CHECK(ncclCommDestroy(comm));
+                comm = nullptr;
+            }
+        }
+
+        if (mpi_initialized && !mpi_finalized)
+        {
+            MPI_CHECK(MPI_Finalize());
+            mpi_finalized = true;
+        }
+    }
+
+    int allreduce_min(int localValue) const
+    {
+        int globalValue = 0;
+        MPI_CHECK(MPI_Allreduce(&localValue, &globalValue, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD));
+        return globalValue;
+    }
+
+    template <typename Worker>
+    Result collective_launch(Worker worker)
+    {
+        Result local_result;
+        std::exception_ptr first_exception = nullptr;
+
+        if (!setup_succeeded)
+        {
+            local_result.status = CUBLASMP_STATUS_EXECUTION_FAILED;
+        }
+        else if (local_thread_count > 0)
+        {
+            std::vector<Result> thread_results(local_thread_count);
+            std::vector<std::thread> workers;
+            workers.reserve(local_thread_count);
+            std::mutex exception_mutex;
+
+            auto run_worker = [&](int thread_rank) {
+                bool initialized = false;
+                try
+                {
+                    ncclComm_t nccl_comm = init_thread(thread_rank);
+                    initialized = true;
+                    thread_results[thread_rank] = worker(nccl_comm);
+                }
+                catch (...)
+                {
+                    thread_results[thread_rank].status = CUBLASMP_STATUS_INTERNAL_ERROR;
+                    std::lock_guard<std::mutex> lock(exception_mutex);
+                    if (!first_exception)
+                    {
+                        first_exception = std::current_exception();
+                    }
+                }
+
+                if (initialized)
+                {
+                    finalize_thread(thread_rank);
+                }
+            };
+
+            if (local_thread_count == 1)
+            {
+                run_worker(0);
+            }
+            else
+            {
+                for (int thread_rank = 0; thread_rank < local_thread_count; thread_rank++)
+                {
+                    workers.emplace_back(run_worker, thread_rank);
+                }
+
+                for (auto& worker_thread : workers)
+                {
+                    worker_thread.join();
+                }
+            }
+
+            local_result.status = first_exception ? CUBLASMP_STATUS_INTERNAL_ERROR : CUBLASMP_STATUS_SUCCESS;
+            for (const Result& thread_result : thread_results)
+            {
+                local_result.elapsed = std::max(local_result.elapsed, thread_result.elapsed);
+            }
+
+            for (const Result& thread_result : thread_results)
+            {
+                if (!status_ok(thread_result.status))
+                {
+                    local_result.status = CUBLASMP_STATUS_INTERNAL_ERROR;
+                    break;
+                }
+                else if (
+                    local_result.status == CUBLASMP_STATUS_SUCCESS &&
+                    thread_result.status == CUBLASMP_STATUS_NOT_SUPPORTED)
+                {
+                    local_result.status = CUBLASMP_STATUS_NOT_SUPPORTED;
+                }
+            }
+        }
+
+        const int local_error = status_ok(local_result.status) ? 0 : 1;
+        const int local_waved = local_result.status == CUBLASMP_STATUS_NOT_SUPPORTED ? 1 : 0;
+        int global_error = 0;
+        int global_waved = 0;
+        Result global_result;
+        MPI_CHECK(MPI_Allreduce(&local_error, &global_error, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD));
+        MPI_CHECK(MPI_Allreduce(&local_waved, &global_waved, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD));
+        MPI_CHECK(MPI_Allreduce(&local_result.elapsed, &global_result.elapsed, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD));
+        if (global_error)
+        {
+            global_result.status = CUBLASMP_STATUS_INTERNAL_ERROR;
+        }
+        else if (global_waved)
+        {
+            global_result.status = CUBLASMP_STATUS_NOT_SUPPORTED;
+        }
+        else
+        {
+            global_result.status = CUBLASMP_STATUS_SUCCESS;
+        }
+
+        if (first_exception)
+        {
+            std::rethrow_exception(first_exception);
+        }
+
+        return global_result;
+    }
+};
+
+static inline int get_nccl_rank(ncclComm_t comm)
+{
+    int rank = 0;
+    NCCL_CHECK(ncclCommUserRank(comm, &rank));
+    return rank;
+}
+
+static bool device_supports_fp8(int localDevice)
+{
     cudaDeviceProp prop;
-    CUDA_CHECK(cudaGetDeviceProperties(&prop, local_device));
+    CUDA_CHECK(cudaGetDeviceProperties(&prop, localDevice));
     return prop.major >= 9 || (prop.major == 8 && prop.minor == 9);
 }
 
-static bool deviceSupportsFp4()
+static bool device_supports_fp8()
 {
-    int local_device = getLocalDevice();
+    return device_supports_fp8(get_local_device());
+}
+
+static bool device_supports_fp4(int localDevice)
+{
     cudaDeviceProp prop;
-    CUDA_CHECK(cudaGetDeviceProperties(&prop, local_device));
+    CUDA_CHECK(cudaGetDeviceProperties(&prop, localDevice));
     return prop.major >= 10;
+}
+
+static bool device_supports_fp4()
+{
+    return device_supports_fp4(get_local_device());
+}
+
+static int local_devices_support_types(const Comm& comm, bool needsFp8, bool needsFp4)
+{
+    if (!comm.setup_succeeded)
+    {
+        return 0;
+    }
+
+    for (int local_device : comm.local_devices)
+    {
+        if ((needsFp8 && !device_supports_fp8(local_device)) || (needsFp4 && !device_supports_fp4(local_device)))
+        {
+            return 0;
+        }
+    }
+
+    return 1;
 }
 
 static inline bool is_fp8(cudaDataType_t type)

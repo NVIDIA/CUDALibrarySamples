@@ -18,6 +18,7 @@ cmake_minimum_required(VERSION 3.16)
 project(cublasmp_samples LANGUAGES CXX CUDA)
 
 find_package(MPI REQUIRED)
+find_package(Threads REQUIRED)
 
 set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
@@ -46,6 +47,7 @@ function(build_sample sample_name)
         ${CUBLASMP_LIBRARIES}
         ${MPI_CXX_LIBRARIES}
         ${NCCL_LIBRARIES}
+        Threads::Threads
         nvidia-ml
         m
     )

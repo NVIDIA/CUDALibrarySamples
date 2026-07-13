@@ -18,7 +18,6 @@
 #pragma once
 
 #include <cublasmp.h>
-#include <mpi.h>
 
 #include <algorithm>
 #include <cstring>
@@ -285,6 +284,7 @@ static void* allgather_scale_tensor(
     cublasMpMatmulMatrixScale_t scale_mode,
     int64_t local_rows,
     int64_t local_cols,
+    int nranks,
     ncclComm_t comm,
     cudaStream_t stream)
 {
@@ -292,9 +292,6 @@ static void* allgather_scale_tensor(
     {
         return local_scale;
     }
-
-    int nranks = 0;
-    MPI_CHECK(MPI_Comm_size(MPI_COMM_WORLD, &nranks));
 
     const size_t local_scale_bytes = get_scaling_tensor_size(local_rows, local_cols, scale_mode);
     void* gathered_scale = nullptr;
@@ -314,6 +311,7 @@ static void* gather_scale_tensor(
     int64_t local_cols,
     int64_t full_rows,
     int64_t full_cols,
+    int nranks,
     ncclComm_t comm,
     cudaStream_t stream,
     int64_t local_col_chunks = 1)
@@ -322,9 +320,6 @@ static void* gather_scale_tensor(
     {
         return local_scale;
     }
-
-    int nranks = 0;
-    MPI_CHECK(MPI_Comm_size(MPI_COMM_WORLD, &nranks));
 
     const size_t local_scale_bytes = get_scaling_tensor_size(local_rows, local_cols, scale_mode);
     void* gathered_scale = nullptr;
@@ -627,6 +622,7 @@ static bool check_matmul_result(
     ncclComm_t comm,
     cudaStream_t stream,
     int rank,
+    int nranks,
     cublasMpGrid_t gridA,
     int nprowA,
     int npcolA,
@@ -747,19 +743,18 @@ static bool check_matmul_result(
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
     void* full_a_scale =
-        gather_scale_tensor(d_a_scale, a_scale_mode, a_scale_rows, a_scale_cols, a_rows, a_cols, comm, stream);
-    int nranks = 0;
-    MPI_CHECK(MPI_Comm_size(MPI_COMM_WORLD, &nranks));
+        gather_scale_tensor(d_a_scale, a_scale_mode, a_scale_rows, a_scale_cols, a_rows, a_cols, nranks, comm, stream);
     const int b_scale_col_chunks = (b_scale_rows * nranks == b_rows && b_scale_cols == b_cols) ? nranks : 1;
     void* full_b_scale = gather_scale_tensor(
-        d_b_scale, b_scale_mode, b_scale_rows, b_scale_cols, b_rows, b_cols, comm, stream, b_scale_col_chunks);
+        d_b_scale, b_scale_mode, b_scale_rows, b_scale_cols, b_rows, b_cols, nranks, comm, stream, b_scale_col_chunks);
     void* full_d_scale =
-        gather_d_scales ? gather_scale_tensor(d_d_scale, d_scale_mode, d_scale_rows, d_scale_cols, m, n, comm, stream)
-                        : d_d_scale;
-    void* result_d_out_scale =
         gather_d_scales
-            ? allgather_scale_tensor(d_d_out_scale, d_out_scale_mode, d_out_scale_rows, d_out_scale_cols, comm, stream)
-            : d_d_out_scale;
+            ? gather_scale_tensor(d_d_scale, d_scale_mode, d_scale_rows, d_scale_cols, m, n, nranks, comm, stream)
+            : d_d_scale;
+    void* result_d_out_scale =
+        gather_d_scales ? allgather_scale_tensor(
+                              d_d_out_scale, d_out_scale_mode, d_out_scale_rows, d_out_scale_cols, nranks, comm, stream)
+                        : d_d_out_scale;
     void* full_d_out_scale_ref = nullptr;
     if (result_d_out_scale && d_out_scale_mode != CUBLASMP_MATMUL_MATRIX_SCALE_SCALAR_FP32)
     {
@@ -819,8 +814,6 @@ static bool check_matmul_result(
                 h_full_d_out_scale_ref.data(), full_d_out_scale_ref, scale_bytes, cudaMemcpyDeviceToHost, stream));
             if (gather_d_scales)
             {
-                int nranks = 0;
-                MPI_CHECK(MPI_Comm_size(MPI_COMM_WORLD, &nranks));
                 const size_t local_scale_bytes =
                     get_scaling_tensor_size(d_out_scale_rows, d_out_scale_cols, d_out_scale_mode);
                 std::vector<uint8_t> h_result_d_out_scale(local_scale_bytes * nranks);
@@ -898,7 +891,5 @@ static bool check_matmul_result(
     CUDA_CHECK(cudaFree(full_D_result));
     CUDA_CHECK(cudaFree(full_D_ref));
 
-    int passed_int = passed ? 1 : 0;
-    MPI_CHECK(MPI_Bcast(&passed_int, 1, MPI_INT, 0, MPI_COMM_WORLD));
-    return passed_int != 0;
+    return passed;
 }

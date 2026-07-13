@@ -18,7 +18,6 @@
 #include <assert.h>
 #include <cublasmp.h>
 #include <math.h>
-#include <mpi.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -150,41 +149,13 @@ static bool check_trsm_result(
     CUDA_CHECK(cudaFree(full_A));
     CUDA_CHECK(cudaFree(full_B_ref));
     CUDA_CHECK(cudaFree(full_B_result));
-
-    int passed_int = passed ? 1 : 0;
-    MPI_CHECK(MPI_Bcast(&passed_int, 1, MPI_INT, 0, MPI_COMM_WORLD));
-    return passed_int != 0;
+    return passed;
 }
 
-int main(int argc, char* argv[])
+static Result run_trsm(const Options& opts, ncclComm_t comm)
 {
-    Options opts = { .m = 10,
-                     .n = 10,
-                     .k = 10,
-                     .mbA = 2,
-                     .nbA = 2,
-                     .mbB = 2,
-                     .nbB = 2,
-                     .mbC = 2,
-                     .nbC = 2,
-                     .ia = 3,
-                     .ja = 3,
-                     .ib = 3,
-                     .jb = 1,
-                     .ic = 1,
-                     .jc = 1,
-                     .p = 2,
-                     .q = 1,
-                     .grid_layout = 'c',
-                     .verbose = false,
-                     .cycles = 10,
-                     .warmup = 5 };
-
-    opts.parse(argc, argv);
-    opts.validate();
-
-    MPI_Init(nullptr, nullptr);
-
+    Result result;
+    const int rank = get_nccl_rank(comm);
     const int64_t m = opts.m;
     const int64_t n = opts.n;
     const int64_t ia = opts.ia;
@@ -199,28 +170,8 @@ int main(int argc, char* argv[])
     const int nprow = opts.p;
     const int npcol = opts.q;
 
-    int rank, nranks;
-    MPI_Comm_size(MPI_COMM_WORLD, &nranks);
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-
     const int myprow = (opts.grid_layout == 'c' ? rank % nprow : rank / npcol);
     const int mypcol = (opts.grid_layout == 'c' ? rank / nprow : rank % npcol);
-
-    const int local_device = getLocalDevice();
-    CUDA_CHECK(cudaSetDevice(local_device));
-    CUDA_CHECK(cudaFree(nullptr));
-
-    ncclUniqueId id;
-
-    if (rank == 0)
-    {
-        NCCL_CHECK(ncclGetUniqueId(&id));
-    }
-
-    MPI_CHECK(MPI_Bcast(&id, sizeof(id), MPI_BYTE, 0, MPI_COMM_WORLD));
-
-    ncclComm_t comm;
-    NCCL_CHECK(ncclCommInitRank(&comm, nranks, id, rank));
 
     cudaStream_t stream = nullptr;
     CUDA_CHECK(cudaStreamCreate(&stream));
@@ -258,8 +209,8 @@ int main(int argc, char* argv[])
     std::vector<double> h_A(llda * loc_n_a, 0);
     std::vector<double> h_B(lldb * loc_n_b, 0);
 
-    generate_diag_matrix(m, m, h_A.data(), mbA, nbA, ia, ja, llda, nprow, npcol, myprow, mypcol);
-    generate_random_matrix(m, n, h_B.data(), mbB, nbB, ib, jb, lldb, nprow, npcol, myprow, mypcol);
+    generate_diag_matrix(m, m, h_A.data(), mbA, nbA, ia, ja, llda, nprow, npcol, myprow, mypcol, rank);
+    generate_random_matrix(m, n, h_B.data(), mbB, nbB, ib, jb, lldb, nprow, npcol, myprow, mypcol, rank);
 
     CUDA_CHECK(cudaMalloc(&d_A, llda * loc_n_a * sizeof(double)));
     CUDA_CHECK(cudaMalloc(&d_B, lldb * loc_n_b * sizeof(double)));
@@ -269,12 +220,7 @@ int main(int argc, char* argv[])
     CUDA_CHECK(cudaMemcpyAsync(d_B, h_B.data(), lldb * loc_n_b * sizeof(double), cudaMemcpyHostToDevice, stream));
     CUDA_CHECK(cudaMemcpyAsync(d_B_ref, h_B.data(), lldb * loc_n_b * sizeof(double), cudaMemcpyHostToDevice, stream));
 
-    CUBLASMP_CHECK(cublasMpGridCreate(
-        nprow,
-        npcol,
-        opts.grid_layout == 'c' ? CUBLASMP_GRID_LAYOUT_COL_MAJOR : CUBLASMP_GRID_LAYOUT_ROW_MAJOR,
-        comm,
-        &grid));
+    CUBLASMP_CHECK(cublasMpGridCreate(nprow, npcol, char_to_grid_layout(opts.grid_layout), comm, &grid));
 
     CUBLASMP_CHECK(
         cublasMpMatrixDescriptorCreate(global_m_a, global_n_a, mbA, nbA, 0, 0, llda, CUDA_R_64F, grid, &descA));
@@ -359,15 +305,7 @@ int main(int argc, char* argv[])
 
     float elapsed_ms;
     CUDA_CHECK(cudaEventElapsedTime(&elapsed_ms, start, stop));
-    const double elapsed = (elapsed_ms / 1000.0) / opts.cycles;
-
-    if (rank == 0)
-    {
-        printf(
-            "Duration: %lf GFlops: %lf\n",
-            elapsed,
-            ((((0.5 * m * (m - 1)) + ((0.5 * m * (m + 1)))) * n) * 1e-9) / elapsed);
-    }
+    result.elapsed = (elapsed_ms / 1000.0) / opts.cycles;
 
     CUDA_CHECK(cudaEventDestroy(start));
     CUDA_CHECK(cudaEventDestroy(stop));
@@ -424,6 +362,8 @@ int main(int argc, char* argv[])
                                                   jb,
                                                   descB);
 
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+
     CUBLASMP_CHECK(cublasMpMatrixDescriptorDestroy(descA));
     CUBLASMP_CHECK(cublasMpMatrixDescriptorDestroy(descB));
 
@@ -436,19 +376,60 @@ int main(int argc, char* argv[])
     CUDA_CHECK(cudaFree(d_B_ref));
     CUDA_CHECK(cudaFree(d_work));
 
-    NCCL_CHECK(ncclCommFinalize(comm));
-    NCCL_CHECK(ncclCommDestroy(comm));
-
     CUDA_CHECK(cudaStreamDestroy(stream));
 
-    MPI_Barrier(MPI_COMM_WORLD);
+    return make_result(passed, result.elapsed);
+}
 
-    MPI_Finalize();
+int main(int argc, char* argv[])
+{
+    Options opts = { .m = 10,
+                     .n = 10,
+                     .k = 10,
+                     .mbA = 2,
+                     .nbA = 2,
+                     .mbB = 2,
+                     .nbB = 2,
+                     .mbC = 2,
+                     .nbC = 2,
+                     .ia = 3,
+                     .ja = 3,
+                     .ib = 3,
+                     .jb = 1,
+                     .ic = 1,
+                     .jc = 1,
+                     .p = 2,
+                     .q = 1,
+                     .grid_layout = 'c',
+                     .verbose = false,
+                     .cycles = 10,
+                     .warmup = 5 };
 
-    if (rank == 0)
+    opts.parse(argc, argv);
+    opts.validate();
+
+    if (opts.cycles <= 0)
     {
-        printf(passed ? "[SUCCEEDED]\n" : "[FAILED]\n");
+        fprintf(stderr, "Error: -cycles expects a positive integer\n");
+        return EXIT_FAILURE;
     }
 
-    return passed ? EXIT_SUCCESS : EXIT_FAILURE;
-};
+    const int nranks = opts.p * opts.q;
+    Comm comm(nranks, opts.gpus_per_process);
+    const Result result = comm.collective_launch([&](ncclComm_t nccl_comm) { return run_trsm(opts, nccl_comm); });
+
+    if (comm.is_root() && result.status == CUBLASMP_STATUS_SUCCESS)
+    {
+        printf(
+            "Duration: %lf GFlops: %lf\n",
+            result.elapsed,
+            ((((0.5 * opts.m * (opts.m - 1)) + ((0.5 * opts.m * (opts.m + 1)))) * opts.n) * 1e-9) / result.elapsed);
+    }
+
+    if (comm.is_root())
+    {
+        printf(status_ok(result.status) ? "[SUCCEEDED]\n" : "[FAILED]\n");
+    }
+
+    return status_ok(result.status) ? EXIT_SUCCESS : EXIT_FAILURE;
+}

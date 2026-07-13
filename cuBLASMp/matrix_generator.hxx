@@ -20,10 +20,13 @@
 #include <cuda_fp4.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
+#include <cuda/std/limits>
 #include <limits>
 #include <random>
 #include <stdexcept>
+#include <type_traits>
 
 namespace fp4x2
 {
@@ -130,14 +133,21 @@ void generate_random_matrix(
     int64_t nprow,
     int64_t npcol,
     int64_t myprow,
-    int64_t mypcol)
+    int64_t mypcol,
+    int rank)
 {
-    int rank;
-    MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &rank));
+    double min = 0.0;
+    double max = 1.0;
+    if constexpr (std::is_same_v<T, __nv_fp4_e2m1>)
+    {
+        min = double(cuda::std::numeric_limits<__nv_fp4_e2m1>::lowest());
+        max = double(cuda::std::numeric_limits<__nv_fp4_e2m1>::max());
+    }
 
-    srand(rank);
+    std::mt19937 generator_state(static_cast<uint32_t>(rank));
+    std::uniform_real_distribution<double> distribution(min, max);
 
-    auto generator = [&](T& val, int64_t i, int64_t j, bool diag) { val = T(double(rand()) / RAND_MAX); };
+    auto generator = [&](T& val, int64_t, int64_t, bool) { val = T(distribution(generator_state)); };
 
     generate_distributed_matrix(m, n, a, mb, nb, ia, ja, lld, nprow, npcol, myprow, mypcol, generator);
 }
@@ -155,9 +165,10 @@ void generate_diag_matrix(
     int64_t nprow,
     int64_t npcol,
     int64_t myprow,
-    int64_t mypcol)
+    int64_t mypcol,
+    int rank)
 {
-    generate_random_matrix(m, n, a, mb, nb, ia, ja, lld, nprow, npcol, myprow, mypcol);
+    generate_random_matrix(m, n, a, mb, nb, ia, ja, lld, nprow, npcol, myprow, mypcol, rank);
 
     auto generator = [&](T& val, int64_t i, int64_t j, bool diag) {
         if (diag && i == j)
@@ -189,10 +200,11 @@ static void generate_values(
         }
 
         std::memset(ptr, 0, packed_bytes);
-        std::srand(seed);
+        std::mt19937 gen(seed);
+        std::uniform_real_distribution<double> dist(0.0, 1.0);
         for (int64_t i = 0; i < size; i++)
         {
-            const double v = double(std::rand()) / RAND_MAX;
+            const double v = dist(gen);
             T val = T(min + v * (max - min));
             fp4x2::write_element(ptr, i, float(val));
         }
@@ -212,9 +224,10 @@ static void generate_values(
             ptr = reinterpret_cast<T*>(malloc(size * sizeof(T)));
         }
 
-        std::srand(seed);
+        std::mt19937 gen(seed);
+        std::uniform_real_distribution<double> dist(0.0, 1.0);
         std::for_each(ptr, ptr + size, [&](T& x) {
-            const double v = double(std::rand()) / RAND_MAX;
+            const double v = dist(gen);
             x = T(min + v * (max - min));
         });
 
