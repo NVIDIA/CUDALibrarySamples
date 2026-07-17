@@ -22,8 +22,6 @@
 #include <vector>
 #include <numeric>
 
-// TODO: Our Windows x86 CI images for some reason do not contain the NVTX headers,
-//       whereas the regular Windows CTK installations do contain them. Check why.
 #if defined(__x86_64) && !defined(_MSC_VER)
 #define NVTX_ENABLED
 #endif // defined(__x86_64) && !defined(_MSC_VER)

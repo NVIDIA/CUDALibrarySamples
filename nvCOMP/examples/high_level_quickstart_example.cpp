@@ -15,12 +15,12 @@
  * limitations under the License.
  */
 
-#include <random>
 #include <cassert>
 #include <iostream>
+#include <random>
 
-#include "nvcomp/lz4.hpp"
 #include "nvcomp.hpp"
+#include "nvcomp/lz4.hpp"
 #include "nvcomp/nvcompManagerFactory.hpp"
 #include "util.h"
 
@@ -44,7 +44,7 @@ using namespace nvcomp;
  *  2) construct a new manager using the input data for demonstration purposes
  *  3) decompress the input data
  */
-void decomp_compressed_with_manager_factory_example(uint8_t* device_input_ptrs, const size_t input_buffer_len)
+void decomp_compressed_with_manager_factory_example(uint8_t *device_input_ptrs, const size_t input_buffer_len)
 {
   cudaStream_t stream;
   CUDA_CHECK(cudaStreamCreate(&stream));
@@ -55,14 +55,17 @@ void decomp_compressed_with_manager_factory_example(uint8_t* device_input_ptrs, 
   // and this is why we introduce the scope in each of the following examples.
 
   constexpr size_t chunk_size = 1 << 16;
-  static_assert(chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize, "Chunk size must be less than the constant specified in the nvCOMP library");
+  static_assert(
+    chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize,
+    "Chunk size must be less than the constant specified in the nvCOMP library"
+  );
 
   nvcompBatchedLZ4CompressOpts_t compress_opts = nvcompBatchedLZ4CompressDefaultOpts;
   nvcompBatchedLZ4DecompressOpts_t decompress_opts = nvcompBatchedLZ4DecompressDefaultOpts;
   LZ4Manager nvcomp_manager{chunk_size, compress_opts, decompress_opts, stream};
   CompressionConfig comp_config = nvcomp_manager.configure_compression(input_buffer_len);
 
-  uint8_t* comp_buffer;
+  uint8_t *comp_buffer;
   CUDA_CHECK(cudaMallocSafe(&comp_buffer, comp_config.max_compressed_buffer_size));
 
   nvcomp_manager.compress(device_input_ptrs, comp_buffer, comp_config);
@@ -77,7 +80,7 @@ void decomp_compressed_with_manager_factory_example(uint8_t* device_input_ptrs, 
   auto decomp_nvcomp_manager = create_manager(comp_buffer, stream, NoComputeNoVerify, backend, false /* use_de_sort */);
 
   DecompressionConfig decomp_config = decomp_nvcomp_manager->configure_decompression(comp_buffer);
-  uint8_t* res_decomp_buffer;
+  uint8_t *res_decomp_buffer;
   CUDA_CHECK(cudaMallocSafe(&res_decomp_buffer, decomp_config.decomp_data_size));
 
   decomp_nvcomp_manager->decompress(res_decomp_buffer, comp_buffer, decomp_config);
@@ -86,7 +89,9 @@ void decomp_compressed_with_manager_factory_example(uint8_t* device_input_ptrs, 
   nvcompStatus_t decomp_status = *decomp_config.get_status();
   if (decomp_status != nvcompSuccess)
   {
-    throw std::runtime_error("nvCOMP Decompression failed with an error code " + std::to_string(static_cast<int>(decomp_status)));
+    throw std::runtime_error(
+      "nvCOMP Decompression failed with an error code " + std::to_string(static_cast<int>(decomp_status))
+    );
   }
 
   CUDA_CHECK(cudaFree(comp_buffer));
@@ -105,13 +110,16 @@ void decomp_compressed_with_manager_factory_example(uint8_t* device_input_ptrs, 
  *  2) compress the input data
  *  3) decompress the input data
  */
-void comp_decomp_with_single_manager(uint8_t* device_input_ptrs, const size_t input_buffer_len)
+void comp_decomp_with_single_manager(uint8_t *device_input_ptrs, const size_t input_buffer_len)
 {
   cudaStream_t stream;
   CUDA_CHECK(cudaStreamCreate(&stream));
 
   constexpr size_t chunk_size = 1 << 16;
-  static_assert(chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize, "Chunk size must be less than the constant specified in the nvCOMP library");
+  static_assert(
+    chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize,
+    "Chunk size must be less than the constant specified in the nvCOMP library"
+  );
 
   // We are introducing a scope, so that nvcomp_manager is destructed
   // before we destroy the stream.
@@ -121,13 +129,13 @@ void comp_decomp_with_single_manager(uint8_t* device_input_ptrs, const size_t in
     LZ4Manager nvcomp_manager{chunk_size, compress_opts, decompress_opts, stream};
     CompressionConfig comp_config = nvcomp_manager.configure_compression(input_buffer_len);
 
-    uint8_t* comp_buffer;
+    uint8_t *comp_buffer;
     CUDA_CHECK(cudaMallocSafe(&comp_buffer, comp_config.max_compressed_buffer_size));
 
     nvcomp_manager.compress(device_input_ptrs, comp_buffer, comp_config);
 
     DecompressionConfig decomp_config = nvcomp_manager.configure_decompression(comp_buffer);
-    uint8_t* res_decomp_buffer;
+    uint8_t *res_decomp_buffer;
     CUDA_CHECK(cudaMallocSafe(&res_decomp_buffer, decomp_config.decomp_data_size));
 
     nvcomp_manager.decompress(res_decomp_buffer, comp_buffer, decomp_config);
@@ -145,7 +153,10 @@ void comp_decomp_with_single_manager(uint8_t* device_input_ptrs, const size_t in
  * Additionally, we can use the same manager to execute multiple streamed compressions / decompressions
  * In this example we configure the multiple decompressions by inspecting the compressed buffers
  */
-void multi_comp_decomp_example(const std::vector<uint8_t*>& device_input_ptrs, std::vector<size_t>& input_buffer_lengths)
+void multi_comp_decomp_example(
+  const std::vector<uint8_t *> &device_input_ptrs,
+  std::vector<size_t> &input_buffer_lengths
+)
 {
   size_t num_buffers = input_buffer_lengths.size();
 
@@ -155,7 +166,10 @@ void multi_comp_decomp_example(const std::vector<uint8_t*>& device_input_ptrs, s
   CUDA_CHECK(cudaStreamCreate(&stream));
 
   constexpr size_t chunk_size = 1 << 16;
-  static_assert(chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize, "Chunk size must be less than the constant specified in the nvCOMP library");
+  static_assert(
+    chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize,
+    "Chunk size must be less than the constant specified in the nvCOMP library"
+  );
 
   // Are asynchronous memory (de)allocations supported?
   bool use_async_mem_ops = false;
@@ -164,12 +178,16 @@ void multi_comp_decomp_example(const std::vector<uint8_t*>& device_input_ptrs, s
     CUDA_CHECK(cudaGetDevice(&device_id));
     int attribute_res_val;
     cudaError_t result = cudaDeviceGetAttribute(&attribute_res_val, cudaDevAttrMemoryPoolsSupported, device_id);
-    if (result == cudaErrorInvalidValue) {
+    if (result == cudaErrorInvalidValue)
+    {
       cudaGetLastError(); // reset the cuda error (if any)
-    } else {
+    }
+    else
+    {
       CUDA_CHECK(result);
     }
-    if(result == cudaSuccess && attribute_res_val == 1) {
+    if (result == cudaSuccess && attribute_res_val == 1)
+    {
       use_async_mem_ops = true;
     }
   }
@@ -182,30 +200,37 @@ void multi_comp_decomp_example(const std::vector<uint8_t*>& device_input_ptrs, s
     LZ4Manager nvcomp_manager{chunk_size, compress_opts, decompress_opts, stream};
 
     size_t offset = 8;
-    auto alloc_fn = [&stream, offset, use_async_mem_ops](size_t alloc_size){
-      void* buffer;
-      if(use_async_mem_ops) {
+    auto alloc_fn = [&stream, offset, use_async_mem_ops](size_t alloc_size) {
+      void *buffer;
+      if (use_async_mem_ops)
+      {
         CUDA_CHECK(cudaMallocAsync(&buffer, alloc_size + offset, stream));
-      } else {
+      }
+      else
+      {
         CUDA_CHECK(cudaMallocSafe(&buffer, alloc_size + offset));
       }
-      return reinterpret_cast<void*>(reinterpret_cast<char*>(buffer) + offset);
+      return reinterpret_cast<void *>(reinterpret_cast<char *>(buffer) + offset);
     };
 
-    auto dealloc_fn = [&stream, offset, use_async_mem_ops](void* buffer, size_t /*alloc_size*/){
-      if(use_async_mem_ops) {
-        CUDA_CHECK(cudaFreeAsync(reinterpret_cast<void*>(reinterpret_cast<char*>(buffer) - offset), stream));
-      } else {
-        CUDA_CHECK(cudaFree(reinterpret_cast<void*>(reinterpret_cast<char*>(buffer) - offset)));
+    auto dealloc_fn = [&stream, offset, use_async_mem_ops](void *buffer, size_t /*alloc_size*/) {
+      if (use_async_mem_ops)
+      {
+        CUDA_CHECK(cudaFreeAsync(reinterpret_cast<void *>(reinterpret_cast<char *>(buffer) - offset), stream));
+      }
+      else
+      {
+        CUDA_CHECK(cudaFree(reinterpret_cast<void *>(reinterpret_cast<char *>(buffer) - offset)));
       }
     };
 
     nvcomp_manager.set_scratch_allocators(alloc_fn, dealloc_fn);
 
-    std::vector<uint8_t*> comp_result_buffers(num_buffers);
+    std::vector<uint8_t *> comp_result_buffers(num_buffers);
 
-    for(size_t ix_buffer = 0; ix_buffer < num_buffers; ++ix_buffer) {
-      uint8_t* input_data = device_input_ptrs[ix_buffer];
+    for (size_t ix_buffer = 0; ix_buffer < num_buffers; ++ix_buffer)
+    {
+      uint8_t *input_data = device_input_ptrs[ix_buffer];
       size_t input_length = input_buffer_lengths[ix_buffer];
 
       auto comp_config = nvcomp_manager.configure_compression(input_length);
@@ -214,9 +239,10 @@ void multi_comp_decomp_example(const std::vector<uint8_t*>& device_input_ptrs, s
       nvcomp_manager.compress(input_data, comp_result_buffers[ix_buffer], comp_config);
     }
 
-    std::vector<uint8_t*> decomp_result_buffers(num_buffers);
-    for(size_t ix_buffer = 0; ix_buffer < num_buffers; ++ix_buffer) {
-      uint8_t* comp_data = comp_result_buffers[ix_buffer];
+    std::vector<uint8_t *> decomp_result_buffers(num_buffers);
+    for (size_t ix_buffer = 0; ix_buffer < num_buffers; ++ix_buffer)
+    {
+      uint8_t *comp_data = comp_result_buffers[ix_buffer];
 
       auto decomp_config = nvcomp_manager.configure_decompression(comp_data);
 
@@ -225,7 +251,8 @@ void multi_comp_decomp_example(const std::vector<uint8_t*>& device_input_ptrs, s
       nvcomp_manager.decompress(decomp_result_buffers[ix_buffer], comp_data, decomp_config);
     }
 
-    for (size_t ix_buffer = 0; ix_buffer < num_buffers; ++ix_buffer) {
+    for (size_t ix_buffer = 0; ix_buffer < num_buffers; ++ix_buffer)
+    {
       CUDA_CHECK(cudaFree(decomp_result_buffers[ix_buffer]));
       CUDA_CHECK(cudaFree(comp_result_buffers[ix_buffer]));
     }
@@ -237,7 +264,10 @@ void multi_comp_decomp_example(const std::vector<uint8_t*>& device_input_ptrs, s
  * Additionally, we can use the same manager to execute multiple streamed compressions / decompressions
  * In this example we configure the multiple decompressions by storing the comp_config's and inspecting those
  */
-void multi_comp_decomp_example_comp_config(const std::vector<uint8_t*>& device_input_ptrs, std::vector<size_t>& input_buffer_lengths)
+void multi_comp_decomp_example_comp_config(
+  const std::vector<uint8_t *> &device_input_ptrs,
+  std::vector<size_t> &input_buffer_lengths
+)
 {
   cudaStream_t stream;
   CUDA_CHECK(cudaStreamCreate(&stream));
@@ -246,7 +276,10 @@ void multi_comp_decomp_example_comp_config(const std::vector<uint8_t*>& device_i
   // before we destroy the stream.
   {
     constexpr size_t chunk_size = 1 << 16;
-    static_assert(chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize, "Chunk size must be less than the constant specified in the nvCOMP library");
+    static_assert(
+      chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize,
+      "Chunk size must be less than the constant specified in the nvCOMP library"
+    );
 
     nvcompBatchedLZ4CompressOpts_t compress_opts = nvcompBatchedLZ4CompressDefaultOpts;
     nvcompBatchedLZ4DecompressOpts_t decompress_opts = nvcompBatchedLZ4DecompressDefaultOpts;
@@ -257,30 +290,33 @@ void multi_comp_decomp_example_comp_config(const std::vector<uint8_t*>& device_i
     std::vector<CompressionConfig> comp_configs;
     comp_configs.reserve(num_buffers);
 
-    std::vector<uint8_t*> comp_result_buffers(num_buffers);
+    std::vector<uint8_t *> comp_result_buffers(num_buffers);
 
-    for(size_t ix_buffer = 0; ix_buffer < num_buffers; ++ix_buffer) {
-      uint8_t* input_data = device_input_ptrs[ix_buffer];
+    for (size_t ix_buffer = 0; ix_buffer < num_buffers; ++ix_buffer)
+    {
+      uint8_t *input_data = device_input_ptrs[ix_buffer];
       size_t input_length = input_buffer_lengths[ix_buffer];
 
       comp_configs.push_back(nvcomp_manager.configure_compression(input_length));
-      auto& comp_config = comp_configs.back();
+      auto &comp_config = comp_configs.back();
 
       CUDA_CHECK(cudaMallocSafe(&comp_result_buffers[ix_buffer], comp_config.max_compressed_buffer_size));
 
-      nvcomp_manager.compress(input_data, comp_result_buffers[ix_buffer], comp_config);    
+      nvcomp_manager.compress(input_data, comp_result_buffers[ix_buffer], comp_config);
     }
 
-    std::vector<uint8_t*> decomp_result_buffers(num_buffers);
-    for(size_t ix_buffer = 0; ix_buffer < num_buffers; ++ix_buffer) {
+    std::vector<uint8_t *> decomp_result_buffers(num_buffers);
+    for (size_t ix_buffer = 0; ix_buffer < num_buffers; ++ix_buffer)
+    {
       auto decomp_config = nvcomp_manager.configure_decompression(comp_configs[ix_buffer]);
 
       CUDA_CHECK(cudaMallocSafe(&decomp_result_buffers[ix_buffer], decomp_config.decomp_data_size));
 
-      nvcomp_manager.decompress(decomp_result_buffers[ix_buffer], comp_result_buffers[ix_buffer], decomp_config);    
+      nvcomp_manager.decompress(decomp_result_buffers[ix_buffer], comp_result_buffers[ix_buffer], decomp_config);
     }
 
-    for (size_t ix_buffer = 0; ix_buffer < num_buffers; ++ix_buffer) {
+    for (size_t ix_buffer = 0; ix_buffer < num_buffers; ++ix_buffer)
+    {
       CUDA_CHECK(cudaFree(decomp_result_buffers[ix_buffer]));
       CUDA_CHECK(cudaFree(comp_result_buffers[ix_buffer]));
     }
@@ -291,7 +327,10 @@ void multi_comp_decomp_example_comp_config(const std::vector<uint8_t*>& device_i
 /**
  * This example shows how to use batched version of the API.
  */
-void multi_comp_decomp_batched(const std::vector<uint8_t*>& device_input_ptrs, std::vector<size_t>& input_buffer_lengths)
+void multi_comp_decomp_batched(
+  const std::vector<uint8_t *> &device_input_ptrs,
+  std::vector<size_t> &input_buffer_lengths
+)
 {
   cudaStream_t stream;
   CUDA_CHECK(cudaStreamCreate(&stream));
@@ -300,7 +339,10 @@ void multi_comp_decomp_batched(const std::vector<uint8_t*>& device_input_ptrs, s
   // before we destroy the stream.
   {
     constexpr size_t chunk_size = 1 << 16;
-    static_assert(chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize, "Chunk size must be less than the constant specified in the nvCOMP library");
+    static_assert(
+      chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize,
+      "Chunk size must be less than the constant specified in the nvCOMP library"
+    );
 
     nvcompBatchedLZ4CompressOpts_t compress_opts = nvcompBatchedLZ4CompressDefaultOpts;
     nvcompBatchedLZ4DecompressOpts_t decompress_opts = nvcompBatchedLZ4DecompressDefaultOpts;
@@ -311,8 +353,9 @@ void multi_comp_decomp_batched(const std::vector<uint8_t*>& device_input_ptrs, s
     auto comp_configs = nvcomp_manager.configure_compression(input_buffer_lengths);
 
     // Allocate buffer for compressed data
-    std::vector<uint8_t*> comp_result_buffers(num_buffers);
-    for (size_t ix_buffer = 0; ix_buffer < num_buffers; ++ix_buffer) {
+    std::vector<uint8_t *> comp_result_buffers(num_buffers);
+    for (size_t ix_buffer = 0; ix_buffer < num_buffers; ++ix_buffer)
+    {
       CUDA_CHECK(cudaMallocSafe(&comp_result_buffers[ix_buffer], comp_configs[ix_buffer].max_compressed_buffer_size));
     }
 
@@ -321,14 +364,16 @@ void multi_comp_decomp_batched(const std::vector<uint8_t*>& device_input_ptrs, s
     auto decomp_configs = nvcomp_manager.configure_decompression(comp_result_buffers.data(), num_buffers);
 
     // Allocate buffer for decompressed data
-    std::vector<uint8_t*> decomp_result_buffers(num_buffers);
-    for (size_t ix_buffer = 0; ix_buffer < num_buffers; ++ix_buffer) {
+    std::vector<uint8_t *> decomp_result_buffers(num_buffers);
+    for (size_t ix_buffer = 0; ix_buffer < num_buffers; ++ix_buffer)
+    {
       CUDA_CHECK(cudaMallocSafe(&decomp_result_buffers[ix_buffer], decomp_configs[ix_buffer].decomp_data_size));
     }
 
     nvcomp_manager.decompress(decomp_result_buffers.data(), comp_result_buffers.data(), decomp_configs);
 
-    for (size_t ix_buffer = 0; ix_buffer < num_buffers; ++ix_buffer) {
+    for (size_t ix_buffer = 0; ix_buffer < num_buffers; ++ix_buffer)
+    {
       CUDA_CHECK(cudaFree(decomp_result_buffers[ix_buffer]));
       CUDA_CHECK(cudaFree(comp_result_buffers[ix_buffer]));
     }
@@ -349,7 +394,7 @@ void multi_comp_decomp_batched(const std::vector<uint8_t*>& device_input_ptrs, s
  * This mode is useful when we want to compress already chunked data, but we don't want
  * to create and manage temporary buffers as we need with the low-level API
  */
-void multi_comp_decomp_raw(const std::vector<uint8_t*>& device_input_ptrs, std::vector<size_t>& input_buffer_lengths)
+void multi_comp_decomp_raw(const std::vector<uint8_t *> &device_input_ptrs, std::vector<size_t> &input_buffer_lengths)
 {
   cudaStream_t stream;
   CUDA_CHECK(cudaStreamCreate(&stream));
@@ -358,7 +403,10 @@ void multi_comp_decomp_raw(const std::vector<uint8_t*>& device_input_ptrs, std::
   // before we destroy the stream.
   {
     constexpr size_t chunk_size = 1 << 16;
-    static_assert(chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize, "Chunk size must be less than the constant specified in the nvCOMP library");
+    static_assert(
+      chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize,
+      "Chunk size must be less than the constant specified in the nvCOMP library"
+    );
 
     nvcompBatchedLZ4CompressOpts_t compress_opts = nvcompBatchedLZ4CompressDefaultOpts;
     nvcompBatchedLZ4DecompressOpts_t decompress_opts = nvcompBatchedLZ4DecompressDefaultOpts;
@@ -370,22 +418,27 @@ void multi_comp_decomp_raw(const std::vector<uint8_t*>& device_input_ptrs, std::
 
     // Configure compression looks exactly the same as with default BitstreamKind.
     // Verify that the individual buffers still lie within the max compression size limitations.
-    for (size_t input_buffer_length : input_buffer_lengths) {
-      if(input_buffer_length > nvcompLZ4CompressionMaxAllowedChunkSize) {
-        throw std::runtime_error("Individual buffer lengths cannot exceed the maximum allowed chunk size for compression.\n");
+    for (size_t input_buffer_length : input_buffer_lengths)
+    {
+      if (input_buffer_length > nvcompLZ4CompressionMaxAllowedChunkSize)
+      {
+        throw std::runtime_error(
+          "Individual buffer lengths cannot exceed the maximum allowed chunk size for compression.\n"
+        );
       }
     }
     auto comp_configs = nvcomp_manager.configure_compression(input_buffer_lengths);
 
     // Allocate buffer for compressed data
-    std::vector<uint8_t*> comp_result_buffers(num_buffers);
-    for (size_t ix_buffer = 0; ix_buffer < num_buffers; ++ix_buffer) {
+    std::vector<uint8_t *> comp_result_buffers(num_buffers);
+    for (size_t ix_buffer = 0; ix_buffer < num_buffers; ++ix_buffer)
+    {
       CUDA_CHECK(cudaMallocSafe(&comp_result_buffers[ix_buffer], comp_configs[ix_buffer].max_compressed_buffer_size));
     }
 
     // As there is no header, we need to pass an additional output buffer, where the size of each compressed chunk will be stored.
     // Such buffer can also be passed when manager is created with default (NVCOMP_NATIVE) BitstreamKind
-    size_t* comp_sizes;
+    size_t *comp_sizes;
     CUDA_CHECK(cudaMallocSafe(&comp_sizes, sizeof(size_t) * num_buffers));
 
     nvcomp_manager.compress(device_input_ptrs.data(), comp_result_buffers.data(), comp_configs, comp_sizes);
@@ -394,14 +447,16 @@ void multi_comp_decomp_raw(const std::vector<uint8_t*>& device_input_ptrs, std::
     auto decomp_configs = nvcomp_manager.configure_decompression(comp_result_buffers.data(), num_buffers, comp_sizes);
 
     // Allocate buffer for decompressed data
-    std::vector<uint8_t*> decomp_result_buffers(num_buffers);
-    for (size_t ix_buffer = 0; ix_buffer < num_buffers; ++ix_buffer) {
+    std::vector<uint8_t *> decomp_result_buffers(num_buffers);
+    for (size_t ix_buffer = 0; ix_buffer < num_buffers; ++ix_buffer)
+    {
       CUDA_CHECK(cudaMallocSafe(&decomp_result_buffers[ix_buffer], decomp_configs[ix_buffer].decomp_data_size));
     }
 
     nvcomp_manager.decompress(decomp_result_buffers.data(), comp_result_buffers.data(), decomp_configs, comp_sizes);
 
-    for (size_t ix_buffer = 0; ix_buffer < num_buffers; ++ix_buffer) {
+    for (size_t ix_buffer = 0; ix_buffer < num_buffers; ++ix_buffer)
+    {
       CUDA_CHECK(cudaFree(decomp_result_buffers[ix_buffer]));
       CUDA_CHECK(cudaFree(comp_result_buffers[ix_buffer]));
     }
@@ -414,14 +469,17 @@ void multi_comp_decomp_raw(const std::vector<uint8_t*>& device_input_ptrs, std::
  *  1) construct an nvcompManager with checksum support enabled
  *  2) compress the input data 
  *  3) decompress the input data
- */ 
-void comp_decomp_with_single_manager_with_checksums(uint8_t* device_input_ptrs, const size_t input_buffer_len)
+ */
+void comp_decomp_with_single_manager_with_checksums(uint8_t *device_input_ptrs, const size_t input_buffer_len)
 {
   cudaStream_t stream;
   CUDA_CHECK(cudaStreamCreate(&stream));
 
   constexpr size_t chunk_size = 1 << 16;
-  static_assert(chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize, "Chunk size must be less than the constant specified in the nvCOMP library");
+  static_assert(
+    chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize,
+    "Chunk size must be less than the constant specified in the nvCOMP library"
+  );
 
   /* 
    * There are 5 possible modes for checksum processing as
@@ -465,14 +523,14 @@ void comp_decomp_with_single_manager_with_checksums(uint8_t* device_input_ptrs, 
     LZ4Manager nvcomp_manager{chunk_size, compress_opts, decompress_opts, stream, ComputeAndVerify};
     CompressionConfig comp_config = nvcomp_manager.configure_compression(input_buffer_len);
 
-    uint8_t* comp_buffer;
+    uint8_t *comp_buffer;
     CUDA_CHECK(cudaMallocSafe(&comp_buffer, comp_config.max_compressed_buffer_size));
-    
+
     // Checksums are computed and stored for uncompressed and compressed buffers during compression
     nvcomp_manager.compress(device_input_ptrs, comp_buffer, comp_config);
 
     DecompressionConfig decomp_config = nvcomp_manager.configure_decompression(comp_buffer);
-    uint8_t* res_decomp_buffer;
+    uint8_t *res_decomp_buffer;
     CUDA_CHECK(cudaMallocSafe(&res_decomp_buffer, decomp_config.decomp_data_size));
 
     // Checksums are computed for compressed and decompressed buffers and verified against those
@@ -488,7 +546,8 @@ void comp_decomp_with_single_manager_with_checksums(uint8_t* device_input_ptrs, 
     * it will be nvcompErrorBadChecksum.
     */
     nvcompStatus_t final_status = *decomp_config.get_status();
-    if(final_status == nvcompErrorBadChecksum) {
+    if (final_status == nvcompErrorBadChecksum)
+    {
       throw std::runtime_error("One or more checksums were incorrect.\n");
     }
 
@@ -499,14 +558,16 @@ void comp_decomp_with_single_manager_with_checksums(uint8_t* device_input_ptrs, 
   CUDA_CHECK(cudaStreamDestroy(stream));
 }
 
-void decomp_compressed_with_manager_factory_with_checksums(
-  uint8_t* device_input_ptrs, const size_t input_buffer_len)
+void decomp_compressed_with_manager_factory_with_checksums(uint8_t *device_input_ptrs, const size_t input_buffer_len)
 {
   cudaStream_t stream;
   CUDA_CHECK(cudaStreamCreate(&stream));
 
   constexpr size_t chunk_size = 1 << 16;
-  static_assert(chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize, "Chunk size must be less than the constant specified in the nvCOMP library");
+  static_assert(
+    chunk_size <= nvcompLZ4CompressionMaxAllowedChunkSize,
+    "Chunk size must be less than the constant specified in the nvCOMP library"
+  );
 
   // We are introducing a scope, so that nvcomp_manager is destructed
   // before we destroy the stream.
@@ -521,9 +582,9 @@ void decomp_compressed_with_manager_factory_with_checksums(
     LZ4Manager nvcomp_manager{chunk_size, compress_opts, decompress_opts, stream, ComputeAndNoVerify};
     CompressionConfig comp_config = nvcomp_manager.configure_compression(input_buffer_len);
 
-    uint8_t* comp_buffer;
+    uint8_t *comp_buffer;
     CUDA_CHECK(cudaMallocSafe(&comp_buffer, comp_config.max_compressed_buffer_size));
-    
+
     nvcomp_manager.compress(device_input_ptrs, comp_buffer, comp_config);
 
     // Construct a new nvcomp manager from the compressed buffer.
@@ -534,10 +595,11 @@ void decomp_compressed_with_manager_factory_with_checksums(
     // supplied in the compressed buffer. For a full description of the checksum modes, see the
     // above example.
     nvcompDecompressBackend_t backend = NVCOMP_DECOMPRESS_BACKEND_DEFAULT;
-    auto decomp_nvcomp_manager = create_manager(comp_buffer, stream, NoComputeAndVerifyIfPresent, backend, false /* use_de_sort */);
+    auto decomp_nvcomp_manager =
+      create_manager(comp_buffer, stream, NoComputeAndVerifyIfPresent, backend, false /* use_de_sort */);
 
     DecompressionConfig decomp_config = decomp_nvcomp_manager->configure_decompression(comp_buffer);
-    uint8_t* res_decomp_buffer;
+    uint8_t *res_decomp_buffer;
     CUDA_CHECK(cudaMallocSafe(&res_decomp_buffer, decomp_config.decomp_data_size));
 
     decomp_nvcomp_manager->decompress(res_decomp_buffer, comp_buffer, decomp_config);
@@ -546,7 +608,7 @@ void decomp_compressed_with_manager_factory_with_checksums(
     CUDA_CHECK(cudaFree(res_decomp_buffer));
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
-    
+
     /*
     * After synchronizing the stream, the nvcomp status can be checked to see if
     * the checksums were successfully verified. Provided no unrelated nvcomp errors occurred,
@@ -554,7 +616,8 @@ void decomp_compressed_with_manager_factory_with_checksums(
     * it will be nvcompErrorBadChecksum.
     */
     nvcompStatus_t final_status = *decomp_config.get_status();
-    if(final_status == nvcompErrorBadChecksum) {
+    if (final_status == nvcompErrorBadChecksum)
+    {
       throw std::runtime_error("One or more checksums were incorrect.\n");
     }
   }
@@ -577,11 +640,12 @@ int main()
   {
     std::vector<uint8_t> uncompressed_data(input_buffer_len);
 
-    for (size_t ix = 0; ix < input_buffer_len; ++ix) {
+    for (size_t ix = 0; ix < input_buffer_len; ++ix)
+    {
       uncompressed_data[ix] = static_cast<uint8_t>(uniform_dist(random_gen));
     }
 
-    uint8_t* device_input_ptrs;
+    uint8_t *device_input_ptrs;
     CUDA_CHECK(cudaMallocSafe(&device_input_ptrs, input_buffer_len));
     CUDA_CHECK(cudaMemcpy(device_input_ptrs, uncompressed_data.data(), input_buffer_len, cudaMemcpyDefault));
 
@@ -598,17 +662,21 @@ int main()
   {
     const size_t num_buffers = 10;
 
-    std::vector<uint8_t*> gpu_buffers(num_buffers);
+    std::vector<uint8_t *> gpu_buffers(num_buffers);
     std::vector<size_t> input_buffer_lengths(num_buffers);
 
     std::vector<std::vector<uint8_t>> uncompressed_buffers(num_buffers);
-    for (size_t ix_buffer = 0; ix_buffer < num_buffers; ++ix_buffer) {
+    for (size_t ix_buffer = 0; ix_buffer < num_buffers; ++ix_buffer)
+    {
       uncompressed_buffers[ix_buffer].resize(input_buffer_len);
-      for (size_t ix_byte = 0; ix_byte < input_buffer_len; ++ix_byte) {
+      for (size_t ix_byte = 0; ix_byte < input_buffer_len; ++ix_byte)
+      {
         uncompressed_buffers[ix_buffer][ix_byte] = static_cast<uint8_t>(uniform_dist(random_gen));
       }
       CUDA_CHECK(cudaMallocSafe(&gpu_buffers[ix_buffer], input_buffer_len));
-      CUDA_CHECK(cudaMemcpy(gpu_buffers[ix_buffer], uncompressed_buffers[ix_buffer].data(), input_buffer_len, cudaMemcpyDefault));
+      CUDA_CHECK(
+        cudaMemcpy(gpu_buffers[ix_buffer], uncompressed_buffers[ix_buffer].data(), input_buffer_len, cudaMemcpyDefault)
+      );
       input_buffer_lengths[ix_buffer] = input_buffer_len;
     }
 
@@ -616,7 +684,8 @@ int main()
     multi_comp_decomp_example_comp_config(gpu_buffers, input_buffer_lengths);
     multi_comp_decomp_batched(gpu_buffers, input_buffer_lengths);
 
-    for (size_t ix_buffer = 0; ix_buffer < num_buffers; ++ix_buffer) {
+    for (size_t ix_buffer = 0; ix_buffer < num_buffers; ++ix_buffer)
+    {
       CUDA_CHECK(cudaFree(gpu_buffers[ix_buffer]));
     }
   }
@@ -631,23 +700,31 @@ int main()
     const size_t num_buffers = 100;
     const size_t raw_input_buffer_len = 65536;
 
-    std::vector<uint8_t*> gpu_buffers(num_buffers);
+    std::vector<uint8_t *> gpu_buffers(num_buffers);
     std::vector<size_t> raw_input_buffer_lengths(num_buffers);
 
     std::vector<std::vector<uint8_t>> uncompressed_buffers(num_buffers);
-    for (size_t ix_buffer = 0; ix_buffer < num_buffers; ++ix_buffer) {
+    for (size_t ix_buffer = 0; ix_buffer < num_buffers; ++ix_buffer)
+    {
       uncompressed_buffers[ix_buffer].resize(raw_input_buffer_len);
-      for (size_t ix_byte = 0; ix_byte < raw_input_buffer_len; ++ix_byte) {
+      for (size_t ix_byte = 0; ix_byte < raw_input_buffer_len; ++ix_byte)
+      {
         uncompressed_buffers[ix_buffer][ix_byte] = static_cast<uint8_t>(uniform_dist(random_gen));
       }
       CUDA_CHECK(cudaMallocSafe(&gpu_buffers[ix_buffer], raw_input_buffer_len));
-      CUDA_CHECK(cudaMemcpy(gpu_buffers[ix_buffer], uncompressed_buffers[ix_buffer].data(), raw_input_buffer_len, cudaMemcpyDefault));
+      CUDA_CHECK(cudaMemcpy(
+        gpu_buffers[ix_buffer],
+        uncompressed_buffers[ix_buffer].data(),
+        raw_input_buffer_len,
+        cudaMemcpyDefault
+      ));
       raw_input_buffer_lengths[ix_buffer] = raw_input_buffer_len;
     }
 
     multi_comp_decomp_raw(gpu_buffers, raw_input_buffer_lengths);
 
-    for (size_t ix_buffer = 0; ix_buffer < num_buffers; ++ix_buffer) {
+    for (size_t ix_buffer = 0; ix_buffer < num_buffers; ++ix_buffer)
+    {
       CUDA_CHECK(cudaFree(gpu_buffers[ix_buffer]));
     }
   }

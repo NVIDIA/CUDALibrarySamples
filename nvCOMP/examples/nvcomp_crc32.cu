@@ -22,23 +22,25 @@
 #include <string>
 #include <vector>
 
-#include "nvcomp/crc32.h"
 #include "BatchData.h"
+#include "nvcomp/crc32.h"
 
 // Forward declarations of helper functions.
 static uint32_t reverse(uint32_t x);
-static uint32_t cpu_crc32(const nvcompCRC32Spec_t& spec, size_t n, const void *m_);
+static uint32_t cpu_crc32(const nvcompCRC32Spec_t &spec, size_t n, const void *m_);
 
-static void run_example(const std::vector<std::vector<char>>& data,
-                        size_t warmup_iteration_count, size_t total_iteration_count)
+static void
+run_example(const std::vector<std::vector<char>> &data, size_t warmup_iteration_count, size_t total_iteration_count)
 {
   assert(!data.empty());
-  if(warmup_iteration_count >= total_iteration_count) {
+  if (warmup_iteration_count >= total_iteration_count)
+  {
     throw std::runtime_error("ERROR: the total iteration count must be greater than the warmup iteration count");
   }
 
   size_t total_bytes = 0;
-  for (const std::vector<char>& part : data) {
+  for (const std::vector<char> &part : data)
+  {
     total_bytes += part.size();
   }
 
@@ -53,7 +55,7 @@ static void run_example(const std::vector<std::vector<char>>& data,
   BatchDataCPU input_data_cpu(data, chunk_size);
   const size_t chunk_count = input_data_cpu.size();
   std::cout << "chunks: " << chunk_count << std::endl;
-  
+
   // Create CUDA stream
   cudaStream_t stream;
   CUDA_CHECK(cudaStreamCreate(&stream));
@@ -78,10 +80,12 @@ static void run_example(const std::vector<std::vector<char>>& data,
         chunk_count,
         &kernel_conf,
         chunk_size,
-        stream) != nvcompSuccess) {
+        stream
+      ) != nvcompSuccess)
+  {
     throw std::runtime_error("ERROR: nvcompBatchedCRC32GetHeuristicConf() not successful");
   }
-  
+
   nvcompBatchedCRC32Opts_t opts{nvcompCRC32, kernel_conf, {}};
 
   auto calc_crc32 = [&]() {
@@ -93,35 +97,43 @@ static void run_example(const std::vector<std::vector<char>>& data,
           opts,
           nvcompCRC32OnlySegment,
           /*device_statuses=*/nullptr,
-          stream) != nvcompSuccess) {
+          stream
+        ) != nvcompSuccess)
+    {
       throw std::runtime_error("ERROR: nvcompBatchedCRC32Async() not successful");
     }
   };
 
   // Run warm-up CRC32 computation
-  for (size_t iter = 0; iter < warmup_iteration_count; ++iter) {
+  for (size_t iter = 0; iter < warmup_iteration_count; ++iter)
+  {
     calc_crc32();
   }
 
   // Re-run CRC32 computation to get throughput
   CUDA_CHECK(cudaEventRecord(start, stream));
-  for (size_t iter = warmup_iteration_count; iter < total_iteration_count; ++iter) {
+  for (size_t iter = warmup_iteration_count; iter < total_iteration_count; ++iter)
+  {
     calc_crc32();
   }
   CUDA_CHECK(cudaEventRecord(end, stream));
 
   // Compute reference CRC32 values on the CPU.
   std::vector<uint32_t> ref_crc32_values(chunk_count);
-  for (size_t i = 0; i < chunk_count; ++i) {
+  for (size_t i = 0; i < chunk_count; ++i)
+  {
     ref_crc32_values[i] = cpu_crc32(nvcompCRC32, input_data_cpu.sizes()[i], input_data_cpu.ptrs()[i]);
   }
 
   CUDA_CHECK(cudaStreamSynchronize(stream));
 
   // Validate CRC32 values computed on the GPU against reference values.
-  if (crc32_values != ref_crc32_values) {
+  if (crc32_values != ref_crc32_values)
+  {
     throw std::runtime_error("Failed to validate computed CRC32 values");
-  } else {
+  }
+  else
+  {
     std::cout << "CRC32 values validated :)" << std::endl;
   }
 
@@ -130,8 +142,7 @@ static void run_example(const std::vector<std::vector<char>>& data,
   ms /= total_iteration_count - warmup_iteration_count;
 
   double crc32_throughput = ((double)total_bytes / ms) * 1e-6;
-  std::cout << "CRC32 throughput (GB/s): " << crc32_throughput
-            << std::endl;
+  std::cout << "CRC32 throughput (GB/s): " << crc32_throughput << std::endl;
 
   CUDA_CHECK(cudaEventDestroy(start));
   CUDA_CHECK(cudaEventDestroy(end));
@@ -145,57 +156,68 @@ static uint32_t reverse(uint32_t x)
   x = (((x & 0xf0f0f0f0) >> 4) | ((x & 0x0f0f0f0f) << 4));
   x = (((x & 0xff00ff00) >> 8) | ((x & 0x00ff00ff) << 8));
 
-  return((x >> 16) | (x << 16));
+  return ((x >> 16) | (x << 16));
 }
 
-static uint32_t cpu_crc32(const nvcompCRC32Spec_t& spec, size_t n, const void *m_)
+static uint32_t cpu_crc32(const nvcompCRC32Spec_t &spec, size_t n, const void *m_)
 {
   const unsigned char *m = static_cast<const unsigned char *>(m_);
   uint32_t crc = spec.init;
 
-  while (n--) {
-      crc ^= spec.ref_in ? reverse(*m++) : (*m++ << 24);
-      for (int i = 0; i < 8; i++) {
-          crc = (crc << 1) ^ ((crc & 0x80000000) ? spec.poly : 0);
-      }
+  while (n--)
+  {
+    crc ^= spec.ref_in ? reverse(*m++) : (*m++ << 24);
+    for (int i = 0; i < 8; i++)
+    {
+      crc = (crc << 1) ^ ((crc & 0x80000000) ? spec.poly : 0);
+    }
   }
 
-  if (spec.ref_out) {
-      crc = reverse(crc);
+  if (spec.ref_out)
+  {
+    crc = reverse(crc);
   }
 
   return crc ^ spec.xorout;
 }
 
-int main(int argc, char* argv[])
+int main(int argc, char *argv[])
 {
   std::vector<std::string> file_names;
 
   size_t warmup_iteration_count = 2;
   size_t total_iteration_count = 5;
 
-  do {
-    if (argc < 3) {
+  do
+  {
+    if (argc < 3)
+    {
       break;
     }
 
     int i = 1;
-    while (i < argc) {
-      const char* current_argv = argv[i++];
-      if (strcmp(current_argv, "-f") == 0) {
-          while (i < argc) {
-            file_names.emplace_back(argv[i++]);
-          }
-      } else {
+    while (i < argc)
+    {
+      const char *current_argv = argv[i++];
+      if (strcmp(current_argv, "-f") == 0)
+      {
+        while (i < argc)
+        {
+          file_names.emplace_back(argv[i++]);
+        }
+      }
+      else
+      {
         std::cerr << "Unknown argument: " << current_argv << std::endl;
         return 1;
       }
     }
   } while (0);
 
-  if (file_names.empty()) {
-   std::cerr << "Must specify at least one file via '-f <file>'" << std::endl;
-   return 1;
+  if (file_names.empty())
+  {
+    std::cerr << "Must specify at least one file via '-f <file>'" << std::endl;
+    return 1;
   }
 
   auto data = multi_file(file_names);

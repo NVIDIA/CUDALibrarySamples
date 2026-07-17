@@ -24,6 +24,7 @@
 
 #include "nvcomp/native/bitcomp.h"
 #include "benchmark_common.h"
+#include "benchmark_lossy_common.h"
 
 using nvcomp::multi_file;
 using nvcomp::verifyLossyCompression;

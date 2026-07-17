@@ -18,24 +18,24 @@
 #include "benchmark_template_chunked.cuh"
 #include "nvcomp/zstd.h"
 
-static bool handleCommandLineArgument(
-    const std::string& arg,
-    const char* const* additionalArgs,
-    size_t& additionalArgsUsed)
-{
-  // Zstd has no options.
-  return false;
-}
+NVBENCH_REGISTER_CRITERION(total_time_criterion);
 
-static bool isZstdInputValid(const std::vector<std::vector<char>>& data,
-                             bool compressed_inputs)
+const std::vector<parameter_type> custom_params;
+
+static bool isZstdInputValid(
+  const std::vector<std::vector<char>> &data,
+  bool compressed_inputs,
+  [[maybe_unused]] const nvcompBatchedZstdCompressOpts_t compress_opts,
+  [[maybe_unused]] const nvcompBatchedZstdDecompressOpts_t decompress_opts
+)
 {
   (void)compressed_inputs;
-  for (const auto& chunk : data) {
-    if (chunk.size() > nvcompZstdCompressionMaxAllowedChunkSize) {
-      std::cerr << "ERROR: Zstd doesn't support chunk sizes larger than "
-                << nvcompZstdCompressionMaxAllowedChunkSize << " bytes."
-                << std::endl;
+  for (const auto &chunk : data)
+  {
+    if (chunk.size() > nvcompZstdCompressionMaxAllowedChunkSize)
+    {
+      std::cerr << "ERROR: Zstd doesn't support chunk sizes larger than " << nvcompZstdCompressionMaxAllowedChunkSize
+                << " bytes." << std::endl;
       return false;
     }
   }
@@ -43,43 +43,44 @@ static bool isZstdInputValid(const std::vector<std::vector<char>>& data,
   return true;
 }
 
-void run_benchmark(
-    const std::vector<std::vector<char>>& data,
-    const bool warmup,
-    const size_t count,
-    const bool csv_output,
-    const nvcompDecompressBackend_t decompress_backend,
-    const bool tab_separator,
-    const size_t duplicate_count,
-    const size_t num_files,
-    const bool compressed_inputs,
-    const bool single_output_buffer,
-    const std::string& output_compressed_filename,
-    const std::string& output_decompressed_filename)
+template <bool DO_COMPRESSION>
+void run_benchmark(nvbench::state &state)
 {
-  run_benchmark_template(
+  if constexpr (DO_COMPRESSION)
+  {
+    run_compression(
       nvcompBatchedZstdCompressGetTempSizeAsync,
+      nvcompBatchedZstdCompressGetTempSizeSync,
       nvcompBatchedZstdCompressGetMaxOutputChunkSize,
       nvcompBatchedZstdCompressAsync,
       nvcompBatchedZstdCompressGetRequiredAlignments,
+      isZstdInputValid,
+      nvcompBatchedZstdCompressDefaultOpts,
+      nvcompBatchedZstdDecompressDefaultOpts,
+      state
+    );
+  }
+  else
+  {
+    run_decompression(
       nvcompBatchedZstdDecompressGetTempSizeAsync,
       nvcompBatchedZstdDecompressGetTempSizeSync,
       nvcompBatchedZstdDecompressAsync,
       nvcompBatchedZstdGetDecompressSizeAsync,
       nvcompBatchedZstdDecompressGetRequiredAlignments,
-      isZstdInputValid,
-      nvcompBatchedZstdCompressDefaultOpts,
       nvcompBatchedZstdDecompressDefaultOpts,
-      data,
-      warmup,
-      count,
-      csv_output,
-      decompress_backend,
-      tab_separator,
-      duplicate_count,
-      num_files,
-      compressed_inputs,
-      single_output_buffer,
-      output_compressed_filename,
-      output_decompressed_filename);
+      state
+    );
+  }
 }
+
+static void run_benchmark_compress(nvbench::state &state) { run_benchmark<true>(state); }
+static void run_benchmark_decompress(nvbench::state &state) { run_benchmark<false>(state); }
+NVBENCH_BENCH(run_benchmark_compress)
+  .set_name("Zstd Chunked Compression")
+  .set_stopping_criterion("total-time-criterion")
+  .set_timeout(30.0);
+NVBENCH_BENCH(run_benchmark_decompress)
+  .set_name("Zstd Chunked Decompression")
+  .set_stopping_criterion("total-time-criterion")
+  .set_timeout(30.0);

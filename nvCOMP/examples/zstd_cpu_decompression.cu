@@ -15,51 +15,53 @@
  * limitations under the License.
  */
 
+#include "BatchData.h"
+#include "nvcomp/zstd.h"
+
 #include <zstd.h>
 
-#include "nvcomp/zstd.h"
-#include "BatchData.h"
-
-BatchDataCPU GetBatchDataCPU(const BatchData& batch_data, bool copy_data)
+BatchDataCPU GetBatchDataCPU(const BatchData &batch_data, bool copy_data)
 {
-  BatchDataCPU batch_data_cpu(
-      batch_data.ptrs(),
-      batch_data.sizes(),
-      batch_data.data(),
-      batch_data.size(),
-      copy_data);
+  BatchDataCPU batch_data_cpu(batch_data.ptrs(), batch_data.sizes(), batch_data.data(), batch_data.size(), copy_data);
   return batch_data_cpu;
 }
 
-static void run_example(const std::vector<std::vector<char>>& data,
-                        size_t warmup_iteration_count, size_t total_iteration_count)
+static void
+run_example(const std::vector<std::vector<char>> &data, size_t warmup_iteration_count, size_t total_iteration_count)
 {
   assert(!data.empty());
-  if(warmup_iteration_count >= total_iteration_count) {
+  if (warmup_iteration_count >= total_iteration_count)
+  {
     throw std::runtime_error("ERROR: the total iteration count must be greater than the warmup iteration count");
   }
 
   size_t total_bytes =
-    std::accumulate(data.begin(), data.end(), size_t(0), [](const size_t& a, const std::vector<char>& part) {
-        return a + part.size();
-  });
+    std::accumulate(data.begin(), data.end(), size_t(0), [](const size_t &a, const std::vector<char> &part) {
+      return a + part.size();
+    });
 
   std::cout << "----------" << std::endl;
   std::cout << "files: " << data.size() << std::endl;
   std::cout << "uncompressed (B): " << total_bytes << std::endl;
 
   constexpr size_t chunk_size = 1 << 16;
-  static_assert(chunk_size <= ZSTD_BLOCKSIZE_MAX, "Chunk size must be less than the constant specified in the Zstandard library");
-  static_assert(chunk_size <= nvcompZstdCompressionMaxAllowedChunkSize, "Chunk size must be less than the constant specified in the nvCOMP library");
+  static_assert(
+    chunk_size <= ZSTD_BLOCKSIZE_MAX,
+    "Chunk size must be less than the constant specified in the Zstandard library"
+  );
+  static_assert(
+    chunk_size <= nvcompZstdCompressionMaxAllowedChunkSize,
+    "Chunk size must be less than the constant specified in the nvCOMP library"
+  );
 
   auto nvcompBatchedZstdOpts = nvcompBatchedZstdCompressDefaultOpts;
 
   // Query compression alignment requirements
-  nvcompAlignmentRequirements_t compression_alignment_reqs;
-  nvcompStatus_t status = nvcompBatchedZstdCompressGetRequiredAlignments(
-    nvcompBatchedZstdOpts,
-    &compression_alignment_reqs);
-  if (status != nvcompSuccess) {
+  nvcompAlignmentRequirements_t compression_alignment_reqs{};
+  nvcompStatus_t status =
+    nvcompBatchedZstdCompressGetRequiredAlignments(nvcompBatchedZstdOpts, &compression_alignment_reqs);
+  if (status != nvcompSuccess)
+  {
     throw std::runtime_error("ERROR: nvcompBatchedZstdCompressGetRequiredAlignments() not successful");
   }
 
@@ -70,22 +72,24 @@ static void run_example(const std::vector<std::vector<char>>& data,
   // Compress on the GPU using batched API
   size_t comp_temp_bytes;
   status = nvcompBatchedZstdCompressGetTempSizeAsync(
-      chunk_count,
-      chunk_size,
-      nvcompBatchedZstdOpts,
-      &comp_temp_bytes,
-      chunk_count * chunk_size);
-  if (status != nvcompSuccess) {
+    chunk_count,
+    chunk_size,
+    nvcompBatchedZstdOpts,
+    &comp_temp_bytes,
+    chunk_count * chunk_size
+  );
+  if (status != nvcompSuccess)
+  {
     throw std::runtime_error("ERROR: nvcompBatchedZstdCompressGetTempSizeAsync() not successful");
   }
 
-  void* d_comp_temp;
+  void *d_comp_temp;
   CUDA_CHECK(cudaMallocSafe(&d_comp_temp, comp_temp_bytes));
 
   size_t max_out_bytes;
-  status = nvcompBatchedZstdCompressGetMaxOutputChunkSize(
-      chunk_size, nvcompBatchedZstdOpts, &max_out_bytes);
-  if (status != nvcompSuccess) {
+  status = nvcompBatchedZstdCompressGetMaxOutputChunkSize(chunk_size, nvcompBatchedZstdOpts, &max_out_bytes);
+  if (status != nvcompSuccess)
+  {
     throw std::runtime_error("ERROR: nvcompBatchedZstdCompressGetMaxOutputChunkSize() not successful");
   }
 
@@ -110,19 +114,23 @@ static void run_example(const std::vector<std::vector<char>>& data,
           compressed_data.sizes(),
           nvcompBatchedZstdOpts,
           nullptr,
-          stream) != nvcompSuccess) {
+          stream
+        ) != nvcompSuccess)
+    {
       throw std::runtime_error("nvcompBatchedZstdCompressAsync() failed.");
     }
   };
 
   // Run warm-up compression
-  for (size_t iter = 0; iter < warmup_iteration_count; ++iter) {
+  for (size_t iter = 0; iter < warmup_iteration_count; ++iter)
+  {
     perform_compression();
   }
 
   // Re-run compression to get throughput
   CUDA_CHECK(cudaEventRecord(start, stream));
-  for (size_t iter = warmup_iteration_count; iter < total_iteration_count; ++iter) {
+  for (size_t iter = warmup_iteration_count; iter < total_iteration_count; ++iter)
+  {
     perform_compression();
   }
   CUDA_CHECK(cudaEventRecord(end, stream));
@@ -135,39 +143,47 @@ static void run_example(const std::vector<std::vector<char>>& data,
   // compute compression ratio
   std::vector<size_t> compressed_sizes_host(chunk_count);
   CUDA_CHECK(cudaMemcpy(
-      compressed_sizes_host.data(),
-      compressed_data.sizes(),
-      chunk_count * sizeof(*compressed_data.sizes()),
-      cudaMemcpyDeviceToHost));
+    compressed_sizes_host.data(),
+    compressed_data.sizes(),
+    chunk_count * sizeof(*compressed_data.sizes()),
+    cudaMemcpyDeviceToHost
+  ));
 
   size_t comp_bytes = std::accumulate(compressed_sizes_host.begin(), compressed_sizes_host.end(), size_t(0));
 
-  std::cout << "comp_size: " << comp_bytes
-            << ", compressed ratio: " << std::fixed << std::setprecision(2)
+  std::cout << "comp_size: " << comp_bytes << ", compressed ratio: " << std::fixed << std::setprecision(2)
             << (double)total_bytes / comp_bytes << std::endl;
-  std::cout << "compression throughput (GB/s): "
-            << (double)total_bytes / (1.0e6 * ms) << std::endl;
+  std::cout << "compression throughput (GB/s): " << (double)total_bytes / (1.0e6 * ms) << std::endl;
 
   // Allocate and prepare output/compressed batch
   BatchDataCPU compressed_data_cpu = GetBatchDataCPU(compressed_data, true);
   BatchDataCPU decompressed_data_cpu = GetBatchDataCPU(input_data, false);
 
   // loop over chunks on the CPU, decompressing each one
-  for (size_t i = 0; i < chunk_count; ++i) {
-    size_t size = ZSTD_decompress(decompressed_data_cpu.ptrs()[i],
-                                  decompressed_data_cpu.sizes()[i],
-                                  compressed_data_cpu.ptrs()[i],
-                                  compressed_data_cpu.sizes()[i]);
-    if (ZSTD_isError(size)) {
+  for (size_t i = 0; i < chunk_count; ++i)
+  {
+    size_t size = ZSTD_decompress(
+      decompressed_data_cpu.ptrs()[i],
+      decompressed_data_cpu.sizes()[i],
+      compressed_data_cpu.ptrs()[i],
+      compressed_data_cpu.sizes()[i]
+    );
+    if (ZSTD_isError(size))
+    {
       throw std::runtime_error(
-          "Zstandard CPU failed to decompress chunk " + std::to_string(i) + ". Error code: " + std::to_string(size) + ", Message: " + ZSTD_getErrorName(size));
+        "Zstandard CPU failed to decompress chunk " + std::to_string(i) + ". Error code: " + std::to_string(size) +
+        ", Message: " + ZSTD_getErrorName(size)
+      );
     }
     decompressed_data_cpu.sizes()[i] = size;
   }
   // Validate decompressed data against input
-  if (!(decompressed_data_cpu == input_data)) {
+  if (!(decompressed_data_cpu == input_data))
+  {
     throw std::runtime_error("Failed to validate CPU decompressed data");
-  } else {
+  }
+  else
+  {
     std::cout << "CPU decompression validated :)" << std::endl;
   }
 
@@ -178,34 +194,42 @@ static void run_example(const std::vector<std::vector<char>>& data,
   CUDA_CHECK(cudaStreamDestroy(stream));
 }
 
-int main(int argc, char* argv[])
+int main(int argc, char *argv[])
 {
   std::vector<std::string> file_names;
 
   size_t warmup_iteration_count = 2;
   size_t total_iteration_count = 5;
 
-  do {
-    if (argc < 3) {
+  do
+  {
+    if (argc < 3)
+    {
       break;
     }
 
     int i = 1;
-    while (i < argc) {
-      const char* current_argv = argv[i++];
-      if (strcmp(current_argv, "-f") == 0) {
+    while (i < argc)
+    {
+      const char *current_argv = argv[i++];
+      if (strcmp(current_argv, "-f") == 0)
+      {
         // parse until next `-` argument
-        while (i < argc && argv[i][0] != '-') {
+        while (i < argc && argv[i][0] != '-')
+        {
           file_names.emplace_back(argv[i++]);
         }
-      } else {
+      }
+      else
+      {
         std::cerr << "Unknown argument: " << current_argv << std::endl;
         return 1;
       }
     }
   } while (0);
 
-  if (file_names.empty()) {
+  if (file_names.empty())
+  {
     std::cerr << "Must specify at least one file via '-f <file>'." << std::endl;
     return 1;
   }

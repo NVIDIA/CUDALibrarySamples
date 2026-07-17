@@ -21,6 +21,8 @@
 #define VERBOSE 0
 #endif
 
+#include <cuda_fp16.h>
+
 #include <cassert>
 #include <chrono>
 #include <cstdio>
@@ -30,36 +32,36 @@
 #include <iostream>
 #include <limits>
 #include <random>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
-#include <cuda_fp16.h>
-
 #include "nvcomp.hpp"
 #include "nvcomp/cascaded.h"
 #include "nvcomp/utils.hpp"
-#include "benchmark_lossy_common.h"
 
-
-#define CUDA_CHECK(func)                                                       \
-  do {                                                                         \
-    cudaError_t rt = (func);                                                   \
-    if (rt != cudaSuccess) {                                                   \
-      std::cout << "API call failure \"" #func "\" with " << rt << " at "      \
-                << __FILE__ << ":" << __LINE__ << std::endl;                   \
-      std::exit(1);                                                            \
-    }                                                                          \
+#define CUDA_CHECK(func)                                                                                               \
+  do                                                                                                                   \
+  {                                                                                                                    \
+    cudaError_t rt = (func);                                                                                           \
+    if (rt != cudaSuccess)                                                                                             \
+    {                                                                                                                  \
+      std::cout << "API call failure \"" #func "\" with " << rt << " at " << __FILE__ << ":" << __LINE__ << std::endl; \
+      std::exit(1);                                                                                                    \
+    }                                                                                                                  \
   } while (0);
 
-#define BTCHK(func)                                                            \
-  do {                                                                         \
-    bitcompResult_t rt = (func);                                               \
-    if (rt != BITCOMP_SUCCESS) {                                               \
-      std::cout << "Bitcomp API call failure \"" #func "\" with " << rt        \
-                << " at " << __FILE__ << ":" << __LINE__ << std::endl;          \
-      std::exit(1);                                                            \
-    }                                                                          \
+#define BTCHK(func)                                                                                                    \
+  do                                                                                                                   \
+  {                                                                                                                    \
+    bitcompResult_t rt = (func);                                                                                       \
+    if (rt != BITCOMP_SUCCESS)                                                                                         \
+    {                                                                                                                  \
+      std::cout << "Bitcomp API call failure \"" #func "\" with " << rt << " at " << __FILE__ << ":" << __LINE__       \
+                << std::endl;                                                                                          \
+      std::exit(1);                                                                                                    \
+    }                                                                                                                  \
   } while (0);
 
 namespace nvcomp
@@ -74,8 +76,7 @@ namespace nvcomp
 inline uint64_t get_time(timespec start, timespec end)
 {
   constexpr const uint64_t BILLION = 1000000000ULL;
-  const uint64_t elapsed_time
-      = BILLION * (end.tv_sec - start.tv_sec) + end.tv_nsec - start.tv_nsec;
+  const uint64_t elapsed_time = BILLION * (end.tv_sec - start.tv_sec) + end.tv_nsec - start.tv_nsec;
   return elapsed_time;
 }
 
@@ -87,28 +88,22 @@ inline double gibs(struct timespec start, struct timespec end, size_t s)
 }
 
 // size in bytes, returns GB/s
-inline double
-gbs(const std::chrono::time_point<std::chrono::steady_clock>& start,
-    const std::chrono::time_point<std::chrono::steady_clock>& end,
-    size_t s)
+inline double gbs(
+  const std::chrono::time_point<std::chrono::steady_clock> &start,
+  const std::chrono::time_point<std::chrono::steady_clock> &end,
+  size_t s
+)
 {
   return (double)s / std::chrono::nanoseconds(end - start).count();
 }
 
-inline double
-gbs(const std::chrono::nanoseconds duration,
-    size_t s)
-{
-  return (double)s / duration.count();
-}
+inline double gbs(const std::chrono::nanoseconds duration, size_t s) { return (double)s / duration.count(); }
 
-inline double
-average_gbs(
-    const std::vector<std::chrono::nanoseconds>& durations,
-    size_t s)
+inline double average_gbs(const std::vector<std::chrono::nanoseconds> &durations, size_t s)
 {
   size_t count_sum = 0;
-  for (auto duration : durations) {
+  for (auto duration : durations)
+  {
     count_sum += duration.count();
   }
 
@@ -117,13 +112,11 @@ average_gbs(
   return (double)s / avg_duration;
 }
 
-inline double
-average_gbs(
-    const std::vector<float>& durations,
-    size_t s)
+inline double average_gbs(const std::vector<float> &durations, size_t s)
 {
   double duration_sum = 0;
-  for (auto duration : durations) {
+  for (auto duration : durations)
+  {
     duration_sum += duration;
   }
 
@@ -156,19 +149,19 @@ inline bool startsWith(const std::string input, const std::string subStr)
 #pragma GCC diagnostic pop
 #endif
 
-void benchmark_assert(const bool pass, const std::string& msg)
+void benchmark_assert(const bool pass, const std::string &msg)
 {
-  if (!pass) {
+  if (!pass)
+  {
     printf("unhandled exception in benchmark, msg %s\n", msg.c_str());
     throw std::runtime_error("ERROR: " + msg);
   }
 }
 
-std::vector<uint8_t>
-gen_data(const int max_byte, const size_t size, std::mt19937& rng)
+std::vector<uint8_t> gen_data(const int max_byte, const size_t size, std::mt19937 &rng)
 {
-  if (max_byte < 0
-      || max_byte > static_cast<int>(std::numeric_limits<uint8_t>::max())) {
+  if (max_byte < 0 || max_byte > static_cast<int>(std::numeric_limits<uint8_t>::max()))
+  {
     throw std::runtime_error("Invalid byte value: " + std::to_string(max_byte));
   }
 
@@ -176,7 +169,8 @@ gen_data(const int max_byte, const size_t size, std::mt19937& rng)
 
   std::vector<uint8_t> data;
 
-  for (size_t i = 0; i < size; ++i) {
+  for (size_t i = 0; i < size; ++i)
+  {
     data.emplace_back(static_cast<uint8_t>(dist(rng) & 0xff));
   }
 
@@ -185,9 +179,10 @@ gen_data(const int max_byte, const size_t size, std::mt19937& rng)
 
 // Load dataset from binary file into a vector of type T.
 template <typename T>
-std::vector<T> load_dataset_from_binary(const char* fname, size_t* input_element_count)
+std::vector<T> load_dataset_from_binary(const char *fname, size_t *input_element_count)
 {
-  try {
+  try
+  {
     assert(fname != nullptr);
     std::ifstream file;
 
@@ -210,7 +205,8 @@ std::vector<T> load_dataset_from_binary(const char* fname, size_t* input_element
 
     // If input_element_count is already set and is less than the number of elements in
     // the file, use it, otherwise load the whole file.
-    if (*input_element_count == 0 || *input_element_count > max_input_element_count) {
+    if (*input_element_count == 0 || *input_element_count > max_input_element_count)
+    {
       *input_element_count = max_input_element_count;
     }
 
@@ -227,7 +223,8 @@ std::vector<T> load_dataset_from_binary(const char* fname, size_t* input_element
     file.read(reinterpret_cast<char *>(buffer.data()), num_bytes);
     return buffer;
   }
-  catch (const std::ios_base::failure& e) {
+  catch (const std::ios_base::failure &e)
+  {
     std::cerr << "Error processing binary input file " << fname << ": " << e.what() << std::endl;
     std::exit(1);
     // Dummy return statement to quell compiler warnings.
@@ -235,16 +232,16 @@ std::vector<T> load_dataset_from_binary(const char* fname, size_t* input_element
   }
 }
 
-template<typename T>
-static cudaError_t cudaMallocSafe(T** devPtr, size_t size)
+template <typename T>
+static cudaError_t cudaMallocSafe(T **devPtr, size_t size)
 {
-  cudaError_t err = cudaMalloc(reinterpret_cast<void**>(devPtr), size);
+  cudaError_t err = cudaMalloc(reinterpret_cast<void **>(devPtr), size);
   if (err == cudaErrorMemoryAllocation)
   {
     // Attempt to get memory information
     size_t gpu_bytes_free, gpu_bytes_total;
     cudaError_t err_meminfo = cudaMemGetInfo(&gpu_bytes_free, &gpu_bytes_total);
-    if(err_meminfo != cudaSuccess)
+    if (err_meminfo != cudaSuccess)
     {
       return err_meminfo;
     }
@@ -252,8 +249,7 @@ static cudaError_t cudaMallocSafe(T** devPtr, size_t size)
     if (gpu_bytes_free < size)
     {
       std::cerr << "WARNING: Cannot fit data in GPU memory. Bytes requested: " << size
-                << " > bytes available: " << gpu_bytes_free << ". Could not run benchmark."
-                << std::endl;
+                << " > bytes available: " << gpu_bytes_free << ". Could not run benchmark." << std::endl;
       std::exit(3);
     }
   }
@@ -261,12 +257,12 @@ static cudaError_t cudaMallocSafe(T** devPtr, size_t size)
 }
 
 // Read binary file into a vector of char
-inline std::vector<char> readFile(const std::string& filename)
+inline std::vector<char> readFile(const std::string &filename)
 {
   std::ifstream fin(filename, std::ifstream::binary);
-  if (!fin) {
-    std::cerr << "ERROR: Unable to open \"" << filename << "\" for reading."
-              << std::endl;
+  if (!fin)
+  {
+    std::cerr << "ERROR: Unable to open \"" << filename << "\" for reading." << std::endl;
     throw std::runtime_error("Error opening file for reading.");
   }
 
@@ -279,9 +275,9 @@ inline std::vector<char> readFile(const std::string& filename)
   std::vector<char> host_data(fileSize);
   fin.read(host_data.data(), fileSize);
 
-  if (!fin) {
-    std::cerr << "ERROR: Unable to read all of file \"" << filename << "\"."
-              << std::endl;
+  if (!fin)
+  {
+    std::cerr << "ERROR: Unable to read all of file \"" << filename << "\"." << std::endl;
     throw std::runtime_error("Error reading file.");
   }
 
@@ -289,49 +285,61 @@ inline std::vector<char> readFile(const std::string& filename)
 }
 
 // Multi-file processing with chunking and duplication support
-inline std::vector<std::vector<char>>
-multi_file(const std::vector<std::string>& filenames,
-    const bool perform_chunking, const size_t chunk_size,
-    const size_t multiple_of, const size_t duplicate_count)
+inline std::vector<std::vector<char>> multi_file(
+  const std::vector<std::string> &filenames,
+  const bool perform_chunking,
+  const size_t chunk_size,
+  const size_t multiple_of,
+  const size_t duplicate_count
+)
 {
   std::vector<std::vector<char>> split_data;
 
-  for (auto const& filename : filenames) {
+  for (const auto &filename : filenames)
+  {
     std::vector<char> filedata = readFile(filename);
     const size_t filedata_original_size = filedata.size();
     const size_t filedata_padding_size = (multiple_of - (filedata_original_size % multiple_of)) % multiple_of;
     const size_t filedata_padded_size = filedata_original_size + filedata_padding_size;
 
-    if (perform_chunking) {
-      const size_t num_chunks
-          = (filedata_padded_size + chunk_size - 1) / chunk_size;
+    if (perform_chunking)
+    {
+      const size_t num_chunks = (filedata_padded_size + chunk_size - 1) / chunk_size;
       size_t offset = 0;
-      for (size_t c = 0; c < num_chunks; ++c) {
-        const size_t size_of_this_chunk = std::min(chunk_size, filedata_padded_size-offset);
+      for (size_t c = 0; c < num_chunks; ++c)
+      {
+        const size_t size_of_this_chunk = std::min(chunk_size, filedata_padded_size - offset);
         std::vector<char> tmp(size_of_this_chunk, 0);
-        if(offset < filedata_original_size) {
-          std::copy(filedata.data() + offset,
-                    filedata.data() + offset + std::min(filedata_original_size-offset, size_of_this_chunk),
-                    tmp.begin());
+        if (offset < filedata_original_size)
+        {
+          std::copy(
+            filedata.data() + offset,
+            filedata.data() + offset + std::min(filedata_original_size - offset, size_of_this_chunk),
+            tmp.begin()
+          );
         }
         split_data.emplace_back(std::move(tmp));
 
         offset += size_of_this_chunk;
         assert(offset <= filedata_padded_size);
       }
-    } else {
-       split_data.emplace_back(filedata);
+    }
+    else
+    {
+      split_data.emplace_back(filedata);
     }
   }
 
-  if (duplicate_count > 1) {
+  if (duplicate_count > 1)
+  {
     // Make duplicate_count copies of the contents of split_data,
     // but copy into a separate std::vector, to avoid issues with the
     // memory being reallocated while the contents are being copied.
     std::vector<std::vector<char>> duplicated;
     const size_t original_num_chunks = split_data.size();
     duplicated.reserve(original_num_chunks * duplicate_count);
-    for (size_t d = 0; d < duplicate_count; ++d) {
+    for (size_t d = 0; d < duplicate_count; ++d)
+    {
       duplicated.insert(duplicated.end(), split_data.begin(), split_data.end());
     }
     // Now that there are duplicate_count copies of split_data in
@@ -340,6 +348,39 @@ multi_file(const std::vector<std::string>& filenames,
   }
 
   return split_data;
+}
+
+// Parse a boolean from a command-line value ("true"/"false").
+inline bool parse_bool(const std::string &val)
+{
+  std::istringstream ss(val);
+  std::boolalpha(ss);
+  bool x;
+  if (!(ss >> x))
+  {
+    std::cerr << "ERROR: Invalid boolean: '" << val << "', only 'true' and 'false' are accepted." << std::endl;
+    std::exit(1);
+  }
+  return x;
+}
+
+// NVBench defaults to running on every visible GPU. These benchmarks instead
+// default to a single device (device 0): append NVBench's "--devices 0" unless
+// the user already selected device(s) via -d / --device / --devices.
+inline void default_to_single_device(std::vector<char *> &nvbench_argv)
+{
+  for (const char *arg : nvbench_argv)
+  {
+    const std::string a(arg);
+    if (a == "-d" || a == "--device" || a == "--devices")
+    {
+      return;
+    }
+  }
+  static char devices_flag[] = "--devices";
+  static char devices_value[] = "0";
+  nvbench_argv.push_back(devices_flag);
+  nvbench_argv.push_back(devices_value);
 }
 
 } // namespace nvcomp

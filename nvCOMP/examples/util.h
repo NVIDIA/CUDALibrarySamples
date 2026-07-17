@@ -17,34 +17,36 @@
 
 #pragma once
 
+#include <cuda_runtime.h>
+
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <numeric>
 #include <stdexcept>
-#include <string.h>
 #include <string>
 #include <vector>
 
-#include <cuda_runtime.h>
+#include <string.h>
 
 #ifndef CUDA_CHECK
-#define CUDA_CHECK(func)                                                       \
-  do {                                                                         \
-    cudaError_t rt = (func);                                                   \
-    if (rt != cudaSuccess) {                                                   \
-      std::cout << "API call failure \"" #func "\" with " << rt << " at "      \
-                << __FILE__ << ":" << __LINE__ << std::endl;                   \
-      std::exit(1);                                                            \
-    }                                                                          \
+#define CUDA_CHECK(func)                                                                                               \
+  do                                                                                                                   \
+  {                                                                                                                    \
+    cudaError_t rt = (func);                                                                                           \
+    if (rt != cudaSuccess)                                                                                             \
+    {                                                                                                                  \
+      std::cout << "API call failure \"" #func "\" with " << rt << " at " << __FILE__ << ":" << __LINE__ << std::endl; \
+      std::exit(1);                                                                                                    \
+    }                                                                                                                  \
   } while (0)
 #endif // CUDA_CHECK
 
-size_t compute_batch_size(
-    const std::vector<std::vector<char>>& data, const size_t chunk_size)
+size_t compute_batch_size(const std::vector<std::vector<char>> &data, const size_t chunk_size)
 {
   size_t batch_size = 0;
-  for (size_t i = 0; i < data.size(); ++i) {
+  for (size_t i = 0; i < data.size(); ++i)
+  {
     const size_t num_chunks = (data[i].size() + chunk_size - 1) / chunk_size;
     batch_size += num_chunks;
   }
@@ -52,50 +54,50 @@ size_t compute_batch_size(
   return batch_size;
 }
 
-std::vector<size_t> compute_chunk_sizes(
-    const std::vector<std::vector<char>>& data,
-    const size_t batch_size,
-    const size_t chunk_size)
+std::vector<size_t>
+compute_chunk_sizes(const std::vector<std::vector<char>> &data, const size_t batch_size, const size_t chunk_size)
 {
   std::vector<size_t> sizes(batch_size, chunk_size);
 
   size_t offset = 0;
-  for (size_t i = 0; i < data.size(); ++i) {
+  for (size_t i = 0; i < data.size(); ++i)
+  {
     const size_t num_chunks = (data[i].size() + chunk_size - 1) / chunk_size;
     offset += num_chunks;
-    if (data[i].size() % chunk_size != 0) {
+    if (data[i].size() % chunk_size != 0)
+    {
       sizes[offset - 1] = data[i].size() % chunk_size;
     }
   }
   return sizes;
 }
 
-std::vector<void*> get_input_ptrs(
-    const std::vector<std::vector<char>>& data,
-    const size_t batch_size,
-    const size_t chunk_size)
+std::vector<void *>
+get_input_ptrs(const std::vector<std::vector<char>> &data, const size_t batch_size, const size_t chunk_size)
 {
-  std::vector<void*> input_ptrs(batch_size);
+  std::vector<void *> input_ptrs(batch_size);
   size_t chunk = 0;
-  for (size_t i = 0; i < data.size(); ++i) {
+  for (size_t i = 0; i < data.size(); ++i)
+  {
     const size_t num_chunks = (data[i].size() + chunk_size - 1) / chunk_size;
     for (size_t j = 0; j < num_chunks; ++j)
-      input_ptrs[chunk++] = const_cast<void*>(
-          static_cast<const void*>(data[i].data() + j * chunk_size));
+    {
+      input_ptrs[chunk++] = const_cast<void *>(static_cast<const void *>(data[i].data() + j * chunk_size));
+    }
   }
   return input_ptrs;
 }
 
-template<typename T>
-static cudaError_t cudaMallocSafe(T** devPtr, size_t size)
+template <typename T>
+static cudaError_t cudaMallocSafe(T **devPtr, size_t size)
 {
-  cudaError_t err = cudaMalloc(reinterpret_cast<void**>(devPtr), size);
+  cudaError_t err = cudaMalloc(reinterpret_cast<void **>(devPtr), size);
   if (err == cudaErrorMemoryAllocation)
   {
     // Attempt to get memory information
     size_t gpu_bytes_free, gpu_bytes_total;
     cudaError_t err_meminfo = cudaMemGetInfo(&gpu_bytes_free, &gpu_bytes_total);
-    if(err_meminfo != cudaSuccess)
+    if (err_meminfo != cudaSuccess)
     {
       return err_meminfo;
     }
@@ -103,18 +105,18 @@ static cudaError_t cudaMallocSafe(T** devPtr, size_t size)
     if (gpu_bytes_free < size)
     {
       std::cerr << "WARNING: Cannot fit data in GPU memory. Bytes requested: " << size
-                << " > bytes available: " << gpu_bytes_free << ". Could not run benchmark."
-                << std::endl;
+                << " > bytes available: " << gpu_bytes_free << ". Could not run benchmark." << std::endl;
       std::exit(3);
     }
   }
   return err;
 }
 
-std::vector<char> read_file(const std::string& filename)
+std::vector<char> read_file(const std::string &filename)
 {
   std::ifstream fin(filename, std::ifstream::in | std::ifstream::binary | std::ifstream::ate);
-  if (!fin) {
+  if (!fin)
+  {
     throw std::runtime_error("Unable to open file: " + filename);
   }
   fin.exceptions(std::ifstream::failbit | std::ifstream::badbit);
@@ -130,11 +132,12 @@ std::vector<char> read_file(const std::string& filename)
   return host_data;
 }
 
-std::vector<std::vector<char>> multi_file(const std::vector<std::string>& filenames)
+std::vector<std::vector<char>> multi_file(const std::vector<std::string> &filenames)
 {
   std::vector<std::vector<char>> split_data;
 
-  for (auto const& filename : filenames) {
+  for (const auto &filename : filenames)
+  {
     split_data.emplace_back(read_file(filename));
   }
 

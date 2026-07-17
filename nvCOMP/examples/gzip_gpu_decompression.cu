@@ -15,21 +15,23 @@
  * limitations under the License.
  */
 
+#include "BatchData.h"
+#include "nvcomp/gzip.h"
+
 #include <zlib.h>
 
-#include "nvcomp/gzip.h"
-#include "BatchData.h"
-
-static void run_example(const std::vector<std::vector<char>>& data,
-                        size_t warmup_iteration_count, size_t total_iteration_count)
+static void
+run_example(const std::vector<std::vector<char>> &data, size_t warmup_iteration_count, size_t total_iteration_count)
 {
   assert(!data.empty());
-  if(warmup_iteration_count >= total_iteration_count) {
+  if (warmup_iteration_count >= total_iteration_count)
+  {
     throw std::runtime_error("ERROR: the total iteration count must be greater than the warmup iteration count");
   }
 
   size_t total_bytes = 0;
-  for (const std::vector<char>& part : data) {
+  for (const std::vector<char> &part : data)
+  {
     total_bytes += part.size();
   }
 
@@ -46,16 +48,18 @@ static void run_example(const std::vector<std::vector<char>>& data,
 
   // compression
 
-  auto init_gzip_deflate = [](z_stream& zs) {
+  auto init_gzip_deflate = [](z_stream &zs) {
     // 15 | 16 - enable gzip header
     int ret = deflateInit2(&zs, 9, Z_DEFLATED, 15 | 16, 8, Z_DEFAULT_STRATEGY);
-    if (ret != Z_OK) {
+    if (ret != Z_OK)
+    {
       throw std::runtime_error("Call to deflateInit2 failed: " + std::to_string(ret));
     }
   };
-  auto end_gzip_deflate = [](z_stream& zs) {
+  auto end_gzip_deflate = [](z_stream &zs) {
     int ret = deflateEnd(&zs);
-    if (ret != Z_OK) {
+    if (ret != Z_OK)
+    {
       throw std::runtime_error("Call to deflateEnd failed: " + std::to_string(ret));
     }
   };
@@ -69,48 +73,51 @@ static void run_example(const std::vector<std::vector<char>>& data,
   end_gzip_deflate(tmp_zs);
 
   // Allocate and prepare output/compressed batch
-  BatchDataCPU compressed_data_cpu(
-      max_compressed_chunk_size, chunk_count);
+  BatchDataCPU compressed_data_cpu(max_compressed_chunk_size, chunk_count);
 
   // loop over chunks on the CPU, compressing each one
-  for (size_t i = 0; i < chunk_count; ++i) {
-   //zlib::deflate
-   z_stream zs;
-   zs.zalloc = NULL; zs.zfree = NULL;
-   zs.msg = NULL;
-   zs.next_in  = (Bytef *)input_data_cpu.ptrs()[i];
-   zs.avail_in = static_cast<uInt>(input_data_cpu.sizes()[i]);
-   zs.next_out = (Bytef *)compressed_data_cpu.ptrs()[i];
-   zs.avail_out = static_cast<uInt>(max_compressed_chunk_size);
-   init_gzip_deflate(zs);
-   int ret = deflate(&zs, Z_FINISH);
-   if (ret != Z_STREAM_END) {
-       throw std::runtime_error("Gzip operation failed: " + std::to_string(ret));
-   }
-   end_gzip_deflate(zs);
-   // set the actual compressed size
-   compressed_data_cpu.sizes()[i] = zs.total_out;
+  for (size_t i = 0; i < chunk_count; ++i)
+  {
+    //zlib::deflate
+    z_stream zs;
+    zs.zalloc = NULL;
+    zs.zfree = NULL;
+    zs.msg = NULL;
+    zs.next_in = (Bytef *)input_data_cpu.ptrs()[i];
+    zs.avail_in = static_cast<uInt>(input_data_cpu.sizes()[i]);
+    zs.next_out = (Bytef *)compressed_data_cpu.ptrs()[i];
+    zs.avail_out = static_cast<uInt>(max_compressed_chunk_size);
+    init_gzip_deflate(zs);
+    int ret = deflate(&zs, Z_FINISH);
+    if (ret != Z_STREAM_END)
+    {
+      throw std::runtime_error("Gzip operation failed: " + std::to_string(ret));
+    }
+    end_gzip_deflate(zs);
+    // set the actual compressed size
+    compressed_data_cpu.sizes()[i] = zs.total_out;
   }
 
   // compute compression ratio
-  size_t* compressed_sizes_host = compressed_data_cpu.sizes();
+  size_t *compressed_sizes_host = compressed_data_cpu.sizes();
   size_t comp_bytes = 0;
   for (size_t i = 0; i < chunk_count; ++i)
+  {
     comp_bytes += compressed_sizes_host[i];
+  }
 
-  std::cout << "comp_size: " << comp_bytes
-            << ", compressed ratio: " << std::fixed << std::setprecision(2)
+  std::cout << "comp_size: " << comp_bytes << ", compressed ratio: " << std::fixed << std::setprecision(2)
             << (double)total_bytes / comp_bytes << std::endl;
 
   // Decompression options
   nvcompBatchedGzipDecompressOpts_t decompress_opts = nvcompBatchedGzipDecompressDefaultOpts;
 
   // Query decompression alignment requirements
-  nvcompAlignmentRequirements_t decompression_alignment_reqs;
-  nvcompStatus_t status = nvcompBatchedGzipDecompressGetRequiredAlignments(
-    decompress_opts,
-    &decompression_alignment_reqs);
-  if (status != nvcompSuccess) {
+  nvcompAlignmentRequirements_t decompression_alignment_reqs{};
+  nvcompStatus_t status =
+    nvcompBatchedGzipDecompressGetRequiredAlignments(decompress_opts, &decompression_alignment_reqs);
+  if (status != nvcompSuccess)
+  {
     throw std::runtime_error("ERROR: nvcompBatchedGzipDecompressGetRequiredAlignments() not successful");
   }
 
@@ -132,22 +139,24 @@ static void run_example(const std::vector<std::vector<char>>& data,
   // deflate GPU decompression
   size_t decomp_temp_bytes;
   status = nvcompBatchedGzipDecompressGetTempSizeAsync(
-      chunk_count,
-      chunk_size,
-      decompress_opts,
-      &decomp_temp_bytes,
-      chunk_count * chunk_size);
-  if (status != nvcompSuccess) {
+    chunk_count,
+    chunk_size,
+    decompress_opts,
+    &decomp_temp_bytes,
+    chunk_count * chunk_size
+  );
+  if (status != nvcompSuccess)
+  {
     throw std::runtime_error("nvcompBatchedGzipDecompressGetTempSizeAsync() failed.");
   }
 
-  void* d_decomp_temp;
+  void *d_decomp_temp;
   CUDA_CHECK(cudaMallocSafe(&d_decomp_temp, decomp_temp_bytes));
 
-  size_t* d_decomp_sizes;
+  size_t *d_decomp_sizes;
   CUDA_CHECK(cudaMallocSafe(&d_decomp_sizes, chunk_count * sizeof(size_t)));
 
-  nvcompStatus_t* d_status_ptrs;
+  nvcompStatus_t *d_status_ptrs;
   CUDA_CHECK(cudaMallocSafe(&d_status_ptrs, chunk_count * sizeof(nvcompStatus_t)));
 
   CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -164,26 +173,33 @@ static void run_example(const std::vector<std::vector<char>>& data,
           decomp_data.ptrs(),
           decompress_opts,
           d_status_ptrs,
-          stream) != nvcompSuccess) {
+          stream
+        ) != nvcompSuccess)
+    {
       throw std::runtime_error("ERROR: nvcompBatchedGzipDecompressAsync() not successful");
     }
   };
 
   // Run warm-up decompression
-  for (size_t iter = 0; iter < warmup_iteration_count; ++iter) {
+  for (size_t iter = 0; iter < warmup_iteration_count; ++iter)
+  {
     perform_decompression();
   }
 
   // Validate decompressed data against input
-  if (!(input_data_cpu == decomp_data)) {
+  if (!(input_data_cpu == decomp_data))
+  {
     throw std::runtime_error("Failed to validate decompressed data");
-  } else {
+  }
+  else
+  {
     std::cout << "decompression validated :)" << std::endl;
   }
 
   // Re-run decompression to get throughput
   CUDA_CHECK(cudaEventRecord(start, stream));
-  for (size_t iter = warmup_iteration_count; iter < total_iteration_count; ++iter) {
+  for (size_t iter = warmup_iteration_count; iter < total_iteration_count; ++iter)
+  {
     perform_decompression();
   }
   CUDA_CHECK(cudaEventRecord(end, stream));
@@ -194,8 +210,7 @@ static void run_example(const std::vector<std::vector<char>>& data,
   ms /= total_iteration_count - warmup_iteration_count;
 
   double decompression_throughput = ((double)total_bytes / ms) * 1e-6;
-  std::cout << "decompression throughput (GB/s): " << decompression_throughput
-            << std::endl;
+  std::cout << "decompression throughput (GB/s): " << decompression_throughput << std::endl;
 
   CUDA_CHECK(cudaFree(d_decomp_temp));
   CUDA_CHECK(cudaFree(d_decomp_sizes));
@@ -206,42 +221,53 @@ static void run_example(const std::vector<std::vector<char>>& data,
   CUDA_CHECK(cudaStreamDestroy(stream));
 }
 
-int main(int argc, char* argv[])
+int main(int argc, char *argv[])
 {
   std::vector<std::string> file_names;
 
   size_t warmup_iteration_count = 2;
   size_t total_iteration_count = 5;
 
-  do {
-    if (argc < 3) {
+  do
+  {
+    if (argc < 3)
+    {
       break;
     }
 
     int i = 1;
-    while (i < argc) {
-      const char* current_argv = argv[i++];
-      if (strcmp(current_argv, "-f") == 0) {
+    while (i < argc)
+    {
+      const char *current_argv = argv[i++];
+      if (strcmp(current_argv, "-f") == 0)
+      {
         // parse until next `-` argument
-        while (i < argc && argv[i][0] != '-') {
+        while (i < argc && argv[i][0] != '-')
+        {
           file_names.emplace_back(argv[i++]);
         }
-      } else {
+      }
+      else
+      {
         std::cerr << "Unknown argument: " << current_argv << std::endl;
         return 1;
       }
     }
   } while (0);
 
-  if (file_names.empty()) {
+  if (file_names.empty())
+  {
     std::cerr << "Must specify at least one file via '-f <file>'." << std::endl;
     return 1;
   }
 
-  try {
+  try
+  {
     auto data = multi_file(file_names);
     run_example(data, warmup_iteration_count, total_iteration_count);
-  } catch (const std::exception& e) {
+  }
+  catch (const std::exception &e)
+  {
     std::cerr << "ERROR: " << e.what() << std::endl;
     return 1;
   }

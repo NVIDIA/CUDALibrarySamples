@@ -18,52 +18,48 @@
 #include "benchmark_template_chunked.cuh"
 #include "nvcomp/snappy.h"
 
-static bool handleCommandLineArgument(
-    const std::string& arg,
-    const char* const* additionalArgs,
-    size_t& additionalArgsUsed)
-{
-  // Snappy has no options.
-  return false;
-}
+NVBENCH_REGISTER_CRITERION(total_time_criterion);
 
-void run_benchmark(
-    const std::vector<std::vector<char>>& data,
-    const bool warmup,
-    const size_t count,
-    const bool csv_output,
-    const nvcompDecompressBackend_t decompress_backend,
-    const bool tab_separator,
-    const size_t duplicate_count,
-    const size_t num_files,
-    const bool compressed_inputs,
-    const bool single_output_buffer,
-    const std::string& output_compressed_filename,
-    const std::string& output_decompressed_filename)
+const std::vector<parameter_type> custom_params;
+
+template <bool DO_COMPRESSION>
+void run_benchmark(nvbench::state &state)
 {
-  run_benchmark_template(
+  if constexpr (DO_COMPRESSION)
+  {
+    run_compression(
       nvcompBatchedSnappyCompressGetTempSizeAsync,
+      nvcompBatchedSnappyCompressGetTempSizeSync,
       nvcompBatchedSnappyCompressGetMaxOutputChunkSize,
       nvcompBatchedSnappyCompressAsync,
       nvcompBatchedSnappyCompressGetRequiredAlignments,
+      inputAlwaysValid,
+      nvcompBatchedSnappyCompressDefaultOpts,
+      nvcompBatchedSnappyDecompressDefaultOpts,
+      state
+    );
+  }
+  else
+  {
+    run_decompression(
       nvcompBatchedSnappyDecompressGetTempSizeAsync,
       nvcompBatchedSnappyDecompressGetTempSizeSync,
       nvcompBatchedSnappyDecompressAsync,
       nvcompBatchedSnappyGetDecompressSizeAsync,
       nvcompBatchedSnappyDecompressGetRequiredAlignments,
-      inputAlwaysValid,
-      nvcompBatchedSnappyCompressDefaultOpts,
       nvcompBatchedSnappyDecompressDefaultOpts,
-      data,
-      warmup,
-      count,
-      csv_output,
-      decompress_backend,
-      tab_separator,
-      duplicate_count,
-      num_files,
-      compressed_inputs,
-      single_output_buffer,
-      output_compressed_filename,
-      output_decompressed_filename);
+      state
+    );
+  }
 }
+
+static void run_benchmark_compress(nvbench::state &state) { run_benchmark<true>(state); }
+static void run_benchmark_decompress(nvbench::state &state) { run_benchmark<false>(state); }
+NVBENCH_BENCH(run_benchmark_compress)
+  .set_name("Snappy Chunked Compression")
+  .set_stopping_criterion("total-time-criterion")
+  .set_timeout(30.0);
+NVBENCH_BENCH(run_benchmark_decompress)
+  .set_name("Snappy Chunked Decompression")
+  .set_stopping_criterion("total-time-criterion")
+  .set_timeout(30.0);

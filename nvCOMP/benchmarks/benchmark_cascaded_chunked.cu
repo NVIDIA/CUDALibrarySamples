@@ -15,103 +15,113 @@
  * limitations under the License.
  */
 
-#include "benchmark_template_chunked.cuh"
-#include "nvcomp/cascaded.h"
-
 #include <iostream>
 #include <vector>
 
-static nvcompBatchedCascadedCompressOpts_t nvcompBatchedCascadedCompressOpts =
-  {4096, NVCOMP_TYPE_UINT, 2, 1, 1, {0}};
+#include "benchmark_template_chunked.cuh"
+#include "nvcomp/cascaded.h"
+
+NVBENCH_REGISTER_CRITERION(total_time_criterion);
+
+static nvcompBatchedCascadedCompressOpts_t nvcompBatchedCascadedCompressOpts = {4096, NVCOMP_TYPE_UINT, 2, 1, 1, {0}};
 static nvcompBatchedCascadedDecompressOpts_t nvcompBatchedCascadedDecompressOpts =
   nvcompBatchedCascadedDecompressDefaultOpts;
 
-static bool handleCommandLineArgument(
-    const std::string& arg,
-    const char* const* additionalArgs,
-    size_t& additionalArgsUsed)
-{
-  if (arg == "--type" || arg == "-t") {
-    const char* const typeArg = *additionalArgs;
-    additionalArgsUsed = 1;
-    bool valid;
-    nvcompBatchedCascadedCompressOpts.type = string_to_data_type(typeArg, valid);
-    return valid;
-  }
-  if (arg == "--num_rles" || arg == "-r") {
-    int n = atoi(*additionalArgs);
-    additionalArgsUsed = 1;
-    if (n < 0) {
-      std::cerr << "ERROR: num_rles can't be negative, but it is " << n
-                << std::endl;
-      return false;
-    }
-    nvcompBatchedCascadedCompressOpts.num_RLEs = n;
-    return true;
-  }
-  if (arg == "--num_deltas" || arg == "-d") {
-    int n = atoi(*additionalArgs);
-    additionalArgsUsed = 1;
-    if (n < 0) {
-      std::cerr << "ERROR: num_deltas can't be negative, but it is " << n
-                << std::endl;
-      return false;
-    }
-    nvcompBatchedCascadedCompressOpts.num_deltas = n;
-    return true;
-  }
-  if (arg == "--num_bps" || arg == "-b") {
-    int n = atoi(*additionalArgs);
-    additionalArgsUsed = 1;
-    if (n < 0 || n > 1) {
-      std::cerr << "ERROR: num_bps can only be 0 or 1, but it is " << n
-                << std::endl;
-      return false;
-    }
-    nvcompBatchedCascadedCompressOpts.use_bp = n;
-    return true;
-  }
-  return false;
-}
+const std::vector<parameter_type> custom_params = {
+  {"t",
+   "type",
+   "Cascaded data type. Must be one of (u)char, (u)short, (u)int, or (u)longlong.",
+   "uint",
+   [](const char *arg) -> bool {
+     bool valid;
+     nvcompBatchedCascadedCompressOpts.type = string_to_data_type(arg, valid);
+     return valid;
+   }},
+  {"r",
+   "num_rles",
+   "Number of RLE layers (max. 7).",
+   "2",
+   [](const char *arg) -> bool {
+     int n = atoi(arg);
+     if (n < 0 || n > 7)
+     {
+       std::cerr << "ERROR: num_rles must be between 0 and 7, but it is " << n << std::endl;
+       return false;
+     }
+     nvcompBatchedCascadedCompressOpts.num_RLEs = n;
+     return true;
+   }},
+  {"nd",
+   "num_deltas",
+   "Number of delta layers (max. 3).",
+   "1",
+   [](const char *arg) -> bool {
+     int n = atoi(arg);
+     if (n < 0 || n > 3)
+     {
+       std::cerr << "ERROR: num_deltas must be between 0 and 3, but it is " << n << std::endl;
+       return false;
+     }
+     nvcompBatchedCascadedCompressOpts.num_deltas = n;
+     return true;
+   }},
+  {"bp", "use_bp", "Whether to use bit-packing (0 or 1).", "1", [](const char *arg) -> bool {
+     int n = atoi(arg);
+     if (n < 0 || n > 1)
+     {
+       std::cerr << "ERROR: use_bp can only be 0 or 1, but it is " << n << std::endl;
+       return false;
+     }
+     nvcompBatchedCascadedCompressOpts.use_bp = n;
+     return true;
+   }}
+};
 
-static bool isCascadedInputValid(const std::vector<std::vector<char>>& data,
-                                 bool compressed_inputs)
+static bool isCascadedInputValid(
+  const std::vector<std::vector<char>> &data,
+  bool compressed_inputs,
+  [[maybe_unused]] const nvcompBatchedCascadedCompressOpts_t compress_opts,
+  [[maybe_unused]] const nvcompBatchedCascadedDecompressOpts_t decompress_opts
+)
 {
   // Find the type size, to check that all chunk sizes are a multiple of it.
   size_t typeSize = 1;
   auto type = nvcompBatchedCascadedCompressOpts.type;
-  switch (type) {
-  case NVCOMP_TYPE_CHAR:
-  case NVCOMP_TYPE_UCHAR:
-    // Type size is 1 byte, so chunk sizes are always a multiple of it.
-    return true;
-  case NVCOMP_TYPE_SHORT:
-  case NVCOMP_TYPE_USHORT:
-    typeSize = sizeof(uint16_t);
-    break;
-  case NVCOMP_TYPE_INT:
-  case NVCOMP_TYPE_UINT:
-    typeSize = sizeof(uint32_t);
-    break;
-  case NVCOMP_TYPE_LONGLONG:
-  case NVCOMP_TYPE_ULONGLONG:
-    typeSize = sizeof(uint64_t);
-    break;
-  default:
-    std::cerr << "ERROR: Cascaded data type must be 0-7 (CHAR, UCHAR, SHORT, "
-                 "USHORT, INT, UINT, LONGLONG, or ULONGLONG), "
-                 "but it is "
-              << int(type) << std::endl;
-    return false;
+  switch (type)
+  {
+    case NVCOMP_TYPE_CHAR:
+    case NVCOMP_TYPE_UCHAR:
+      // Type size is 1 byte, so chunk sizes are always a multiple of it.
+      return true;
+    case NVCOMP_TYPE_SHORT:
+    case NVCOMP_TYPE_USHORT:
+      typeSize = sizeof(uint16_t);
+      break;
+    case NVCOMP_TYPE_INT:
+    case NVCOMP_TYPE_UINT:
+      typeSize = sizeof(uint32_t);
+      break;
+    case NVCOMP_TYPE_LONGLONG:
+    case NVCOMP_TYPE_ULONGLONG:
+      typeSize = sizeof(uint64_t);
+      break;
+    default:
+      std::cerr << "ERROR: Cascaded data type must be 0-7 (CHAR, UCHAR, SHORT, "
+                   "USHORT, INT, UINT, LONGLONG, or ULONGLONG), "
+                   "but it is "
+                << int(type) << std::endl;
+      return false;
   }
 
-  if(!compressed_inputs) {
-    for (const auto& chunk : data) {
-      if ((chunk.size() % typeSize) != 0) {
+  if (!compressed_inputs)
+  {
+    for (const auto &chunk : data)
+    {
+      if ((chunk.size() % typeSize) != 0)
+      {
         std::cerr << "ERROR: Input data must have a length and chunk size that "
-                    "are a multiple of "
-                  << typeSize << ", the size of the specified data type."
-                  << std::endl;
+                     "are a multiple of "
+                  << typeSize << ", the size of the specified data type." << std::endl;
         return false;
       }
     }
@@ -119,43 +129,44 @@ static bool isCascadedInputValid(const std::vector<std::vector<char>>& data,
   return true;
 }
 
-void run_benchmark(
-    const std::vector<std::vector<char>>& data,
-    const bool warmup,
-    const size_t count,
-    const bool csv_output,
-    const nvcompDecompressBackend_t decompress_backend,
-    const bool tab_separator,
-    const size_t duplicate_count,
-    const size_t num_files,
-    const bool compressed_inputs,
-    const bool single_output_buffer,
-    const std::string& output_compressed_filename,
-    const std::string& output_decompressed_filename)
+template <bool DO_COMPRESSION>
+void run_benchmark(nvbench::state &state)
 {
-  run_benchmark_template(
+  if constexpr (DO_COMPRESSION)
+  {
+    run_compression(
       nvcompBatchedCascadedCompressGetTempSizeAsync,
+      nvcompBatchedCascadedCompressGetTempSizeSync,
       nvcompBatchedCascadedCompressGetMaxOutputChunkSize,
       nvcompBatchedCascadedCompressAsync,
       nvcompBatchedCascadedCompressGetRequiredAlignments,
+      isCascadedInputValid,
+      nvcompBatchedCascadedCompressOpts,
+      nvcompBatchedCascadedDecompressOpts,
+      state
+    );
+  }
+  else
+  {
+    run_decompression(
       nvcompBatchedCascadedDecompressGetTempSizeAsync,
       nvcompBatchedCascadedDecompressGetTempSizeSync,
       nvcompBatchedCascadedDecompressAsync,
       nvcompBatchedCascadedGetDecompressSizeAsync,
       nvcompBatchedCascadedDecompressGetRequiredAlignments,
-      isCascadedInputValid,
-      nvcompBatchedCascadedCompressOpts,
       nvcompBatchedCascadedDecompressOpts,
-      data,
-      warmup,
-      count,
-      csv_output,
-      decompress_backend,
-      tab_separator,
-      duplicate_count,
-      num_files,
-      compressed_inputs,
-      single_output_buffer,
-      output_compressed_filename,
-      output_decompressed_filename);
+      state
+    );
+  }
 }
+
+static void run_benchmark_compress(nvbench::state &state) { run_benchmark<true>(state); }
+static void run_benchmark_decompress(nvbench::state &state) { run_benchmark<false>(state); }
+NVBENCH_BENCH(run_benchmark_compress)
+  .set_name("Cascaded Chunked Compression")
+  .set_stopping_criterion("total-time-criterion")
+  .set_timeout(30.0);
+NVBENCH_BENCH(run_benchmark_decompress)
+  .set_name("Cascaded Chunked Decompression")
+  .set_stopping_criterion("total-time-criterion")
+  .set_timeout(30.0);

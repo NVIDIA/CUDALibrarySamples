@@ -21,7 +21,8 @@ import argparse
 import numpy
 import warnings
 
-delimiter = ','
+delimiter = ","
+
 
 def fixInput(val):
     if val is None:
@@ -36,18 +37,32 @@ def fixInput(val):
 
 if len(sys.argv) != 5 and len(sys.argv) != 6:
     print("Usage:")
-    print("\tcsv_to_binary.py <input filename> <column choice> <datatype> <output filename> [delimiter]")
+    print(
+        "\tcsv_to_binary.py <input filename> <column choice> <datatype> <output filename> [delimiter]"
+    )
     print()
     print("This program converts one column of a text file containing a table of data,")
     print("(a comma-separated values file by default), into a binary file.")
     print()
-    print("The <column choice> should be an integer in the range [0, N-1], where N is the number of columns.")
-    print("The <datatype> option should be one of 'int', 'long', 'float', 'double', or 'string'.")
-    print("'string' keeps the text, converting it to UTF-16 with no separators between the values.")
+    print(
+        "The <column choice> should be an integer in the range [0, N-1], where N is the number of columns."
+    )
+    print(
+        "The <datatype> option should be one of 'int', 'long', 'float', 'double', or 'string'."
+    )
+    print(
+        "'string' keeps the text, converting it to UTF-16 with no separators between the values."
+    )
     print("The [delimiter] is an optional argument, and defaults to '%s'" % delimiter)
-    print("Some delimiters may need to be surrounded by quotation marks or prefixed by a backslash, depending on")
-    print("the shell, for example space, semicolon, or vertical pipe, due to the command line parsing")
-    print("interpreting the space or semicolon as a parameter separator or command separator, instead of a")
+    print(
+        "Some delimiters may need to be surrounded by quotation marks or prefixed by a backslash, depending on"
+    )
+    print(
+        "the shell, for example space, semicolon, or vertical pipe, due to the command line parsing"
+    )
+    print(
+        "interpreting the space or semicolon as a parameter separator or command separator, instead of a"
+    )
     print("parameter to this script.")
     print()
     print("Examples:")
@@ -90,12 +105,18 @@ with open(str(in_fname), "r") as inFile:
     with open(str(out_fname), "wb") as newFile:
         with warnings.catch_warnings():
             while not finished:
-                in_data=numpy.genfromtxt(inFile, dtype=dtype,
-                max_rows=chunk_size, usecols=(int(col_num),), delimiter=delimiter, loose=False)
+                in_data = numpy.genfromtxt(
+                    inFile,
+                    dtype=dtype,
+                    max_rows=chunk_size,
+                    usecols=(int(col_num),),
+                    delimiter=delimiter,
+                    loose=False,
+                )
 
                 if offset == 0:
                     # don't warn about an empty file after we have read something
-                    warnings.filterwarnings('ignore', r'genfromtxt: Empty input file:')
+                    warnings.filterwarnings("ignore", r"genfromtxt: Empty input file:")
 
                 if in_data.size > 0:
                     in_data.tofile(newFile)
@@ -103,6 +124,6 @@ with open(str(in_fname), "r") as inFile:
                 else:
                     finished = True
 if offset != 0:
-    print('Wrote '+str(offset)+' '+datatype+'s to '+str(out_fname))
+    print("Wrote " + str(offset) + " " + datatype + "s to " + str(out_fname))
 else:
-    print('Wrote no data')
+    print("Wrote no data")

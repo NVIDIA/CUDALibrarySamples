@@ -6,129 +6,146 @@ This folder contains examples demonstrating the usage of the nvCOMP C, C++, and 
 
 ## Examples
 
-* [LZ4 CPU compression](lz4_cpu_compression.cu)
+- [LZ4 CPU compression](lz4_cpu_compression.cu)
 
-    The sample demonstrates CPU compression via `lz4::LZ4_compress_HC`, and subseqent GPU decompression via nvCOMP.
+  The sample demonstrates CPU compression via `lz4::LZ4_compress_HC`, and subsequent GPU decompression via nvCOMP.
 
-    ```
-    lz4_cpu_compression -f <input file(s)>
-    ```
+  ```
+  lz4_cpu_compression -f <input file(s)>
+  ```
 
-* [LZ4 CPU decompression](lz4_cpu_decompression.cu)
+- [LZ4 CPU decompression](lz4_cpu_decompression.cu)
 
-    The sample demonstrates GPU compression via nvCOMP, and subsequent CPU decompression via `lz4::LZ4_decompress_safe`.
+  The sample demonstrates GPU compression via nvCOMP, and subsequent CPU decompression via `lz4::LZ4_decompress_safe`.
 
-    ```
-    lz4_cpu_decompression -f <input file(s)>
-    ```
+  ```
+  lz4_cpu_decompression -f <input file(s)>
+  ```
 
-* [LZ4 CPU Manager compression](lz4_cpu_compression_high_level.cpp)
+- [LZ4 CPU Manager compression](lz4_cpu_compression_high_level.cpp)
 
-    The sample demonstrates CPU compression via `LZ4CPUManager`, and subseqent GPU decompression via nvCOMP.
+  The sample demonstrates CPU compression via `LZ4CPUManager`, and subsequent GPU decompression via nvCOMP.
 
-    ```
-    lz4_cpu_compression_high_level -f <input file(s)>
-    ```
+  ```
+  lz4_cpu_compression_high_level -f <input file(s)>
+  ```
 
-* [Snappy CPU compression](snappy_cpu_compression.cu)
+- [Snappy CPU compression](snappy_cpu_compression.cu)
 
-    The sample demonstrates CPU compression via `snappy::RawCompress`, and subseqent GPU decompression via nvCOMP.
+  The sample demonstrates CPU compression via `snappy::RawCompress`, and subsequent GPU decompression via nvCOMP.
 
-    ```
-    snappy_cpu_compression -f <input file(s)>
-    ```
+  ```
+  snappy_cpu_compression -f <input file(s)>
+  ```
 
-* [Snappy CPU decompression](snappy_cpu_decompression.cu)
+- [Snappy CPU decompression](snappy_cpu_decompression.cu)
 
-    The sample demonstrates GPU compression via nvCOMP, and subsequent CPU decompression via `snappy::RawUncompress`.
+  The sample demonstrates GPU compression via nvCOMP, and subsequent CPU decompression via `snappy::RawUncompress`.
 
-    ```
-    snappy_cpu_decompression -f <input file(s)>
-    ```
+  ```
+  snappy_cpu_decompression -f <input file(s)>
+  ```
 
-* [Zstandard CPU compression](zstd_cpu_compression.cu)
+- [Zstandard CPU compression](zstd_cpu_compression.cu)
 
-    The sample demonstrates CPU compression via `ZSTD_compress`, and subseqent GPU decompression via nvCOMP.
+  The sample demonstrates CPU compression via `ZSTD_compress`, and subsequent GPU decompression via nvCOMP.
 
-    ```
-    zstd_cpu_compression -f <input file(s)> -l <compression level>
-    ```
+  ```
+  zstd_cpu_compression -f <input file(s)> -l <compression level>
+  ```
 
-* [Zstandard CPU decompression](zstd_cpu_decompression.cu)
+- [Zstandard CPU decompression](zstd_cpu_decompression.cu)
 
-    The sample demonstrates GPU compression via nvCOMP, and subsequent CPU decompression via `ZSTD_decompress`.
+  The sample demonstrates GPU compression via nvCOMP, and subsequent CPU decompression via `ZSTD_decompress`.
 
-    ```
-    zstd_cpu_decompression -f <input file(s)>
-    ```
+  ```
+  zstd_cpu_decompression -f <input file(s)>
+  ```
 
-* [nvCOMP with GPUDirect Storage (GDS)](nvcomp_gds.cu)
+- [nvCOMP with GPUDirect Storage (GDS)](nvcomp_gds.cu)
 
-    The sample demonstrates the usage of GPUDirect Storage with nvCOMP.
+  The sample demonstrates the usage of GPUDirect Storage with nvCOMP.
 
-    ```
-    nvcomp_gds <compressed sample output file>
-    ```
+  ```
+  nvcomp_gds <compressed sample output file>
+  ```
 
-* [Deflate CPU compression](deflate_cpu_compression.cu)
+- [Deflate CPU compression](deflate_cpu_compression.cu)
 
-    The sample demonstrates CPU compression via `libdeflate/zlib::compress2/zlib::deflate`, and subsequent GPU decompression via nvCOMP.
+  The sample demonstrates CPU compression via `libdeflate/zlib::compress2/zlib::deflate`, and subsequent GPU decompression via nvCOMP.
 
-    ```
-    deflate_cpu_compression -a {0|1|2} -f <input file(s)> -l <compression level>
-    ```
+  ```
+  deflate_cpu_compression -a {0|1|2} -f <input file(s)> -l <compression level>
+  ```
 
-* [Deflate CPU decompression](deflate_cpu_decompression.cu)
+- [Deflate CPU decompression](deflate_cpu_decompression.cu)
 
-    The sample demonstrates GPU compression via nvCOMP, and subsequent CPU decompression via `libdeflate/zlib::inflate`.
+  The sample demonstrates GPU compression via nvCOMP, and subsequent CPU decompression via `libdeflate/zlib::inflate`.
 
-    ```
-    deflate_cpu_decompression -a {0|1} -f <input file(s)>
-    ```
+  ```
+  deflate_cpu_decompression -a {0|1} -f <input file(s)>
+  ```
 
-* [GDeflate CPU compression](gdeflate_cpu_compression.cu)
+- [GDeflate CPU compression](gdeflate_cpu_compression.cu)
 
-    The sample demonstrates CPU compression via gdeflate, and subsequent GPU decompression via nvCOMP.
+  The sample demonstrates CPU compression via gdeflate, and subsequent GPU decompression via nvCOMP.
 
-    ```
-    gdeflate_cpu_compression -f <input file(s)>
-    ```
+  ```
+  gdeflate_cpu_compression -f <input file(s)>
+  ```
 
-* [GZIP GPU decompression](gzpip_gpu_decompression.cu)
+- [GZIP GPU decompression](gzip_gpu_decompression.cu)
 
-    The sample demonstrates CPU compression via `zlib::deflate`, and subsequent GPU decompression via nvCOMP.
+  The sample demonstrates CPU compression via `zlib::deflate`, and subsequent GPU decompression via nvCOMP.
 
-    ```
-    gzip_gpu_decompression -f <input file(s)>
-    ```
+  ```
+  gzip_gpu_decompression -f <input file(s)>
+  ```
 
-* [High-level quickstart example](high_level_quickstart_example.cpp)
+- [GZIP GPU compression](gzip_gpu_compression.cu)
 
-    The sample demonstrates the usage of the high-level nvCOMP API.
+  The sample demonstrates GPU compression via nvCOMP, and subsequent CPU decompression via `zlib::inflate` to validate the output.
 
-    ```
-    high_level_quickstart_example
-    ```
+  ```sh
+  gzip_gpu_compression -f <input file(s)>
+  ```
 
-* [Low-level quickstart example](low_level_quickstart_example.cpp)
+- [High-level quickstart example](high_level_quickstart_example.cpp)
 
-    The sample demonstrates the usage of the low-level nvCOMP API.
+  The sample demonstrates the usage of the high-level nvCOMP API.
 
-    ```
-    low_level_quickstart_example
-    ```
+  ```
+  high_level_quickstart_example
+  ```
 
-* [nvCOMP CRC32 example](nvcomp_crc32.cu)
+- [Low-level quickstart example](low_level_quickstart_example.cpp)
 
-    The sample demonstrates nvCOMP CRC32 calculation and validates the results against a simple CPU implementation.
+  The sample demonstrates the usage of the low-level nvCOMP API.
 
-    ```
-    nvcomp_crc32 -f <input file(s)>
-    ```
+  ```
+  low_level_quickstart_example
+  ```
 
-* [Python API usage example](python/nvcomp_basic.ipynb)
+- [nvCOMP CRC32 example](nvcomp_crc32.cu)
 
-    The sample demonstrates the usage of the nvCOMP Python API.
+  The sample demonstrates nvCOMP CRC32 calculation and validates the results against a simple CPU implementation.
+
+  ```
+  nvcomp_crc32 -f <input file(s)>
+  ```
+
+- [Bitcomp Native API lossy example](bitcomp_native_lossy.cu)
+
+  The sample demonstrates the Bitcomp **Native API** for error-bounded lossy floating-point compression: it creates a plan, compresses FP32 data with a chosen `delta`, then decompresses it and verifies the error
+  is within bounds.
+
+  ```
+  bitcomp_native_lossy
+  ```
+
+- [Python API usage example](python/nvcomp_basic.ipynb)
+
+  The sample demonstrates the usage of the nvCOMP Python API.
 
 ## Building (x86-64, or aarch64)
 

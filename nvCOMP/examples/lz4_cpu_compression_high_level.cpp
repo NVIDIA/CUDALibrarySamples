@@ -24,27 +24,27 @@
  * Run: ./lz4_cpu_compression_high_level -f <file> [ -f <file2> ... ]
  */
 
+#include <cuda_runtime.h>
+
 #include <cassert>
 #include <cstring>
 #include <iomanip>
 #include <iostream>
 #include <vector>
 
-#include <cuda_runtime.h>
-
-#include "util.h"
-
-#include "nvcomp/nvcompManagerFactory.hpp"
 #include "nvcomp/lz4_cpu.hpp"
+#include "nvcomp/nvcompManagerFactory.hpp"
+#include "util.h"
 
 using namespace nvcomp;
 
-static void run_example(const std::vector<std::vector<char>>& data)
+static void run_example(const std::vector<std::vector<char>> &data)
 {
   assert(!data.empty());
 
   size_t total_bytes = 0;
-  for (const std::vector<char>& part : data) {
+  for (const std::vector<char> &part : data)
+  {
     total_bytes += part.size();
   }
 
@@ -55,7 +55,8 @@ static void run_example(const std::vector<std::vector<char>>& data)
 
   std::vector<uint8_t> host_input(uncomp_size, 0);
   size_t offset = 0;
-  for (const std::vector<char>& part : data) {
+  for (const std::vector<char> &part : data)
+  {
     std::memcpy(host_input.data() + offset, part.data(), part.size());
     offset += part.size();
   }
@@ -74,34 +75,37 @@ static void run_example(const std::vector<std::vector<char>>& data)
 
   size_t comp_size = cpu_manager.get_compressed_output_size(host_comp.data());
 
-  std::cout << "comp_size: " << comp_size
-            << ", ratio: " << std::fixed << std::setprecision(2)
+  std::cout << "comp_size: " << comp_size << ", ratio: " << std::fixed << std::setprecision(2)
             << (double)uncomp_size / comp_size << std::endl;
 
   cudaStream_t stream = cudaStreamDefault;
 
-  uint8_t* d_comp = nullptr;
+  uint8_t *d_comp = nullptr;
   CUDA_CHECK(cudaMallocSafe(&d_comp, comp_size));
   CUDA_CHECK(cudaMemcpyAsync(d_comp, host_comp.data(), comp_size, cudaMemcpyHostToDevice, stream));
   CUDA_CHECK(cudaStreamSynchronize(stream));
 
   std::shared_ptr<nvcompManagerBase> decomp_manager =
-      create_manager(d_comp, stream, NoComputeNoVerify, NVCOMP_DECOMPRESS_BACKEND_DEFAULT, false);
+    create_manager(d_comp, stream, NoComputeNoVerify, NVCOMP_DECOMPRESS_BACKEND_DEFAULT, false);
 
   DecompressionConfig decomp_config = decomp_manager->configure_decompression(d_comp);
-  if (decomp_config.decomp_data_size != uncomp_size) {
+  if (decomp_config.decomp_data_size != uncomp_size)
+  {
     CUDA_CHECK(cudaFree(d_comp));
-    throw std::runtime_error("configure_decompression size mismatch: got "
-        + std::to_string(decomp_config.decomp_data_size) + " expected " + std::to_string(uncomp_size));
+    throw std::runtime_error(
+      "configure_decompression size mismatch: got " + std::to_string(decomp_config.decomp_data_size) + " expected " +
+      std::to_string(uncomp_size)
+    );
   }
 
-  uint8_t* d_decomp = nullptr;
+  uint8_t *d_decomp = nullptr;
   CUDA_CHECK(cudaMallocSafe(&d_decomp, decomp_config.decomp_data_size));
   decomp_manager->decompress(d_decomp, d_comp, decomp_config);
 
   CUDA_CHECK(cudaStreamSynchronize(stream));
   nvcompStatus_t decomp_status = *decomp_config.get_status();
-  if (decomp_status != nvcompSuccess) {
+  if (decomp_status != nvcompSuccess)
+  {
     CUDA_CHECK(cudaFree(d_comp));
     CUDA_CHECK(cudaFree(d_decomp));
     throw std::runtime_error("Decompression failed: " + std::to_string(static_cast<int>(decomp_status)));
@@ -113,40 +117,50 @@ static void run_example(const std::vector<std::vector<char>>& data)
   CUDA_CHECK(cudaFree(d_comp));
   CUDA_CHECK(cudaFree(d_decomp));
 
-  if (std::memcmp(host_decomp.data(), host_input.data(), uncomp_size) != 0) {
+  if (std::memcmp(host_decomp.data(), host_input.data(), uncomp_size) != 0)
+  {
     throw std::runtime_error("Decompressed data does not match input");
   }
 
   std::cout << "Decompression validated :)" << std::endl;
 }
 
-int main(int argc, char* argv[])
+int main(int argc, char *argv[])
 {
   std::vector<std::string> file_names;
 
   int i = 1;
-  while (i < argc) {
-    const char* arg = argv[i++];
-    if (strcmp(arg, "-f") == 0) {
-      while (i < argc && argv[i][0] != '-') {
+  while (i < argc)
+  {
+    const char *arg = argv[i++];
+    if (strcmp(arg, "-f") == 0)
+    {
+      while (i < argc && argv[i][0] != '-')
+      {
         file_names.emplace_back(argv[i++]);
       }
-    } else {
+    }
+    else
+    {
       std::cerr << "Unknown argument: " << arg << std::endl;
       return 1;
     }
   }
 
-  if (file_names.empty()) {
-    std::cerr << "Usage: " << (argc ? argv[0] : "lz4_cpu_compression_high_level")
-              << " -f <file> [ -f <file2> ... ]" << std::endl;
+  if (file_names.empty())
+  {
+    std::cerr << "Usage: " << (argc ? argv[0] : "lz4_cpu_compression_high_level") << " -f <file> [ -f <file2> ... ]"
+              << std::endl;
     return 1;
   }
 
-  try {
+  try
+  {
     std::vector<std::vector<char>> data = multi_file(file_names);
     run_example(data);
-  } catch (const std::exception& e) {
+  }
+  catch (const std::exception &e)
+  {
     std::cerr << "ERROR: " << e.what() << std::endl;
     return 1;
   }
