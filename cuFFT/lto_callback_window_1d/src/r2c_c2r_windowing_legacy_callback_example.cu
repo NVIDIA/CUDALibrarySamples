@@ -26,7 +26,7 @@
 #include <cuda_runtime_api.h>
 #include <cufftXt.h>
 #include "common.h"
-#include "r2c_c2r_reference.h"
+#include "r2c_c2r_windowing_reference.h"
 #include "callback_params.h"
 
 // This is the store callback routine. It filters high frequencies
@@ -125,7 +125,7 @@ int test_r2c_window_c2r() {
 		return ERROR_VALUE;
 	}
 
-	double l2_error = compute_error<float>(&reference[0][0], &output_signals[0][0], batches, signal_size);
+    double l2_error = compute_error_windowing<float>(&reference[0][0], &output_signals[0][0], batches, signal_size);
 	printf("L2 error: %e\n", l2_error);
 
 	return (l2_error < threshold) ? PASS_VALUE : ERROR_VALUE;
