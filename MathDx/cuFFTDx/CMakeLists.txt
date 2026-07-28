@@ -13,10 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-cmake_minimum_required(VERSION 3.26)
+cmake_minimum_required(VERSION 3.26...4.0)
 
 # cuFFTDx project
-project(cufftdx_examples VERSION 1.7.0 LANGUAGES CXX CUDA)
+project(cufftdx_examples VERSION 1.7.3 LANGUAGES CXX CUDA)
 
 # Project options
 option(USE_MATHDX_PACKAGE "Use mathDx package to find cuFFTDx" ON)
@@ -62,6 +62,13 @@ if(NOT TARGET cufftdx)
     endif()
 endif()
 
+# Creates cufftdx_compiler_options INTERFACE target with compiler flags.
+# Link it PRIVATE to example targets: target_link_libraries(t PRIVATE cufftdx_compiler_options)
+# Guard prevents double-creation when included as a subproject.
+if(NOT TARGET cufftdx_compiler_options)
+    add_library(cufftdx_compiler_options INTERFACE)
+endif()
+
 if(PROJECT_IS_TOP_LEVEL)
     # Enable running examples with CTest
     enable_testing()
@@ -84,73 +91,103 @@ if(PROJECT_IS_TOP_LEVEL)
     set(CUFFTDX_CUFFT_MIN_VERSION "12.1" CACHE STRING "Minimum required cuFFT library version")
 
 
-    if(NOT MSVC)
-        set(CUFFTDX_CUDA_CXX_FLAGS "${CUFFTDX_CUDA_CXX_FLAGS} -Wall -Wextra")
-        set(CUFFTDX_CUDA_CXX_FLAGS "${CUFFTDX_CUDA_CXX_FLAGS} -fno-strict-aliasing")
-        set(CUFFTDX_CUDA_CXX_FLAGS "${CUFFTDX_CUDA_CXX_FLAGS} -Wno-deprecated-declarations")
-        if(NOT ${CMAKE_SYSTEM_PROCESSOR} MATCHES "^aarch64")
-            set(CUFFTDX_CUDA_CXX_FLAGS "${CUFFTDX_CUDA_CXX_FLAGS} -m64")
-        endif ()
-
-        if((CMAKE_CXX_COMPILER_ID STREQUAL "NVHPC") OR (CMAKE_CXX_COMPILER MATCHES ".*nvc\\+\\+.*"))
-            # Print error/warnings numbers
-            set(CUFFTDX_CUDA_CXX_FLAGS "${CUFFTDX_CUDA_CXX_FLAGS} --display_error_number")
-        endif()
-
-        if((CMAKE_CXX_COMPILER_ID STREQUAL "NVHPC") OR (CMAKE_CXX_COMPILER MATCHES ".*nvc\\+\\+.*"))
-            # if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 23.1.0)
-                set(CUFFTDX_CUDA_CXX_FLAGS "${CUFFTDX_CUDA_CXX_FLAGS} --diag_suppress1")
-                set(CUFFTDX_CUDA_CXX_FLAGS "${CUFFTDX_CUDA_CXX_FLAGS} --diag_suppress111")
-                set(CUFFTDX_CUDA_CXX_FLAGS "${CUFFTDX_CUDA_CXX_FLAGS} --diag_suppress177")
-                set(CUFFTDX_CUDA_CXX_FLAGS "${CUFFTDX_CUDA_CXX_FLAGS} --diag_suppress941")
-            # endif()
-        endif()
-
-        # Clang
-        if(CMAKE_CUDA_HOST_COMPILER MATCHES ".*clang.*")
-            # clang complains about unused function in CUDA system headers
-            set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Wno-unused-function")
-        endif()
-
-
-        # because -Wall is passed, all diagnostic ignores of -Wunkown-pragmas
-        # are ignored, which leads to unlegible CuTe compilation output
-        # fixed in GCC13 https://gcc.gnu.org/bugzilla/show_bug.cgi?id=53431
-        # but still not widely adopted
-        set(CUFFTDX_CUDA_CXX_FLAGS "${CUFFTDX_CUDA_CXX_FLAGS} -Wno-unknown-pragmas")
-    else()
-        add_definitions(-D_CRT_SECURE_NO_WARNINGS)
-        add_definitions(-D_CRT_NONSTDC_NO_WARNINGS)
-        add_definitions(-D_SCL_SECURE_NO_WARNINGS)
-        add_definitions(-DNOMINMAX)
-        set(CUFFTDX_CUDA_CXX_FLAGS "${CUFFTDX_CUDA_CXX_FLAGS} /W3") # Warning level
-        set(CUFFTDX_CUDA_CXX_FLAGS "${CUFFTDX_CUDA_CXX_FLAGS} /WX") # All warnings are errors
-        set(CUFFTDX_CUDA_CXX_FLAGS "${CUFFTDX_CUDA_CXX_FLAGS} /Zc:__cplusplus") # Enable __cplusplus macro
-    endif()
-
-    # Global CXX flags/options
     set(CMAKE_CXX_STANDARD 17)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
     set(CMAKE_CXX_EXTENSIONS OFF)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CUFFTDX_CUDA_CXX_FLAGS}")
-
-    # Global CUDA CXX flags/options
     set(CUDA_HOST_COMPILER ${CMAKE_CXX_COMPILER})
     set(CMAKE_CUDA_STANDARD 17)
     set(CMAKE_CUDA_STANDARD_REQUIRED ON)
     set(CMAKE_CUDA_EXTENSIONS OFF)
-    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xfatbin -compress-all") # Compress all fatbins
-    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcudafe --display_error_number") # Show error/warning numbers
-    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcompiler \"${CUFFTDX_CUDA_CXX_FLAGS}\"")
+
+    if(NOT MSVC)
+        # Host flags applied to CXX sources directly; to CUDA sources via -Xcompiler so
+        # nvcc forwards them to the host compiler instead of misinterpreting them as nvcc flags.
+        target_compile_options(cufftdx_compiler_options INTERFACE
+            $<$<COMPILE_LANGUAGE:CXX>:-Wall>
+            $<$<COMPILE_LANGUAGE:CXX>:-Wextra>
+            $<$<COMPILE_LANGUAGE:CXX>:-fno-strict-aliasing>
+            $<$<COMPILE_LANGUAGE:CXX>:-Wno-deprecated-declarations>
+            $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<NOT:$<STREQUAL:${CMAKE_SYSTEM_PROCESSOR},aarch64>>>:-m64>
+            $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-Wall>
+            $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-Wextra>
+            $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-fno-strict-aliasing>
+            $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-Wno-deprecated-declarations>
+            $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<NOT:$<STREQUAL:${CMAKE_SYSTEM_PROCESSOR},aarch64>>>:-Xcompiler=-m64>
+        )
+        if((CMAKE_CXX_COMPILER_ID STREQUAL "NVHPC") OR (CMAKE_CXX_COMPILER MATCHES ".*nvc\\+\\+.*"))
+            target_compile_options(cufftdx_compiler_options INTERFACE
+                $<$<COMPILE_LANGUAGE:CXX>:--display_error_number>
+                $<$<COMPILE_LANGUAGE:CXX>:--diag_suppress1>
+                $<$<COMPILE_LANGUAGE:CXX>:--diag_suppress111>
+                $<$<COMPILE_LANGUAGE:CXX>:--diag_suppress177>
+                $<$<COMPILE_LANGUAGE:CXX>:--diag_suppress941>
+                $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=--display_error_number>
+                $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=--diag_suppress1>
+                $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=--diag_suppress111>
+                $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=--diag_suppress177>
+                $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=--diag_suppress941>
+            )
+        endif()
+        if((CMAKE_CXX_COMPILER_ID STREQUAL "Clang") OR (CMAKE_CXX_COMPILER MATCHES ".*clang.*"))
+            target_compile_options(cufftdx_compiler_options INTERFACE
+                $<$<COMPILE_LANGUAGE:CXX>:-Wno-unused-function>
+                $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-Wno-unused-function>
+            )
+        endif()
+        # CUTLASS/CuTe workaround: -Wall silences -Wno-unknown-pragmas on GCC < 13
+        target_compile_options(cufftdx_compiler_options INTERFACE
+            $<$<COMPILE_LANGUAGE:CXX>:-Wno-unknown-pragmas>
+            $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-Wno-unknown-pragmas>
+        )
+    else()
+        target_compile_definitions(cufftdx_compiler_options INTERFACE
+            _CRT_SECURE_NO_WARNINGS
+            _CRT_NONSTDC_NO_WARNINGS
+            _SCL_SECURE_NO_WARNINGS
+            NOMINMAX
+        )
+        target_compile_options(cufftdx_compiler_options INTERFACE
+            $<$<COMPILE_LANGUAGE:CXX>:/W3>
+            $<$<COMPILE_LANGUAGE:CXX>:/WX>
+            $<$<COMPILE_LANGUAGE:CXX>:/Zc:__cplusplus>
+            $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/W3>
+            $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/WX>
+            $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/Zc:__cplusplus>
+        )
+    endif()
+
+    target_compile_options(cufftdx_compiler_options INTERFACE
+        $<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xfatbin -compress-all>
+        $<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcudafe --display_error_number>
+    )
 
     # Targeted CUDA Architectures, see https://cmake.org/cmake/help/latest/prop_tgt/CUDA_ARCHITECTURES.html#prop_tgt:CUDA_ARCHITECTURES
     set(CUFFTDX_CUDA_ARCHITECTURES 80-real CACHE
-        STRING "List of targeted cuFFTDx CUDA architectures, for example \"75-real;80\""
+        STRING "List of targeted cuFFTDx CUDA architectures (SM75+), for example \"75-real;80-real\""
     )
-    # Remove unsupported architectures
-    list(REMOVE_ITEM CUFFTDX_CUDA_ARCHITECTURES 30;32;35;37;50;52;53;70;72)
-    list(REMOVE_ITEM CUFFTDX_CUDA_ARCHITECTURES 30-real;32-real;35-real;37-real;50-real;52-real;53-real;70-real;72-real)
-    list(REMOVE_ITEM CUFFTDX_CUDA_ARCHITECTURES 30-virtual;32-virtual;35-virtual;37-virtual;50-virtual;52-virtual;53-virtual;70-virtual;72-virtual)
+    # Remove unsupported architectures below SM75 (minimum Turing).
+    set(_cufftdx_archs_filtered)
+    foreach(_arch IN LISTS CUFFTDX_CUDA_ARCHITECTURES)
+        if(_arch MATCHES "^([0-9]+)")
+            if(CMAKE_MATCH_1 GREATER_EQUAL 75)
+                list(APPEND _cufftdx_archs_filtered "${_arch}")
+            else()
+                message(WARNING "cufftdx: removing unsupported CUDA architecture ${_arch} (minimum SM75)")
+            endif()
+        else()
+            if(_arch MATCHES "^(all|all-major|native)$")
+                list(APPEND _cufftdx_archs_filtered "${_arch}")
+            else()
+                message(FATAL_ERROR "cufftdx: unrecognized CUDA architecture '${_arch}'. "
+                    "Expected SM75+ format (e.g. \"80-real\") or one of: all, all-major, native.")
+            endif()
+        endif()
+    endforeach()
+    set(CUFFTDX_CUDA_ARCHITECTURES "${_cufftdx_archs_filtered}" CACHE STRING
+        "List of targeted cuFFTDx CUDA architectures (SM75+), for example \"75-real;80-real\""
+        FORCE)
+    unset(_cufftdx_archs_filtered)
+    unset(_arch)
     message(STATUS "Targeted cuFFTDx CUDA Architectures: ${CUFFTDX_CUDA_ARCHITECTURES}")
 
     # CUDA Architectures
@@ -229,15 +266,12 @@ function(add_cufftdx_example GROUP_TARGET EXAMPLE_SOURCES)
     add_executable(${EXAMPLE_TARGET} ${EXAMPLE_SOURCES})
     target_link_libraries(${EXAMPLE_TARGET}
         PRIVATE
+            cufftdx_compiler_options
             $<IF:$<TARGET_EXISTS:mathdx::cufftdx>,mathdx::cufftdx,cufftdx::cufftdx>
     )
     set_target_properties(${EXAMPLE_TARGET}
         PROPERTIES
             CUDA_ARCHITECTURES "${CUFFTDX_CUDA_ARCHITECTURES}"
-    )
-    target_compile_options(${EXAMPLE_TARGET}
-        PRIVATE
-            "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xfatbin -compress-all>"
     )
     add_test(NAME ${EXAMPLE_NAME} COMMAND ${EXAMPLE_TARGET})
     set_tests_properties(${EXAMPLE_NAME}
@@ -327,6 +361,7 @@ function(add_cufft_and_cufftdx_example GROUP_TARGET EXAMPLE_SOURCES)
     add_executable(${EXAMPLE_TARGET} ${EXAMPLE_SOURCES})
     target_link_libraries(${EXAMPLE_TARGET}
         PRIVATE
+            cufftdx_compiler_options
             $<IF:$<TARGET_EXISTS:mathdx::cufftdx>,mathdx::cufftdx,cufftdx::cufftdx>
     )
     if(CUFFTDX_EXAMPLES_CUFFT_CALLBACK)
@@ -350,10 +385,6 @@ function(add_cufft_and_cufftdx_example GROUP_TARGET EXAMPLE_SOURCES)
     set_target_properties(${EXAMPLE_TARGET}
         PROPERTIES
             CUDA_ARCHITECTURES "${CUFFTDX_CUDA_ARCHITECTURES}"
-    )
-    target_compile_options(${EXAMPLE_TARGET}
-        PRIVATE
-            "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xfatbin -compress-all>"
     )
     add_test(NAME ${EXAMPLE_NAME} COMMAND ${EXAMPLE_TARGET})
     set_tests_properties(${EXAMPLE_NAME}
@@ -396,6 +427,7 @@ function(add_cufftdx_nvrtc_example GROUP_TARGET EXAMPLE_SOURCES)
     add_executable(${EXAMPLE_TARGET} ${EXAMPLE_SOURCES})
     target_link_libraries(${EXAMPLE_TARGET}
         PRIVATE
+            cufftdx_compiler_options
             $<IF:$<TARGET_EXISTS:mathdx::cufftdx>,mathdx::cufftdx,cufftdx::cufftdx>
             CUDA::cudart
             CUDA::cuda_driver
@@ -459,6 +491,21 @@ function(add_standalone_example EXAMPLE_DIR EXAMPLE_TARGET)
     add_subdirectory(${EXAMPLE_DIR})
 
     #Compute the test name also. It starts with cuFFTDx.example.+subdirectory.+test source name
+    set(EXAMPLE_NAME "cuFFTDx.example.${EXAMPLE_DIR}.${EXAMPLE_TARGET}")
+
+    add_test(NAME "${EXAMPLE_NAME}" COMMAND ${EXAMPLE_TARGET})
+    set_tests_properties("${EXAMPLE_NAME}"
+        PROPERTIES
+            LABELS "CUFFTDX_EXAMPLE"
+    )
+endfunction()
+
+# ###############################################################
+#  add_extra_standalone_example
+# Register a ctest for an additional target in a standalone example
+# subdirectory that shares LTO artifacts with the primary target.
+# ###############################################################
+function( add_extra_standalone_example EXAMPLE_DIR EXAMPLE_TARGET)
     set(EXAMPLE_NAME "cuFFTDx.example.${EXAMPLE_DIR}.${EXAMPLE_TARGET}")
 
     add_test(NAME "${EXAMPLE_NAME}" COMMAND ${EXAMPLE_TARGET})
@@ -573,9 +620,42 @@ if(CUFFTDX_EXAMPLES_LTO)
     add_cufftdx_example(cufftdx_examples 02_simple_fft_block/simple_fft_block_c2r_lto.cu)
     add_cufftdx_example(cufftdx_examples 03_block_fft_performance/block_fft_lto_ptx_performance.cu)
     add_standalone_example(09_introduction_lto_example 09_introduction_lto_example_introduction_lto_example)
+    add_extra_standalone_example(09_introduction_lto_example 09_introduction_lto_example_lto_query_database_example)
     add_standalone_example(10_cufft_device_api_example 10_cufft_device_api_example_cufft_device_api_example)
     if (NOT CMAKE_CROSSCOMPILING)
         add_cufftdx_nvrtc_example(cufftdx_examples 04_nvrtc_fft/nvrtc_fft_thread_lto.cu)
         add_cufftdx_nvrtc_example(cufftdx_examples 04_nvrtc_fft/nvrtc_fft_block_lto.cu)
+        add_cufftdx_nvrtc_example(cufftdx_examples 04_nvrtc_fft/nvrtc_query_database_fft_block_lto.cu)
+        # nvrtc_query_database_fft_block_lto uses pre-generated LTO artifacts via query_database
+        include(lto_helper/lto_helper.cmake)
+        run_cufft_lto_helper(
+            ${CMAKE_CURRENT_SOURCE_DIR}/lto_helper/
+            ${CMAKE_CURRENT_BINARY_DIR}/lto_helper/
+            04_nvrtc_fft_nvrtc_query_database_fft_block_lto
+            ${CMAKE_CURRENT_SOURCE_DIR}/04_nvrtc_fft/nvrtc_query_database_fft_block_lto_cases.csv
+            "${CUFFTDX_CUDA_ARCHITECTURES}"
+            TRUE
+        )
+        if(NOT CUFFT_LTO_HELPER_RESULT)
+            message(FATAL_ERROR "run_cufft_lto_helper encountered errors for target 04_nvrtc_fft_nvrtc_query_database_fft_block_lto.")
+        endif()
+        set(LTO_QDB_ARTIFACTS_SRC ${CMAKE_CURRENT_BINARY_DIR}/lto_helper/04_nvrtc_fft_nvrtc_query_database_fft_block_lto_artifacts)
+        set(LTO_QDB_ARTIFACTS_RELDIR nvrtc_query_database_fft_block_lto_artifacts)
+        target_compile_definitions(04_nvrtc_fft_nvrtc_query_database_fft_block_lto
+            PRIVATE
+                LTO_ARTIFACTS_DIR=${LTO_QDB_ARTIFACTS_SRC}
+                LTO_ARTIFACTS_RELDIR=${LTO_QDB_ARTIFACTS_RELDIR}
+        )
+        target_include_directories(04_nvrtc_fft_nvrtc_query_database_fft_block_lto
+            PRIVATE
+                ${LTO_QDB_ARTIFACTS_SRC}
+        )
+        # Copy LTO artifacts next to the binary so the example is relocatable
+        add_custom_command(TARGET 04_nvrtc_fft_nvrtc_query_database_fft_block_lto POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${LTO_QDB_ARTIFACTS_SRC}
+                ${CMAKE_CURRENT_BINARY_DIR}/04_nvrtc_fft/${LTO_QDB_ARTIFACTS_RELDIR}
+        )
+        add_cufftdx_nvrtc_example(cufftdx_examples 04_nvrtc_fft/nvrtc_query_autotune_lto.cu)
     endif()
 endif()

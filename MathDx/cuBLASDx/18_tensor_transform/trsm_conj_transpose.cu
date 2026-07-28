@@ -24,9 +24,9 @@
 // of size (M x M), and B / X are (M x N) complex matrices.  All matrices use
 // column-major layout.
 //
-// The TRSM descriptor is defined for the un-transposed storage of A (lower-triangular,
-// col-major).  At execute time, cublasdx::conj_transpose_view(smem_a) presents A^H to
-// the solver without any data copy or transposition in memory.
+// The storage arrangement is column-major and the stored A matrix is lower-triangular.
+// The descriptor's FillMode describes the matrix as presented to execute(); after
+// cublasdx::conj_transpose_view(smem_a), A^H is upper-triangular.
 //
 // Correctness is verified against a cuBLAS reference using CUBLAS_OP_C.
 
@@ -47,8 +47,9 @@
 // Applies conj_transpose_view to smem_a so the solver operates on A^H.
 // -------------------------------------------------------------------------
 template<class BLAS, class GlobalTensorA, class GlobalTensorB>
-__launch_bounds__(BLAS::max_threads_per_block) __global__
-    void trsm_conj_transpose_kernel(GlobalTensorA global_a, GlobalTensorB global_b) {
+__launch_bounds__(BLAS::max_threads_per_block)
+__global__ void trsm_conj_transpose_kernel(GlobalTensorA global_a, GlobalTensorB global_b) {
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(BLAS);
     extern __shared__ __align__(16) cublasdx::byte smem[];
 
     using T         = typename BLAS::a_value_type;
@@ -59,18 +60,21 @@ __launch_bounds__(BLAS::max_threads_per_block) __global__
         return;
     }
 
-    auto batch_a = cublasdx::get_batch(global_a, BLAS::get_layout_gmem_a(), blockIdx.x);
-    auto batch_b = cublasdx::get_batch(global_b, BLAS::get_layout_gmem_b(), blockIdx.x);
+    const unsigned first_batch = blockIdx.x * BLAS::batches_per_block;
+    auto batch_a = cublasdx::get_batch(global_a, BLAS::get_layout_gmem_a(), first_batch);
+    auto batch_b = cublasdx::get_batch(global_b, BLAS::get_layout_gmem_b(), first_batch);
 
-    auto [smem_tensor_a, smem_tensor_b] = cublasdx::shared_memory::slice<T, T>(
-        smem, alignment::a, BLAS::get_layout_smem_a(), alignment::b, BLAS::get_layout_smem_b());
+    auto [smem_tensor_a, smem_tensor_b] =
+        cublasdx::shared_memory::slice<T, T>(smem,
+                                             alignment::a, BLAS::get_layout_smem_a(),
+                                             alignment::b, BLAS::get_layout_smem_b());
 
     cublasdx::copy<BLAS, alignment::a>(batch_a, smem_tensor_a);
     cublasdx::copy<BLAS, alignment::b>(batch_b, smem_tensor_b);
     cublasdx::copy_wait();
 
     // Solve A^H * X = B by passing the conjugate-transpose view of A.
-    BLAS {}.execute(cublasdx::conj_transpose_view(smem_tensor_a), smem_tensor_b);
+    BLAS{}.execute(cublasdx::conj_transpose_view(smem_tensor_a), smem_tensor_b);
     __syncthreads();
 
     cublasdx::copy<BLAS, alignment::b>(smem_tensor_b, batch_b);
@@ -84,13 +88,13 @@ int trsm_conj_transpose() {
     constexpr unsigned M = 32;
     constexpr unsigned N = 8;
 
-    using T                  = cublasdx::complex<float>;
-    constexpr auto Side      = cublasdx::side::left;
-    constexpr auto StoreFill = cublasdx::fill_mode::lower; // A's storage fill mode
-    constexpr auto ViewFill  = cublasdx::fill_mode::upper; // A^H is upper-triangular
-    constexpr auto Diag      = cublasdx::diag::non_unit;
-    constexpr auto ArrA      = cublasdx::col_major;
-    constexpr auto ArrB      = cublasdx::col_major;
+    using T              = cublasdx::complex<float>;
+    constexpr auto Side     = cublasdx::side::left;
+    constexpr auto StoreFill = cublasdx::fill_mode::lower;  // A's storage fill mode
+    constexpr auto ViewFill  = cublasdx::fill_mode::upper;  // A^H is upper-triangular
+    constexpr auto Diag     = cublasdx::diag::non_unit;
+    constexpr auto ArrA     = cublasdx::col_major;
+    constexpr auto ArrB     = cublasdx::col_major;
 
     constexpr unsigned num_batches = 512;
     constexpr unsigned dim_a       = M; // left-side: A is M x M
@@ -126,11 +130,11 @@ int trsm_conj_transpose() {
     const unsigned b_per_batch = M * N;
 
     auto gen_complex = [](size_t n, float lo, float hi) {
-        std::vector<T>                        v(n);
-        std::mt19937                          rng(42);
+        std::vector<T> v(n);
+        std::mt19937 rng(42);
         std::uniform_real_distribution<float> dist(lo, hi);
         for (auto& x : v) {
-            x = T {dist(rng), dist(rng)};
+            x = T{dist(rng), dist(rng)};
         }
         return v;
     };
@@ -150,8 +154,10 @@ int trsm_conj_transpose() {
     example::device_vector<T> d_A(h_A);
     example::device_vector<T> d_B(h_B);
 
-    auto global_a = cublasdx::make_gmem_tensor_batched<ArrA>(d_A.data(), dim_a, dim_a, padded_batches);
-    auto global_b = cublasdx::make_gmem_tensor_batched<ArrB>(d_B.data(), M, N, padded_batches);
+    auto global_a =
+        cublasdx::make_gmem_tensor_batched<ArrA>(d_A.data(), dim_a, dim_a, padded_batches);
+    auto global_b =
+        cublasdx::make_gmem_tensor_batched<ArrB>(d_B.data(), M, N, padded_batches);
 
     using global_tensor_a_t = decltype(global_a);
     using global_tensor_b_t = decltype(global_b);
@@ -159,13 +165,15 @@ int trsm_conj_transpose() {
     // -----------------------------------------------------------------------
     // Kernel configuration
     // -----------------------------------------------------------------------
-    const unsigned smem_bytes = cublasdx::make_shared_storage_calculator()
-                                    .add(cublasdx::alignment_of<BLAS>::a, sizeof(T), BLAS::get_layout_smem_a())
-                                    .add(cublasdx::alignment_of<BLAS>::b, sizeof(T), BLAS::get_layout_smem_b())
-                                    .get();
+    const unsigned smem_bytes =
+        cublasdx::make_shared_storage_calculator()
+            .add(cublasdx::alignment_of<BLAS>::a, sizeof(T), BLAS::get_layout_smem_a())
+            .add(cublasdx::alignment_of<BLAS>::b, sizeof(T), BLAS::get_layout_smem_b())
+            .get();
 
     auto kernel = trsm_conj_transpose_kernel<BLAS, global_tensor_a_t, global_tensor_b_t>;
-    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_bytes));
+    CUDA_CHECK_AND_EXIT(
+        cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_bytes));
 
     const unsigned num_blocks = padded_batches / BPB;
 
@@ -180,8 +188,8 @@ int trsm_conj_transpose() {
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     std::vector<T> h_X(num_batches * b_per_batch);
-    CUDA_CHECK_AND_EXIT(
-        cudaMemcpy(h_X.data(), d_B.data(), sizeof(T) * num_batches * b_per_batch, cudaMemcpyDeviceToHost));
+    CUDA_CHECK_AND_EXIT(cudaMemcpy(
+        h_X.data(), d_B.data(), sizeof(T) * num_batches * b_per_batch, cudaMemcpyDeviceToHost));
 
     // cuBLAS reference: same storage, but op = CUBLAS_OP_C (conjugate transpose).
     constexpr bool is_col_a = (ArrA == cublasdx::col_major);
@@ -191,13 +199,16 @@ int trsm_conj_transpose() {
     constexpr bool is_unit  = (Diag == cublasdx::diag::unit);
 
     auto [h_B_ref, _] = example::reference_trsm<T>(
-        h_A, h_B_orig, M, N, num_batches, is_left, is_lower, is_unit, is_col_a, is_col_b, CUBLAS_OP_C, 0, 0, stream);
+        h_A, h_B_orig, M, N, num_batches,
+        is_left, is_lower, is_unit, is_col_a, is_col_b,
+        CUBLAS_OP_C, 0, 0, stream);
 
     const double l2_err = example::calculate_error(h_X, h_B_ref);
 
     std::cout << "cuBLASDx TRSM Conjugate-Transpose Example" << std::endl;
     std::cout << "  Solving A^H * X = B" << std::endl;
-    std::cout << "  M=" << M << "  N=" << N << "  Precision=complex<float>"
+    std::cout << "  M=" << M << "  N=" << N
+              << "  Precision=complex<float>"
               << "  StoreFill=lower  ViewFill=upper  Diag=non_unit" << std::endl;
     std::cout << " =================================" << std::endl;
     std::cout << "L2 Error: " << std::fixed << std::setprecision(6) << l2_err << std::endl;
@@ -209,11 +220,12 @@ int trsm_conj_transpose() {
 
 struct trsm_conj_transpose_functor {
     template<int Arch, cublasdx::sm_modifier Modifier>
-    int operator()(std::integral_constant<int, Arch>, std::integral_constant<cublasdx::sm_modifier, Modifier>) {
+    int operator()(std::integral_constant<int, Arch>,
+                   std::integral_constant<cublasdx::sm_modifier, Modifier>) {
         return trsm_conj_transpose<Arch>();
     }
 };
 
 int main(int, char**) {
-    return example::sm_runner(trsm_conj_transpose_functor {});
+    return example::sm_runner(trsm_conj_transpose_functor{});
 }

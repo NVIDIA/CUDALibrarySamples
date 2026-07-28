@@ -16,6 +16,7 @@
  */ 
 
 #include <cusolverdx.hpp>
+#include <cusolverdx_io.hpp>
 #include <cublasdx.hpp>
 #include <cusolverDn.h>
 

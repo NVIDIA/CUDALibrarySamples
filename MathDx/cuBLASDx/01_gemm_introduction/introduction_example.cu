@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+#include <algorithm>
 #include <iostream>
 #include <vector>
 
@@ -22,6 +23,7 @@
 #include <cublasdx.hpp>
 
 #include "../common/common.hpp"
+#include "../reference/reference.hpp"
 
 template<class GEMM>
 __global__ void gemm_kernel_shared(const typename GEMM::c_value_type  alpha,
@@ -29,6 +31,7 @@ __global__ void gemm_kernel_shared(const typename GEMM::c_value_type  alpha,
                                    const typename GEMM::b_value_type* b,
                                    const typename GEMM::c_value_type  beta,
                                    typename GEMM::c_value_type*       c) {
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(GEMM);
     extern __shared__ __align__(16) cublasdx::byte smem[];
 
     // Make global memory tensor
@@ -61,6 +64,7 @@ template<class GEMM>
 __global__ void gemm_kernel_registers_accumulation(const typename GEMM::a_value_type* a,
                                                    const typename GEMM::b_value_type* b,
                                                    typename GEMM::c_value_type*       c) {
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(GEMM);
     extern __shared__ __align__(16) cublasdx::byte smem[];
 
     // Make global memory tensor
@@ -82,12 +86,11 @@ __global__ void gemm_kernel_registers_accumulation(const typename GEMM::a_value_
     // Get default accumulator
     auto accumulator = GEMM::get_accumulator();
 
-    // Partition Global C for GEMM and load appropriate elements into accumulator
-    auto c_frag = accumulator.make_partition_and_copy(c_global_tensor);
-
     // Execute GEMM with accumulation
     GEMM().execute(a_shared_tensor, b_shared_tensor, accumulator);
 
+    // Partition Global C for GEMM and load appropriate elements into accumulator
+    auto c_frag = accumulator.make_partition_and_copy(c_global_tensor);
     auto results = accumulator.get_results();
     cublasdx::axpby(1.0, results, 1.0, c_frag);
 
@@ -99,6 +102,7 @@ template<class GEMM>
 __global__ void gemm_kernel_registers(const typename GEMM::a_value_type* a,
                                       const typename GEMM::b_value_type* b,
                                       typename GEMM::c_value_type*       c) {
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(GEMM);
     extern __shared__ __align__(16) cublasdx::byte smem[];
 
     // Make global memory tensor
@@ -138,24 +142,36 @@ int introduction_example() {
     constexpr auto global_b_size = example::global_memory_size_of<GEMM>::b_size;
     constexpr auto global_c_size = example::global_memory_size_of<GEMM>::c_size;
 
-    // Allocate managed memory for A, B, C matrices in one go
+    std::vector<value_type> host_a(global_a_size);
+    std::vector<value_type> host_b(global_b_size);
+    std::vector<value_type> host_c(global_c_size);
+
+    for (size_t i = 0; i < global_a_size; i++) {
+        host_a[i] = static_cast<value_type>(static_cast<double>((i % 17) + 1) / 17.0);
+    }
+    for (size_t i = 0; i < global_b_size; i++) {
+        host_b[i] = static_cast<value_type>(static_cast<double>((i % 13) + 1) / 13.0);
+    }
+    for (size_t i = 0; i < global_c_size; i++) {
+        host_c[i] = static_cast<value_type>(static_cast<double>((i % 11) + 1) / 11.0);
+    }
+
+    // Allocate device memory for A, B, C matrices in one go
     value_type* abc;
     auto        size       = global_a_size + global_b_size + global_c_size;
     auto        size_bytes = size * sizeof(value_type);
-    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&abc, size_bytes));
-    // Generate data
-    for (size_t i = 0; i < size; i++) {
-        abc[i] = double(i / size);
-    }
+    CUDA_CHECK_AND_EXIT(cudaMalloc(&abc, size_bytes));
 
     value_type* a = abc;
     value_type* b = abc + global_a_size;
     value_type* c = abc + global_a_size + global_b_size;
 
+    CUDA_CHECK_AND_EXIT(cudaMemcpy(a, host_a.data(), global_a_size * sizeof(value_type), cudaMemcpyHostToDevice));
+    CUDA_CHECK_AND_EXIT(cudaMemcpy(b, host_b.data(), global_b_size * sizeof(value_type), cudaMemcpyHostToDevice));
+    CUDA_CHECK_AND_EXIT(cudaMemcpy(c, host_c.data(), global_c_size * sizeof(value_type), cudaMemcpyHostToDevice));
 
     // Shared Memory API: C = alpha * A * B + beta * C
     // Invokes kernel with GEMM::block_dim threads in CUDA block
-    gemm_kernel_shared<GEMM><<<1, GEMM::block_dim, cublasdx::get_shared_storage_size<GEMM>()>>>(1.0, a, b, 1.0, c);
     gemm_kernel_shared<GEMM><<<1, GEMM::block_dim, cublasdx::get_shared_storage_size<GEMM>()>>>(1.0, a, b, 1.0, c);
     CUDA_CHECK_AND_EXIT(cudaPeekAtLastError());
     // Register Fragment Accumulation API: C = A * B + C
@@ -170,9 +186,19 @@ int introduction_example() {
     CUDA_CHECK_AND_EXIT(cudaPeekAtLastError());
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
+    std::vector<value_type> host_output(global_c_size);
+    CUDA_CHECK_AND_EXIT(cudaMemcpy(host_output.data(), c, global_c_size * sizeof(value_type), cudaMemcpyDeviceToHost));
+    auto reference_host_output = example::reference_gemm<GEMM>(
+        static_cast<value_type>(1.0), host_a, host_b, static_cast<value_type>(0.0), host_c);
+    bool correct = example::check_error<GEMM>(host_output, reference_host_output);
+
     CUDA_CHECK_AND_EXIT(cudaFree(abc));
-    std::cout << "Success" << std::endl;
-    return 0;
+    if (correct) {
+        std::cout << "Success" << std::endl;
+        return 0;
+    }
+    std::cout << "Failure" << std::endl;
+    return 1;
 }
 
 struct introduction_example_functor {

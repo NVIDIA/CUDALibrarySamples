@@ -13,9 +13,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- */ 
+ */
 
 #include <cusolverdx.hpp>
+#include <cusolverdx_io.hpp>
 
 #include "../common/cudart.hpp"
 #include "../common/error_checking.hpp"
@@ -30,6 +31,7 @@
 template<class Solver, unsigned int BatchesPerBlock, typename DataType = typename Solver::a_data_type>
 __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(
         DataType* A, const int lda_gmem, int* ipiv, DataType* B, const int ldb_gmem, typename Solver::status_type* info, const unsigned batches) {
+    CUSOLVERDX_SKIP_IF_NOT_APPLICABLE_SM(Solver);
 
     constexpr auto m = Solver::m_size;
     constexpr auto n = Solver::n_size;

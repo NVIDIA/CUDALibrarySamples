@@ -37,6 +37,8 @@ int main(int, char**) {
 
 template<class FFT, class ComplexType>
 __launch_bounds__(FFT::max_threads_per_block) __global__ void block_fft_kernel(ComplexType* data) {
+    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFT);
+
     using complex_type = ComplexType;
 
     // Local array for thread
@@ -60,7 +62,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__ void block_fft_kernel(C
 // One block is run, it calculates two 128-point C2C float precision FFTs.
 // Data is generated on host, copied to device buffer, and then results are copied back to host.
 template<unsigned int Arch>
-void simple_block_fft() {
+int simple_block_fft() {
     using namespace cufftdx;
 
     // FFT is defined, its: size, type, direction, precision. Block() operator informs that FFT
@@ -103,11 +105,12 @@ void simple_block_fft() {
 
     CUDA_CHECK_AND_EXIT(cudaFree(data));
     std::cout << "Success" << std::endl;
+    return 0;
 }
 
 template<unsigned int Arch>
 struct simple_block_fft_functor {
-    void operator()() { return simple_block_fft<Arch>(); }
+    int operator()() { return simple_block_fft<Arch>(); }
 };
 
 int main(int, char**) {

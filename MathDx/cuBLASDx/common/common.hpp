@@ -24,6 +24,7 @@
 #include <random>
 #include <complex>
 #include <algorithm>
+#include <chrono>
 
 #include <cuda_runtime_api.h>
 #include <cufft.h>
@@ -35,6 +36,7 @@
 #endif
 
 #ifndef CUBLASDX_EXAMPLE_NVRTC
+#    include <cuda/std/tuple>
 #    include <cuda/std/complex>
 #endif
 
@@ -123,7 +125,7 @@ namespace example {
         return static_cast<unsigned>(major) * 100 + static_cast<unsigned>(minor) * 10;
     }
 
-    inline unsigned int get_multiprocessor_count(int device) {
+    inline unsigned int get_multiprocessor_count(int const device) {
         int multiprocessor_count = 0;
         CUDA_CHECK_AND_EXIT(cudaDeviceGetAttribute(&multiprocessor_count, cudaDevAttrMultiProcessorCount, device));
         return multiprocessor_count;
@@ -138,41 +140,40 @@ namespace example {
 
 #ifndef CUBLASDX_EXAMPLE_NVRTC
 
-    struct persistent_tile_iterator {
-        unsigned const tile_rows;
-        unsigned const tile_cols;
+    // Allow to remap blocks so that they create sub-squares instead of flowing in rows or columns for 
+    // better L2 locality for sub-square of side == 2:
+    //
+    // Example Regular:
+    // | 0  1  2  3  | 
+    // | 4  5  6  7  |
+    // | 8  9  10 11 |
+    // | 12 13 14 15 |
+    //
+    // Example Swizzled:
+    // | 0  1 | 4  5 |
+    // | 2  3 | 6  7 |
+    // --------------|
+    // | 8  9 | 12 13|
+    // | 10 11| 14 15|
 
-        unsigned const inc_rows;
-        unsigned const inc_cols;
+    template<unsigned SwizzleM>
+    __device__ __forceinline__ cuda::std::tuple<unsigned, unsigned> get_threadblock_swizzled_tile_coord() {
+        static_assert(SwizzleM > 0, "Threadblock swizzle group must be positive");
 
-        unsigned m = 0;
-        unsigned n = 0;
-
-        template<class GlobalShape, class TileShape>
-        __device__ __forceinline__ persistent_tile_iterator(int                start,
-                                                            int                num_blocks,
-                                                            GlobalShape const& global_shape,
-                                                            TileShape const&   tile_shape):
-            tile_rows(cute::get<0>(global_shape) / cute::get<0>(tile_shape)),
-            tile_cols(cute::get<1>(global_shape) / cute::get<1>(tile_shape)),
-            inc_rows(num_blocks / tile_cols),
-            inc_cols(num_blocks % tile_cols),
-            m(start / tile_cols),
-            n(start % tile_cols) {}
-
-        __device__ __forceinline__ bool items_left() const { return m < tile_rows; }
-
-        __device__ __forceinline__ persistent_tile_iterator const& operator++() {
-            m += inc_rows;
-            n += inc_cols;
-            if (n >= tile_cols) {
-                n -= tile_cols;
-                m += 1;
-            }
-
-            return *this;
+        if constexpr (SwizzleM > 1) {
+            constexpr unsigned group_m  = SwizzleM;
+            const unsigned     tiles_m  = gridDim.x;
+            const unsigned     tiles_n  = gridDim.y;
+            const unsigned     linear   = blockIdx.x + blockIdx.y * tiles_m;
+            const unsigned     group    = linear / (group_m * tiles_n);
+            const unsigned     first_m  = group * group_m;
+            const unsigned     active_m = (first_m + group_m <= tiles_m) ? group_m : (tiles_m - first_m);
+            const unsigned     offset   = linear - group * group_m * tiles_n;
+            return {first_m + (offset % active_m), offset / active_m};
+        } else {
+            return {blockIdx.x, blockIdx.y};
         }
-    };
+    }
 
     // Don't use thrust::device_vector to avoid unnecessary
     // device destructors (parallel_for CUDA errors in some Turing/Driver setups)
@@ -199,7 +200,9 @@ namespace example {
 
         device_vector(device_vector<T>&& other) { *this = std::move(other); }
 
-        operator std::vector<T>() const { return to_host(); }
+        operator std::vector<T>() const {
+            return to_host();
+        }
 
         std::vector<T> to_host() const {
             std::vector<T> ret(_size);
@@ -333,7 +336,7 @@ namespace example {
     } // namespace detail
 
     template<typename T1, typename T2>
-    CUBLASDX_HOST_DEVICE constexpr T1 convert(T2 v) {
+    CUBLASDX_HOST_DEVICE constexpr T1 convert(T2 const v) {
         constexpr bool is_output_complex = cublasdx::detail::has_complex_interface_v<T1>;
         constexpr bool is_input_complex  = cublasdx::detail::has_complex_interface_v<T2>;
         if constexpr (is_input_complex and is_output_complex) {
@@ -403,7 +406,7 @@ namespace example {
 
     // Create a complex or real number with the specified precision from a pair of floats.
     template<typename T>
-    T make_value(float real, float imag = 0.f) {
+    T make_value(float const real, float const imag = 0.f) {
         if constexpr (example::is_complex<T>()) {
             return {real, imag};
         } else {
@@ -412,7 +415,7 @@ namespace example {
     }
 
     template<typename TA, typename TB = TA, typename TC = TA>
-    double gemm_flops(unsigned int m, unsigned int n, unsigned int k) {
+    double gemm_flops(unsigned int const m, unsigned int const n, unsigned int const k) {
         static_assert((example::is_complex<TA>() && example::is_complex<TB>() && example::is_complex<TC>()) ||
                       (!example::is_complex<TA>() && !example::is_complex<TB>() && !example::is_complex<TC>()));
         if constexpr (example::is_complex<TA>()) {
@@ -438,7 +441,8 @@ namespace example {
             return "half";
         } else if constexpr (std::is_same_v<value_type, __nv_bfloat16>) {
             return "bfloat16";
-        } else if constexpr (std::is_same_v<value_type, __nv_fp8_e4m3>) {
+        }
+        else if constexpr (std::is_same_v<value_type, __nv_fp8_e4m3>) {
             return "fp8_e4m3";
         } else if constexpr (std::is_same_v<value_type, __nv_fp8_e5m2>) {
             return "fp8_e5m2";
@@ -460,12 +464,21 @@ namespace example {
     }
 
     struct measure {
+        struct execution_result {
+            float  event_ms = 0.0f;
+            double host_ms  = 0.0;
+
+            operator float() const {
+                return event_ms;
+            }
+        };
+
         // Returns execution time in ms.
         template<typename Kernel>
-        static float execution(Kernel&&           kernel,
-                               const unsigned int warm_up_runs,
-                               const unsigned int runs,
-                               cudaStream_t       stream) {
+        static execution_result execution(Kernel&&           kernel,
+                                          const unsigned int warm_up_runs,
+                                          const unsigned int runs,
+                                          cudaStream_t const stream) {
             cudaEvent_t startEvent, stopEvent;
             CUDA_CHECK_AND_EXIT(cudaEventCreate(&startEvent));
             CUDA_CHECK_AND_EXIT(cudaEventCreate(&stopEvent));
@@ -478,15 +491,18 @@ namespace example {
             CUDA_CHECK_AND_EXIT(cudaGetLastError());
             CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
+            auto const host_start = std::chrono::steady_clock::now();
             CUDA_CHECK_AND_EXIT(cudaEventRecord(startEvent, stream));
             for (unsigned int i = 0; i < runs; i++) {
                 kernel(stream);
             }
             CUDA_CHECK_AND_EXIT(cudaEventRecord(stopEvent, stream));
             CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
+            auto const host_stop = std::chrono::steady_clock::now();
 
-            float time;
-            CUDA_CHECK_AND_EXIT(cudaEventElapsedTime(&time, startEvent, stopEvent));
+            execution_result time;
+            CUDA_CHECK_AND_EXIT(cudaEventElapsedTime(&time.event_ms, startEvent, stopEvent));
+            time.host_ms = std::chrono::duration<double, std::milli>(host_stop - host_start).count();
             CUDA_CHECK_AND_EXIT(cudaEventDestroy(startEvent));
             CUDA_CHECK_AND_EXIT(cudaEventDestroy(stopEvent));
             return time;
@@ -495,7 +511,7 @@ namespace example {
 
     namespace detail {
         template<typename T>
-        double cbabs(T v) {
+        double cbabs(T const v) {
             if constexpr (is_complex<T>()) {
                 auto imag = std::abs(static_cast<double>(v.imag()));
                 auto real = std::abs(static_cast<double>(v.real()));
@@ -511,14 +527,13 @@ namespace example {
         using type = T;
     };
 
-    enum class random_data_type
-    {
+    enum class random_data_type {
         truly_random,
         pure_exponent
     };
 
     template<typename T, class Processor, class Dist>
-    std::vector<T> get_random_vector(Processor const& proc, Dist& dist, const size_t size, int seed = -1) {
+    std::vector<T> get_random_vector(Processor const& proc, Dist & dist, const size_t size, int const seed = -1) {
 
         std::vector<T> ret(size);
 
@@ -530,7 +545,7 @@ namespace example {
                 using scalar_type = typename T::value_type;
                 scalar_type r     = convert<scalar_type>(proc(dist(gen)));
                 scalar_type i     = convert<scalar_type>(proc(dist(gen)));
-                return T(r, i);
+                return  T(r, i);
             } else {
                 return convert<T>(proc(dist(gen)));
             }
@@ -542,10 +557,10 @@ namespace example {
     }
 
     template<typename T>
-    std::vector<T> get_normal_floating_data(const size_t size, float mean, float sd, const int seed = -1) {
+    std::vector<T> get_normal_floating_data(const size_t size, float const mean, float const sd, const int seed = -1) {
         static_assert(commondx::is_floating_point_v<T>, "Floating point output type required");
         auto dist = std::normal_distribution<float>(mean, sd);
-        auto proc = cublasdx::identity {};
+        auto proc = cublasdx::identity{};
         return get_random_vector<T>(proc, dist, size, seed);
     }
 
@@ -555,29 +570,27 @@ namespace example {
         using internal_type = typename get_value_type<T>::type;
 
         using lower_precision = cute::conditional_t<(sizeof(AccPrec) <= sizeof(internal_type)), AccPrec, internal_type>;
-        using precision_t     = cute::conditional_t<cute::is_same_v<AccPrec, __nv_fp8_e4m3> or
-                                                        cute::is_same_v<internal_type, __nv_fp8_e4m3>,
-                                                    __nv_fp8_e4m3,
-                                                    lower_precision>;
+        using precision_t = cute::conditional_t<cute::is_same_v<AccPrec, __nv_fp8_e4m3> or
+                                                cute::is_same_v<internal_type, __nv_fp8_e4m3>,
+                                                __nv_fp8_e4m3, lower_precision>;
 
-        constexpr bool is_bf16 =
-            cute::is_same_v<precision_t, cublasdx::bfloat16_t> or cute::is_same_v<precision_t, __nv_bfloat16>;
+        constexpr bool is_bf16 = cute::is_same_v<precision_t, cublasdx::bfloat16_t> or cute::is_same_v<precision_t, __nv_bfloat16>;
         constexpr bool is_e5m2 = cute::is_same_v<precision_t, __nv_fp8_e5m2>;
         constexpr bool is_e4m3 = cute::is_same_v<precision_t, __nv_fp8_e4m3>;
 
-        constexpr int exponent_bias = (is_bf16 ? 127 : (is_e5m2 ? 15 : (is_e4m3 ? 7 : 0)));
+        constexpr int exponent_bias = (is_bf16 ? 127 :
+                                      (is_e5m2 ? 15 :
+                                      (is_e4m3 ? 7 : 0)));
 
-        static_assert(exponent_bias != 0,
-                      "Pure exponent data filling mode is available only for BF16, E5M2 and E4M3 datatypes");
+        static_assert(exponent_bias != 0, "Pure exponent data filling mode is available only for BF16, E5M2 and E4M3 datatypes");
 
         // Use exponent sign to decide between positive and negative
         auto dist = std::uniform_int_distribution(-exponent_bias - 1, exponent_bias + 1);
-        auto proc = [&](auto value) {
-            auto const normalized_value =
-                cute::conditional_return((value < 0), -1.f / (1 << (-value)), 1.f / (1 << (value)));
+        auto proc = [&](auto const value) {
+            auto const normalized_value = cute::conditional_return((value < 0), -1.f / (1 << (-value)), 1.f / (1 << (value)));
             // Check if special value were randomized
             bool const is_minimal_value = value == (-exponent_bias - 1);
-            bool const is_zero          = value == (exponent_bias + 1);
+            bool const is_zero = value == (exponent_bias + 1);
 
             return convert<internal_type>(is_minimal_value ? -1.f : (is_zero ? 0.f : normalized_value));
         };
@@ -586,31 +599,30 @@ namespace example {
     }
 
     template<typename T, typename MinMaxType = cute::conditional_t<commondx::is_floating_point_v<T>, float, int32_t>>
-    std::vector<T> get_random_uniform_data(const size_t size, MinMaxType min, MinMaxType max, const int seed = -1) {
-        static_assert(commondx::is_floating_point_v<T> or commondx::is_integral_v<T>,
-                      "Datatype must be either recognized floating point or integral");
+    std::vector<T> get_random_uniform_data(const size_t size, MinMaxType const min, MinMaxType const max, const int seed = -1) {
+        static_assert(commondx::is_floating_point_v<T> or commondx::is_integral_v<T>, "Datatype must be either recognized floating point or integral");
         auto dist = [&]() {
-            if constexpr (commondx::is_floating_point_v<T>) {
+            if constexpr(commondx::is_floating_point_v<T>) {
                 return std::uniform_real_distribution<double>(min, max);
             } else {
                 return std::uniform_int_distribution<int32_t>(min, max);
             }
             CUTE_GCC_UNREACHABLE;
         }();
-        auto proc = cublasdx::identity {};
+        auto proc = cublasdx::identity{};
         return get_random_vector<T>(proc, dist, size, seed);
     }
 
     template<typename T, typename AccPrec = T, random_data_type RandomDataType = random_data_type::truly_random>
     std::vector<T> get_random_data(const size_t size, const int seed = -1) {
         // Create distribution for random data
-        if constexpr (commondx::is_floating_point_v<T> and RandomDataType == random_data_type::truly_random) {
+        if constexpr(commondx::is_floating_point_v<T> and RandomDataType == random_data_type::truly_random) {
             return get_normal_floating_data<T>(size, 0.0, 1.0, seed);
-        } else if constexpr (commondx::is_floating_point_v<T> and RandomDataType == random_data_type::pure_exponent) {
+        } else if constexpr(commondx::is_floating_point_v<T> and RandomDataType == random_data_type::pure_exponent) {
             return get_uniform_exponent_floating_data<T, AccPrec>(size, seed);
-        } else if constexpr (commondx::is_signed_integral_v<T>) {
+        } else if constexpr(commondx::is_signed_integral_v<T>) {
             return get_random_uniform_data<T>(size, -20, 20, seed);
-        } else if constexpr (commondx::is_unsigned_integral_v<T>) {
+        } else if constexpr(commondx::is_unsigned_integral_v<T>) {
             return get_random_uniform_data<T>(size, 0, 40, seed);
         } else {
             static_assert(commondx::is_floating_point_v<T> or commondx::is_integral_v<T>);
@@ -628,26 +640,26 @@ namespace example {
     }
 
     template<class ValueType, class Functor>
-    CUBLASDX_DEVICE void transform(ValueType* data, int size, Functor transformer) {
+    CUBLASDX_DEVICE void transform(ValueType* data, int const size, Functor transformer) {
         for (int i = threadIdx.x; i < size; i += blockDim.x) {
             data[i] = transformer(i, data[i]);
         }
     }
 
     template<class ValueType>
-    CUBLASDX_DEVICE void set(ValueType* data, int size, ValueType value) {
+    CUBLASDX_DEVICE void set(ValueType* data, int const size, ValueType const value) {
         for (int i = threadIdx.x; i < size; i += blockDim.x) {
             data[i] = value;
         }
     }
 
     template<class ValueType>
-    CUBLASDX_DEVICE auto exp(ValueType value) {
+    CUBLASDX_DEVICE auto exp(ValueType const value) {
         return cuda::std::exp(value);
     }
 
     CUBLASDX_DEVICE
-    auto exp(__half value) {
+    auto exp(__half const value) {
         return hexp(value);
     }
 
@@ -727,7 +739,7 @@ namespace example {
         static constexpr bool sm_103a = false;
 #    endif
 
-#    if defined(CUBLASDX_EXAMPLE_ENABLE_SM_110)
+#    if defined(CUBLASDX_EXAMPLE_ENABLE_SM_110) 
         static constexpr bool sm_110 = true;
 #    else
         static constexpr bool sm_110 = false;
@@ -762,6 +774,7 @@ namespace example {
 #    else
         static constexpr bool sm_121a = false;
 #    endif
+
     };
 
     template<class Functor, class... Args>

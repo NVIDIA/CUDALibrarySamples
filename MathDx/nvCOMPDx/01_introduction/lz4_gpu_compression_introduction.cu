@@ -26,7 +26,6 @@
 
 using namespace nvcompdx;
 
-
 // This introductory sample demonstrates the usage of the warp-level device API
 // for LZ4 GPU compression. The compressed buffer afterwards is written to disk.
 // Note, however, that for optimal performance, one should perform multiple chunk
@@ -34,44 +33,39 @@ using namespace nvcompdx;
 
 // LZ4 compression kernel, using the preconfigured compressor
 // 1 warp per chunk
-template<typename compressor_type>
+template <typename compressor_type>
 __global__ void comp_warp_kernel(
-  const void * const uncomp_chunk,
-  const size_t uncomp_chunk_size,
-  void * comp_chunk,
-  size_t * comp_chunk_size,
-  uint8_t * tmp_buffer) {
+  const void* const uncomp_chunk,
+  const unsigned long long uncomp_chunk_size,
+  void* comp_chunk,
+  unsigned long long* comp_chunk_size,
+  unsigned char* tmp_buffer) {
   // Note:
   // Given the (de)compressor expression has an SM<> operator,
   // it makes the fully-typed kernel only applicable on one targeted device architecture.
   // We need to signal to the compiler not to continue compiling this kernel whenever
   // the current compilation architecture is different from the one specified in
   // the SM<> operator.
-  NVCOMPDX_SKIP_IF_NOT_APPLICABLE(compressor_type);
+  NVCOMPDX_SKIP_IF_NOT_APPLICABLE_SM(compressor_type);
 
   auto compressor = compressor_type();
-  constexpr size_t shmem_alignment = compressor.shmem_alignment();
-  extern __shared__ __align__(shmem_alignment) uint8_t shared_comp_scratch_buffer[];
+  constexpr auto shmem_alignment = compressor.shmem_alignment();
+  extern __shared__ __align__(shmem_alignment) unsigned char shared_comp_scratch_buffer[];
   assert(reinterpret_cast<uintptr_t>(shared_comp_scratch_buffer) % compressor.shmem_alignment() == 0);
 
-  compressor.execute(
-    uncomp_chunk,
-    comp_chunk,
-    uncomp_chunk_size,
-    comp_chunk_size,
-    shared_comp_scratch_buffer,
-    tmp_buffer);
+  compressor
+    .execute(uncomp_chunk, comp_chunk, uncomp_chunk_size, comp_chunk_size, shared_comp_scratch_buffer, tmp_buffer);
 }
 
 static constexpr size_t chunk_size = 1 << 16;
 
 // Benchmark performance from the binary data file
-template<unsigned int Arch>
-int lz4_gpu_comp_introduction(const std::vector<char>& data,
-                              std::vector<char>& compressed,
-                              size_t warmup_iteration_count,
-                              size_t total_iteration_count)
-{
+template <unsigned int Arch>
+int lz4_gpu_comp_introduction(
+  const std::vector<char>& data,
+  std::vector<char>& compressed,
+  size_t warmup_iteration_count,
+  size_t total_iteration_count) {
   assert(!data.empty());
 
   size_t total_bytes = data.size();
@@ -81,6 +75,7 @@ int lz4_gpu_comp_introduction(const std::vector<char>& data,
   std::cout << "chunks: " << 1 << std::endl;
 
   // Configure the GPU compressor
+  // clang-format off
   using lz4_compressor_type =
     decltype(Algorithm<algorithm::lz4>() +
              DataType<datatype::uint8>() +
@@ -88,6 +83,7 @@ int lz4_gpu_comp_introduction(const std::vector<char>& data,
              MaxUncompChunkSize<chunk_size>() +
              Warp() +
              SM<Arch>());
+  // clang-format on
 
   // Allocate buffer for the input (uncompressed) data
   // Note: with cudaMalloc() the input alignment is implicitly met
@@ -96,16 +92,16 @@ int lz4_gpu_comp_introduction(const std::vector<char>& data,
   CUDA_CHECK(cudaMemcpy(d_input_data, data.data(), total_bytes, cudaMemcpyHostToDevice));
 
   // Allocate buffer for the input/output sizes
-  size_t* d_output_size;
-  CUDA_CHECK(cudaMalloc(&d_output_size, sizeof(size_t)));
+  unsigned long long* d_output_size;
+  CUDA_CHECK(cudaMalloc(&d_output_size, sizeof(unsigned long long)));
 
   // Compress on the GPU using device API
   // Allocate temporary scratch space
-  uint8_t* d_comp_temp;
+  unsigned char* d_comp_temp;
   CUDA_CHECK(cudaMalloc(&d_comp_temp, lz4_compressor_type().tmp_size_total(1)));
 
   // Calculate the maximum compressed size
-  const size_t max_comp_chunk_size = lz4_compressor_type().max_comp_chunk_size();
+  const auto max_comp_chunk_size = lz4_compressor_type().max_comp_chunk_size();
 
   // Allocate buffer for the output (compressed) data
   // Note: with cudaMalloc() the output alignment is implicitly met
@@ -128,21 +124,18 @@ int lz4_gpu_comp_introduction(const std::vector<char>& data,
       total_bytes,
       d_output_data,
       d_output_size,
-      d_comp_temp
-    );
+      d_comp_temp);
     CUDA_CHECK(cudaGetLastError());
   });
 
   // Compute compression ratio
-  size_t comp_bytes;
-  CUDA_CHECK(cudaMemcpy(&comp_bytes, d_output_size, sizeof(size_t), cudaMemcpyDeviceToHost));
+  unsigned long long comp_bytes;
+  CUDA_CHECK(cudaMemcpy(&comp_bytes, d_output_size, sizeof(unsigned long long), cudaMemcpyDeviceToHost));
   assert(comp_bytes <= max_comp_chunk_size);
 
-  std::cout << "comp_size: " << comp_bytes
-            << ", compressed ratio: " << std::fixed << std::setprecision(2)
+  std::cout << "comp_size: " << comp_bytes << ", compressed ratio: " << std::fixed << std::setprecision(2)
             << (double)total_bytes / comp_bytes << std::endl;
-  std::cout << "compression throughput (GB/s): "
-            << (double)total_bytes / (1.0e6 * ms) << std::endl;
+  std::cout << "compression throughput (GB/s): " << (double)total_bytes / (1.0e6 * ms) << std::endl;
 
   // Copy data back to host for write out
   compressed.resize(comp_bytes);
@@ -156,25 +149,22 @@ int lz4_gpu_comp_introduction(const std::vector<char>& data,
   return 0;
 }
 
-void print_usage()
-{
+void print_usage() {
   std::cerr << std::endl;
   std::cerr << "Usage: lz4_gpu_compression_introduction [OPTIONS]" << std::endl;
   std::cerr << "  -f <input file>" << std::endl;
   std::cerr << "  -o <output file>" << std::endl;
 }
 
-template<unsigned int Arch>
+template <unsigned int Arch>
 struct Runner {
-  template<typename... Args>
-  static int run(Args&&... args)
-  {
+  template <typename... Args>
+  static int run(Args&&... args) {
     return lz4_gpu_comp_introduction<Arch>(std::forward<Args>(args)...);
   }
 };
 
-int main(int argc, char* argv[])
-{
+int main(int argc, char* argv[]) {
   std::string file_name_in;
   std::string file_name_out;
 
@@ -190,11 +180,11 @@ int main(int argc, char* argv[])
     while (i < argc) {
       const char* current_argv = argv[i++];
       if (strcmp(current_argv, "-f") == 0) {
-        if(i < argc) {
+        if (i < argc) {
           file_name_in = argv[i++];
         }
       } else if (strcmp(current_argv, "-o") == 0) {
-        if(i < argc) {
+        if (i < argc) {
           file_name_out = argv[i++];
         }
       } else {
@@ -224,10 +214,7 @@ int main(int argc, char* argv[])
   }
 
   std::vector<char> output;
-  int ret = run_with_current_arch<Runner>(input,
-                                          output,
-                                          warmup_iteration_count,
-                                          total_iteration_count);
+  int ret = run_with_current_arch<Runner>(input, output, warmup_iteration_count, total_iteration_count);
 
   write_file(file_name_out, output);
 

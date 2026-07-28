@@ -36,6 +36,7 @@
 template<class GESV_thread>
 __global__ void gesv_kernel(
         typename GESV_thread::a_data_type* A, typename GESV_thread::b_data_type* B, typename GESV_thread::status_type* info, const unsigned int batches) {
+    CUSOLVERDX_SKIP_IF_NOT_APPLICABLE_SM(GESV_thread);
 
     using namespace cusolverdx;
     constexpr auto m    = GESV_thread::m_size;

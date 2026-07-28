@@ -30,12 +30,18 @@ CUDA_INCLUDE_DIR=$(CUDA_BIN_DIR)/../include
 NVRTC_DEFINES=-DCUDA_INCLUDE_DIR='"$(CUDA_INCLUDE_DIR)"' -DCOMMONDX_INCLUDE_DIR='"$(COMMONDX_INCLUDE_DIR)"' -DCUFFTDX_INCLUDE_DIRS='"$(CUFFTDX_INCLUDE_DIR)"'
 LTO_DEFINES=-DCUFFTDX_ENABLE_CUFFT_DEPENDENCY
 
-# NVRTC LTO sources and targets
-NVRTC_LTO_SRCS=$(wildcard **/nvrtc_*lto*.cu)
+# NVRTC LTO query database example (needs pre-generated LTO artifacts, handled separately)
+NVRTC_LTO_QDB_SRC=04_nvrtc_fft/nvrtc_query_database_fft_block_lto.cu
+NVRTC_LTO_QDB_TARGET=04_nvrtc_fft/nvrtc_query_database_fft_block_lto
+NVRTC_LTO_QDB_ARTIFACTS_DIR=04_nvrtc_fft/04_nvrtc_fft_nvrtc_query_database_fft_block_lto_artifacts
+NVRTC_LTO_QDB_CSV=04_nvrtc_fft/nvrtc_query_database_fft_block_lto_cases.csv
+
+# NVRTC LTO sources and targets (excluding query database example which needs special handling)
+NVRTC_LTO_SRCS=$(filter-out $(NVRTC_LTO_QDB_SRC), $(wildcard **/nvrtc_*lto*.cu))
 NVRTC_LTO_TARGETS=$(foreach src,$(NVRTC_LTO_SRCS),$(patsubst %.cu,%,$(basename $(src))))
 
 # NVRTC sources and targets (excluding LTO)
-NVRTC_SRCS=$(filter-out ${NVRTC_LTO_SRCS}, $(wildcard **/nvrtc_*.cu))
+NVRTC_SRCS=$(filter-out ${NVRTC_LTO_SRCS} $(NVRTC_LTO_QDB_SRC), $(wildcard **/nvrtc_*.cu))
 NVRTC_TARGETS=$(foreach src,$(NVRTC_SRCS),$(patsubst %.cu,%,$(basename $(src))))
 
 # Standalone sources and targets
@@ -44,7 +50,7 @@ STANDALONE_SRCS=09_introduction_lto_example/introduction_lto_example.cu \
 STANDALONE_TARGETS=$(foreach src,$(STANDALONE_SRCS),$(patsubst %.cu,%,$(basename $(src))))
 
 # LTO sources and targets
-LTO_SRCS=$(filter-out ${NVRTC_LTO_SRCS} ${STANDALONE_SRCS}, $(wildcard **/*lto*.cu))
+LTO_SRCS=$(filter-out ${NVRTC_LTO_SRCS} $(NVRTC_LTO_QDB_SRC) ${STANDALONE_SRCS}, $(wildcard **/*lto*.cu))
 LTO_TARGETS=$(foreach src,$(LTO_SRCS),$(patsubst %.cu,%,$(basename $(src))))
 
 # Regular sources and targets (excluding all special cases)
@@ -87,18 +93,27 @@ $(LTO_TARGETS): %: %.o %_dlink.o
 $(STANDALONE_TARGETS): %: %.cu
 	(cd $(dir $<) && $(MAKE))
 
+$(NVRTC_LTO_QDB_ARTIFACTS_DIR): $(NVRTC_LTO_QDB_CSV) cufftdx_cufft_lto_helper
+	mkdir -p $(NVRTC_LTO_QDB_ARTIFACTS_DIR)
+	./cufftdx_cufft_lto_helper $(NVRTC_LTO_QDB_ARTIFACTS_DIR) $<
+
+$(NVRTC_LTO_QDB_TARGET): $(NVRTC_LTO_QDB_SRC) $(NVRTC_LTO_QDB_ARTIFACTS_DIR)
+	$(NVCC) -o $@ $< $(NVCC_FLAGS) -I$(COMMONDX_INCLUDE_DIR) -I$(CUFFTDX_INCLUDE_DIR) -I$(NVRTC_LTO_QDB_ARTIFACTS_DIR) -DLTO_ARTIFACTS_DIR=$(CURDIR)/$(NVRTC_LTO_QDB_ARTIFACTS_DIR) -DLTO_ARTIFACTS_RELDIR=$(notdir $(NVRTC_LTO_QDB_ARTIFACTS_DIR)) $(NVRTC_DEFINES) -lnvrtc -lcuda -lnvJitLink
+
 .PHONY: all clean all_twiddles
 
 all: $(TARGETS) $(NVRTC_TARGETS)
 
 all_twiddles: $(TARGETS_TWIDDLES)
 
-all_lto: $(LTO_TARGETS) $(NVRTC_LTO_TARGETS) $(STANDALONE_TARGETS)
+all_lto: $(LTO_TARGETS) $(NVRTC_LTO_TARGETS) $(NVRTC_LTO_QDB_TARGET) $(STANDALONE_TARGETS)
 
 clean:
 	rm -f $(TARGETS) $(NVRTC_TARGETS) $(TARGETS_TWIDDLES)
 	rm -f $(LTO_TARGETS) $(NVRTC_LTO_TARGETS) $(LTO_TARGETS:%=%.o) $(LTO_TARGETS:%=%_dlink.o) cufftdx_cufft_lto_helper
 	rm -rf $(LTO_TARGETS:%=%_artifacts)
+	rm -f $(NVRTC_LTO_QDB_TARGET)
+	rm -rf $(NVRTC_LTO_QDB_ARTIFACTS_DIR)
 	$(foreach dir,$(STANDALONE_TARGETS),(cd $(dir $(dir)) && $(MAKE) clean);)
 
 .DEFAULT_GOAL := all

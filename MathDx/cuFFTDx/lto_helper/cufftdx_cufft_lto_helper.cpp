@@ -56,9 +56,9 @@ std::optional<cufftdx_traits> parseLineToTraits(const std::string& line, int lin
         }
         if (field == "execution_type") {
             if (token == "execution_type::block") {
-                traits.set_execution_type(cufftdx::detail::execution_type::block);
+                traits.set_execution_type(cufftdx::utils::execution_type::block);
             } else if (token == "execution_type::thread") {
-                traits.set_execution_type(cufftdx::detail::execution_type::thread);
+                traits.set_execution_type(cufftdx::utils::execution_type::thread);
             } else {
                 std::cerr << "Error: Invalid value for 'execution_type' on line " << line_number << ": " << token << "\n Valid values are: execution_type::block, execution_type::thread.\n";
                 return std::nullopt;

@@ -37,6 +37,8 @@ constexpr unsigned int subsequences = 4096;
 
 template<class RNG>
 __global__ void init_kernel(RNG* states, const unsigned long long seed, const typename RNG::offset_type offset) {
+    CURANDDX_SKIP_IF_NOT_APPLICABLE_SM(RNG);
+
     int tid = blockDim.x * blockIdx.x + threadIdx.x;
 
     RNG rng;
@@ -50,6 +52,8 @@ __global__ void init_kernel(RNG* states, const unsigned long long seed, const ty
 
 template<class RNG, typename DataType>
 __global__ void generate_kernel(RNG* states, float2* d_out, const size_t size, const DataType mean, const DataType stddev) {
+    CURANDDX_SKIP_IF_NOT_APPLICABLE_SM(RNG);
+
     int       tid     = blockDim.x * blockIdx.x + threadIdx.x;
     const int threads = blockDim.x * gridDim.x;
 

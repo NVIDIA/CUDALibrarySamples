@@ -32,6 +32,8 @@
 template<class FFT>
 __launch_bounds__(FFT::max_threads_per_block)
     __global__ void block_fft_kernel(typename FFT::value_type* data, typename FFT::workspace_type workspace) {
+    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFT);
+
     using complex_type = typename FFT::value_type;
 
     complex_type thread_data[FFT::storage_size];
@@ -62,7 +64,7 @@ __launch_bounds__(FFT::max_threads_per_block)
 }
 
 template<unsigned int Arch>
-void introduction_lto_helper() {
+int introduction_lto_helper() {
     using FFT_without_code_type = decltype(cufftdx::Block() +
                                            cufftdx::Size<128>() +
                                            cufftdx::Type<cufftdx::fft_type::c2c>() +
@@ -117,11 +119,12 @@ void introduction_lto_helper() {
     CUDA_CHECK_AND_EXIT(cudaFree(data));
     CUDA_CHECK_AND_EXIT(cudaStreamDestroy(stream));
     std::cout << "Success" << std::endl;
+    return 0;
 }
 
 template<unsigned int Arch>
 struct introduction_lto_helper_functor {
-    void operator()() { return introduction_lto_helper<Arch>(); }
+    int operator()() { return introduction_lto_helper<Arch>(); }
 };
 
 int main() {

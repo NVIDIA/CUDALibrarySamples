@@ -72,12 +72,12 @@ __launch_bounds__(BlockSize, 2) __global__ void max_reduce_kernel(InTensor in_te
     __shared__ typename BlockReduce::TempStorage temp_storage;
 
     const auto [tile_size_x, tile_size_y] = in_tensor.layout().shape();
-    auto tid                              = threadIdx.x;
-    auto bid                              = blockIdx.x;
+    const auto tid                        = threadIdx.x;
+    const auto bid                        = blockIdx.x;
 
     // Assume that tensor is reduced along the last dimension
-    auto const row_index = example::conditional_return < SliceMatrix == slice_matrix::a > (bid, cublasdx::slice);
-    auto const col_index = example::conditional_return < SliceMatrix == slice_matrix::a > (cublasdx::slice, bid);
+    auto const row_index = example::conditional_return<SliceMatrix == slice_matrix::a>(bid, cublasdx::slice);
+    auto const col_index = example::conditional_return<SliceMatrix == slice_matrix::a>(cublasdx::slice, bid);
 
     auto global_tile = in_tensor(row_index, col_index);
 
@@ -192,7 +192,8 @@ template<class BLAS,
          class CTensor,
          class AShiftTensor,
          class BShiftTensor,
-         int32_t Slices>
+         int32_t Slices,
+         unsigned SwizzleM>
 __launch_bounds__(DevicePipeline::max_threads_per_block, 1) __global__
     void fused_epilogue_kernel(__grid_constant__ DevicePipeline const device_pipeline,
                                Alpha                                  alpha,
@@ -200,123 +201,114 @@ __launch_bounds__(DevicePipeline::max_threads_per_block, 1) __global__
                                CTensor                                gmem_c_fp64,
                                AShiftTensor const                     gmem_shift_a,
                                BShiftTensor const                     gmem_shift_b) {
-#ifdef __CUDA_ARCH__
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(BLAS);
     extern __shared__ __align__(device_pipeline.buffer_alignment()) cublasdx::byte smem[];
-    if constexpr (cublasdx::sm_of_v<BLAS> == __CUDA_ARCH__) {
-        // ================================
-        // 1. SETUP AND TILE PREPARATION
-        // ================================
 
-        constexpr int tile_m = cublasdx::size_of_v_m<BLAS>;
-        constexpr int tile_n = cublasdx::size_of_v_n<BLAS>;
+    // ================================
+    // 1. SETUP AND TILE PREPARATION
+    // ================================
 
-        constexpr auto initial_diag = Slices - 1;
-        constexpr auto initial_term = 0;
+    constexpr int tile_m = cublasdx::size_of_v_m<BLAS>;
+    constexpr int tile_n = cublasdx::size_of_v_n<BLAS>;
 
-        auto const smem_shift_layout_a =
-            example::make_layout_from_tuples(cuda::std::make_tuple(cuda::std::integral_constant<int, tile_m> {}),
-                                             cuda::std::make_tuple(cuda::std::integral_constant<int, 1> {}));
+    constexpr auto initial_diag = Slices - 1;
+    constexpr auto initial_term = 0;
 
-        auto const smem_shift_layout_b =
-            example::make_layout_from_tuples(cuda::std::make_tuple(cuda::std::integral_constant<int, tile_n> {}),
-                                             cuda::std::make_tuple(cuda::std::integral_constant<int, 1> {}));
+    const auto [output_tile_m, output_tile_n] = example::get_threadblock_swizzled_tile_coord<SwizzleM>();
 
-        auto [pipeline_smem, smem_shift_a, smem_shift_b] = cublasdx::shared_memory::
-            slice<char, example::tensor_value_type_t<AShiftTensor>, example::tensor_value_type_t<BShiftTensor>>(
-                smem,
-                device_pipeline.buffer_alignment(),
-                device_pipeline.buffer_size(),
-                cublasdx::alignment_of_v_a<BLAS>,
-                smem_shift_layout_a,
-                cublasdx::alignment_of_v_b<BLAS>,
-                smem_shift_layout_b);
+    auto const smem_shift_layout_a =
+        example::make_layout_from_tuples(cuda::std::make_tuple(cuda::std::integral_constant<int, tile_m> {}),
+                                            cuda::std::make_tuple(cuda::std::integral_constant<int, 1> {}));
 
-        // Copy general purpose data
-        cublasdx::copy<BLAS, 16>(gmem_shift_a(cublasdx::slice, blockIdx.x), smem_shift_a);
-        cublasdx::copy<BLAS, 16>(gmem_shift_b(cublasdx::slice, blockIdx.y), smem_shift_b);
-        cublasdx::copy_wait();
+    auto const smem_shift_layout_b =
+        example::make_layout_from_tuples(cuda::std::make_tuple(cuda::std::integral_constant<int, tile_n> {}),
+                                            cuda::std::make_tuple(cuda::std::integral_constant<int, 1> {}));
 
-        // Get pipeline tile
-        auto tile_pipeline = device_pipeline.get_tile(pipeline_smem,
-                                                      cublasdx::make_coord(blockIdx.x, initial_term),
-                                                      cublasdx::make_coord(blockIdx.y, initial_diag));
+    auto slicing_results = cublasdx::shared_memory::
+        slice<char, example::tensor_value_type_t<AShiftTensor>, example::tensor_value_type_t<BShiftTensor>>(
+            smem,
+            device_pipeline.buffer_alignment(),
+            device_pipeline.buffer_size(),
+            cublasdx::alignment_of_v_a<BLAS>,
+            smem_shift_layout_a,
+            cublasdx::alignment_of_v_b<BLAS>,
+            smem_shift_layout_b);
 
-        auto accumulator = tile_pipeline.get_accumulator();
+    auto pipeline_smem = cute::get<0>(slicing_results);
+    auto smem_shift_a = cute::get<1>(slicing_results);
+    auto smem_shift_b = cute::get<2>(slicing_results);
 
-        // ================================
-        // 2. FP64 C INPUT / OUTPUT TILE SETUP
-        // ================================
+    // Copy general purpose data
+    cublasdx::copy<BLAS, 16>(gmem_shift_a(cublasdx::slice, output_tile_m), smem_shift_a);
+    cublasdx::copy<BLAS, 16>(gmem_shift_b(cublasdx::slice, output_tile_n), smem_shift_b);
+    cublasdx::copy_wait();
 
-        auto tile_c_fp64_gmem = cublasdx::get_tile(gmem_c_fp64, BLAS::c_shape, blockIdx.x, blockIdx.y);
+    // Get pipeline tile
+    auto tile_pipeline = device_pipeline.get_tile(pipeline_smem,
+                                                    cublasdx::make_coord(output_tile_m, initial_term),
+                                                    cublasdx::make_coord(output_tile_n, initial_diag));
 
-        // ============================================
-        // 3. OZAKI SCHEME DIAGONAL ITERATION
-        // ============================================
+    auto accumulator = tile_pipeline.get_accumulator();
 
-        // Iterate over diagonals in reverse order (highest power of 2 first)
-        // This ensures proper accumulation order for numerical stability
+    // ================================
+    // 2. FP64 C INPUT / OUTPUT TILE SETUP
+    // ================================
+
+    auto tile_c_fp64_gmem = cublasdx::get_tile(gmem_c_fp64, BLAS::c_shape, output_tile_m, output_tile_n);
+
+    // ============================================
+    // 3. OZAKI SCHEME DIAGONAL ITERATION
+    // ============================================
+
+    // Iterate over diagonals in reverse order (least significant first)
 #    pragma unroll 1
-        for (auto diag = initial_diag; diag >= 0; --diag) {
+    for (auto diag = initial_diag; diag >= 0; --diag) {
 
-            // Initialize accumulator for this diagonal
-            accumulator.clear();
+        // Initialize accumulator for this diagonal
+        accumulator.clear();
 
-            // ==========================================
-            // 4. SLICE COMBINATION COMPUTATION
-            // ==========================================
+        // ==========================================
+        // 4. SLICE COMBINATION COMPUTATION
+        // ==========================================
 
-            // Compute all slice combinations that contribute to this diagonal
-            // For diagonal d, we compute: A_slice[i] * B_slice[d-i] for i = 0 to d
+        // Compute all slice combinations that contribute to this diagonal
+        // For diagonal d, we compute: A_slice[i] * B_slice[d-i] for i = 0 to d
 #    pragma unroll 1
-            for (auto term = initial_term; term <= diag; ++term) {
-                // =========================================
-                // 5. N-STAGE MEMORY PIPELINE FOR GEMM
-                // =========================================
+        for (auto term = initial_term; term <= diag; ++term) {
+            // =========================================
+            // 5. N-STAGE MEMORY PIPELINE FOR GEMM
+            // =========================================
 
-                tile_pipeline.execute(accumulator);
+            tile_pipeline.execute(accumulator);
 
-                const auto next_slice_row = (term == diag) ? 0 : term + 1;                         // A slice index
-                const auto next_slice_col = (term == diag) ? (diag - 1) : (diag - next_slice_row); // B slice index
-                device_pipeline.reset_tile(tile_pipeline,
-                                           cublasdx::make_coord(blockIdx.x, next_slice_row),
-                                           cublasdx::make_coord(blockIdx.y, next_slice_col));
-            } /* end of slice combination loop */
+            const auto next_slice_row = (term == diag) ? 0 : term + 1;                         // A slice index
+            const auto next_slice_col = (term == diag) ? (diag - 1) : (diag - next_slice_row); // B slice index
+            // In the last iteration this will be reset to an incorrect value,
+            // but that pipeline state will never be used
+            device_pipeline.reset_tile(tile_pipeline,
+                                        cublasdx::make_coord(output_tile_m, next_slice_row),
+                                        cublasdx::make_coord(output_tile_n, next_slice_col));
+        } /* end of slice combination loop */
 
-            // ========================================
-            // 6. RESULT RECONSTRUCTION AND EPILOGUE
-            // ========================================
-            // Convert accumulated int32_t results back to double precision
-            // and apply appropriate scaling based on slice positions
-            if (accumulator.is_thread_active()) {
-                auto gemm_results = accumulator.get_results();
+        tile_pipeline.epilogue(accumulator, [&](auto const& accumulator) {
+            // reduce_and_store passes each element's (m, n) coordinate within the
+            // output tile directly to the lambda - no fragment-index mapping needed.
+            accumulator.reduce_and_store(tile_c_fp64_gmem, [&](auto const& accumulator_elem,
+                                                               auto const& c_fp64_elem,
+                                                               auto const& coord) {
+                const auto [global_x, global_y] = coord;
+                const auto shift_a_elem         = smem_shift_a(global_x);
+                const auto shift_b_elem         = smem_shift_b(global_y);
 
-                // Load existing C values
-                auto d_fp64_frag = cublasdx::make_fragment_like<double>(gemm_results);
-                auto c_fp64_frag = accumulator.make_partition_and_copy(tile_c_fp64_gmem);
+                // Convert int32_t slice result back to double precision
+                // with appropriate scaling for this diagonal and element
+                const auto double_result = nth_slice_to_fp64<int32_t, int8_t>(
+                    diag, static_cast<int32_t>(accumulator_elem), shift_a_elem + shift_b_elem);
 
-                // Process each element in the register fragment
-#    pragma unroll
-                for (int i = 0; i < cublasdx::size(d_fp64_frag); ++i) {
-                    const auto [global_x, global_y] = accumulator.map_fragment_index(i);
-                    const auto shift_a_elem         = smem_shift_a(global_x);
-                    const auto shift_b_elem         = smem_shift_b(global_y);
-
-                    // Convert int32_t slice result back to double precision
-                    // with appropriate scaling for this diagonal and element
-                    d_fp64_frag(i) =
-                        nth_slice_to_fp64<int32_t, int8_t>(diag, gemm_results(i), shift_a_elem + shift_b_elem);
-                }
-
-                // Apply alpha/beta scaling and accumulate into C
-                // Use beta only for the first diagonal (highest order), then just add (beta=1.0)
-                cublasdx::axpby(alpha, d_fp64_frag, (diag == Slices - 1) ? beta : 1.0, c_fp64_frag);
-
-                // Store results back to global memory
-                accumulator.partition_and_copy(c_fp64_frag, tile_c_fp64_gmem);
-            }
-        }
+                return alpha * double_result + ((diag == Slices - 1) ? beta : 1.0) * c_fp64_elem;
+            });
+        });
     }
-#endif
 }
 
 // ============================================================================
@@ -463,9 +455,6 @@ auto slice_matmul_and_epilogue(GEMMShape          gemm_shape,
     // Pipeline configuration
     // ================================
 
-    static constexpr int  manual_pipeline_depth   = 0;
-    static constexpr bool override_pipeline_depth = (manual_pipeline_depth != 0);
-
     constexpr unsigned stage_shared_req = tile_m * tile_k * sizeof(SliceAValueType) +
                                           tile_k * tile_n * sizeof(SliceBValueType) +
                                           sizeof(cublasdx::pipeline_stage_scratch_t);
@@ -474,34 +463,40 @@ auto slice_matmul_and_epilogue(GEMMShape          gemm_shape,
         commondx::device_info<Arch>::shared_memory() - (tile_m + tile_n) * sizeof(int32_t);
     constexpr unsigned maximal_pipeline_depth =
         cuda::std::min<unsigned>(16, (available_shared_memory - 32) / stage_shared_req);
-    constexpr unsigned pipeline_depth = override_pipeline_depth ? manual_pipeline_depth : maximal_pipeline_depth;
+    constexpr unsigned pipeline_depth = maximal_pipeline_depth;
 
-    auto opt_device_pipeline = cublasdx::suggest_device_pipeline<pipeline_depth, BLAS, cublasdx::external_accumulation>(
+    auto pipeline = cublasdx::suggest_pipeline<pipeline_depth, BLAS, cublasdx::reusable_accumulator>(
         d_tensor_slice_a, d_tensor_slice_b);
 
-    if (not opt_device_pipeline) {
-        std::cout << "Incorrect pipeline configuration, please ensure global tensors are divisible by tile"
-                  << std::endl;
+    if (not pipeline) {
+        auto const error = pipeline.error();
+        std::cout << "Failed to create device pipeline";
+        if (error.code != cublasdx::pipeline_error_code::none) {
+            std::cout << ": " << cublasdx::pipeline_error_string(error.code);
+        }
+        if (error.get_cuda_error() != cudaSuccess) {
+            std::cout << " (" << cudaGetErrorString(error.get_cuda_error()) << ")";
+        }
+        std::cout << std::endl;
         exit(1);
     }
 
     auto k_stages = k / tile_k;
 
     if (k_stages < pipeline_depth) {
-        std::cerr << "PipelineDepth must be less or equal to GEMM k stages, please adjust manual_pipeline_depth"
+        std::cerr << "PipelineDepth must be less or equal to GEMM k stages, please adjust the tile or problem size"
                   << std::endl;
         exit(1);
     }
 
-    auto device_pipeline    = opt_device_pipeline.value();
-    using device_pipeline_t = cuda::std::remove_cvref_t<decltype(device_pipeline)>;
+    using device_pipeline_t = cuda::std::remove_cvref_t<decltype(pipeline->get_device_handle())>;
 
     // ================================
     // Shared memory size calculation
     // ================================
 
     auto shared_memory_size = cublasdx::make_shared_storage_calculator()
-                                  .add(device_pipeline.buffer_alignment(), device_pipeline.buffer_size())
+                                  .add(pipeline->buffer_alignment(), pipeline->buffer_size())
                                   .add(maximal_alignment, sizeof(int32_t), tile_m) // shift_a
                                   .add(maximal_alignment, sizeof(int32_t), tile_n) // shift_b
                                   .get();
@@ -517,7 +512,8 @@ auto slice_matmul_and_epilogue(GEMMShape          gemm_shape,
                                         CTensor,      /* CLayout */
                                         AShiftTensor, /* AShiftLayout */
                                         BShiftTensor, /* BShiftLayout */
-                                        Params::slices>;
+                                        Params::slices,
+                                        Params::swizzle_m>;
 
     // Set dynamic shared memory size
     CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_memory_size));
@@ -530,8 +526,8 @@ auto slice_matmul_and_epilogue(GEMMShape          gemm_shape,
 
 
     // First run to get correct results
-    kernel<<<grid_dim, device_pipeline.get_block_dim(), shared_memory_size, stream>>>(
-        device_pipeline, alpha, beta, d_tensor_c, d_tensor_shift_a, d_tensor_shift_b);
+    kernel<<<grid_dim, pipeline->get_block_dim(), shared_memory_size, stream>>>(
+        pipeline->get_device_handle(), alpha, beta, d_tensor_c, d_tensor_shift_a, d_tensor_shift_b);
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     // Copy results to host
@@ -545,8 +541,8 @@ auto slice_matmul_and_epilogue(GEMMShape          gemm_shape,
 
     // Warm-up runs
     for (auto warm_up = 0; warm_up < Params::kernel_warm_up_repeats; ++warm_up) {
-        kernel<<<grid_dim, device_pipeline.get_block_dim(), shared_memory_size, stream>>>(
-            device_pipeline, alpha, beta, d_tensor_c, d_tensor_shift_a, d_tensor_shift_b);
+        kernel<<<grid_dim, pipeline->get_block_dim(), shared_memory_size, stream>>>(
+            pipeline->get_device_handle(), alpha, beta, d_tensor_c, d_tensor_shift_a, d_tensor_shift_b);
     }
 
     CUDA_CHECK_AND_EXIT(cudaStreamSynchronize(stream));
@@ -554,8 +550,8 @@ auto slice_matmul_and_epilogue(GEMMShape          gemm_shape,
 
     // Performance measurement runs
     for (auto perf_run = 0; perf_run < Params::kernel_repeats; ++perf_run) {
-        kernel<<<grid_dim, device_pipeline.get_block_dim(), shared_memory_size, stream>>>(
-            device_pipeline, alpha, beta, d_tensor_c, d_tensor_shift_a, d_tensor_shift_b);
+        kernel<<<grid_dim, pipeline->get_block_dim(), shared_memory_size, stream>>>(
+            pipeline->get_device_handle(), alpha, beta, d_tensor_c, d_tensor_shift_a, d_tensor_shift_b);
     }
 
     CUDA_CHECK_AND_EXIT(cudaEventRecord(stop, stream));

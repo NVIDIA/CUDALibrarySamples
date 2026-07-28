@@ -34,6 +34,7 @@
 
 template<class Solver, typename DataType = typename Solver::a_data_type>
 __global__ void kernel(DataType* A, DataType* tau, const unsigned batches) {
+    CUSOLVERDX_SKIP_IF_NOT_APPLICABLE_SM(Solver);
 
     constexpr auto m = Solver::m_size;
     constexpr auto n = Solver::n_size;

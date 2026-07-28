@@ -112,6 +112,15 @@ namespace common {
         return result;
     }
 
+    template<typename T>
+    inline T conj(const T& v) {
+        if constexpr (is_complex<T>()) {
+            return T(v.real(), -v.imag());
+        } else {
+            return v;
+        }
+    }
+
     namespace detail {
         template<typename T>
         double abs(T v) {

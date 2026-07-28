@@ -50,21 +50,22 @@
 // This allows launching fewer blocks than batches for better occupancy control.
 // -------------------------------------------------------------------------
 template<class BLAS, class GlobalTensorA, class GlobalTensorB, class GlobalTensorC>
-__launch_bounds__(BLAS::max_threads_per_block) __global__
-    void batched_gemm_kernel(typename BLAS::c_value_type const alpha,
-                             typename BLAS::c_value_type const beta,
-                             GlobalTensorA                     global_a,
-                             GlobalTensorB                     global_b,
-                             GlobalTensorC                     global_c,
-                             unsigned                          batch_count) {
+__launch_bounds__(BLAS::max_threads_per_block)
+__global__
+void batched_gemm_kernel(typename BLAS::c_value_type const alpha,
+                         typename BLAS::c_value_type const beta,
+                         GlobalTensorA                     global_a,
+                         GlobalTensorB                     global_b,
+                         GlobalTensorC                     global_c,
+                         unsigned                          batch_count) {
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(BLAS);
     extern __shared__ __align__(16) cublasdx::byte smem[];
 
     using alignment = cublasdx::alignment_of<BLAS>;
 
     // Slice shared memory for A and B only (C lives in registers via accumulator)
-    auto [a_shared, b_shared] =
-        cublasdx::shared_memory::slice<typename BLAS::a_value_type, typename BLAS::b_value_type>(
-            smem, alignment::a, BLAS::suggest_layout_smem_a(), alignment::b, BLAS::suggest_layout_smem_b());
+    auto [a_shared, b_shared] = cublasdx::shared_memory::slice<typename BLAS::a_value_type, typename BLAS::b_value_type>(
+        smem, alignment::a, BLAS::suggest_layout_smem_a(), alignment::b, BLAS::suggest_layout_smem_b());
 
     // Grid-stride loop: each block processes multiple batches
     for (unsigned batch = blockIdx.x; batch < batch_count; batch += gridDim.x) {
@@ -102,9 +103,12 @@ int batched_gemm() {
     const unsigned batch_count = 512;
 
     // GEMM descriptor: one block computes the full M x N x K multiply
-    using BLAS =
-        decltype(cublasdx::Size<m, n, k>() + cublasdx::Precision<float>() + cublasdx::Type<cublasdx::type::real>() +
-                 cublasdx::Function<cublasdx::function::MM>() + cublasdx::Block() + cublasdx::SM<Arch>());
+    using BLAS = decltype(cublasdx::Size<m, n, k>() +
+                          cublasdx::Precision<float>() +
+                          cublasdx::Type<cublasdx::type::real>() +
+                          cublasdx::Function<cublasdx::function::MM>() +
+                          cublasdx::Block() +
+                          cublasdx::SM<Arch>());
 
     using value_type = typename example::uniform_value_type_t<BLAS>;
 
@@ -215,7 +219,8 @@ int batched_gemm() {
 
 struct batched_gemm_functor {
     template<int Arch, cublasdx::sm_modifier Modifier>
-    int operator()(std::integral_constant<int, Arch>, std::integral_constant<cublasdx::sm_modifier, Modifier>) {
+    int operator()(std::integral_constant<int, Arch>,
+                   std::integral_constant<cublasdx::sm_modifier, Modifier>) {
         return batched_gemm<Arch>();
     }
 };

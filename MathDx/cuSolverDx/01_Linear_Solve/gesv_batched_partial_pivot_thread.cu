@@ -13,7 +13,7 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- */ 
+ */
 
 #include <cusolverdx.hpp>
 
@@ -33,6 +33,7 @@
 template<class GESV_thread>
 __global__ void gesv_kernel(typename GESV_thread::a_data_type* A, int* ipiv, typename GESV_thread::b_data_type* B, typename GESV_thread::status_type* info,
         const unsigned int batches) {
+    CUSOLVERDX_SKIP_IF_NOT_APPLICABLE_SM(GESV_thread);
 
     using namespace cusolverdx;
     constexpr auto m    = GESV_thread::m_size;

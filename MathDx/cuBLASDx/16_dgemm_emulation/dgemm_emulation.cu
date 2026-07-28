@@ -17,6 +17,7 @@
 
 #include <cassert>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <sstream>
@@ -66,13 +67,15 @@ namespace {
     template<typename TileShape, //
              typename CtaShape,  //
              int Slices,         //
+             unsigned SwizzleM = 16,
              int RandomSeed = 0>
     struct emulation_params {
         using tile_shape = TileShape;
         using cta_shape  = CtaShape;
 
-        static constexpr int slices      = Slices;     // Number of slices for Ozaki decomposition
-        static constexpr int random_seed = RandomSeed; // Seed for reproducible random data
+        static constexpr int      slices      = Slices;     // Number of slices for Ozaki decomposition
+        static constexpr unsigned swizzle_m   = SwizzleM;   // Threadblock swizzle group in the M dimension
+        static constexpr int      random_seed = RandomSeed; // Seed for reproducible random data
 
         // Performance comparison parameters
         static constexpr unsigned int kernel_repeats         = 10;
@@ -155,22 +158,20 @@ auto cublasdx_dgemm_emulation(double                                alpha,
     // Each slice represents a portion of the original double precision values
     example::device_vector<slice_value_type> d_slice_a(m * k * Params::slices);
 
-    auto const shape_slice_a = cuda::std::make_tuple(m, k, cuda::std::integral_constant<int, Params::slices> {});
-    auto const stride_slice_a =
-        example::conditional_return < cuda::std::get<0>(gemm_arrangement) ==
-        cublasdx::col_major > (cuda::std::make_tuple(cuda::std::integral_constant<int, 1> {}, m, m * k),
-                               cuda::std::make_tuple(k, cuda::std::integral_constant<int, 1> {}, m * k));
+    auto const shape_slice_a  = cuda::std::make_tuple(m, k, cuda::std::integral_constant<int, Params::slices> {});
+    auto const stride_slice_a = example::conditional_return<cuda::std::get<0>(gemm_arrangement) == cublasdx::col_major>(
+        cuda::std::make_tuple(cuda::std::integral_constant<int, 1> {}, m, m * k),
+        cuda::std::make_tuple(k, cuda::std::integral_constant<int, 1> {}, m * k));
 
     auto d_tensor_slice_a = example::make_gmem_tensor_from_tuples(d_slice_a.data(), shape_slice_a, stride_slice_a);
 
     // Create slice tensor B: [slices, k, n] - stores int8_t slices of matrix B
     example::device_vector<slice_value_type> d_slice_b(k * n * Params::slices);
 
-    auto const shape_slice_b = cuda::std::make_tuple(k, n, cuda::std::integral_constant<int, Params::slices> {});
-    auto const stride_slice_b =
-        example::conditional_return < cuda::std::get<1>(gemm_arrangement) ==
-        cublasdx::col_major > (cuda::std::make_tuple(cuda::std::integral_constant<int, 1> {}, k, k * n),
-                               cuda::std::make_tuple(n, cuda::std::integral_constant<int, 1> {}, k * n));
+    auto const shape_slice_b  = cuda::std::make_tuple(k, n, cuda::std::integral_constant<int, Params::slices> {});
+    auto const stride_slice_b = example::conditional_return<cuda::std::get<1>(gemm_arrangement) == cublasdx::col_major>(
+        cuda::std::make_tuple(cuda::std::integral_constant<int, 1> {}, k, k * n),
+        cuda::std::make_tuple(n, cuda::std::integral_constant<int, 1> {}, k * n));
 
     auto d_tensor_slice_b = example::make_gmem_tensor_from_tuples(d_slice_b.data(), shape_slice_b, stride_slice_b);
 
@@ -441,7 +442,7 @@ struct dgemm_emulation_functor {
     }
 };
 
-int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
+int main(int, char**) {
 
     // ===================================
     // Ozaki scheme configuration
@@ -455,46 +456,29 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
     // cuBLASDx tile configuration
     // ===================================
 
-    // For good performance results on Blackwell (RTX Pro) architecture the following tile combinations
-    // should provide performant kernel configuration
+    // Per-size tile tuning for B200: pick tiles that balance CTA count and per-tile throughput.
     //
-    // 128x64x128 -- 128 threads
-    // 128x128x64 -- 128 threads
-    // 128x256x64 -- 256 threads
-    // 256x128x64 -- 256 threads
-    // 128x128x128 -- 256 threads, good for bigger sizes
-
-    // For good performance results on Blackwell (B200) architecture it is adviced to pick smaller tiles
-    // for smaller problems and with problem's grow pick larger tiles. All this to ensure high GPU
-    // occupancy where large number of SMs performs computations in parallel.
+    // Tile (128,64,64): faster for 1024 after sweep
+    //   1024: 8x16=128 tiles
+    // Tile (128,128,128): 128 threads, good occupancy for medium problems
+    //   2048: 16x16=256 tiles
+    //   4096: 32x32=1024 tiles
     //
-    // Example configurations:
-    // - problem 1024x1024x1024:    128x64x256  -- 128 threads
-    // - problem 2048x2048x2048:    128x128x128 -- 128 threads
-    // - problem 4096x4096x4096:    128x128x128 -- 128 threads
-    // - problem 8192x8192x8192:    128x128x128 -- 128 threads
-    // - problem 16384x16384x16384: 128x256x128 -- 128 threads
+    // Tile (128,256,128): 128 threads, higher throughput for large problems
+    //   8192:  64x32=2048 tiles
+    //   16384: 128x64=8192 tiles
 
+    using cta_128 = cuda::std::tuple<cuda::std::integral_constant<int, 128>,
+                                     cuda::std::integral_constant<int, 1>,
+                                     cuda::std::integral_constant<int, 1>>;
 
-    // The shape of data tile processed by a single CTA block
-    constexpr int tile_shape_m = 128;
-    constexpr int tile_shape_n = 128;
-    constexpr int tile_shape_k = 128;
-
-    // The shape of CTA block (number of threads)
-    constexpr int cta_shape_x = 128;
-    constexpr int cta_shape_y = 1;
-    constexpr int cta_shape_z = 1;
-
-    using tile_shape = cuda::std::tuple<cuda::std::integral_constant<int, tile_shape_m>,
-                                        cuda::std::integral_constant<int, tile_shape_n>,
-                                        cuda::std::integral_constant<int, tile_shape_k>>;
-
-    using cta_shape = cuda::std::tuple<cuda::std::integral_constant<int, cta_shape_x>,
-                                       cuda::std::integral_constant<int, cta_shape_y>,
-                                       cuda::std::integral_constant<int, cta_shape_z>>;
-
-    using params = emulation_params<tile_shape, cta_shape, slices>;
+    // Construct multiple configs for different sizes
+    // Small tile: (128, 128, 128)
+    // Use (128, 256, 128) for B200 large sizes
+    using tile_128x128x128 = cuda::std::tuple<cuda::std::integral_constant<int, 128>,
+                                               cuda::std::integral_constant<int, 128>,
+                                               cuda::std::integral_constant<int, 128>>;
+    using params_small = emulation_params<tile_128x128x128, cta_128, slices>;
 
     bool debug = false;
 
@@ -503,11 +487,43 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
     }
 
     // ===================================
-    // Problem sizes for testing
+    // Problem sizes with per-size tile dispatch
     // ===================================
 
-    // Format of problem shape: M x N x K
-    std::vector<problem_shape> problems = {{2048, 2048, 2048}, {4096, 4096, 4096}};
+    int result = 0;
+    bool ran_any_problem = false;
 
-    return example::sm_runner(dgemm_emulation_functor<params> {}, problems, debug);
+    // Tiny problems: use (128,64,64) for lower launch work per CTA
+    {
+        std::vector<problem_shape> problems = {{1024, 1024, 1024}};
+        if (not problems.empty()) {
+            ran_any_problem = true;
+            result |= example::sm_runner(dgemm_emulation_functor<params_small> {}, problems, debug);
+        }
+    }
+
+    // Small/medium problems: use (128,128,128) for better throughput from 2048 up
+    {
+        std::vector<problem_shape> problems = {{2048, 2048, 2048}, {4096, 4096, 4096}};
+        if (not problems.empty()) {
+            ran_any_problem = true;
+            result |= example::sm_runner(dgemm_emulation_functor<params_small> {}, problems, debug);
+        }
+    }
+
+    // Large problems: use (128,256,128) for higher throughput per tile
+    {
+        std::vector<problem_shape> problems = {{8192, 8192, 8192}};
+        if (not problems.empty()) {
+            ran_any_problem = true;
+            result |= example::sm_runner(dgemm_emulation_functor<params_small> {}, problems, debug);
+        }
+    }
+
+    if (not ran_any_problem) {
+        std::cerr << "No requested problem size is configured in this example" << std::endl;
+        return -1;
+    }
+
+    return result;
 }

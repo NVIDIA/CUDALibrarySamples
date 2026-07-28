@@ -95,6 +95,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__ void gemm_fft_kernel(co
                                                                               const ValueType  alpha,
                                                                               const ValueType  beta,
                                                                               ValueType*       output) {
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(GEMM);
     using fft_complex_type  = typename FFT::value_type;
     using blas_complex_type = example::uniform_value_type_t<GEMM>;
 
@@ -209,31 +210,13 @@ int gemm_fft() {
                   "FFT must require the same CUDA block dimenions as GEMM");
     static_assert(sizeof(fft_complex_type) == sizeof(blas_complex_type), "FFT::value_type matches as GEMM::value_type");
 
-    // Allocate managed memory
-    complex_type* buffer;
-    complex_type* a;
-    complex_type* b;
-    complex_type* c;
-    complex_type* output;
-    complex_type* reference_output;
-
     constexpr auto global_a_size = example::global_memory_size_of<GEMM>::a_size;
     constexpr auto global_b_size = example::global_memory_size_of<GEMM>::b_size;
     constexpr auto global_c_size = example::global_memory_size_of<GEMM>::c_size;
 
-    auto size       = (global_a_size + // a
-                 global_b_size + // b
-                 global_c_size + // c
-                 global_c_size + // output
-                 global_c_size   // reference_output
-    );
-    auto size_bytes = size * sizeof(complex_type);
-    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&buffer, size_bytes));
-    a                = buffer;
-    b                = a + global_a_size;
-    c                = b + global_b_size;
-    output           = c + global_c_size;
-    reference_output = output + global_c_size;
+    std::vector<complex_type> host_a(global_a_size);
+    std::vector<complex_type> host_b(global_b_size);
+    std::vector<complex_type> host_c(global_c_size);
 
     complex_type alpha = {float(1), float(1)};
     complex_type beta  = {float(1), float(1)};
@@ -242,29 +225,25 @@ int gemm_fft() {
     {
         float base = cublasdx::size_of<GEMM>::m * cublasdx::size_of<GEMM>::n * cublasdx::size_of<GEMM>::k;
         for (size_t i = 0; i < global_a_size; i++) {
-            a[i] = complex_type {float(i) / base, float(i) / base};
+            host_a[i] = complex_type {float(i) / base, float(i) / base};
         }
         for (size_t i = 0; i < global_b_size; i++) {
-            b[i] = complex_type {float(i) / base, float(i) / base};
+            host_b[i] = complex_type {float(i) / base, float(i) / base};
         }
         for (size_t i = 0; i < global_c_size; i++) {
-            c[i] = complex_type {float(1) / base, float(1) / base};
+            host_c[i] = complex_type {float(1) / base, float(1) / base};
         }
     }
+
+    example::device_vector<complex_type> a                = host_a;
+    example::device_vector<complex_type> b                = host_b;
+    example::device_vector<complex_type> c                = host_c;
+    example::device_vector<complex_type> output           = global_c_size;
+    example::device_vector<complex_type> reference_output = global_c_size;
 
     // Create stream
     cudaStream_t stream;
     CUDA_CHECK_AND_EXIT(cudaStreamCreate(&stream));
-
-    // Prefetch memory to device
-    {
-        int device;
-        CUDA_CHECK_AND_EXIT(cudaGetDevice(&device));
-        CUDA_CHECK_AND_EXIT(
-            cudaMemPrefetchAsync(buffer, size_bytes, cudaMemLocation {cudaMemLocationTypeDevice, device}, 0, stream));
-        CUDA_CHECK_AND_EXIT(cudaStreamSynchronize(stream));
-        CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
-    }
 
     // Get max shared memory required by FFT and GEMM
     constexpr auto shared_memory_size = std::max({FFT::shared_memory_size, cublasdx::get_shared_storage_size<GEMM>()});
@@ -273,20 +252,24 @@ int gemm_fft() {
         gemm_fft_kernel<FFT, GEMM>, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_memory_size));
 
     // Invokes cuBLASDx+cuFFTDx kernel with FFT::block_dim threads in CUDA block
-    gemm_fft_kernel<FFT, GEMM><<<1, FFT::block_dim, shared_memory_size, stream>>>(a, b, c, alpha, beta, output);
+    gemm_fft_kernel<FFT, GEMM>
+        <<<1, FFT::block_dim, shared_memory_size, stream>>>(a.data(), b.data(), c.data(), alpha, beta, output.data());
     CUDA_CHECK_AND_EXIT(cudaPeekAtLastError());
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     // cuBLAS+cuFFT
-    reference<FFT, GEMM>(a, b, c, alpha, beta, reference_output, stream);
+    reference<FFT, GEMM>(a.data(), b.data(), c.data(), alpha, beta, reference_output.data(), stream);
     CUDA_CHECK_AND_EXIT(cudaPeekAtLastError());
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
+
+    auto host_output           = output.to_host();
+    auto host_reference_output = reference_output.to_host();
 
     std::cout << "[cuBLASDx + cuFFTDx]:\n";
     for (size_t i = 0; i < cublasdx::size_of<GEMM>::m; i++) {     // rows
         for (size_t j = 0; j < cublasdx::size_of<GEMM>::n; j++) { // cols
             auto index = i * cublasdx::size_of<GEMM>::n + j;
-            std::cout << "[" << output[index].x << ", " << output[index].y << "]\t";
+            std::cout << "[" << host_output[index].x << ", " << host_output[index].y << "]\t";
         }
         std::cout << "\n";
     }
@@ -294,13 +277,12 @@ int gemm_fft() {
     for (size_t i = 0; i < cublasdx::size_of<GEMM>::m; i++) {     // rows
         for (size_t j = 0; j < cublasdx::size_of<GEMM>::n; j++) { // cols
             auto index = i * cublasdx::size_of<GEMM>::n + j;
-            std::cout << "[" << reference_output[index].x << ", " << reference_output[index].y << "]\t";
+            std::cout << "[" << host_reference_output[index].x << ", " << host_reference_output[index].y << "]\t";
         }
         std::cout << "\n";
     }
 
     CUDA_CHECK_AND_EXIT(cudaStreamDestroy(stream));
-    CUDA_CHECK_AND_EXIT(cudaFree(buffer));
 
     std::cout << "Success" << std::endl;
     return 0;

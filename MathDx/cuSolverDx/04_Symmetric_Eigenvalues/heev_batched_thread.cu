@@ -30,6 +30,7 @@
 
 template<class Solver, bool compute_vectors = false, typename DataType = typename Solver::a_data_type, typename PrecisionType = typename Solver::a_precision>
 __global__ void kernel(DataType* A, PrecisionType* lambda, DataType* workspace, typename Solver::status_type* info, const unsigned batches) {
+    CUSOLVERDX_SKIP_IF_NOT_APPLICABLE_SM(Solver);
 
     const auto batch_idx = threadIdx.x + blockIdx.x * blockDim.x;
     if (batch_idx >= batches)

@@ -16,6 +16,7 @@
  */ 
 
 #include <cusolverdx.hpp>
+#include <cusolverdx_io.hpp>
 
 #include "../common/cudart.hpp"
 #include "../common/error_checking.hpp"
@@ -32,6 +33,7 @@ template<class Solver, unsigned int BatchesPerBlock, bool compute_vectors = fals
         typename PrecisionType = typename Solver::a_precision>
 __global__ void kernel(
         DataType* A, const int lda_gmem, PrecisionType* lambda, DataType* workspace, typename Solver::status_type* info, const unsigned batches) {
+    CUSOLVERDX_SKIP_IF_NOT_APPLICABLE_SM(Solver);
 
     const auto batch_idx = blockIdx.x * BatchesPerBlock;
     if (batch_idx >= batches)

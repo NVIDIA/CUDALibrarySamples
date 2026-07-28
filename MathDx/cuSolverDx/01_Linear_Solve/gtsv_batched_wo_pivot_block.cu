@@ -17,6 +17,7 @@
 
 #define CUSOLVERDX_IGNORE_NVBUG_5288270_ASSERT
 #include <cusolverdx.hpp>
+#include <cusolverdx_io.hpp>
 
 #include "../common/cudart.hpp"
 #include "../common/error_checking.hpp"
@@ -34,6 +35,7 @@
 template<class Solver, unsigned int BatchesPerBlock, typename DataType = typename Solver::a_data_type>
 __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(const DataType* dl, const DataType* d, const DataType* du, DataType* B,
         unsigned int ldb_gmem, typename Solver::status_type* info, const unsigned int batches) {
+    CUSOLVERDX_SKIP_IF_NOT_APPLICABLE_SM(Solver);
 
     const auto batch_idx = blockIdx.x * BatchesPerBlock;
     if (batch_idx >= batches)

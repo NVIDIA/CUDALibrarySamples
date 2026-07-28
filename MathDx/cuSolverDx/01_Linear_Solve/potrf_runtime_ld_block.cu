@@ -31,6 +31,7 @@
 
 template<class Solver, typename DataType = typename Solver::a_data_type>
 __global__ __launch_bounds__(Solver::max_threads_per_block) void potrf_kernel(DataType* A, const unsigned int lda_smem, typename Solver::status_type* info) {
+    CUSOLVERDX_SKIP_IF_NOT_APPLICABLE_SM(Solver);
 
     extern __shared__ cusolverdx::byte shared_mem[];
 

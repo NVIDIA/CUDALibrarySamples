@@ -16,6 +16,7 @@
  */ 
 
 #include <cusolverdx.hpp>
+#include <cusolverdx_io.hpp>
 
 #include "../common/cudart.hpp"
 #include "../common/error_checking.hpp"
@@ -30,6 +31,8 @@
 
 template<class TRSM, unsigned int BatchesPerBlock, class DataType = typename TRSM::a_data_type>
 __global__ __launch_bounds__(TRSM::max_threads_per_block) void trsm_kernel(const DataType* A, const unsigned int lda_gmem, DataType* B, const unsigned int ldb_gmem, const unsigned int batches) {
+    CUSOLVERDX_SKIP_IF_NOT_APPLICABLE_SM(TRSM);
+
     constexpr auto a_m = (cusolverdx::side_of_v<TRSM> == cusolverdx::side::left) ? TRSM::m_size : TRSM::n_size;
 
     constexpr auto one_batch_size_a = a_m * a_m;

@@ -22,6 +22,8 @@
 #include <cusolverDn.h>
 #include "measure.hpp"
 
+// cusolver reference GEQRF and GELS, only single batch is supported. Batched version is in cuBLAS. 
+
 namespace common {
     template<typename T, typename cuda_data_type, bool do_solver = false, bool check_cusolver_geqrfperf = false>
     bool reference_cusolver_geqrf_gels(std::vector<T>&    A,

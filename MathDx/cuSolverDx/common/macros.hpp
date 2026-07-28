@@ -15,6 +15,8 @@
  * limitations under the License.
  */
 
+#include <iostream>
+
 #ifndef CUSOLVERDX_EXAMPLE_COMMON_MACROS_HPP
 #define CUSOLVERDX_EXAMPLE_COMMON_MACROS_HPP
 

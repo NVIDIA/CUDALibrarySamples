@@ -141,6 +141,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__ void gemm_fft_kernel(co
                                                                               const ValueType  alpha,
                                                                               const ValueType  beta,
                                                                               ValueType*       output) {
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(GEMM);
     using blas_complex_type = example::uniform_value_type_t<GEMM>;
     using fft_complex_type  = typename FFT::value_type;
     static_assert(std::is_same_v<fft_complex_type, blas_complex_type>, "BLAS and FFT complex type should match");
@@ -312,13 +313,13 @@ int gemm_fft() {
     constexpr auto global_c_size = example::global_memory_size_of<GEMM>::c_size;
 
     // Get single batch size
-    auto single_batch_size       = (global_a_size + // a
-                              global_b_size + // b
-                              global_c_size + // c
-                              global_c_size + // output
-                              global_c_size   // reference_output
+    constexpr auto single_batch_size = (global_a_size + // a
+                                        global_b_size + // b
+                                        global_c_size + // c
+                                        global_c_size + // output
+                                        global_c_size   // reference_output
     );
-    auto single_batch_size_bytes = single_batch_size * sizeof(complex_type);
+    constexpr auto single_batch_size_bytes = single_batch_size * sizeof(complex_type);
 
 #ifdef CORRECTNESS
     const unsigned int batches = 2;
@@ -343,79 +344,76 @@ int gemm_fft() {
 // batches = example::get_multiprocessor_count(); // few batches test
 #endif
 
-    // Allocate memory for a, b, c
-    complex_type* buffer;
-    complex_type* a;
-    complex_type* b;
-    complex_type* c;
-    complex_type* output;
-    complex_type* reference_output;
+    const auto a_size = size_t {batches} * global_a_size;
+    const auto b_size = size_t {batches} * global_b_size;
+    const auto c_size = size_t {batches} * global_c_size;
 
-    auto size_bytes = batches * single_batch_size_bytes;
+    std::vector<complex_type> host_a(a_size);
+    std::vector<complex_type> host_b(b_size);
+    std::vector<complex_type> host_c(c_size);
 #ifdef CORRECTNESS
-    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&buffer, size_bytes));
-#else
-    CUDA_CHECK_AND_EXIT(cudaMalloc(&buffer, size_bytes));
+    std::vector<complex_type> host_output(c_size);
+    std::vector<complex_type> host_reference_output(c_size);
 #endif
-    a                = buffer;
-    b                = a + (batches * global_a_size);
-    c                = b + (batches * global_b_size);
-    output           = c + (batches * global_c_size);
-    reference_output = output + (batches * global_a_size);
 
     // Se alpha and beta for GEMM
     complex_type alpha = example::make_value<complex_type>(1., 1.);
     complex_type beta  = example::make_value<complex_type>(1., 1.);
 
-#ifdef CORRECTNESS
     // Fill the a, b, c matrices
     {
         float base = global_c_size * cublasdx::size_of<GEMM>::k;
-        for (size_t i = 0; i < batches * global_a_size; i++) {
-            a[i] = example::make_value<complex_type>(float(i) / base, float(i) / base);
+        for (size_t i = 0; i < a_size; i++) {
+            const auto value = float(i % global_a_size) / base;
+            host_a[i]        = example::make_value<complex_type>(value, value);
         }
-        for (size_t i = 0; i < batches * global_b_size; i++) {
-            b[i] = example::make_value<complex_type>(float(i) / base, float(i) / base);
+        for (size_t i = 0; i < b_size; i++) {
+            const auto value = float(i % global_b_size) / base;
+            host_b[i]        = example::make_value<complex_type>(value, value);
         }
-        for (size_t i = 0; i < batches * global_c_size; i++) {
-            c[i] = example::make_value<complex_type>(float(1) / base, float(1) / base);
+        for (size_t i = 0; i < c_size; i++) {
+            host_c[i] = example::make_value<complex_type>(float(1) / base, float(1) / base);
         }
-        for (size_t i = 0; i < batches * global_c_size; i++) {
-            output[i] = example::make_value<complex_type>(float(-1), float(-1));
+#ifdef CORRECTNESS
+        for (size_t i = 0; i < c_size; i++) {
+            host_output[i] = example::make_value<complex_type>(float(-1), float(-1));
         }
-        for (size_t i = 0; i < batches * global_c_size; i++) {
-            reference_output[i] = example::make_value<complex_type>(float(-1), float(-1));
+        for (size_t i = 0; i < c_size; i++) {
+            host_reference_output[i] = example::make_value<complex_type>(float(-1), float(-1));
         }
+#endif
     }
+    example::device_vector<complex_type> a                = host_a;
+    example::device_vector<complex_type> b                = host_b;
+    example::device_vector<complex_type> c                = host_c;
+#ifdef CORRECTNESS
+    example::device_vector<complex_type> output           = host_output;
+    example::device_vector<complex_type> reference_output = host_reference_output;
+#else
+    example::device_vector<complex_type> output(c_size);
+    example::device_vector<complex_type> reference_output(c_size);
 #endif
 
     // Create stream
     cudaStream_t stream;
     CUDA_CHECK_AND_EXIT(cudaStreamCreate(&stream));
 
-#ifdef CORRECTNESS
-    // Prefetch memory to device
-    {
-        int device;
-        CUDA_CHECK_AND_EXIT(cudaGetDevice(&device));
-        CUDA_CHECK_AND_EXIT(
-            cudaMemPrefetchAsync(a, size_bytes, cudaMemLocation {cudaMemLocationTypeDevice, device}, 0, stream));
-        CUDA_CHECK_AND_EXIT(cudaStreamSynchronize(stream));
-        CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
-    }
-#endif
-
-    double time_cublasdx_cufftdx = measure_cublasdx_cufftdx<FFT, GEMM>(a, b, c, alpha, beta, output, batches, stream);
+    double time_cublasdx_cufftdx =
+        measure_cublasdx_cufftdx<FFT, GEMM>(a.data(), b.data(), c.data(), alpha, beta, output.data(), batches, stream);
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
-    double time_cublas_cufft = measure_cublas_cufft<FFT, GEMM>(a, b, c, alpha, beta, reference_output, batches, stream);
+    double time_cublas_cufft = measure_cublas_cufft<FFT, GEMM>(
+        a.data(), b.data(), c.data(), alpha, beta, reference_output.data(), batches, stream);
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
 #ifdef CORRECTNESS
+    host_output           = output.to_host();
+    host_reference_output = reference_output.to_host();
+
     std::cout << "[cuBLASDx + cuFFTDx]:\n";
     for (size_t i = 0; i < cublasdx::size_of<GEMM>::m; i++) {     // rows
         for (size_t j = 0; j < cublasdx::size_of<GEMM>::n; j++) { // cols
             auto index = i * cublasdx::size_of<GEMM>::n + j;
-            std::cout << "[" << output[index].x << ", " << output[index].y << "]\t";
+            std::cout << "[" << host_output[index].x << ", " << host_output[index].y << "]\t";
         }
         std::cout << "\n";
     }
@@ -423,14 +421,13 @@ int gemm_fft() {
     for (size_t i = 0; i < cublasdx::size_of<GEMM>::m; i++) {     // rows
         for (size_t j = 0; j < cublasdx::size_of<GEMM>::n; j++) { // cols
             auto index = i * cublasdx::size_of<GEMM>::n + j;
-            std::cout << "[" << reference_output[index].x << ", " << reference_output[index].y << "]\t";
+            std::cout << "[" << host_reference_output[index].x << ", " << host_reference_output[index].y << "]\t";
         }
         std::cout << "\n";
     }
 #endif
 
     CUDA_CHECK_AND_EXIT(cudaStreamDestroy(stream));
-    CUDA_CHECK_AND_EXIT(cudaFree(buffer));
 
     // Report results.
     auto report_time_and_performance = [&](std::string name, double time) -> void {

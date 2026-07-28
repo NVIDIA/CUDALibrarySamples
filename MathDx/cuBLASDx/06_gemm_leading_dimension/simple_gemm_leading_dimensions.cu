@@ -33,6 +33,7 @@ __launch_bounds__(BLAS::max_threads_per_block) //
                      const ValueType  beta,
                      const ValueType* c,
                      ValueType*       output) {
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(BLAS);
     using value_type = ValueType;
     extern __shared__ __align__(16) cublasdx::byte smem[];
 
@@ -71,6 +72,7 @@ __launch_bounds__(BLASWithoutLD::max_threads_per_block) //
                                 const ValueType*   c,
                                 const unsigned int ldc,
                                 ValueType*         output) {
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(BLASWithoutLD);
     using value_type = ValueType;
     extern __shared__ __align__(16) cublasdx::byte smem[];
 
@@ -165,7 +167,7 @@ int simple_gemm_with_leading_dimensions() {
     using BLAS       = decltype(BLASWithoutLD() + cublasdx::LeadingDimension<lda, ldb, ldc>());
     using value_type = typename example::uniform_value_type_t<BLAS>;
 
-    // Allocate managed memory for a, b, c, and output
+    // Allocate device memory for a, b, c, and output
     value_type* inputs;
     value_type* output;
 

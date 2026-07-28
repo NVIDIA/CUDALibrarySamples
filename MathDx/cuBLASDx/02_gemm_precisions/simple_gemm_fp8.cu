@@ -30,6 +30,7 @@ __launch_bounds__(BLAS::max_threads_per_block) __global__ void gemm_kernel(const
                                                                            typename BLAS::c_value_type*       c,
                                                                            const typename BLAS::c_value_type  alpha,
                                                                            const typename BLAS::c_value_type  beta) {
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(BLAS);
     extern __shared__ __align__(16) cublasdx::byte smem[];
 
     auto a_global_tensor = cublasdx::make_tensor(a, BLAS::get_layout_gmem_a());
@@ -92,7 +93,7 @@ int simple_gemm() {
                           cublasdx::Arrangement<cublasdx::row_major, cublasdx::col_major>() +
                           cublasdx::Alignment<2, 2, 8>() + cublasdx::Block() + cublasdx::SM<Arch>());
 
-    // Allocate managed memory for a, b, c
+    // Allocate device memory for a, b, c
 
     using TA = typename BLAS::a_value_type;
     using TB = typename BLAS::b_value_type;
@@ -106,9 +107,9 @@ int simple_gemm() {
     constexpr auto global_b_size = example::global_memory_size_of<BLAS>::b_size;
     constexpr auto global_c_size = example::global_memory_size_of<BLAS>::c_size;
 
-    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&a, global_a_size * sizeof(TA)));
-    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&b, global_b_size * sizeof(TB)));
-    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&c, global_c_size * sizeof(TC)));
+    CUDA_CHECK_AND_EXIT(cudaMalloc(&a, global_a_size * sizeof(TA)));
+    CUDA_CHECK_AND_EXIT(cudaMalloc(&b, global_b_size * sizeof(TB)));
+    CUDA_CHECK_AND_EXIT(cudaMalloc(&c, global_c_size * sizeof(TC)));
 
     auto alpha = TC(1.0, 1.0);
     auto beta  = TC(2.0, 1.0);

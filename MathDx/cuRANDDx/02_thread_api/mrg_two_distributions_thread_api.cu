@@ -45,6 +45,8 @@ __global__ void generate_kernel(double*                         d_out,
                                 const unsigned long long        seed,
                                 const typename RNG::offset_type offset,
                                 const size_t                    size) {
+    CURANDDX_SKIP_IF_NOT_APPLICABLE_SM(RNG);
+
     int tid = blockDim.x * blockIdx.x + threadIdx.x;
 
     curanddx::uniform<double>                     my_uniform; // default min = 0, max = 1

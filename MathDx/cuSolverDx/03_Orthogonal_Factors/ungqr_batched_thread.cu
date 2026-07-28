@@ -38,6 +38,8 @@
 
 template<class Solver, typename DataType = typename Solver::a_data_type>
 __global__ void ungqr_kernel(DataType* A, const DataType* tau, const unsigned batches) {
+    CUSOLVERDX_SKIP_IF_NOT_APPLICABLE_SM(Solver);
+
     constexpr auto m = Solver::m_size;
     constexpr auto n = Solver::n_size;
     constexpr auto k = Solver::k_size;

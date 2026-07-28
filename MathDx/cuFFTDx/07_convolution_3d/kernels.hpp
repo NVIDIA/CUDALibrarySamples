@@ -32,6 +32,8 @@ namespace example {
                                    InputType*                   input,
                                    OutputType*                  output,
                                    typename FFT::workspace_type workspace) {
+        CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFT);
+
         using complex_type = typename FFT::value_type;
         IO io;
 
@@ -65,6 +67,8 @@ namespace example {
                                            typename FFT::input_type*    input,
                                            typename IFFT::output_type*  output,
                                            typename FFT::workspace_type workspace) {
+        CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFT);
+
         using complex_type = typename FFT::value_type;
         FilterFunctor filter;
         IOFront       io_front;

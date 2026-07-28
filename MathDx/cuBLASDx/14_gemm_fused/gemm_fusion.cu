@@ -38,6 +38,7 @@ __launch_bounds__(BLAS1::max_threads_per_block) //
                      const ValueType  beta2,
                      const ValueType* f,
                      ValueType*       output) {
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(BLAS1);
     using value_type = ValueType;
     extern __shared__ __align__(16) cublasdx::byte smem[];
 
@@ -160,7 +161,7 @@ int simple_gemm() {
     value_type alpha2 = 1.0;
     value_type beta2  = 1.0;
 
-    // Allocate managed memory for a, b, c, d, f and output
+    // Allocate device memory for a, b, c, d, f and output
     value_type* inputs;
     value_type* output;
 

@@ -35,6 +35,8 @@ template<class FFT, class IFFT>
 __launch_bounds__(FFT::max_threads_per_block) __global__ void convolution_kernel(typename FFT::value_type*     data,
                                                                                  typename FFT::workspace_type  workspace,
                                                                                  typename IFFT::workspace_type workspace_inverse) {
+    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFT);
+
     using complex_type = typename FFT::value_type;
     using scalar_type  = typename complex_type::value_type;
 
@@ -238,7 +240,7 @@ double measure_cufft_callback(const unsigned int& kernel_runs,
 // - for cuFFTDx kernel run, number of CUDA blocks is divisible
 //   by maximum number of CUDA blocks that can run simultaneously on the GPU.
 template<unsigned int Arch>
-void convolution() {
+int convolution() {
     using namespace cufftdx;
 
     static constexpr unsigned int minimum_input_size_bytes = (1 << 30); // At least one GB of data will be processed by FFTs.
@@ -355,11 +357,12 @@ void convolution() {
                   << gflops_cufftdx << ", " << time_cufftdx / kernel_runs << ", " << std::endl
                   << gflops_cufft << ", " << time_cufft / kernel_runs;
     }
+    return 0;
 }
 
 template<unsigned int Arch>
 struct convolution_functor {
-    void operator()() {
+    int operator()() {
         return convolution<Arch>();
     }
 };

@@ -48,8 +48,9 @@
 // created on the host and passed by value.
 // -------------------------------------------------------------------------
 template<class BLAS, class GlobalTensorA, class GlobalTensorB>
-__launch_bounds__(BLAS::max_threads_per_block) __global__
-    void trsm_block_kernel(GlobalTensorA global_a, GlobalTensorB global_b) {
+__launch_bounds__(BLAS::max_threads_per_block)
+__global__ void trsm_block_kernel(GlobalTensorA global_a, GlobalTensorB global_b) {
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(BLAS);
     extern __shared__ __align__(16) cublasdx::byte smem[];
 
     using T         = typename BLAS::a_value_type;
@@ -61,20 +62,24 @@ __launch_bounds__(BLAS::max_threads_per_block) __global__
         return;
     }
 
-    // Extract per-block 2D (BPB==1) or 3D (BPB>1) tile from the global tensor.
-    auto batch_a = cublasdx::get_batch(global_a, BLAS::get_layout_gmem_a(), blockIdx.x);
-    auto batch_b = cublasdx::get_batch(global_b, BLAS::get_layout_gmem_b(), blockIdx.x);
+    // Extract the first batch handled by this block. For BPB>1 the returned tile
+    // covers BPB consecutive instances starting at first_batch.
+    const unsigned first_batch = blockIdx.x * BLAS::batches_per_block;
+    auto batch_a = cublasdx::get_batch(global_a, BLAS::get_layout_gmem_a(), first_batch);
+    auto batch_b = cublasdx::get_batch(global_b, BLAS::get_layout_gmem_b(), first_batch);
 
     // Partition shared memory into A and B tensors.
-    auto [smem_tensor_a, smem_tensor_b] = cublasdx::shared_memory::slice<T, T>(
-        smem, alignment::a, BLAS::get_layout_smem_a(), alignment::b, BLAS::get_layout_smem_b());
+    auto [smem_tensor_a, smem_tensor_b] =
+        cublasdx::shared_memory::slice<T, T>(smem,
+                                             alignment::a, BLAS::get_layout_smem_a(),
+                                             alignment::b, BLAS::get_layout_smem_b());
 
     // Load A and B from global memory into shared memory.
     cublasdx::copy<BLAS, alignment::a>(batch_a, smem_tensor_a);
     cublasdx::copy<BLAS, alignment::b>(batch_b, smem_tensor_b);
     cublasdx::copy_wait();
 
-    BLAS {}.execute(smem_tensor_a, smem_tensor_b);
+    BLAS{}.execute(smem_tensor_a, smem_tensor_b);
     __syncthreads();
 
     // Write the solution (B overwritten by X) back to global memory.
@@ -92,19 +97,19 @@ int simple_trsm() {
     constexpr unsigned M = 64; // rows of B (= size of A for left-side)
     constexpr unsigned N = 4;  // columns of B
 
-    using T             = float;
-    constexpr auto Side = cublasdx::side::left;
-    constexpr auto Fill = cublasdx::fill_mode::lower;
-    constexpr auto Diag = cublasdx::diag::non_unit;
-    constexpr auto ArrA = cublasdx::col_major;
-    constexpr auto ArrB = cublasdx::col_major;
+    using T              = float;
+    constexpr auto Side  = cublasdx::side::left;
+    constexpr auto Fill  = cublasdx::fill_mode::lower;
+    constexpr auto Diag  = cublasdx::diag::non_unit;
+    constexpr auto ArrA  = cublasdx::col_major;
+    constexpr auto ArrB  = cublasdx::col_major;
 
     constexpr unsigned num_batches = 3855;
 
     constexpr bool     is_left = (Side == cublasdx::side::left);
     constexpr unsigned dim_a   = is_left ? M : N;
 
-    constexpr unsigned BPB         = 1;
+    constexpr unsigned BPB = 1;
     constexpr unsigned num_threads = 64;
 
     // -----------------------------------------------------------------------
@@ -155,8 +160,10 @@ int simple_trsm() {
     // Shape: (dim_a, dim_a, padded_batches) for A
     //        (M, N, padded_batches)         for B
     // -----------------------------------------------------------------------
-    auto global_a = cublasdx::make_gmem_tensor_batched<ArrA>(d_A.data(), dim_a, dim_a, padded_batches);
-    auto global_b = cublasdx::make_gmem_tensor_batched<ArrB>(d_B.data(), M, N, padded_batches);
+    auto global_a =
+        cublasdx::make_gmem_tensor_batched<ArrA>(d_A.data(), dim_a, dim_a, padded_batches);
+    auto global_b =
+        cublasdx::make_gmem_tensor_batched<ArrB>(d_B.data(), M, N, padded_batches);
 
     using global_tensor_a_t = decltype(global_a);
     using global_tensor_b_t = decltype(global_b);
@@ -164,13 +171,15 @@ int simple_trsm() {
     // -----------------------------------------------------------------------
     // Kernel configuration
     // -----------------------------------------------------------------------
-    const unsigned smem_bytes = cublasdx::make_shared_storage_calculator()
-                                    .add(cublasdx::alignment_of<BLAS>::a, sizeof(T), BLAS::get_layout_smem_a())
-                                    .add(cublasdx::alignment_of<BLAS>::b, sizeof(T), BLAS::get_layout_smem_b())
-                                    .get();
+    const unsigned smem_bytes =
+        cublasdx::make_shared_storage_calculator()
+            .add(cublasdx::alignment_of<BLAS>::a, sizeof(T), BLAS::get_layout_smem_a())
+            .add(cublasdx::alignment_of<BLAS>::b, sizeof(T), BLAS::get_layout_smem_b())
+            .get();
 
     auto kernel = trsm_block_kernel<BLAS, global_tensor_a_t, global_tensor_b_t>;
-    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_bytes));
+    CUDA_CHECK_AND_EXIT(
+        cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_bytes));
 
     const unsigned num_blocks = padded_batches / BPB;
     const dim3     block_dim(num_threads);
@@ -178,7 +187,9 @@ int simple_trsm() {
     cudaStream_t stream;
     CUDA_CHECK_AND_EXIT(cudaStreamCreate(&stream));
 
-    auto run_kernel = [&](cudaStream_t s) { kernel<<<num_blocks, block_dim, smem_bytes, s>>>(global_a, global_b); };
+    auto run_kernel = [&](cudaStream_t s) {
+        kernel<<<num_blocks, block_dim, smem_bytes, s>>>(global_a, global_b);
+    };
 
     // -----------------------------------------------------------------------
     // Correctness run
@@ -189,15 +200,15 @@ int simple_trsm() {
 
     // Download the result for the first num_batches entries.
     std::vector<T> h_X(num_batches * b_per_batch);
-    CUDA_CHECK_AND_EXIT(
-        cudaMemcpy(h_X.data(), d_B.data(), sizeof(T) * num_batches * b_per_batch, cudaMemcpyDeviceToHost));
+    CUDA_CHECK_AND_EXIT(cudaMemcpy(
+        h_X.data(), d_B.data(), sizeof(T) * num_batches * b_per_batch, cudaMemcpyDeviceToHost));
 
     static constexpr unsigned kernel_repeats         = 5;
     static constexpr unsigned kernel_warm_up_repeats = 5;
 
     // Compute cuBLAS reference solution and measure its performance in one call.
-    auto [h_B_ref, cublas_time_ms] =
-        example::reference_trsm<BLAS>(h_A, h_B_orig, num_batches, kernel_warm_up_repeats, kernel_repeats, stream);
+    auto [h_B_ref, cublas_time_ms] = example::reference_trsm<BLAS>(
+        h_A, h_B_orig, num_batches, kernel_warm_up_repeats, kernel_repeats, stream);
 
     const double l2_err = example::calculate_error(h_X, h_B_ref);
 
@@ -208,10 +219,12 @@ int simple_trsm() {
     // measurement runs start from the same data.  global_b still points to
     // d_B.data() - no need to recreate the tensor.
     // -----------------------------------------------------------------------
-    CUDA_CHECK_AND_EXIT(
-        cudaMemcpy(d_B.data(), h_B_orig.data(), sizeof(T) * padded_batches * b_per_batch, cudaMemcpyHostToDevice));
+    CUDA_CHECK_AND_EXIT(cudaMemcpy(d_B.data(), h_B_orig.data(),
+                                   sizeof(T) * padded_batches * b_per_batch,
+                                   cudaMemcpyHostToDevice));
 
-    const double time_ms = example::measure::execution(run_kernel, kernel_warm_up_repeats, kernel_repeats, stream);
+    const double time_ms =
+        example::measure::execution(run_kernel, kernel_warm_up_repeats, kernel_repeats, stream);
     CUDA_CHECK_AND_EXIT(cudaGetLastError());
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
@@ -219,16 +232,19 @@ int simple_trsm() {
     // same as MAGMA: https://github.com/CEED/MAGMA/blob/master/testing/flops.h
     const double flops_mul_single = (is_left ? (0.5 * (M + 1) * M * N) : (0.5 * M * (N + 1) * N));
     const double flops_add_single = (is_left ? (0.5 * (M - 1) * M * N) : (0.5 * M * (N - 1) * N));
-    const double flops            = padded_batches * (flops_mul_single + flops_add_single);
+    const double flops       = padded_batches * (flops_mul_single + flops_add_single);
 
-    const double avg_time_ms   = time_ms / kernel_repeats;
+    const double avg_time_ms = time_ms / kernel_repeats;
     const double cublas_avg_ms = cublas_time_ms / kernel_repeats;
 
     std::cout << "cuBLASDx TRSM Block Example" << std::endl;
-    std::cout << "  M=" << M << "  N=" << N << "  Side=" << (is_left ? "left" : "right")
+    std::cout << "  M=" << M << "  N=" << N
+              << "  Side=" << (is_left ? "left" : "right")
               << "  Fill=" << (Fill == cublasdx::fill_mode::lower ? "lower" : "upper")
-              << "  Diag=" << (Diag == cublasdx::diag::unit ? "unit" : "non_unit") << "  Precision=float" << std::endl;
-    std::cout << "  BlockDim=" << num_threads << "  BPB=" << BPB << "  SharedMem=" << smem_bytes << " B" << std::endl;
+              << "  Diag=" << (Diag == cublasdx::diag::unit ? "unit" : "non_unit")
+              << "  Precision=float" << std::endl;
+    std::cout << "  BlockDim=" << num_threads << "  BPB=" << BPB << "  SharedMem=" << smem_bytes << " B"
+              << std::endl;
     std::cout << std::fixed << std::setprecision(4);
     std::cout << "  cuBLASDx block:" << std::endl;
     std::cout << "    Avg time [ms]: " << avg_time_ms << std::endl;
@@ -241,12 +257,17 @@ int simple_trsm() {
     std::cout << " =================================" << std::endl;
 
     CUDA_CHECK_AND_EXIT(cudaStreamDestroy(stream));
-    return 0;
+    if (example::is_error_acceptable<T>(l2_err)) {
+        return 0;
+    }
+    std::cout << "Failure" << std::endl;
+    return 1;
 }
 
 struct simple_trsm_functor {
     template<int Arch, cublasdx::sm_modifier Modifier>
-    int operator()(std::integral_constant<int, Arch>, std::integral_constant<cublasdx::sm_modifier, Modifier>) {
+    int operator()(std::integral_constant<int, Arch>,
+                   std::integral_constant<cublasdx::sm_modifier, Modifier>) {
         return simple_trsm<Arch>();
     }
 };

@@ -16,6 +16,7 @@
  */ 
 
 #include <cusolverdx.hpp>
+#include <cusolverdx_io.hpp>
 
 #include "../common/cudart.hpp"
 #include "../common/error_checking.hpp"
@@ -35,6 +36,8 @@ __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(DataType
                                                                         DataType*                     VT,
                                                                         typename Solver::status_type* info,
                                                                         const unsigned                batches) {
+    CUSOLVERDX_SKIP_IF_NOT_APPLICABLE_SM(Solver);
+
     using namespace cusolverdx;
 
     const auto batch_idx = blockIdx.x * BatchesPerBlock;

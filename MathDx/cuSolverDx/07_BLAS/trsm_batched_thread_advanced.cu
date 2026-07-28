@@ -44,6 +44,8 @@ using TRSM_base      = decltype(Size<M, 1>() + Precision<double>() + Type<type::
 
 template<class TRSM, class DataType = typename TRSM::a_data_type>
 __global__ void trsm_kernel(const DataType* A, DataType* B, const unsigned int batches) {
+    CUSOLVERDX_SKIP_IF_NOT_APPLICABLE_SM(TRSM);
+
     constexpr auto a_m  = (TRSM::side == cusolverdx::side::left) ? M : N;
     constexpr auto nrhs = TRSM::side == cusolverdx::side::left ? N : M;
 

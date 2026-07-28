@@ -13,62 +13,101 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-cmake_minimum_required(VERSION 3.23.0)
+cmake_minimum_required(VERSION 3.23...4.0)
 
 # cuRANDDx example project
-project(curanddx_example VERSION 0.2.3 LANGUAGES CXX CUDA)
+project(curanddx_example VERSION 0.2.4 LANGUAGES CXX CUDA)
 
 if(PROJECT_IS_TOP_LEVEL)
-    if(NOT MSVC)
-        set(CURANDDX_CUDA_CXX_FLAGS "${CURANDDX_CUDA_CXX_FLAGS} -Wall -Wextra")
-        set(CURANDDX_CUDA_CXX_FLAGS "${CURANDDX_CUDA_CXX_FLAGS} -fno-strict-aliasing")
+    # Creates curanddx_compiler_options INTERFACE target with compiler flags.
+    # Link it PRIVATE to example targets: target_link_libraries(t PRIVATE curanddx_compiler_options)
+    add_library(curanddx_compiler_options INTERFACE)
 
-        if(NOT ${CMAKE_SYSTEM_PROCESSOR} MATCHES "^aarch64")
-            set(CURANDDX_CUDA_CXX_FLAGS "${CURANDDX_CUDA_CXX_FLAGS} -m64")
-        endif()
-
-        if((CMAKE_CXX_COMPILER_ID STREQUAL "NVHPC") OR(CMAKE_CXX_COMPILER MATCHES ".*nvc\\+\\+.*"))
-            # Print error/warnings numbers
-            set(CURANDDX_CUDA_CXX_FLAGS "${CURANDDX_CUDA_CXX_FLAGS} --display_error_number")
-        endif()
-
-        if((CMAKE_CXX_COMPILER_ID STREQUAL "NVHPC") OR(CMAKE_CXX_COMPILER MATCHES ".*nvc\\+\\+.*"))
-            # set(CURANDDX_CUDA_CXX_FLAGS "${CURANDDX_CUDA_CXX_FLAGS} --diag_suppress=1,111,177,185,941")
-        endif()
-    else()
-        add_definitions(-D_CRT_SECURE_NO_WARNINGS)
-        add_definitions(-D_CRT_NONSTDC_NO_WARNINGS)
-        add_definitions(-D_SCL_SECURE_NO_WARNINGS)
-        add_definitions(-DNOMINMAX)
-        set(CURANDDX_CUDA_CXX_FLAGS "${CURANDDX_CUDA_CXX_FLAGS} /W3") # Warning level
-        set(CURANDDX_CUDA_CXX_FLAGS "${CURANDDX_CUDA_CXX_FLAGS} /WX") # All warnings are errors
-        set(CURANDDX_CUDA_CXX_FLAGS "${CURANDDX_CUDA_CXX_FLAGS} /Zc:__cplusplus") # Enable __cplusplus macro
-    endif()
-
-    # Global CXX flags/options
     set(CMAKE_CXX_STANDARD 17)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
     set(CMAKE_CXX_EXTENSIONS OFF)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CURANDDX_CUDA_CXX_FLAGS}")
-
-    # Global CUDA CXX flags/options
     set(CUDA_HOST_COMPILER ${CMAKE_CXX_COMPILER})
     set(CMAKE_CUDA_STANDARD 17)
     set(CMAKE_CUDA_STANDARD_REQUIRED ON)
     set(CMAKE_CUDA_EXTENSIONS OFF)
-    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xfatbin -compress-all") # Compress all fatbins
-    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcudafe --display_error_number") # Show error/warning numbers
-    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcompiler \"${CURANDDX_CUDA_CXX_FLAGS}\"")
+
+    if(NOT MSVC)
+        # Host flags applied to CXX sources directly; to CUDA sources via -Xcompiler so
+        # nvcc forwards them to the host compiler instead of misinterpreting them as nvcc flags.
+        target_compile_options(curanddx_compiler_options INTERFACE
+            $<$<COMPILE_LANGUAGE:CXX>:-Wall>
+            $<$<COMPILE_LANGUAGE:CXX>:-Wextra>
+            $<$<COMPILE_LANGUAGE:CXX>:-fno-strict-aliasing>
+            $<$<COMPILE_LANGUAGE:CXX>:-Wno-deprecated-declarations>
+            $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<NOT:$<STREQUAL:${CMAKE_SYSTEM_PROCESSOR},aarch64>>>:-m64>
+            $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-Wall>
+            $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-Wextra>
+            $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-fno-strict-aliasing>
+            $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-Wno-deprecated-declarations>
+            $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<NOT:$<STREQUAL:${CMAKE_SYSTEM_PROCESSOR},aarch64>>>:-Xcompiler=-m64>
+        )
+        if((CMAKE_CXX_COMPILER_ID STREQUAL "NVHPC") OR (CMAKE_CXX_COMPILER MATCHES ".*nvc\\+\\+.*"))
+            target_compile_options(curanddx_compiler_options INTERFACE
+                $<$<COMPILE_LANGUAGE:CXX>:--display_error_number>
+                $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=--display_error_number>
+            )
+        endif()
+        if((CMAKE_CXX_COMPILER_ID STREQUAL "Clang") OR (CMAKE_CXX_COMPILER MATCHES ".*clang.*"))
+            target_compile_options(curanddx_compiler_options INTERFACE
+                $<$<COMPILE_LANGUAGE:CXX>:-Wno-unused-function>
+                $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-Wno-unused-function>
+            )
+        endif()
+    else()
+        target_compile_definitions(curanddx_compiler_options INTERFACE
+            _CRT_SECURE_NO_WARNINGS
+            _CRT_NONSTDC_NO_WARNINGS
+            _SCL_SECURE_NO_WARNINGS
+            NOMINMAX
+        )
+        target_compile_options(curanddx_compiler_options INTERFACE
+            $<$<COMPILE_LANGUAGE:CXX>:/W3>
+            $<$<COMPILE_LANGUAGE:CXX>:/WX>
+            $<$<COMPILE_LANGUAGE:CXX>:/Zc:__cplusplus>
+            $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/W3>
+            $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/WX>
+            $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/Zc:__cplusplus>
+        )
+    endif()
+
+    target_compile_options(curanddx_compiler_options INTERFACE
+        $<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xfatbin -compress-all>
+        $<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcudafe --display_error_number>
+    )
 
     # Targeted CUDA Architectures, see https://cmake.org/cmake/help/latest/prop_tgt/CUDA_ARCHITECTURES.html#prop_tgt:CUDA_ARCHITECTURES
     set(CURANDDX_CUDA_ARCHITECTURES 80-real CACHE
         STRING "List of targeted cuRANDDx CUDA architectures, for example \"75-real;80-real\""
     )
 
-    # Remove unsupported architectures (minimum Turing / SM75)
-    list(REMOVE_ITEM CURANDDX_CUDA_ARCHITECTURES 30;32;35;37;50;52;53;70;72)
-    list(REMOVE_ITEM CURANDDX_CUDA_ARCHITECTURES 30-real;32-real;35-real;37-real;50-real;52-real;53-real;70-real;72-real)
-    list(REMOVE_ITEM CURANDDX_CUDA_ARCHITECTURES 30-virtual;32-virtual;35-virtual;37-virtual;50-virtual;52-virtual;53-virtual;70-virtual;72-virtual)
+    # Remove unsupported architectures below SM75 (minimum Turing).
+    set(_curanddx_archs_filtered)
+    foreach(_arch IN LISTS CURANDDX_CUDA_ARCHITECTURES)
+        if(_arch MATCHES "^([0-9]+)")
+            if(CMAKE_MATCH_1 GREATER_EQUAL 75)
+                list(APPEND _curanddx_archs_filtered "${_arch}")
+            else()
+                message(WARNING "curanddx: removing unsupported CUDA architecture ${_arch} (minimum SM75)")
+            endif()
+        else()
+            if(_arch MATCHES "^(all|all-major|native)$")
+                list(APPEND _curanddx_archs_filtered "${_arch}")
+            else()
+                message(FATAL_ERROR "curanddx: unrecognized CUDA architecture '${_arch}'. "
+                    "Expected SM75+ format (e.g. \"80-real\") or one of: all, all-major, native.")
+            endif()
+        endif()
+    endforeach()
+    set(CURANDDX_CUDA_ARCHITECTURES "${_curanddx_archs_filtered}" CACHE STRING
+        "List of targeted cuRANDDx CUDA architectures (SM75+), for example \"75-real;80-real\""
+        FORCE)
+    unset(_curanddx_archs_filtered)
+    unset(_arch)
     message(STATUS "Targeted cuRANDDx CUDA Architectures: ${CURANDDX_CUDA_ARCHITECTURES}")
 endif()
 
@@ -81,7 +120,7 @@ if(PROJECT_IS_TOP_LEVEL)
             "${PROJECT_SOURCE_DIR}/../.." # example/curanddx
             "/opt/nvidia/mathdx/*"
     )
-    set(CURANDDX_MIN_VERSION 0.2.3)
+    set(CURANDDX_MIN_VERSION 0.2.4)
     if(curanddx_VERSION VERSION_LESS ${CURANDDX_MIN_VERSION})
         message(FATAL_ERROR "cuRANDDx version (${curanddx_VERSION}) is less than ${CURANDDX_MIN_VERSION}")
     endif()
@@ -118,6 +157,7 @@ function(add_curanddx_example2_nvpl_rand GROUP_TARGET EXAMPLE_NAME ENABLE_RELAXE
 
     target_link_libraries(${EXAMPLE_TARGET}
         PRIVATE
+            curanddx_compiler_options
             mathdx::curanddx
             CUDA::curand
     )
@@ -133,8 +173,6 @@ function(add_curanddx_example2_nvpl_rand GROUP_TARGET EXAMPLE_NAME ENABLE_RELAXE
     )
     target_compile_options(${EXAMPLE_TARGET}
         PRIVATE
-        "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xfatbin -compress-all>"
-
         # Required to support std::tuple in device code
         "$<$<BOOL:${ENABLE_RELAXED_CONSTEXPR}>:$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--expt-relaxed-constexpr>>"
     )
@@ -160,6 +198,7 @@ function(add_curanddx_example2 GROUP_TARGET EXAMPLE_NAME ENABLE_RELAXED_CONSTEXP
 
     target_link_libraries(${EXAMPLE_TARGET}
         PRIVATE
+        curanddx_compiler_options
         mathdx::curanddx
         CUDA::curand
     )
@@ -171,8 +210,6 @@ function(add_curanddx_example2 GROUP_TARGET EXAMPLE_NAME ENABLE_RELAXED_CONSTEXP
     )
     target_compile_options(${EXAMPLE_TARGET}
         PRIVATE
-        "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xfatbin -compress-all>"
-
         # Required to support std::tuple in device code
         "$<$<BOOL:${ENABLE_RELAXED_CONSTEXPR}>:$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--expt-relaxed-constexpr>>"
     )
@@ -197,6 +234,7 @@ function(add_curanddx_nvrtc_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
 
     target_link_libraries(${EXAMPLE_TARGET}
         PRIVATE
+            curanddx_compiler_options
             mathdx::curanddx
             CUDA::cudart
             CUDA::cuda_driver
@@ -221,10 +259,6 @@ function(add_curanddx_nvrtc_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
             CURANDDX_INCLUDE_DIRS="${curanddx_INCLUDE_DIRS}"
     )
     add_test(NAME ${EXAMPLE_NAME} COMMAND ${EXAMPLE_TARGET})
-    target_compile_options(${EXAMPLE_TARGET}
-        PRIVATE
-        "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xfatbin -compress-all>"
-    )
     set_tests_properties(${EXAMPLE_NAME}
         PROPERTIES
         LABELS "EXAMPLE"

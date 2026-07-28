@@ -119,7 +119,7 @@ cufftDescriptionHandle createDescriptionHandleWithTraits(const cufftdx_traits& t
         std::exit(1);
     }
     // Map frontend traits to backend traits
-    const auto backend_traits = cufftdx::utils::frontend_to_backend(traits.algorithm,
+    const auto backend_traits = cufftdx::experimental::utils::frontend_to_backend(traits.algorithm,
                                                                     traits.execution_type.value(),
                                                                     traits.size.value(),
                                                                     traits.type,

@@ -14,10 +14,10 @@
 # limitations under the License.
 
 
-cmake_minimum_required(VERSION 3.18)
+cmake_minimum_required(VERSION 3.18...4.0)
 
 # cuSOLVERDx examples project
-project(cusolverdx_examples VERSION 0.4.0 LANGUAGES CXX CUDA)
+project(cusolverdx_examples VERSION 0.5.0 LANGUAGES CXX CUDA)
 
 # PROJECT_IS_TOP_LEVEL is available since 3.21
 if(CMAKE_VERSION VERSION_LESS 3.21)
@@ -29,7 +29,25 @@ if(CMAKE_VERSION VERSION_LESS 3.21)
     endif()
 endif()
 
+set(CUSOLVERDX_EXAMPLES_DEBUG_BUILD OFF)
+if((CMAKE_BUILD_TYPE STREQUAL "DEBUG") OR (CMAKE_BUILD_TYPE STREQUAL "Debug"))
+    set(CUSOLVERDX_EXAMPLES_DEBUG_BUILD ON)
+endif()
+message(STATUS "CUSOLVERDX_EXAMPLES_DEBUG_BUILD: ${CUSOLVERDX_EXAMPLES_DEBUG_BUILD}")
+set(CUSOLVERDX_EXAMPLES_LINUX_X86_64 OFF)
+if((CMAKE_SYSTEM_NAME STREQUAL "Linux") AND (CMAKE_SYSTEM_PROCESSOR MATCHES "(x86)|(X86)|(amd64)|(AMD64)"))
+    set(CUSOLVERDX_EXAMPLES_LINUX_X86_64 ON)
+endif()
+message(STATUS "CUSOLVERDX_EXAMPLES_LINUX_X86_64: ${CUSOLVERDX_EXAMPLES_LINUX_X86_64}")
+
 if(PROJECT_IS_TOP_LEVEL)
+    if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+        message(STATUS "Setting build type to 'Release' as none was specified. Set CMAKE_BUILD_TYPE variable to change build type.")
+        set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build." FORCE)
+        set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "" "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
+    endif()
+    message(STATUS "CMAKE_BUILD_TYPE set to: ${CMAKE_BUILD_TYPE}")
+
     # Enable running examples with CTest
     enable_testing()
 
@@ -39,84 +57,124 @@ if(PROJECT_IS_TOP_LEVEL)
     include(GNUInstallDirs)
     set(CUSOLVERDX_EXAMPLES_BIN_INSTALL_DIR "${CMAKE_INSTALL_BINDIR}/${PROJECT_NAME}/example/")
 
-    # Include custom CMake modules/scripts
-    list(APPEND CMAKE_MODULE_PATH
-        ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/
-    )
+    # Creates cusolverdx_compiler_options INTERFACE target with compiler flags.
+    # Link it PRIVATE to example targets: target_link_libraries(t PRIVATE cusolverdx_compiler_options)
+    add_library(cusolverdx_compiler_options INTERFACE)
 
-    if(NOT MSVC)
-        set(CUSOLVERDX_CUDA_CXX_FLAGS "${CUSOLVERDX_CUDA_CXX_FLAGS} -Wall -Wextra")
-        set(CUSOLVERDX_CUDA_CXX_FLAGS "${CUSOLVERDX_CUDA_CXX_FLAGS} -fno-strict-aliasing")
-        set(CUSOLVERDX_CUDA_CXX_FLAGS "${CUSOLVERDX_CUDA_CXX_FLAGS} -Wno-deprecated-declarations")
-
-        if(NOT ${CMAKE_SYSTEM_PROCESSOR} MATCHES "^aarch64")
-            set(CUSOLVERDX_CUDA_CXX_FLAGS "${CUSOLVERDX_CUDA_CXX_FLAGS} -m64")
-        endif()
-
-        if((CMAKE_CXX_COMPILER_ID STREQUAL "NVHPC") OR (CMAKE_CXX_COMPILER MATCHES ".*nvc\\+\\+.*"))
-            # Print error/warnings numbers
-            set(CUSOLVERDX_CUDA_CXX_FLAGS "${CUSOLVERDX_CUDA_CXX_FLAGS} --display_error_number")
-        endif()
-
-        if((CMAKE_CXX_COMPILER_ID STREQUAL "NVHPC") OR (CMAKE_CXX_COMPILER MATCHES ".*nvc\\+\\+.*"))
-            # if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 23.1.0)
-            set(CUSOLVERDX_CUDA_CXX_FLAGS "${CUSOLVERDX_CUDA_CXX_FLAGS} --diag_suppress1")
-            set(CUSOLVERDX_CUDA_CXX_FLAGS "${CUSOLVERDX_CUDA_CXX_FLAGS} --diag_suppress111")
-            set(CUSOLVERDX_CUDA_CXX_FLAGS "${CUSOLVERDX_CUDA_CXX_FLAGS} --diag_suppress177")
-            set(CUSOLVERDX_CUDA_CXX_FLAGS "${CUSOLVERDX_CUDA_CXX_FLAGS} --diag_suppress941")
-
-            # endif()
-        endif()
-
-        # because -Wall is passed, all diagnostic ignores of -Wunkown-pragmas
-        # are ignored, which leads to unlegible CuTe compilation output
-        # fixed in GCC13 https://gcc.gnu.org/bugzilla/show_bug.cgi?id=53431
-        # but still not widely adopted
-        set(CUSOLVERDX_CUDA_CXX_FLAGS "${CUSOLVERDX_CUDA_CXX_FLAGS} -Wno-unknown-pragmas")
-
-        # CUTLASS/CuTe workarounds
-        set(CUSOLVERDX_CUDA_CXX_FLAGS "${CUSOLVERDX_CUDA_CXX_FLAGS} -Wno-switch")
-        set(CUSOLVERDX_CUDA_CXX_FLAGS "${CUSOLVERDX_CUDA_CXX_FLAGS} -Wno-unused-but-set-parameter")
-        set(CUSOLVERDX_CUDA_CXX_FLAGS "${CUSOLVERDX_CUDA_CXX_FLAGS} -Wno-sign-compare")
-
-    else()
-        add_definitions(-D_CRT_SECURE_NO_WARNINGS)
-        add_definitions(-D_CRT_NONSTDC_NO_WARNINGS)
-        add_definitions(-D_SCL_SECURE_NO_WARNINGS)
-        add_definitions(-DNOMINMAX)
-        set(CUSOLVERDX_CUDA_CXX_FLAGS "${CUSOLVERDX_CUDA_CXX_FLAGS} /W3") # Warning level
-        set(CUSOLVERDX_CUDA_CXX_FLAGS "${CUSOLVERDX_CUDA_CXX_FLAGS} /WX") # All warnings are errors
-        set(CUSOLVERDX_CUDA_CXX_FLAGS "${CUSOLVERDX_CUDA_CXX_FLAGS} /Zc:__cplusplus") # Enable __cplusplus macro
-    endif()
-
-    if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0.0)
-        message(FATAL_ERROR "cuSOLVERDx examples require CUDA 13.0.0 or newer, but the compiler version is ${CMAKE_CUDA_COMPILER_VERSION}")
-    endif()
-
-    # Global CXX flags/options
     set(CMAKE_CXX_STANDARD 17)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
     set(CMAKE_CXX_EXTENSIONS OFF)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CUSOLVERDX_CUDA_CXX_FLAGS}")
-
-    # Global CUDA CXX flags/options
     set(CUDA_HOST_COMPILER ${CMAKE_CXX_COMPILER})
     set(CMAKE_CUDA_STANDARD 17)
     set(CMAKE_CUDA_STANDARD_REQUIRED ON)
     set(CMAKE_CUDA_EXTENSIONS OFF)
-    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xfatbin -compress-all") # Compress all fatbins
-    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcudafe --display_error_number") # Show error/warning numbers
-    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcompiler \"${CUSOLVERDX_CUDA_CXX_FLAGS}\"")
+
+    if(NOT MSVC)
+        # Host flags applied to CXX sources directly; to CUDA sources via -Xcompiler so
+        # nvcc forwards them to the host compiler instead of misinterpreting them as nvcc flags.
+        target_compile_options(cusolverdx_compiler_options INTERFACE
+            $<$<COMPILE_LANGUAGE:CXX>:-Wall>
+            $<$<COMPILE_LANGUAGE:CXX>:-Wextra>
+            $<$<COMPILE_LANGUAGE:CXX>:-fno-strict-aliasing>
+            $<$<COMPILE_LANGUAGE:CXX>:-Wno-deprecated-declarations>
+            $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<NOT:$<STREQUAL:${CMAKE_SYSTEM_PROCESSOR},aarch64>>>:-m64>
+            $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-Wall>
+            $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-Wextra>
+            $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-fno-strict-aliasing>
+            $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-Wno-deprecated-declarations>
+            $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<NOT:$<STREQUAL:${CMAKE_SYSTEM_PROCESSOR},aarch64>>>:-Xcompiler=-m64>
+        )
+        if((CMAKE_CXX_COMPILER_ID STREQUAL "NVHPC") OR (CMAKE_CXX_COMPILER MATCHES ".*nvc\\+\\+.*"))
+            target_compile_options(cusolverdx_compiler_options INTERFACE
+                $<$<COMPILE_LANGUAGE:CXX>:--display_error_number>
+                $<$<COMPILE_LANGUAGE:CXX>:--diag_suppress1>
+                $<$<COMPILE_LANGUAGE:CXX>:--diag_suppress111>
+                $<$<COMPILE_LANGUAGE:CXX>:--diag_suppress177>
+                $<$<COMPILE_LANGUAGE:CXX>:--diag_suppress185>
+                $<$<COMPILE_LANGUAGE:CXX>:--diag_suppress941>
+                $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=--display_error_number>
+                $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=--diag_suppress1>
+                $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=--diag_suppress111>
+                $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=--diag_suppress177>
+                $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=--diag_suppress185>
+                $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=--diag_suppress941>
+            )
+        endif()
+        if((CMAKE_CXX_COMPILER_ID STREQUAL "Clang") OR (CMAKE_CXX_COMPILER MATCHES ".*clang.*"))
+            target_compile_options(cusolverdx_compiler_options INTERFACE
+                $<$<COMPILE_LANGUAGE:CXX>:-Wno-unused-function>
+                $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-Wno-unused-function>
+            )
+        endif()
+        # CUTLASS/CuTe workarounds
+        target_compile_options(cusolverdx_compiler_options INTERFACE
+            $<$<COMPILE_LANGUAGE:CXX>:-Wno-switch>
+            $<$<COMPILE_LANGUAGE:CXX>:-Wno-unknown-pragmas>
+            $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<AND:$<CXX_COMPILER_ID:Clang>,$<VERSION_LESS:${CMAKE_CXX_COMPILER_VERSION},13.0.1>>>:-Wno-unused-parameter>
+            $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<OR:$<CXX_COMPILER_ID:NVHPC>,$<STREQUAL:${CMAKE_CXX_COMPILER},nvc++>>>:-Wno-unused-parameter>
+            $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<NOT:$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:NVHPC>>>>:-Wno-unused-but-set-parameter>
+            $<$<COMPILE_LANGUAGE:CXX>:-Wno-sign-compare>
+            $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-Wno-switch>
+            $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-Wno-unknown-pragmas>
+            $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<AND:$<CXX_COMPILER_ID:Clang>,$<VERSION_LESS:${CMAKE_CXX_COMPILER_VERSION},13.0.1>>>:-Xcompiler=-Wno-unused-parameter>
+            $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<OR:$<CXX_COMPILER_ID:NVHPC>,$<STREQUAL:${CMAKE_CXX_COMPILER},nvc++>>>:-Xcompiler=-Wno-unused-parameter>
+            $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<NOT:$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:NVHPC>>>>:-Xcompiler=-Wno-unused-but-set-parameter>
+            $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-Wno-sign-compare>
+        )
+    else()
+        target_compile_definitions(cusolverdx_compiler_options INTERFACE
+            _CRT_SECURE_NO_WARNINGS
+            _CRT_NONSTDC_NO_WARNINGS
+            _SCL_SECURE_NO_WARNINGS
+            NOMINMAX
+        )
+        target_compile_options(cusolverdx_compiler_options INTERFACE
+            $<$<COMPILE_LANGUAGE:CXX>:/W3>
+            $<$<COMPILE_LANGUAGE:CXX>:/WX>
+            $<$<COMPILE_LANGUAGE:CXX>:/Zc:__cplusplus>
+            $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/W3>
+            $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/WX>
+            $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/Zc:__cplusplus>
+        )
+    endif()
+
+    target_compile_options(cusolverdx_compiler_options INTERFACE
+        $<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xfatbin -compress-all>
+        $<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcudafe --display_error_number>
+        # Enable lineinfo in Release
+        $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<CONFIG:Release>>:SHELL:-lineinfo>
+        # Enable device debugging for static library only in Debug mode
+        $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<AND:$<NOT:$<BOOL:$<TARGET_PROPERTY:INTERPROCEDURAL_OPTIMIZATION>>>,$<CONFIG:Debug>>>:-G>
+    )
 
     # Targeted CUDA Architectures, see https://cmake.org/cmake/help/latest/prop_tgt/CUDA_ARCHITECTURES.html#prop_tgt:CUDA_ARCHITECTURES
     set(CUSOLVERDX_CUDA_ARCHITECTURES 80-real CACHE
-        STRING "List of targeted cuSOLVERDx CUDA architectures, for example \"75-real;80-real\""
+        STRING "List of targeted cuSOLVERDx CUDA architectures (SM75+), for example \"75-real;80-real\""
     )
 
-    # Remove architectures below SM75
-    list(REMOVE_ITEM CUSOLVERDX_CUDA_ARCHITECTURES 30;32;35;37;50;52;53;60;61;62;70;72)
-    list(REMOVE_ITEM CUSOLVERDX_CUDA_ARCHITECTURES 30-real;32-real;35-real;37-real;50-real;52-real;53-real;60-real;61-real;62-real;70-real;72-real)
-    list(REMOVE_ITEM CUSOLVERDX_CUDA_ARCHITECTURES 30-virtual;32-virtual;35-virtual;37-virtual;50-virtual;52-virtual;53-virtual;60-virtual;61-virtual;62-virtual;70-virtual;72-virtual)
+    # Remove unsupported architectures below SM75 (minimum Turing).
+    set(_cusolverdx_archs_filtered)
+    foreach(_arch IN LISTS CUSOLVERDX_CUDA_ARCHITECTURES)
+        if(_arch MATCHES "^([0-9]+)")
+            if(CMAKE_MATCH_1 GREATER_EQUAL 75)
+                list(APPEND _cusolverdx_archs_filtered "${_arch}")
+            else()
+                message(WARNING "cusolverdx: removing unsupported CUDA architecture ${_arch} (minimum SM75)")
+            endif()
+        else()
+            if(_arch MATCHES "^(all|all-major|native)$")
+                list(APPEND _cusolverdx_archs_filtered "${_arch}")
+            else()
+                message(FATAL_ERROR "cusolverdx: unrecognized CUDA architecture '${_arch}'. "
+                    "Expected SM75+ format (e.g. \"80-real\") or one of: all, all-major, native.")
+            endif()
+        endif()
+    endforeach()
+    set(CUSOLVERDX_CUDA_ARCHITECTURES "${_cusolverdx_archs_filtered}" CACHE STRING
+        "List of targeted cuSOLVERDx CUDA architectures (SM75+), for example \"75-real;80-real\""
+        FORCE)
+    unset(_cusolverdx_archs_filtered)
+    unset(_arch)
     message(STATUS "Targeted cuSOLVERDx CUDA Architectures: ${CUSOLVERDX_CUDA_ARCHITECTURES}")
 endif()
 
@@ -130,10 +188,14 @@ if(PROJECT_IS_TOP_LEVEL)
             "${PROJECT_SOURCE_DIR}/../.." # example/cusolverdx
             "${INSTALLED_MATHDX_DIRECTORIES}"
     )
-    set(CUSOLVERDX_MIN_VERSION 0.4.0)
+    set(CUSOLVERDX_MIN_VERSION 0.5.0)
     if(cusolverdx_VERSION VERSION_LESS ${CUSOLVERDX_MIN_VERSION})
         message(FATAL_ERROR "cuSOLVERDx version (${cusolverdx_VERSION}) is less than ${CUSOLVERDX_MIN_VERSION}")
     endif()
+endif()
+
+if(TARGET mathdx::cublasdx AND NOT DEFINED cusolverdx_cublasdx_INCLUDE_DIRS)
+    get_property(cusolverdx_cublasdx_INCLUDE_DIRS TARGET mathdx::cublasdx PROPERTY INTERFACE_INCLUDE_DIRECTORIES)
 endif()
 
 # CUDA Toolkit
@@ -166,13 +228,17 @@ endfunction()
 # ###############################################################
 # link_lto_library_workaround
 # ###############################################################
-# Workaround for LTO support in CMAKE <3.25
-function(link_lto_library_workaround EXAMPLE_TARGET LTO_LIBRARY LTO_FATBIN_FILE CUDA_ARCHITECTURES)
-    target_link_options(${EXAMPLE_TARGET}
+# Workaround for LTO support in CMAKE <3.25.  INTERPROCEDURAL_OPTIMIZATION
+# handles device LTO natively from CMake 3.25 onward; on older CMake the
+# device-link flag and per-arch lto-code generation must be added manually.
+# The example file declares cmake_minimum_required(3.18...4.0), so users on
+# CMake 3.18-3.24 hit this path.
+function(link_lto_library_workaround TARGET_NAME CUDA_ARCHITECTURES)
+    target_link_options(${TARGET_NAME}
         PRIVATE
             $<DEVICE_LINK:-dlto>
     )
-    target_compile_options(${EXAMPLE_TARGET}
+    target_compile_options(${TARGET_NAME}
         PRIVATE
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-rdc=true>"
     )
@@ -180,15 +246,13 @@ function(link_lto_library_workaround EXAMPLE_TARGET LTO_LIBRARY LTO_FATBIN_FILE 
         # Extract SM from SM-real/SM-virtual
         string(REPLACE "-" ";" CUDA_ARCH_LIST ${CUDA_ARCH})
         list(GET CUDA_ARCH_LIST 0 ARCH)
-        if(${ARCH} STREQUAL "90a")
-            set(ARCH 90)
-        endif()
-        target_compile_options(${EXAMPLE_TARGET}
+        target_compile_options(${TARGET_NAME}
             PRIVATE
                 "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--generate-code arch=compute_${ARCH},code=lto_${ARCH}>"
         )
     endforeach()
 endfunction()
+
 
 # ##############################################################
 # Common example objects
@@ -196,7 +260,7 @@ endfunction()
 set(common_example_objects_sources common/error_checking.cpp)
 set_source_files_properties("${common_example_objects_sources}" PROPERTIES LANGUAGE CUDA)
 add_library(common_example_objects STATIC "${common_example_objects_sources}")
-target_link_libraries(common_example_objects PRIVATE mathdx::cusolverdx_fatbin)
+target_link_libraries(common_example_objects PRIVATE cusolverdx_compiler_options mathdx::cusolverdx_fatbin)
 target_compile_definitions(common_example_objects PRIVATE CUSOLVERDX_TEST_NO_GTEST)
 set_target_properties(common_example_objects
     PROPERTIES
@@ -211,30 +275,37 @@ function(add_cublasdx_cusolverdx_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURC
     get_filename_component(EXAMPLE_TARGET ${EXAMPLE_MAIN_SOURCE} NAME_WE)
     set_source_files_properties(${EXAMPLE_SOURCES} PROPERTIES LANGUAGE CUDA)
     add_executable(${EXAMPLE_TARGET} ${EXAMPLE_SOURCES})
-    target_link_libraries(${EXAMPLE_TARGET} PRIVATE mathdx::cusolverdx_fatbin)
+    set_target_properties(${EXAMPLE_TARGET}
+        PROPERTIES
+            CUDA_SEPARABLE_COMPILATION ON
+            CUDA_ARCHITECTURES "${CUSOLVERDX_CUDA_ARCHITECTURES}"
+    )
+    # Debugging only supported with static library, so it's limited to Linux x86-64 platforms
+    if(CUSOLVERDX_EXAMPLES_DEBUG_BUILD AND CUSOLVERDX_EXAMPLES_LINUX_X86_64)
+        target_link_libraries(${EXAMPLE_TARGET} PRIVATE mathdx::cusolverdx)
+    else()
+        # Enables LTO, this is basically "$<DEVICE_LINK:-dlto>" but it requires CMake 3.25+
+        set_target_properties(${EXAMPLE_TARGET} PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+        # Workaround for LTO support in CMAKE <3.25
+        if(CMAKE_VERSION VERSION_LESS 3.25)
+            link_lto_library_workaround(${EXAMPLE_TARGET} "${CUSOLVERDX_CUDA_ARCHITECTURES}")
+        endif()
+        target_link_libraries(${EXAMPLE_TARGET} PRIVATE mathdx::cusolverdx_fatbin)
+    endif()
     target_link_libraries(${EXAMPLE_TARGET}
         PRIVATE
+            cusolverdx_compiler_options
             mathdx::cublasdx
             CUDA::cusolver
             common_example_objects
     )
     add_test(NAME ${EXAMPLE_NAME} COMMAND ${EXAMPLE_TARGET})
-    set_target_properties(${EXAMPLE_TARGET}
-        PROPERTIES
-            CUDA_SEPARABLE_COMPILATION ON
-            INTERPROCEDURAL_OPTIMIZATION ON # This is basically "$<DEVICE_LINK:-dlto>" but it requires CMake 3.25+
-            CUDA_ARCHITECTURES "${CUSOLVERDX_CUDA_ARCHITECTURES}"
-    )
     target_compile_options(${EXAMPLE_TARGET}
         PRIVATE
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xfatbin -compress-all>"
             # Required to support std::tuple in device code
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--expt-relaxed-constexpr>"
     )
-    # Workaround for LTO support in CMAKE <3.25
-    if(CMAKE_VERSION VERSION_LESS 3.25)
-        link_lto_library_workaround(${EXAMPLE_TARGET} mathdx::cusolverdx "${cusolverdx_FATBIN}" "${CUSOLVERDX_CUDA_ARCHITECTURES}")
-    endif()
     set_tests_properties(${EXAMPLE_NAME}
         PROPERTIES
             LABELS "EXAMPLE"
@@ -253,12 +324,23 @@ function(add_cusolverdx_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
     set_target_properties(${EXAMPLE_TARGET}
         PROPERTIES
             CUDA_SEPARABLE_COMPILATION ON
-            INTERPROCEDURAL_OPTIMIZATION ON # This is basically "$<DEVICE_LINK:-dlto>" but it requires CMake 3.25+
             CUDA_ARCHITECTURES "${CUSOLVERDX_CUDA_ARCHITECTURES}"
     )
-    target_link_libraries(${EXAMPLE_TARGET} PRIVATE mathdx::cusolverdx_fatbin)
+    # Debugging only supported with static library, so it's limited to Linux x86-64 platforms
+    if(CUSOLVERDX_EXAMPLES_DEBUG_BUILD AND CUSOLVERDX_EXAMPLES_LINUX_X86_64)
+        target_link_libraries(${EXAMPLE_TARGET} PRIVATE mathdx::cusolverdx)
+    else()
+        # Enables LTO, this is basically "$<DEVICE_LINK:-dlto>" but it requires CMake 3.25+
+        set_target_properties(${EXAMPLE_TARGET} PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+        # Workaround for LTO support in CMAKE <3.25
+        if(CMAKE_VERSION VERSION_LESS 3.25)
+            link_lto_library_workaround(${EXAMPLE_TARGET} "${CUSOLVERDX_CUDA_ARCHITECTURES}")
+        endif()
+        target_link_libraries(${EXAMPLE_TARGET} PRIVATE mathdx::cusolverdx_fatbin)
+    endif()
     target_link_libraries(${EXAMPLE_TARGET}
         PRIVATE
+            cusolverdx_compiler_options
             CUDA::cusolver
             CUDA::cusparse
             common_example_objects
@@ -268,10 +350,6 @@ function(add_cusolverdx_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
         PRIVATE
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xfatbin -compress-all>"
     )
-    # Workaround for LTO support in CMAKE <3.25
-    if(CMAKE_VERSION VERSION_LESS 3.25)
-        link_lto_library_workaround(${EXAMPLE_TARGET} mathdx::cusolverdx "${cusolverdx_FATBIN}" "${CUSOLVERDX_CUDA_ARCHITECTURES}")
-    endif()
     set_tests_properties(${EXAMPLE_NAME}
         PROPERTIES
             LABELS "EXAMPLE"
@@ -289,6 +367,7 @@ function(add_cusolverdx_nvrtc_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
     add_executable(${EXAMPLE_TARGET} ${EXAMPLE_SOURCES})
     target_link_libraries(${EXAMPLE_TARGET}
         PRIVATE
+            cusolverdx_compiler_options
             CUDA::cudart
             CUDA::cuda_driver
             CUDA::nvrtc
@@ -312,12 +391,17 @@ function(add_cusolverdx_nvrtc_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
             CUSOLVERDX_INCLUDE_DIRS="${cusolverdx_INCLUDE_DIRS}"
             CUSOLVERDX_LIBRARY="$<TARGET_FILE:mathdx::cusolverdx>"
     )
-    # Use fatbin for CTK < 12.1 Update 1 (bug workaround), and for arm/aarch64 (.a file is x86-64 library)
-    if((NOT CMAKE_SYSTEM_PROCESSOR MATCHES "(x86)|(X86)|(amd64)|(AMD64)") OR (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12.1.105))
+    # Use fatbin for arm/aarch64 (.a file is x86-64 library)
+    if((NOT CMAKE_SYSTEM_PROCESSOR MATCHES "(x86)|(X86)|(amd64)|(AMD64)"))
         target_compile_definitions(${EXAMPLE_TARGET}
             PRIVATE
                 CUSOLVERDX_FATBIN="${cusolverdx_FATBIN}"
         )
+        if(TARGET cusolverdx_fatbin)
+            add_dependencies(${EXAMPLE_TARGET} cusolverdx_fatbin)
+        endif()
+    elseif(TARGET cusolverdx)
+        add_dependencies(${EXAMPLE_TARGET} cusolverdx)
     endif()
     add_test(NAME ${EXAMPLE_NAME} COMMAND ${EXAMPLE_TARGET})
     set_tests_properties(${EXAMPLE_NAME}
@@ -372,8 +456,11 @@ add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.ungqr_batched_blo
 
 add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.htev_batched_thread" 04_Symmetric_Eigenvalues/htev_batched_thread.cu)
 add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.heev_batched_thread" 04_Symmetric_Eigenvalues/heev_batched_thread.cu)
+add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.hegst_batched_thread" 04_Symmetric_Eigenvalues/hegst_batched_thread.cu)
 add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.htev_batched_block" 04_Symmetric_Eigenvalues/htev_batched_block.cu)
 add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.heev_batched_block" 04_Symmetric_Eigenvalues/heev_batched_block.cu)
+add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.hegst_batched_block" 04_Symmetric_Eigenvalues/hegst_batched_block.cu)
+add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.hegv_batched_block" 04_Symmetric_Eigenvalues/hegv_batched_block.cu)
 
 add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.bdsvd_batched_thread" 05_Singular_Value_Decomposition/bdsvd_batched_thread.cu)
 add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.gesvd_batched_thread" 05_Singular_Value_Decomposition/gesvd_batched_thread.cu)
@@ -385,12 +472,14 @@ add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.trsm_batched_thre
 add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.trsm_batched_thread_advanced" 07_BLAS/trsm_batched_thread_advanced.cu)
 
 add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.geqrf_batched_performance" 09_Performance/geqrf_batched_performance.cu)
+
+# Cluster execution examples
+add_cublasdx_cusolverdx_example(cusolverdx_examples "cusolverdx.example.potrf_batched_cluster" 01_Linear_Solve/potrf_batched_cluster.cu)
+
 # cuBLASDx/cuSolverDx examples
-if(cublasdx_FOUND)
-    message(STATUS "cuBLASDx was found, examples requiring cuBLASDx enabled")
-    # Example for handling larger matrices directly out of global memory
-    add_cublasdx_cusolverdx_example(cusolverdx_examples "cusolverdx.example.blocked_potrf" 10_Advanced/blocked_potrf.cu)
-    add_cublasdx_cusolverdx_example(cusolverdx_examples "cusolverdx.example.reg_least_squares" 10_Advanced/reg_least_squares.cu)
- else()
-    message(STATUS "cuBLASDx was not found, examples requiring cuBLASDx disabled")
-endif()
+message(STATUS "cuBLASDx is required, examples requiring cuBLASDx enabled")
+# Example for handling larger matrices directly out of global memory
+add_cublasdx_cusolverdx_example(cusolverdx_examples "cusolverdx.example.blocked_potrf" 10_Advanced/blocked_potrf.cu)
+add_cublasdx_cusolverdx_example(cusolverdx_examples "cusolverdx.example.reg_least_squares" 10_Advanced/reg_least_squares.cu)
+add_cublasdx_cusolverdx_example(cusolverdx_examples "cusolverdx.example.cga_blocked_potrf_right_looking" 10_Advanced/cga_blocked_potrf_right_looking.cu)
+add_cublasdx_cusolverdx_example(cusolverdx_examples "cusolverdx.example.cga_tsqrhr" 10_Advanced/cga_tsqrhr.cu)

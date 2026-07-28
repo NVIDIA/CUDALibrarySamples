@@ -16,6 +16,7 @@
  */ 
 
 #include <cusolverdx.hpp>
+#include <cusolverdx_io.hpp>
 #include <cublasdx.hpp>
 
 #include "../common/cudart.hpp"
@@ -265,8 +266,8 @@ int blocked_potrf() {
     CUDA_CHECK_AND_EXIT(cudaStreamSynchronize(stream));
 
     for (int i = 0; i < info.size(); ++i) {
-        if (0 > info[i]) {
-            std::printf("%d-th parameter is wrong \n", -info[i]);
+        if (info[i] != 0) {
+            std::printf("batch %d: Cholesky info=%d (0 ok; >0 not positive definite at that leading minor)\n", i, info[i]);
             exit(1);
         }
     }

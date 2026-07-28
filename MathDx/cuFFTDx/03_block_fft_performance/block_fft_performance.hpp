@@ -34,6 +34,8 @@ template<class FFT>
 __launch_bounds__(FFT::max_threads_per_block) __global__ void block_fft_kernel(typename FFT::value_type*    data,
                                                                                unsigned int                 repeats,
                                                                                typename FFT::workspace_type workspace) {
+    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFT);
+
     using complex_type = typename FFT::value_type;
     extern __shared__ __align__(alignof(float4)) cufftdx::byte shared_mem[];
 

@@ -39,6 +39,8 @@ template<class FFT, example::dimension_description Dimension,
          class ComplexType = typename FFT::value_type>
 __launch_bounds__(FFT::max_threads_per_block) __global__
     void fft_3d_kernel_z(const ComplexType* input, ComplexType* output, typename FFT::workspace_type workspace) {
+    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFT);
+
     using complex_type = typename FFT::value_type;
     using io_type      = example::io_generic_strided<FFT>;
 
@@ -63,6 +65,8 @@ template<class FFT, bool UseSharedMemoryStridedIO, example::dimension_descriptio
          class ComplexType = typename FFT::value_type>
 __launch_bounds__(FFT::max_threads_per_block) __global__
     void fft_3d_kernel_yx(const ComplexType* input, ComplexType* output, typename FFT::workspace_type workspace) {
+    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFT);
+
     using complex_type = typename FFT::value_type;
     using io_type      = example::io_generic_strided<FFT>;
 
@@ -266,7 +270,7 @@ example::fft_results<T> cufftdx_fft_3d(T* input, T* output, cudaStream_t stream)
 // * cuFFTDx with enabled shared memory IO usually be the faster cuFFTDx option for larger (>512) sizes.
 // * The shared memory IO cuFFTDx has high shared memory requirements and will not work for all possible sizes in X dimension.
 template<unsigned int Arch>
-void fft_3d() {
+int fft_3d() {
     using precision_type                     = float;
     using complex_type                       = cufftdx::complex<precision_type>;
 
@@ -420,15 +424,16 @@ void fft_3d() {
 
     if (success) {
         std::cout << "\nSuccess\n";
+        return 0;
     } else {
         std::cout << "\nFailure\n";
-        std::exit(1);
+        return 1;
     }
 }
 
 template<unsigned int Arch>
 struct fft_3d_functor {
-    void operator()() { return fft_3d<Arch>(); }
+    int operator()() { return fft_3d<Arch>(); }
 };
 
 int main(int, char**) {

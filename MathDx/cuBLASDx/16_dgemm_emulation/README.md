@@ -96,7 +96,7 @@ constexpr int slices = 7;  // Number of slices (more = higher precision, more co
 ```cpp
 
     using tile_shape = cute::Shape<cute::Int<128>, cute::Int<128>, cute::Int<64>>;
-    using cta_shape  = cute::Shape<cute::Int<128>, cute::Int<1>, cute::Int<1>>;
+using cta_shape      = cute::Shape<cute::Int<128>, cute::Int<1>, cute::Int<1>>;
 ```
 
     ## #Problem Sizes
@@ -110,7 +110,7 @@ constexpr int slices = 7;  // Number of slices (more = higher precision, more co
 ## Building and Running
 
 ### Prerequisites
-- CUDA toolkit (12.0 or later)
+- CUDA toolkit (13.0 or later)
 - cuBLASDx library
 - GPU with Tensor Core support (recommended)
 

@@ -33,6 +33,7 @@ __launch_bounds__(BLAS::max_threads_per_block) //
                      const CValueType  alpha,
                      const CValueType  beta,
                      CValueType*       output) {
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(BLAS);
 
     using a_value_type   = AValueType;
     using b_value_type   = BValueType;
@@ -90,7 +91,7 @@ __launch_bounds__(BLAS::max_threads_per_block) //
 // * A, B, and C are matrices containing real half precision floating-point values.
 // * alpha and beta are values convertible to single precison floating-point values.
 // all operations happen in fp32 precision, with conversion happening in registers,
-// which allows to reduce memory transfers by half.
+// which reduces memory transfers by half.
 //
 // Input data is generated on host using random number generators, and later copied to
 // the global memory. Next, kernel with GEMM is executed, and then the matrix C (the result)
@@ -127,7 +128,7 @@ int simple_gemm() {
                           cublasdx::Alignment<sizeof(data_type), sizeof(data_type), sizeof(data_type)>() +
                           cublasdx::Block() + cublasdx::BlockDim<block_size>() + cublasdx::SM<Arch>());
 
-    // Allocate managed memory for a, b, c, and output
+    // Allocate device memory for a, b, c, and output
     data_type* inputs;
     data_type* output;
 
@@ -137,8 +138,8 @@ int simple_gemm() {
 
     auto inputs_size       = global_a_size + global_b_size + global_c_size;
     auto inputs_size_bytes = inputs_size * sizeof(data_type);
-    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&inputs, inputs_size_bytes));
-    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&output, global_c_size * sizeof(data_type)));
+    CUDA_CHECK_AND_EXIT(cudaMalloc(&inputs, inputs_size_bytes));
+    CUDA_CHECK_AND_EXIT(cudaMalloc(&output, global_c_size * sizeof(data_type)));
 
     data_type* a     = inputs;
     data_type* b     = a + (global_a_size);

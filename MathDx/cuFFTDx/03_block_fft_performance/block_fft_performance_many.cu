@@ -46,7 +46,7 @@ void block_fft_performance(const cudaStream_t& stream, bool verbose) {
 
 template<unsigned int Arch>
 struct block_fft_performance_functor {
-    void operator()() {
+    int operator()() {
         using namespace cufftdx;
 
         cudaStream_t stream;
@@ -91,6 +91,7 @@ struct block_fft_performance_functor {
         block_fft_performance<Arch, 4096, fft_type::c2r, float>(stream, default_verbose);
 
         CUDA_CHECK_AND_EXIT(cudaStreamDestroy(stream));
+        return 0;
     }
 };
 

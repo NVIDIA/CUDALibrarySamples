@@ -16,9 +16,12 @@
  */
 
 #include <array>
+#include <algorithm>
 #include <iostream>
 #include <system_error>
 #include <iomanip>
+#include <type_traits>
+#include <vector>
 
 #include <cuda_runtime_api.h>
 #include <cublasdx.hpp>
@@ -33,23 +36,24 @@ __launch_bounds__(DevicePipeline::max_threads_per_block, 1) __global__
                      Beta const                             beta,
                      CTensor                                global_c,
                      __grid_constant__ DevicePipeline const device_pipeline) {
-#ifdef __CUDA_ARCH__
-    if constexpr (cublasdx::sm_of_v<BLAS> == __CUDA_ARCH__) {
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(BLAS);
 
-        extern __shared__ __align__(device_pipeline.buffer_alignment()) cublasdx::byte smem[];
+    extern __shared__ __align__(device_pipeline.buffer_alignment()) cublasdx::byte smem[];
 
-        auto tile_pipeline = device_pipeline.get_tile(smem, blockIdx.x, blockIdx.y);
-        auto tile_gmem_c   = cublasdx::get_tile(global_c, BLAS::c_shape, blockIdx.x, blockIdx.y);
+    // Maximize L2 utilization by changing order of threadblocks
+    // In effect subsequent blocks form small sub-squares instead of
+    // flowing in rows or columns.
+    auto [output_tile_m, output_tile_n] = example::get_threadblock_swizzled_tile_coord<16>();
 
-        auto epilogue_functor = [&](auto& accumulator) {
-            auto d_fragment = accumulator.make_partition_and_copy(tile_gmem_c);
-            cublasdx::axpby(alpha, accumulator.get_results(), beta, d_fragment);
-            accumulator.partition_and_copy(d_fragment, tile_gmem_c);
-        };
+    // Get pipeline tile for this block
+    auto tile_pipeline = device_pipeline.get_tile(smem, output_tile_m, output_tile_n);
 
-        tile_pipeline.execute(epilogue_functor);
-    }
-#endif
+    // Get appropriate C tile for this block
+    auto tile_gmem_c   = cublasdx::get_tile(global_c, BLAS::c_shape, output_tile_m, output_tile_n);
+
+    tile_pipeline.execute([&](auto& accumulator) {
+        accumulator.axpby(alpha, beta, tile_gmem_c);
+    });
 }
 
 template<class BLAS,
@@ -62,17 +66,17 @@ template<class BLAS,
          class BValueType,
          class Beta,
          class CValueType>
-auto measure_cublasdx(GEMMShape         gemm_shape,
-                      GEMMArr           gemm_arr,
-                      GEMMLD            gemm_ld,
+auto measure_cublasdx(GEMMShape const   gemm_shape,
+                      GEMMArr const     gemm_arr,
+                      GEMMLD const      gemm_ld,
                       const Alpha       alpha,
                       const AValueType* a,
                       const BValueType* b,
                       const Beta        beta,
                       CValueType*       c,
-                      unsigned          kernel_warm_up_repeats,
-                      unsigned          kernel_repeats,
-                      cudaStream_t      stream) {
+                      unsigned const    kernel_warm_up_repeats,
+                      unsigned const    kernel_repeats,
+                      cudaStream_t const stream) {
     // Grid size configuration
     const auto [m, n, k]       = gemm_shape;
     const auto [lda, ldb, ldc] = gemm_ld;
@@ -84,34 +88,35 @@ auto measure_cublasdx(GEMMShape         gemm_shape,
     auto global_b = cublasdx::make_gmem_tensor<cute::get<1>(gemm_arr)>(b, k, n, ldb);
     auto global_c = cublasdx::make_gmem_tensor<cute::get<2>(gemm_arr)>(c, m, n, ldc);
 
-    int num_sms = 0;
-    CUDA_CHECK_AND_EXIT(cudaDeviceGetAttribute(&num_sms, cudaDevAttrMultiProcessorCount, 0));
-
-    // Note that if there is enough smem and register pressure is low then it might be possible to execute
-    // multiple persistent CTAs per SM
     dim3 grid_dim = dim3 {m / tile_m, n / tile_n, 1};
 
-    auto run_cublasdx_gemm = [&](cudaStream_t str) {
-        auto opt_device_pipeline = cublasdx::suggest_device_pipeline<PipelineDepth, BLAS>(global_a, global_b);
+    auto run_cublasdx_gemm = [&](cudaStream_t const str) {
+        auto pipeline =
+            cublasdx::suggest_pipeline<BLAS, cublasdx::internal_accumulator>(global_a, global_b);
 
-        if (not opt_device_pipeline) {
-            std::cout << "Incorrect pipeline configuration, please ensure global tensors are divisible by tile"
-                      << std::endl;
+        if (not pipeline) {
+            auto const error = pipeline.error();
+            std::cout << "Failed to create device pipeline";
+            if (error.code != cublasdx::pipeline_error_code::none) {
+                std::cout << ": " << cublasdx::pipeline_error_string(error.code);
+            }
+            if (error.get_cuda_error() != cudaSuccess) {
+                std::cout << " (" << cudaGetErrorString(error.get_cuda_error()) << ")";
+            }
+            std::cout << std::endl;
             exit(1);
         }
 
-        auto device_pipeline = opt_device_pipeline.value();
-
-        // Increase max dynamic shared memory for the kernel if needed.
         auto shared_memory_size = cublasdx::make_shared_storage_calculator()
-                                      .add(device_pipeline.buffer_alignment(), device_pipeline.buffer_size())
+                                      .add(pipeline->buffer_alignment(), pipeline->buffer_size())
                                       .get();
 
-        auto kernel = gemm_kernel<BLAS, Alpha, Beta, decltype(global_c), decltype(device_pipeline)>;
+        auto kernel = gemm_kernel<BLAS, Alpha, Beta, decltype(global_c), decltype(pipeline->get_device_handle())>;
         CUDA_CHECK_AND_EXIT(
             cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_memory_size));
-        kernel<<<grid_dim, device_pipeline.get_block_dim(), shared_memory_size, str>>>(
-            alpha, beta, global_c, device_pipeline);
+
+        kernel<<<grid_dim, pipeline->get_block_dim(), shared_memory_size, str>>>(
+            alpha, beta, global_c, pipeline->get_device_handle());
     };
 
     // First run for correctness check
@@ -147,14 +152,7 @@ auto measure_cublasdx(GEMMShape         gemm_shape,
 // Please refer to the documentation for more details.
 
 template<unsigned int Arch, cublasdx::sm_modifier Modifier, class GlobalShape>
-int device_gemm_performance(GlobalShape global_shape) {
-
-    // ==========================================================
-    // Tile chosen for big SGEMMs on B200 (fp32), for best
-    // results for other precisions please see our recommended
-    // configurations below, or attempt a thorough
-    // parameter scan over: (tile_m / tile_n / tile_k / threads)
-    // and staging C loads / stores through shared memory
+int device_gemm_performance(GlobalShape const global_shape) {
 
     // ===================================
     // Configurable Global GEMM properties
@@ -200,12 +198,9 @@ int device_gemm_performance(GlobalShape global_shape) {
     // - precision
     // - type (real / complex)
     // this will be either precision or cublasdx::complex<precision>
-    using a_compute_value_type =
-        cute::conditional_t<type == cublasdx::type::real, a_compute_precision, cublasdx::complex<a_compute_precision>>;
-    using b_compute_value_type =
-        cute::conditional_t<type == cublasdx::type::real, b_compute_precision, cublasdx::complex<b_compute_precision>>;
-    using c_compute_value_type =
-        cute::conditional_t<type == cublasdx::type::real, c_compute_precision, cublasdx::complex<c_compute_precision>>;
+    using a_compute_value_type = cute::conditional_t<type == cublasdx::type::real, a_compute_precision, cublasdx::complex<a_compute_precision>>;
+    using b_compute_value_type = cute::conditional_t<type == cublasdx::type::real, b_compute_precision, cublasdx::complex<b_compute_precision>>;
+    using c_compute_value_type = cute::conditional_t<type == cublasdx::type::real, c_compute_precision, cublasdx::complex<c_compute_precision>>;
 
     // Scalar multipliers
     // C = alpha * A * B + beta * C
@@ -221,35 +216,10 @@ int device_gemm_performance(GlobalShape global_shape) {
     // using cuBLASDx
     constexpr unsigned tile_m = 128;
     constexpr unsigned tile_n = 128;
-    constexpr unsigned tile_k = 32;
+    constexpr unsigned tile_k = 64;
 
     // Number of threads to compute the tile described above
     constexpr int tile_threads = 128;
-
-    // If manual_pipeline_depth is left at 0, an automatically generated depth
-    // will be used, equal to the maximal possible value based on shared memory
-    // size of chosen device architecture
-    constexpr unsigned manual_pipeline_depth   = 0;
-    constexpr bool     override_pipeline_depth = (manual_pipeline_depth != 0);
-
-    // GeForce tiles to try
-    // fp8  | TN | (4096 to 8192)  | --> V:64,64,64   T:128
-    // fp8  | TN | (over 8192)     | --> V:128,128,64 T:128
-    // int8 | TN | (4096 to 8192)  | --> V:64,64,64   T:128
-    // int8 | TN | (over 8192)     | --> V:128,128,64 T:128
-    // fp16 | TN | (4096 to 8192)  | --> V:64,64,32   T:128
-    // fp16 | TN | (over 8192)     | --> V:128,128,32 T:128
-    // tf32 | TN | (4096 to ~6000) | --> V:64,64,16   T:128
-    // tf32 | TN | (~6000 to 8192) | --> V:64,64,32   T:128
-    // tf32 | TN | (over 8192)     | --> V:128,128,16 T:128
-    // fp32 | TN | (col-major)     | --> V:256,128,32 T:256
-    // fp32 | TT | (row-major)     | --> V:64,128,16  T:128
-    // fp64 | TN | (all sizes)     | --> V:64,64,32   T:128
-
-    // Datacenter tiles to try
-    // fp32 | (big)   |            | --> V:128,128,32, T:128
-    // fp32 | (small) |            | --> V:128,64,16,  T:128
-
 
     // Arrangement of data in a per-threadblock tile of data
     constexpr auto tile_arr_a = global_arrangement_a;
@@ -282,14 +252,11 @@ int device_gemm_performance(GlobalShape global_shape) {
 
     constexpr unsigned available_shared_memory = commondx::device_info<Arch>::shared_memory();
     constexpr unsigned maximal_pipeline_depth  = cute::min(16, (available_shared_memory - 32) / stage_shared_req);
-    constexpr unsigned pipeline_depth = override_pipeline_depth ? manual_pipeline_depth : maximal_pipeline_depth;
-    static_assert(
-        pipeline_depth <= maximal_pipeline_depth,
-        "The chosen pipeline depth requires more shared memory than is available for the target architecture");
+    constexpr unsigned pipeline_depth          = maximal_pipeline_depth;
 
     auto k_stages = k / tile_k;
     if (k_stages < pipeline_depth) {
-        std::cerr << "PipelineDepth must be less or equal to GEMM k stages, please adjust manual_pipeline_depth"
+        std::cerr << "PipelineDepth must be less or equal to GEMM k stages, please adjust the tile or problem size"
                   << std::endl;
         return 1;
     }
@@ -362,7 +329,7 @@ int device_gemm_performance(GlobalShape global_shape) {
 
         // Create A cuBLASLt input
         using a_converter_t      = example::converter<a_cublas_value_type>;
-        using a_functor_output_t = cublasdx::detail::res_t<a_converter_t, a_io_value_type>;
+        using a_functor_output_t = std::decay_t<std::invoke_result_t<a_converter_t, a_io_value_type>>;
         static_assert(std::is_convertible_v<a_functor_output_t, a_cublas_value_type>,
                       "Input type must be convertible to compute type");
 
@@ -371,7 +338,7 @@ int device_gemm_performance(GlobalShape global_shape) {
 
         // Create B cuBLASLt input
         using b_converter_t      = example::converter<b_cublas_value_type>;
-        using b_functor_output_t = cublasdx::detail::res_t<b_converter_t, b_io_value_type>;
+        using b_functor_output_t = std::decay_t<std::invoke_result_t<b_converter_t, b_io_value_type>>;
         static_assert(std::is_convertible_v<b_functor_output_t, b_cublas_value_type>,
                       "Input type must be convertible to compute type");
 
@@ -380,7 +347,7 @@ int device_gemm_performance(GlobalShape global_shape) {
 
         // Create C cuBLASLt input
         using c_converter_t      = example::converter<c_cublas_value_type>;
-        using c_functor_output_t = cublasdx::detail::res_t<c_converter_t, c_io_value_type>;
+        using c_functor_output_t = std::decay_t<std::invoke_result_t<c_converter_t, c_io_value_type>>;
         static_assert(std::is_convertible_v<c_functor_output_t, c_cublas_value_type>,
                       "Input type must be convertible to compute type");
 
@@ -492,25 +459,24 @@ struct device_gemm_performance_functor {
     template<int Arch, cublasdx::sm_modifier Modifier, class GlobalShape>
     int operator()(std::integral_constant<int, Arch>,
                    std::integral_constant<cublasdx::sm_modifier, Modifier>,
-                   GlobalShape global_shape) {
+                   GlobalShape const global_shape) {
         return device_gemm_performance<Arch, Modifier>(global_shape);
     }
 };
 
-int main(int argc, char** argv) {
+int main(int const argc, char** argv) {
     std::array<unsigned int, 3> mnk = {8192, 8192, 8192};
     auto usage = []() { std::cerr << "Incorrect usage: ./device_gemm_performance [m n k]" << std::endl; };
 
     if (argc == 4) {
-        std::cout << "Tile optimized for big SGEMMs on B200 (fp32), for best "
-                     "results for other precisions please see our recommended "
-                     "configurations in device_gemm_performance.cu, or attempt a thorough "
+        std::cout << "Tile optimized for big HGEMMs on B200 (fp16-fp32), for best "
+                     "results for other precisions attempt a thorough "
                      "parameter scan over: (tile_m / tile_n / tile_k / threads) "
-                     "and staging C loads / stores through shared memory"
+                     "and pipeline depth with threadblock swizzling"
                   << std::endl;
 
         try {
-            std::transform(argv + 1, argv + argc, mnk.begin(), [&](char* dim_input) { return std::stoul(dim_input); });
+            std::transform(argv + 1, argv + argc, mnk.begin(), [&](char const* const dim_input) { return std::stoul(dim_input); });
         } catch (...) {
             usage();
             return 1;

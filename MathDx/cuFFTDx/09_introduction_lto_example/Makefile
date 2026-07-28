@@ -52,14 +52,16 @@ run_lto_helper : $(LTO_HELPER)
 % : %.o %_dlink.o
 	$(CXX) -o $@ $^ -L$(CUDA_PATH)/lib64 -lcudart
 
+LTO_QUERY_TARGET=lto_query_database_example
+
 clean:
-	rm -rf $(TARGET) $(LTO_HELPER) $(LTO_ARTIFACTS_DIR)
+	rm -rf $(TARGET) $(LTO_QUERY_TARGET) $(LTO_HELPER) $(LTO_ARTIFACTS_DIR)
 
 .PHONY: all $(LTO_HELPER) run_lto_helper clean
 
 # disable default/implicit make rule that attempts to link object files
 .SUFFIXES:
 
-all: $(TARGET)
+all: $(TARGET) $(LTO_QUERY_TARGET)
 
 .DEFAULT_GOAL := all

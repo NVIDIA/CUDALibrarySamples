@@ -64,6 +64,7 @@ __launch_bounds__(BLAS::max_threads_per_block) //
                      const BLoadOp&   b_load_op  = {},
                      const CLoadOp&   c_load_op  = {},
                      const CStoreOp&  c_store_op = {}) {
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(BLAS);
     using value_type = ValueType;
     extern __shared__ __align__(16) cublasdx::byte smem[];
 
@@ -82,6 +83,7 @@ __launch_bounds__(BLAS::max_threads_per_block) //
     cublasdx::copy_wait();
 
     auto accumulator     = BLAS().execute(a_shared_tensor, b_shared_tensor, a_load_op, b_load_op);
+
     auto result_fragment = accumulator.get_results();
 
     // Make fragment, partition global tensor and copy
@@ -146,7 +148,7 @@ int simple_gemm() {
 
     using value_type = typename example::uniform_value_type_t<BLAS>;
 
-    // Allocate managed memory for a, b, c, and output
+    // Allocate device memory for a, b, c, and output
 
     constexpr auto global_a_size = example::global_memory_size_of<BLAS>::a_size;
     constexpr auto global_b_size = example::global_memory_size_of<BLAS>::b_size;

@@ -36,6 +36,7 @@ __launch_bounds__(BLAS::max_threads_per_block) //
                      const CValueType  alpha,
                      const CValueType  beta,
                      CValueType*       output) {
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(BLAS);
     extern __shared__ __align__(16) cublasdx::byte smem[];
 
     auto a_global_tensor   = cublasdx::make_tensor(a, BLAS::get_layout_gmem_a());
@@ -59,8 +60,8 @@ __launch_bounds__(BLAS::max_threads_per_block) //
     cublasdx::copy_wait();
 
     auto accumulator     = BLAS().execute(a_shared_tensor, b_shared_tensor);
-    auto result_fragment = accumulator.get_results();
 
+    auto result_fragment = accumulator.get_results();
     auto d_frag = accumulator.make_partition_and_copy(c_global_tensor);
     cublasdx::axpby(alpha, result_fragment, beta, d_frag);
     accumulator.partition_and_copy(d_frag, out_global_tensor);
@@ -108,7 +109,7 @@ int simple_gemm() {
     using b_value_type = example::b_value_type_t<BLAS>;
     using c_value_type = example::c_value_type_t<BLAS>;
 
-    // Allocate managed memory for a, b, c, and output
+    // Allocate device memory for a, b, c, and output
     a_value_type* input_a;
     b_value_type* input_b;
     c_value_type* input_c;
@@ -118,10 +119,10 @@ int simple_gemm() {
     constexpr auto global_b_size = example::global_memory_size_of<BLAS>::b_size;
     constexpr auto global_c_size = example::global_memory_size_of<BLAS>::c_size;
 
-    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&input_a, global_a_size * sizeof(a_value_type)));
-    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&input_b, global_b_size * sizeof(b_value_type)));
-    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&input_c, global_c_size * sizeof(c_value_type)));
-    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&output_c, global_c_size * sizeof(c_value_type)));
+    CUDA_CHECK_AND_EXIT(cudaMalloc(&input_a, global_a_size * sizeof(a_value_type)));
+    CUDA_CHECK_AND_EXIT(cudaMalloc(&input_b, global_b_size * sizeof(b_value_type)));
+    CUDA_CHECK_AND_EXIT(cudaMalloc(&input_c, global_c_size * sizeof(c_value_type)));
+    CUDA_CHECK_AND_EXIT(cudaMalloc(&output_c, global_c_size * sizeof(c_value_type)));
 
     c_value_type alpha = c_value_type(1.0);
     c_value_type beta  = c_value_type(2.0);

@@ -35,6 +35,7 @@
 
 template<class Solver, typename DataType = typename Solver::a_data_type>
 __global__ void kernel(const DataType* dl, const DataType* d, const DataType* du, DataType* B, typename Solver::status_type* info, const unsigned int batches) {
+    CUSOLVERDX_SKIP_IF_NOT_APPLICABLE_SM(Solver);
 
     const auto batch_idx = threadIdx.x + blockIdx.x * blockDim.x;
     if (batch_idx >= batches)

@@ -46,6 +46,8 @@ __launch_bounds__(FFTX::max_threads_per_block) __global__
                        ComplexType*                  output,
                        typename FFTX::workspace_type workspace_x,
                        typename FFTY::workspace_type workspace_y) {
+    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFTX);
+
     using complex_type  = ComplexType;
     using dim_desc_type = example::dimension_description;
     using io_y_type     = example::io_generic_strided<FFTY>;
@@ -247,7 +249,7 @@ example::fft_results<T> cufftdx_fft_2d(T* input, T* output, cudaStream_t stream)
 // on the GPU.
 // * The best results are for a square FFTs (fft_size_x == fft_size_y).
 template<unsigned int Arch>
-void fft_2d() {
+int fft_2d() {
     using precision_type = float;
     using complex_type   = cufftdx::complex<precision_type>;
 
@@ -369,18 +371,19 @@ void fft_2d() {
 
     if (success) {
         std::cout << "\nSuccess\n";
+        return 0;
     } else {
         std::cout << "\nFailure\n";
         for (size_t i = 0; i < flat_fft_size; i++) {
             std::cout << i << ": " << cufftdx_results.output[i].x << " " << cufftdx_results.output[i].y << " " << cufft_results.output[i].x << " " << cufft_results.output[i].y << "\n";
         }
-        std::exit(1);
+        return 1;
     }
 }
 
 template<unsigned int Arch>
 struct fft_2d_functor {
-    void operator()() { return fft_2d<Arch>(); }
+    int operator()() { return fft_2d<Arch>(); }
 };
 
 int main(int, char**) {

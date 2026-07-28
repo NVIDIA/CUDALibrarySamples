@@ -29,6 +29,7 @@
 
 template<class Solver, typename DataType = typename Solver::a_data_type>
 __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(DataType* A, unsigned int lda, typename Solver::status_type* info) {
+    CUSOLVERDX_SKIP_IF_NOT_APPLICABLE_SM(Solver);
 
     extern __shared__ cusolverdx::byte shared_mem[];
 

@@ -18,7 +18,11 @@
 #ifndef CUBLASDX_EXAMPLE_COMMON_NVRTC_HPP
 #define CUBLASDX_EXAMPLE_COMMON_NVRTC_HPP
 
+#include <algorithm>
+#include <cmath>
 #include <cstdlib>
+#include <random>
+#include <vector>
 #define CUBLASDX_EXAMPLE_NVRTC
 #include "../common/common.hpp"
 
@@ -29,6 +33,24 @@
             std::cerr << "\nerror: " #x " failed with error " << nvrtcGetErrorString(result) << '\n'; \
             exit(1);                                                                                  \
         }                                                                                             \
+    } while (0)
+
+#define NVJITLINK_SAFE_CALL(h, x)                                                \
+    do {                                                                         \
+        nvJitLinkResult call_result = x;                                         \
+        if (call_result != NVJITLINK_SUCCESS) {                                  \
+            std::cerr << "\nerror: " #x " failed with error " << call_result << '\n'; \
+            size_t lsize;                                                        \
+            nvJitLinkResult log_result = nvJitLinkGetErrorLogSize(h, &lsize);    \
+            if (log_result == NVJITLINK_SUCCESS && lsize > 0) {                  \
+                std::vector<char> log(lsize);                                    \
+                log_result = nvJitLinkGetErrorLog(h, log.data());                \
+                if (log_result == NVJITLINK_SUCCESS) {                           \
+                    std::cerr << "error: " << log.data() << '\n';                \
+                }                                                                \
+            }                                                                    \
+            std::exit(call_result);                                              \
+        }                                                                        \
     } while (0)
 
 #ifndef CU_CHECK_AND_EXIT
@@ -78,9 +100,7 @@ namespace example {
                     cublasdx_include_dirs_array.push_back("--include-path=" + std::string(env_ptr));
                 } else {
 #ifdef COMMONDX_INCLUDE_DIR
-                    {
-                        cublasdx_include_dirs_array.push_back("--include-path=" + std::string(COMMONDX_INCLUDE_DIR));
-                    }
+                    { cublasdx_include_dirs_array.push_back("--include-path=" + std::string(COMMONDX_INCLUDE_DIR)); }
 #endif
                 }
             }
@@ -126,6 +146,53 @@ namespace example {
             return cublasdx_include_dirs_array;
         }
 
+        template<class T = float>
+        inline std::vector<T> generate_random_data(const std::size_t length,
+                                                   const double      min = 1.0,
+                                                   const double      max = 1.0) {
+            std::vector<T> data(length);
+            std::random_device                     rd;
+            std::mt19937                           gen(rd());
+            std::uniform_real_distribution<double> dist(min, max);
+            std::generate(data.begin(), data.end(), [&]() { return static_cast<T>(dist(gen)); });
+            return data;
+        }
+
+        inline void make_lower_col_major_diagonal_dominant(std::vector<float>& a, const unsigned m) {
+            for (unsigned row = 0; row < m; row++) {
+                float offdiag_sum = 5.f;
+                for (unsigned col = 0; col < m; col++) {
+                    if (col != row) {
+                        offdiag_sum += std::abs(a[row + col * m]);
+                    }
+                }
+                a[row + row * m] = offdiag_sum;
+            }
+        }
+
+        inline double relative_l2_error(const std::vector<float>& data, const std::vector<float>& reference) {
+            double error_sq = 0.0;
+            double norm_sq  = 0.0;
+            for (std::size_t i = 0; i < data.size(); i++) {
+                const double diff = std::abs(static_cast<double>(data[i]) - static_cast<double>(reference[i]));
+                error_sq += diff * diff;
+                norm_sq += static_cast<double>(reference[i]) * static_cast<double>(reference[i]);
+            }
+            return std::sqrt(error_sq / (norm_sq + 1e-200));
+        }
+
+        inline bool check_float_result(const std::vector<float>& data,
+                                       const std::vector<float>& reference,
+                                       // Simple, naive example check; not a rigorously derived error bound.
+                                       const double              max_relative_l2_error = 1e-3) {
+            const double error = relative_l2_error(data, reference);
+            if (error > max_relative_l2_error) {
+                std::cout << error << std::endl;
+                return false;
+            }
+            return true;
+        }
+
         inline unsigned get_device_architecture(int device) {
             int major = 0;
             int minor = 0;
@@ -151,6 +218,13 @@ namespace example {
             delete[] log;
         }
     } // namespace nvrtc
+
+    // nvJitLink uses "-arch=sm_XX", while NVRTC uses "--gpu-architecture=sm_XX".
+    namespace nvjitlink {
+        inline std::string get_device_architecture_option(int device) {
+            return "-arch=sm_" + std::to_string(nvrtc::get_device_architecture(device));
+        }
+    } // namespace nvjitlink
 } // namespace example
 
 #endif // CUBLASDX_EXAMPLE_COMMON_NVRTC_HPP

@@ -96,4 +96,5 @@ int main(int, char**) {
     }
 
     std::cout << "Success" << std::endl;
+    return 0;
 }

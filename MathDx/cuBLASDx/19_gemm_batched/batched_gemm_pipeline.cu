@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -56,42 +56,40 @@ __launch_bounds__(DevicePipeline::max_threads_per_block, 1) __global__
                              unsigned                               ldc,
                              unsigned                               batch_count,
                              __grid_constant__ DevicePipeline const device_pipeline) {
-#ifdef __CUDA_ARCH__
-    if constexpr (cublasdx::sm_of_v<BLAS> == __CUDA_ARCH__) {
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(BLAS);
 
-        extern __shared__ __align__(device_pipeline.buffer_alignment()) cublasdx::byte smem[];
+    extern __shared__ __align__(device_pipeline.buffer_alignment()) cublasdx::byte smem[];
 
-        // First batch: create the tile pipeline
-        auto tile_pipeline =
-            device_pipeline.get_tile(smem,
-                                     cublasdx::make_coord(blockIdx.x, blockIdx.z),  // A: (row_tile, batch)
-                                     cublasdx::make_coord(blockIdx.y, blockIdx.z)); // B: (col_tile, batch)
+    // First batch: create the tile pipeline
+    auto tile_pipeline = device_pipeline.get_tile(
+        smem,
+        cublasdx::make_coord(blockIdx.x, blockIdx.z), // A: (row_tile, batch)
+        cublasdx::make_coord(blockIdx.y, blockIdx.z)); // B: (col_tile, batch)
 
-        // Grid-stride loop over the batch dimension
-        for (unsigned batch = blockIdx.z; batch < batch_count;) {
-            // Build a 2D C view for the current batch
-            auto tile_gmem_c = cublasdx::get_tile(cublasdx::make_gmem_tensor<ArrC>(c_ptr + batch * m * n, m, n, ldc),
-                                                  BLAS::c_shape,
-                                                  blockIdx.x,
-                                                  blockIdx.y);
+    // Grid-stride loop over the batch dimension
+    for (unsigned batch = blockIdx.z; batch < batch_count;) {
+        // Build a 2D C view for the current batch
+        auto tile_gmem_c = cublasdx::get_tile(
+            cublasdx::make_gmem_tensor<ArrC>(c_ptr + batch * m * n, m, n, ldc),
+            BLAS::c_shape,
+            blockIdx.x,
+            blockIdx.y);
 
-            // Epilogue: D = alpha * A * B + beta * C
-            auto epilogue_functor = [&](auto& accumulator) {
-                auto d_fragment = accumulator.make_partition_and_copy(tile_gmem_c);
-                cublasdx::axpby(alpha, accumulator.get_results(), beta, d_fragment);
-                accumulator.partition_and_copy(d_fragment, tile_gmem_c);
-            };
+        // Epilogue: D = alpha * A * B + beta * C
+        auto epilogue_functor = [&](auto& accumulator) {
+            accumulator.axpby(alpha, beta, tile_gmem_c);
+        };
 
-            tile_pipeline.execute(epilogue_functor);
+        tile_pipeline.execute(epilogue_functor);
 
-            // Re-point the pipeline at the next batch for the next iteration
-            batch += gridDim.z;
-            device_pipeline.reset_tile(tile_pipeline,
-                                       cublasdx::make_coord(blockIdx.x, batch),  // A: (row_tile, batch)
-                                       cublasdx::make_coord(blockIdx.y, batch)); // B: (col_tile, batch)
-        }
+        // Re-point the pipeline at the next batch for the next iteration
+        batch += gridDim.z;
+        device_pipeline.reset_tile(
+            tile_pipeline,
+            cublasdx::make_coord(blockIdx.x, batch),  // A: (row_tile, batch)
+            cublasdx::make_coord(blockIdx.y, batch)); // B: (col_tile, batch)
+
     }
-#endif
 }
 
 // This is an example of batched GEMM using cuBLASDx pipelining API,
@@ -105,7 +103,7 @@ __launch_bounds__(DevicePipeline::max_threads_per_block, 1) __global__
 //   C: (M, N, batch_count)  -- row-major
 //
 // The pipelining API handles the batch dimension transparently through the rank-3
-// tensor layout. Internally, suggest_device_pipeline() detects rank-3 tensors and
+// tensor layout. Internally, suggest_pipeline() detects rank-3 tensors and
 // adjusts the tiler to include a unit batch dimension (tile_m, tile_k, 1) / (tile_k, tile_n, 1).
 //
 // A grid-stride loop over the batch dimension lets each spatial (row_tile, col_tile)
@@ -162,9 +160,9 @@ int batched_gemm_pipeline() {
     c_value_type alpha = example::make_value<c_value_type>(1.1);
     c_value_type beta  = example::make_value<c_value_type>(1.2);
 
-    constexpr unsigned tile_m       = 128;
-    constexpr unsigned tile_n       = 128;
-    constexpr unsigned tile_k       = 32;
+    constexpr unsigned tile_m = 128;
+    constexpr unsigned tile_n = 128;
+    constexpr unsigned tile_k = 32;
     constexpr int      tile_threads = 128;
 
     constexpr auto tile_arr_a = global_arrangement_a;
@@ -209,13 +207,14 @@ int batched_gemm_pipeline() {
 
     // Same descriptor as example 11 -- batching is purely a grid/tensor concern,
     // not part of the per-block BLAS descriptor.
-    using BLAS = decltype(cublasdx::Size<tile_m, tile_n, tile_k>() +
-                          cublasdx::Precision<a_compute_precision, b_compute_precision, c_compute_precision>() +
-                          cublasdx::Type<type>() + cublasdx::Function<cublasdx::function::MM>() +
-                          cublasdx::Arrangement<tile_arr_a, tile_arr_b, tile_arr_c>() + cublasdx::Block() +
-                          cublasdx::BlockDim<tile_threads>() + cublasdx::StaticBlockDim() +
-                          cublasdx::Alignment<cublasdx_alignment, cublasdx_alignment, cublasdx_alignment>() +
-                          cublasdx::EnableInputStreaming() + cublasdx::WithPipeline() + cublasdx::SM<Arch, Modifier>());
+    using BLAS =
+        decltype(cublasdx::Size<tile_m, tile_n, tile_k>() +
+                 cublasdx::Precision<a_compute_precision, b_compute_precision, c_compute_precision>() +
+                 cublasdx::Type<type>() + cublasdx::Function<cublasdx::function::MM>() +
+                 cublasdx::Arrangement<tile_arr_a, tile_arr_b, tile_arr_c>() + cublasdx::Block() +
+                 cublasdx::BlockDim<tile_threads>() + cublasdx::StaticBlockDim() +
+                 cublasdx::Alignment<cublasdx_alignment, cublasdx_alignment, cublasdx_alignment>() +
+                 cublasdx::EnableInputStreaming() + cublasdx::WithPipeline() + cublasdx::SM<Arch, Modifier>());
 
     // ================================
     // Allocate and fill device memory
@@ -254,22 +253,27 @@ int batched_gemm_pipeline() {
 
     // ================================================================
     // Build device pipeline from rank-3 A/B tensors.
-    // suggest_device_pipeline detects rank-3 tensors via pipeline_helper::is_3d
+    // suggest_pipeline detects rank-3 tensors via pipeline_helper::is_3d
     // and adjusts internal tilers to (tile_m, tile_k, 1) / (tile_k, tile_n, 1).
     // ================================================================
 
-    auto opt_device_pipeline = cublasdx::suggest_device_pipeline<pipeline_depth, BLAS>(global_a, global_b);
+    auto pipeline = cublasdx::suggest_pipeline<pipeline_depth, BLAS>(global_a, global_b);
 
-    if (not opt_device_pipeline) {
-        std::cerr << "Pipeline configuration invalid: ensure M/N/K are divisible by tile sizes and K >= pipeline depth"
-                  << std::endl;
+    if (not pipeline) {
+        auto const error = pipeline.error();
+        std::cerr << "Failed to create device pipeline";
+        if (error.code != cublasdx::pipeline_error_code::none) {
+            std::cerr << ": " << cublasdx::pipeline_error_string(error.code);
+        }
+        if (error.get_cuda_error() != cudaSuccess) {
+            std::cerr << " (" << cudaGetErrorString(error.get_cuda_error()) << ")";
+        }
+        std::cerr << std::endl;
         return 1;
     }
 
-    auto device_pipeline = opt_device_pipeline.value();
-
     auto shared_memory_size = cublasdx::make_shared_storage_calculator()
-                                  .add(device_pipeline.buffer_alignment(), device_pipeline.buffer_size())
+                                  .add(pipeline->buffer_alignment(), pipeline->buffer_size())
                                   .get();
 
     // ================================================================
@@ -284,7 +288,8 @@ int batched_gemm_pipeline() {
     int num_sms = 0;
     CUDA_CHECK_AND_EXIT(cudaDeviceGetAttribute(&num_sms, cudaDevAttrMultiProcessorCount, 0));
     const unsigned spatial_tiles = (m / tile_m) * (n / tile_n);
-    const unsigned batch_grid    = std::min(batch_count, std::max(1u, static_cast<unsigned>(num_sms) / spatial_tiles));
+    const unsigned batch_grid    = std::min(batch_count,
+                                            std::max(1u, static_cast<unsigned>(num_sms) / spatial_tiles));
 
     dim3 grid_dim = {m / tile_m, n / tile_n, batch_grid};
 
@@ -293,10 +298,10 @@ int batched_gemm_pipeline() {
                                       c_value_type,
                                       c_value_type,
                                       c_value_type,
-                                      decltype(device_pipeline)>;
+                                      decltype(pipeline->get_device_handle())>;
     CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_memory_size));
-    kernel<<<grid_dim, device_pipeline.get_block_dim(), shared_memory_size>>>(
-        alpha, beta, d_c, m, n, global_ldc, batch_count, device_pipeline);
+    kernel<<<grid_dim, pipeline->get_block_dim(), shared_memory_size>>>(
+        alpha, beta, d_c, m, n, global_ldc, batch_count, pipeline->get_device_handle());
     CUDA_CHECK_AND_EXIT(cudaPeekAtLastError());
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 

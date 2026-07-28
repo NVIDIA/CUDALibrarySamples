@@ -28,6 +28,7 @@ template<class BLAS, class ValueType = typename example::uniform_value_type_t<BL
 __launch_bounds__(BLAS::max_threads_per_block) //
     __global__                                 //
     void gemm_kernel(const ValueType* a, ValueType* output) {
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(BLAS);
     using value_type = ValueType;
     extern __shared__ __align__(16) cublasdx::byte smem[];
 
@@ -93,7 +94,7 @@ int simple_gemm() {
 
     using value_type = typename example::uniform_value_type_t<BLAS>;
 
-    // Allocate managed memory
+    // Allocate device memory
     value_type* a_matrix; // A
     value_type* output;
 
@@ -102,8 +103,8 @@ int simple_gemm() {
 
     auto input_size       = global_a_size;
     auto input_size_bytes = input_size * sizeof(value_type);
-    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&a_matrix, input_size_bytes));
-    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&output, global_c_size * sizeof(value_type)));
+    CUDA_CHECK_AND_EXIT(cudaMalloc(&a_matrix, input_size_bytes));
+    CUDA_CHECK_AND_EXIT(cudaMalloc(&output, global_c_size * sizeof(value_type)));
 
     // Fill the input matrix
     auto host_a = example::get_random_data<value_type>(global_a_size);

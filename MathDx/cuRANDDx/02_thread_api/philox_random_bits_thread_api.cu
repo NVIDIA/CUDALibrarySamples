@@ -37,6 +37,8 @@ __global__ void generate_kernel(uint4*                        d_out,
                                 const unsigned long long        seed,
                                 const typename RNG::offset_type offset,
                                 const size_t                    size) {
+    CURANDDX_SKIP_IF_NOT_APPLICABLE_SM(RNG);
+
     int i = blockDim.x * blockIdx.x + threadIdx.x;
     if (i >= size / 4)
         return;

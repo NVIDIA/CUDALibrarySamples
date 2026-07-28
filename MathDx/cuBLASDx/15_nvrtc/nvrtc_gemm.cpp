@@ -18,16 +18,14 @@
 #include <vector>
 #include <iostream>
 #include <string>
-#include <algorithm>
 #include <memory>
-#include <random>
 
 #include <nvrtc.h>
 #include <cuda.h>
 #include <cuda_runtime_api.h>
-#include <cuComplex.h>
 
 #include "common_nvrtc.hpp"
+#include "nvrtc_cublas_reference.hpp"
 
 const char* test_kernel = R"kernel(
 #include <cublasdx.hpp>
@@ -63,7 +61,7 @@ extern "C" __global__ void test_kernel(typename BLAS::a_value_type* a, typename 
     cublasdx::copy<BLAS, alignment::c>(c_global_tensor, c_shared_tensor);
     cublasdx::copy_wait();
 
-    typename BLAS::c_value_type alpha = 1.0, beta = 1.0;
+    typename BLAS::c_value_type alpha = 0.8f, beta = 1.2f;
     BLAS().execute(alpha, a_shared_tensor, b_shared_tensor, beta, c_shared_tensor);
 
     // Store
@@ -77,8 +75,8 @@ int main(int, char**) {
     // Precision: __half, __half, float
     // TransposeMode: NN
     // Type: Real
-    // alpha: 1
-    // beta: 1
+    // alpha: 0.8
+    // beta: 1.2
     unsigned int blas_m = 32;
     unsigned int blas_n = 32;
     unsigned int blas_k = 32;
@@ -171,17 +169,11 @@ int main(int, char**) {
     const size_t blas_c_size = blas_m * blas_n;
 
     // Generate input for execution
-    std::vector<a_value_type> host_a(blas_a_size);
-    std::vector<b_value_type> host_b(blas_b_size);
-    std::vector<c_value_type> host_c(blas_c_size);
-    {
-        std::random_device                     rd;
-        std::mt19937                           gen(rd());
-        std::uniform_real_distribution<double> dist(1.0, 1.0);
-        auto                                   random_value_func = [&dist, &gen]() { return dist(gen); };
-        std::generate(host_a.begin(), host_a.end(), random_value_func);
-        std::generate(host_b.begin(), host_b.end(), random_value_func);
-    }
+    auto host_a = example::nvrtc::generate_random_data<a_value_type>(blas_a_size);
+    auto host_b = example::nvrtc::generate_random_data<b_value_type>(blas_b_size);
+    auto host_c = example::nvrtc::generate_random_data<c_value_type>(blas_c_size);
+    const auto host_c_ref =
+        example::nvrtc::cublas_reference::gemm(host_a, host_b, host_c, blas_m, blas_n, blas_k, 0.8f, 1.2f);
 
     const size_t blas_a_size_bytes = blas_a_size * sizeof(a_value_type);
     const size_t blas_b_size_bytes = blas_b_size * sizeof(b_value_type);
@@ -194,6 +186,7 @@ int main(int, char**) {
     CU_CHECK_AND_EXIT(cuMemAlloc(&device_c, blas_c_size_bytes));
     CU_CHECK_AND_EXIT(cuMemcpyHtoD(device_a, host_a.data(), blas_a_size_bytes));
     CU_CHECK_AND_EXIT(cuMemcpyHtoD(device_b, host_b.data(), blas_b_size_bytes));
+    CU_CHECK_AND_EXIT(cuMemcpyHtoD(device_c, host_c.data(), blas_c_size_bytes));
 
     // Get BLAS::block_dim and BLAS::shared_memory required for kernel launch
     dim3         blas_block_dim = example::nvrtc::get_global_from_module<dim3>(module, "blas_block_dim");
@@ -221,12 +214,19 @@ int main(int, char**) {
     // Retrieve C
     CU_CHECK_AND_EXIT(cuMemcpyDtoH(host_c.data(), device_c, blas_c_size_bytes))
 
+    const bool correct = example::nvrtc::check_float_result(host_c, host_c_ref);
+
     // Release resources.
     CU_CHECK_AND_EXIT(cuMemFree(device_a));
     CU_CHECK_AND_EXIT(cuMemFree(device_b));
     CU_CHECK_AND_EXIT(cuMemFree(device_c));
     CU_CHECK_AND_EXIT(cuModuleUnload(module));
     CU_CHECK_AND_EXIT(cuCtxDestroy(context));
+
+    if (!correct) {
+        std::cout << "Failure: results do not match cuBLAS reference" << std::endl;
+        return 1;
+    }
 
     std::cout << "Success" << std::endl;
     return 0;

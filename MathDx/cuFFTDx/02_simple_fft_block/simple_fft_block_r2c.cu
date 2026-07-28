@@ -27,6 +27,8 @@
 template<class FFT, class ComplexType = typename FFT::value_type, class ScalarType = typename ComplexType::value_type>
 __launch_bounds__(FFT::max_threads_per_block) __global__
     void block_fft_kernel_r2c(ScalarType* input_data, ComplexType* output_data) {
+    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFT);
+
     using complex_type = ComplexType;
 
     // Local array for thread
@@ -51,7 +53,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
 // Data is generated on host, copied to device buffer, and then results are copied back to host.
 // Notice different sizes of input and output buffer, and R2C load and store operations in the kernel.
 template<unsigned int Arch>
-void simple_block_fft_r2c() {
+int simple_block_fft_r2c() {
     using namespace cufftdx;
 
     // R2C and C2R specific properties describing data layout and execution mode for
@@ -102,11 +104,12 @@ void simple_block_fft_r2c() {
     CUDA_CHECK_AND_EXIT(cudaFree(input_data));
     CUDA_CHECK_AND_EXIT(cudaFree(output_data));
     std::cout << "Success" << std::endl;
+    return 0;
 }
 
 template<unsigned int Arch>
 struct simple_block_fft_r2c_functor {
-    void operator()() { return simple_block_fft_r2c<Arch>(); }
+    int operator()() { return simple_block_fft_r2c<Arch>(); }
 };
 
 int main(int, char**) {

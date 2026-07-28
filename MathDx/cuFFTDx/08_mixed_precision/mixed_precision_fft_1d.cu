@@ -44,6 +44,8 @@ template<class FFT>
 __launch_bounds__(FFT::max_threads_per_block)
     __global__ void simple_fft_1d_kernel(typename FFT::value_type* input,
                                          typename FFT::value_type* output) {
+    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFT);
+
     using complex_type = typename FFT::value_type;
 
     // Local array for thread
@@ -67,6 +69,8 @@ template<class FFT>
 __launch_bounds__(FFT::max_threads_per_block)
     __global__ void simple_fft_1d_shared_kernel(typename FFT::value_type* input,
                                                 typename FFT::value_type* output) {
+    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFT);
+
     using complex_type = typename FFT::value_type;
 
     extern __shared__ __align__(alignof(float4)) complex_type shared_mem[];
@@ -89,6 +93,8 @@ template<typename FFT, typename InputOutputType>
 __launch_bounds__(FFT::max_threads_per_block)
     __global__ void mixed_fft_1d_shared_kernel(const InputOutputType* input,
                                                InputOutputType*       output) {
+    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFT);
+
     extern __shared__ __align__(alignof(float4)) typename FFT::value_type shared_mem[];
 
     // Since each block has a defined number of FFTs to compute, in here we offset global memory start address
@@ -115,6 +121,8 @@ template<typename FFT, typename InputOutputType>
 __launch_bounds__(FFT::max_threads_per_block)
     __global__ void mixed_fft_1d_kernel(const InputOutputType* input,
                                         InputOutputType*       output) {
+    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFT);
+
     using complex_type = typename FFT::value_type;
     extern __shared__ __align__(alignof(float4)) complex_type shared_mem[];
 
@@ -243,7 +251,7 @@ example::fft_results<typename FFT::value_type> cufftdx_result_launcher(FFTKernel
 // shared APIs of cuFFTDx are tested.
 // At the end the performance and accuracy results of each solution are presented.
 template<unsigned int Arch, unsigned int fft_size = 512>
-void mixed_precision_fft_1d() {
+int mixed_precision_fft_1d() {
     using namespace cufftdx;
 
     cudaStream_t stream;
@@ -284,7 +292,7 @@ void mixed_precision_fft_1d() {
                                                           get_max_blocks_per_multiprocessor<FFT>(max_smem, &simple_fft_1d_shared_kernel<FFT>)});
     if (blocks_per_multiprocessor < 1 ) {
         std::cout << "============\nNot enough resources for FFT of size: " << fft_size << "\n";
-        return;
+        return 0;
     }
     // Get maximum number of CUDA blocks running on all multiprocessors
     const unsigned int device_blocks = blocks_per_multiprocessor * example::get_multiprocessor_count();
@@ -402,22 +410,26 @@ void mixed_precision_fft_1d() {
 
     if (success) {
         std::cout << "Success" << std::endl;
+    } else {
+        std::cout << "Failure" << std::endl;
     }
 
     CUDA_CHECK_AND_EXIT(cudaFree(input_io));
     CUDA_CHECK_AND_EXIT(cudaFree(input_compute));
     CUDA_CHECK_AND_EXIT(cudaFree(output_io));
     CUDA_CHECK_AND_EXIT(cudaFree(output_compute));
+    return success ? 0 : 1;
 }
 
 template<unsigned int Arch>
 struct mixed_precision_fft_1d_functor {
-    void operator()() {
-
-        mixed_precision_fft_1d<Arch,128>();
-        mixed_precision_fft_1d<Arch,512>();
-        mixed_precision_fft_1d<Arch,2048>();
-        mixed_precision_fft_1d<Arch,4096>();
+    int operator()() {
+        int rc = 0;
+        rc |= mixed_precision_fft_1d<Arch,128>();
+        rc |= mixed_precision_fft_1d<Arch,512>();
+        rc |= mixed_precision_fft_1d<Arch,2048>();
+        rc |= mixed_precision_fft_1d<Arch,4096>();
+        return rc ? 1 : 0;
     }
 };
 

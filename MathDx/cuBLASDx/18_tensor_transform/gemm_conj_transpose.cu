@@ -56,12 +56,15 @@
 // as a load-time transform so the GEMM operates on A^H.
 // -------------------------------------------------------------------------
 template<class BLAS, class ValueType = typename example::uniform_value_type_t<BLAS>>
-__launch_bounds__(BLAS::max_threads_per_block) __global__ void gemm_conj_transpose_kernel(const ValueType* a,
-                                                                                          const ValueType* b,
-                                                                                          const ValueType* c,
-                                                                                          const ValueType  alpha,
-                                                                                          const ValueType  beta,
-                                                                                          ValueType*       output) {
+__launch_bounds__(BLAS::max_threads_per_block)
+__global__
+void gemm_conj_transpose_kernel(const ValueType* a,
+                                const ValueType* b,
+                                const ValueType* c,
+                                const ValueType  alpha,
+                                const ValueType  beta,
+                                ValueType*       output) {
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(BLAS);
     extern __shared__ __align__(16) cublasdx::byte smem[];
 
     auto a_global_tensor = cublasdx::make_tensor(a, BLAS::get_layout_gmem_a());
@@ -69,9 +72,9 @@ __launch_bounds__(BLAS::max_threads_per_block) __global__ void gemm_conj_transpo
     auto c_global_tensor = cublasdx::make_tensor(c, BLAS::get_layout_gmem_c());
 
     auto [smem_a, smem_b, smem_c] = cublasdx::slice_shared_memory<BLAS>(smem);
-    auto a_shared_tensor          = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_a());
-    auto b_shared_tensor          = cublasdx::make_tensor(smem_b, BLAS::get_layout_smem_b());
-    auto c_shared_tensor          = cublasdx::make_tensor(smem_c, BLAS::get_layout_smem_c());
+    auto a_shared_tensor           = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_a());
+    auto b_shared_tensor           = cublasdx::make_tensor(smem_b, BLAS::get_layout_smem_b());
+    auto c_shared_tensor           = cublasdx::make_tensor(smem_c, BLAS::get_layout_smem_c());
 
     using alignment = cublasdx::alignment_of<BLAS>;
     cublasdx::copy<BLAS, alignment::a>(a_global_tensor, a_shared_tensor);
@@ -119,7 +122,7 @@ int gemm_conj_transpose() {
 
     using value_type = typename example::uniform_value_type_t<BLAS>;
 
-    // Allocate managed memory for A, B, C, and output
+    // Allocate device memory for A, B, C, and output
     constexpr auto global_a_size = example::global_memory_size_of<BLAS>::a_size;
     constexpr auto global_b_size = example::global_memory_size_of<BLAS>::b_size;
     constexpr auto global_c_size = example::global_memory_size_of<BLAS>::c_size;
@@ -128,8 +131,8 @@ int gemm_conj_transpose() {
     value_type* output;
     auto        inputs_size       = global_a_size + global_b_size + global_c_size;
     auto        inputs_size_bytes = inputs_size * sizeof(value_type);
-    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&inputs, inputs_size_bytes));
-    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&output, global_c_size * sizeof(value_type)));
+    CUDA_CHECK_AND_EXIT(cudaMalloc(&inputs, inputs_size_bytes));
+    CUDA_CHECK_AND_EXIT(cudaMalloc(&output, global_c_size * sizeof(value_type)));
 
     value_type* a     = inputs;
     value_type* b     = a + global_a_size;
@@ -147,9 +150,10 @@ int gemm_conj_transpose() {
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     // Set shared memory and launch kernel
-    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(gemm_conj_transpose_kernel<BLAS>,
-                                             cudaFuncAttributeMaxDynamicSharedMemorySize,
-                                             cublasdx::get_shared_storage_size<BLAS>()));
+    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(
+        gemm_conj_transpose_kernel<BLAS>,
+        cudaFuncAttributeMaxDynamicSharedMemorySize,
+        cublasdx::get_shared_storage_size<BLAS>()));
 
     gemm_conj_transpose_kernel<BLAS>
         <<<1, BLAS::block_dim, cublasdx::get_shared_storage_size<BLAS>()>>>(a, b, c, alpha, beta, output);
@@ -176,7 +180,7 @@ int gemm_conj_transpose() {
     std::vector<value_type> host_a_ct(global_a_size);
     for (unsigned int i = 0; i < m; ++i) {
         for (unsigned int j = 0; j < k; ++j) {
-            auto val             = host_a[j + i * m];
+            auto val              = host_a[j + i * m];
             host_a_ct[i + j * m] = value_type(val.real(), -val.imag());
         }
     }
@@ -211,11 +215,12 @@ int gemm_conj_transpose() {
 
 struct gemm_conj_transpose_functor {
     template<int Arch, cublasdx::sm_modifier Modifier>
-    int operator()(std::integral_constant<int, Arch>, std::integral_constant<cublasdx::sm_modifier, Modifier>) {
+    int operator()(std::integral_constant<int, Arch>,
+                   std::integral_constant<cublasdx::sm_modifier, Modifier>) {
         return gemm_conj_transpose<Arch>();
     }
 };
 
 int main(int, char**) {
-    return example::sm_runner(gemm_conj_transpose_functor {});
+    return example::sm_runner(gemm_conj_transpose_functor{});
 }

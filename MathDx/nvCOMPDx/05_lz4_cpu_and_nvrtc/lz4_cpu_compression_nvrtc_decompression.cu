@@ -44,8 +44,8 @@ extern "C" __global__ void decomp_warp_kernel(
     size_t batch_size,
     const void * const * comp_chunks,
     void * const * uncomp_chunks,
-    const size_t * comp_chunk_sizes,
-    size_t * decomp_chunk_sizes) {
+    const unsigned long long * comp_chunk_sizes,
+    unsigned long long * decomp_chunk_sizes) {
 
   const unsigned int global_chunk_id = (blockIdx.x * blockDim.x + threadIdx.x) / 32;
   const unsigned int local_chunk_id = threadIdx.x / 32;
@@ -53,6 +53,7 @@ extern "C" __global__ void decomp_warp_kernel(
     return;
   }
 
+  // clang-format off
   using decompressor_type =
     decltype(Algorithm<algorithm::ALGORITHM>() +
              DataType<datatype::DATATYPE>() +
@@ -60,10 +61,11 @@ extern "C" __global__ void decomp_warp_kernel(
              Direction<direction::decompress>() +
              Warp() +
              SM<ARCH>());
+  // clang-format on
 
   auto decompressor = decompressor_type();
   constexpr auto shmem_size_warp = decompressor.shmem_size_group();
-  extern __shared__ __align__(decompressor.shmem_alignment()) uint8_t shared_scratch_decomp_buffer[];
+  extern __shared__ __align__(decompressor.shmem_alignment()) unsigned char shared_scratch_decomp_buffer[];
 
   decompressor.execute(
     comp_chunks[global_chunk_id],
@@ -75,8 +77,7 @@ extern "C" __global__ void decomp_warp_kernel(
 }
 )kernel";
 
-static std::string get_device_architecture_option(CUdevice& device)
-{
+static std::string get_device_architecture_option(CUdevice& device) {
   // Note:
   // -arch=compute_...       will generate PTX
   // -arch=sm_...            will generate SASS
@@ -85,25 +86,22 @@ static std::string get_device_architecture_option(CUdevice& device)
   return option;
 }
 
-static std::vector<std::string> get_comp_include_dirs()
-{
+static std::vector<std::string> get_comp_include_dirs() {
 #ifndef NVCOMPDX_INCLUDE_DIRS
   return std::vector<std::string>();
 #else
   std::vector<std::string> comp_include_dirs_array;
   {
     std::string comp_include_dirs = NVCOMPDX_INCLUDE_DIRS;
-    std::string delim             = ",";
-    size_t      start             = 0U;
-    size_t      end               = comp_include_dirs.find(delim);
+    std::string delim = ",";
+    size_t start = 0U;
+    size_t end = comp_include_dirs.find(delim);
     while (end != std::string::npos) {
-      comp_include_dirs_array.push_back("--include-path=" +
-        comp_include_dirs.substr(start, end - start));
+      comp_include_dirs_array.push_back("--include-path=" + comp_include_dirs.substr(start, end - start));
       start = end + delim.length();
-      end   = comp_include_dirs.find(delim, start);
+      end = comp_include_dirs.find(delim, start);
     }
-    comp_include_dirs_array.push_back("--include-path=" +
-      comp_include_dirs.substr(start, end - start));
+    comp_include_dirs_array.push_back("--include-path=" + comp_include_dirs.substr(start, end - start));
   }
 #endif // NVCOMPDX_INCLUDE_DIRS
 #ifdef COMMONDX_INCLUDE_DIR
@@ -114,31 +112,30 @@ static std::vector<std::string> get_comp_include_dirs()
   {
     const char* env_ptr = std::getenv("NVCOMPDX_EXAMPLE_COMMONDX_INCLUDE_DIR");
     if (env_ptr != nullptr) {
-        comp_include_dirs_array.push_back("--include-path=" + std::string(env_ptr));
+      comp_include_dirs_array.push_back("--include-path=" + std::string(env_ptr));
     }
   }
   {
     const char* env_ptr = std::getenv("NVCOMPDX_EXAMPLE_NVCOMPDX_INCLUDE_DIR");
     if (env_ptr != nullptr) {
-        comp_include_dirs_array.push_back("--include-path=" + std::string(env_ptr));
+      comp_include_dirs_array.push_back("--include-path=" + std::string(env_ptr));
     }
   }
   {
     const char* env_ptr = std::getenv("NVCOMPDX_EXAMPLE_CUDA_INCLUDE_DIR");
     if (env_ptr != nullptr) {
-        comp_include_dirs_array.push_back("--include-path=" + std::string(env_ptr));
-        comp_include_dirs_array.push_back("--include-path=" + std::string(env_ptr) + "/cccl");
-        comp_include_dirs_array.push_back("--include-path=" + std::string(env_ptr) + "/cuda/std");
-        comp_include_dirs_array.push_back("--include-path=" + std::string(env_ptr) + "/cccl/cuda/std");
+      comp_include_dirs_array.push_back("--include-path=" + std::string(env_ptr));
+      comp_include_dirs_array.push_back("--include-path=" + std::string(env_ptr) + "/cccl");
+      comp_include_dirs_array.push_back("--include-path=" + std::string(env_ptr) + "/cuda/std");
+      comp_include_dirs_array.push_back("--include-path=" + std::string(env_ptr) + "/cccl/cuda/std");
     }
   }
   return comp_include_dirs_array;
 }
 
 // Benchmark performance from the binary data file
-template<unsigned int Arch>
-static int run_nvrtc_example(const std::vector<std::vector<char>>& data)
-{
+template <unsigned int Arch>
+static int run_nvrtc_example(const std::vector<std::vector<char>>& data) {
   assert(!data.empty());
 
   size_t total_bytes = 0;
@@ -162,22 +159,20 @@ static int run_nvrtc_example(const std::vector<std::vector<char>>& data)
   std::cout << "chunks: " << batch_size << std::endl;
 
   // Allocate and prepare output/compressed batch
-  BatchDataCPU compressed_data_cpu(
-      LZ4_compressBound(chunk_size), batch_size);
+  BatchDataCPU compressed_data_cpu(LZ4_compressBound(chunk_size), batch_size);
 
   // Compressing on the CPU
   // Loop over chunks on the CPU, compressing each one one by one
   for (size_t i = 0; i < batch_size; ++i) {
     // Could use LZ4_compress_default or LZ4_compress_fast instead
     const int size = LZ4_compress_HC(
-        static_cast<const char*>(input_data_cpu.chunk_ptrs()[i]),
-        static_cast<char*>(compressed_data_cpu.chunk_ptrs()[i]),
-        static_cast<int>(input_data_cpu.chunk_sizes()[i]),
-        static_cast<int>(compressed_data_cpu.chunk_sizes()[i]),
-        12 /* compression level */);
+      static_cast<const char*>(input_data_cpu.chunk_ptrs()[i]),
+      static_cast<char*>(compressed_data_cpu.chunk_ptrs()[i]),
+      static_cast<int>(input_data_cpu.chunk_sizes()[i]),
+      static_cast<int>(compressed_data_cpu.chunk_sizes()[i]),
+      12 /* compression level */);
     if (size == 0) {
-      throw std::runtime_error(
-          "LZ4 CPU failed to compress chunk " + std::to_string(i) + ".");
+      throw std::runtime_error("LZ4 CPU failed to compress chunk " + std::to_string(i) + ".");
     }
 
     // Set the actual compressed size
@@ -186,14 +181,13 @@ static int run_nvrtc_example(const std::vector<std::vector<char>>& data)
 
   // Compute compression ratio
   size_t* compressed_sizes_host = compressed_data_cpu.chunk_sizes();
-  size_t comp_bytes =
-    std::accumulate(compressed_sizes_host, compressed_sizes_host + batch_size, size_t(0));
+  size_t comp_bytes = std::accumulate(compressed_sizes_host, compressed_sizes_host + batch_size, size_t(0));
 
-  std::cout << "comp_size: " << comp_bytes
-            << ", compressed ratio: " << std::fixed << std::setprecision(2)
+  std::cout << "comp_size: " << comp_bytes << ", compressed ratio: " << std::fixed << std::setprecision(2)
             << (double)total_bytes / comp_bytes << std::endl;
 
   // Configure the GPU decompressor
+  // clang-format off
   using lz4_decompressor_type =
     decltype(Algorithm<algorithm::lz4>() +
              DataType<datatype::uint8>() +
@@ -201,10 +195,10 @@ static int run_nvrtc_example(const std::vector<std::vector<char>>& data)
              Direction<direction::decompress>() +
              Warp() +
              SM<Arch>());
+  // clang-format on
 
   // Runtime decompression parameters
-  const auto block_count =
-    static_cast<unsigned int>((batch_size + num_chunks_per_block - 1) / num_chunks_per_block);
+  const auto block_count = static_cast<unsigned int>((batch_size + num_chunks_per_block - 1) / num_chunks_per_block);
 
   // Global scratch buffer
   // Note: lz4 decompression requires no global scratch buffer
@@ -222,12 +216,13 @@ static int run_nvrtc_example(const std::vector<std::vector<char>>& data)
 
   // Create an NVRTC program out of the string-defined kernel
   nvrtcProgram program;
-  NVRTC_CHECK(nvrtcCreateProgram(&program,
-                                 decomp_kernel,
-                                 NULL /* CUDA program name */,
-                                 0 /* numHeaders */,
-                                 NULL /* headers */,
-                                 NULL /* includeNames */));
+  NVRTC_CHECK(nvrtcCreateProgram(
+    &program,
+    decomp_kernel,
+    NULL /* CUDA program name */,
+    0 /* numHeaders */,
+    NULL /* headers */,
+    NULL /* includeNames */));
 
   // Prepare compilation options
   CUdevice cuDevice;
@@ -243,8 +238,7 @@ static int run_nvrtc_example(const std::vector<std::vector<char>>& data)
     "--include-path=" CUDAToolkit_INCLUDE_DIR "/cccl/cuda/std", // Path to standard headers (CTK 13+)
     "-dlto",
     "-rdc=true",
-    gpu_architecture_option.c_str()
-  };
+    gpu_architecture_option.c_str()};
 
   auto opt_convert_define = [](const auto& s1, const auto& s2) {
     return std::string("-D") + s1 + std::string("=") + s2;
@@ -255,8 +249,7 @@ static int run_nvrtc_example(const std::vector<std::vector<char>>& data)
     opt_convert_define("ALGORITHM", "lz4"),
     opt_convert_define("DATATYPE", "uint8"),
     opt_convert_define("MAX_UNCOMP_CHUNK_SIZE", std::to_string(chunk_size)),
-    opt_convert_define("ARCH", std::to_string(Arch))
-  };
+    opt_convert_define("ARCH", std::to_string(Arch))};
   for (auto& config : comp_config_values) {
     opts.push_back(config.c_str());
   }
@@ -268,16 +261,14 @@ static int run_nvrtc_example(const std::vector<std::vector<char>>& data)
   }
 
   // Compile kernel via nvrtc
-  nvrtcResult compileResult = nvrtcCompileProgram(program,
-                                                  static_cast<int>(opts.size()),
-                                                  opts.data());
+  nvrtcResult compileResult = nvrtcCompileProgram(program, static_cast<int>(opts.size()), opts.data());
   if (compileResult != NVRTC_SUCCESS) {
-      // Obtain compilation log from the program if unsuccessful
-      for (auto option : opts) {
-          std::cout << option << std::endl;
-      }
-      print_nvrtc_program_log(std::cerr, program);
-      std::exit(1);
+    // Obtain compilation log from the program if unsuccessful
+    for (auto option : opts) {
+      std::cout << option << std::endl;
+    }
+    print_nvrtc_program_log(std::cerr, program);
+    std::exit(1);
   }
 
   // Obtain generated LTO IR from the program
@@ -300,20 +291,17 @@ static int run_nvrtc_example(const std::vector<std::vector<char>>& data)
   std::vector<const char*> lopts;
   lopts.emplace_back("-lto");
   lopts.emplace_back(gpu_architecture_option.c_str());
-  NVJITLINK_CHECK(linker, nvJitLinkCreate(&linker,
-                                          static_cast<uint32_t>(lopts.size()),
-                                          lopts.data()));
+  NVJITLINK_CHECK(linker, nvJitLinkCreate(&linker, static_cast<uint32_t>(lopts.size()), lopts.data()));
 
   // Add the runtime-compiled kernel LTO IR
-  NVJITLINK_CHECK(linker,
-    nvJitLinkAddData(linker, NVJITLINK_INPUT_LTOIR, ltoir.get(), lto_size, "lto_online"));
+  NVJITLINK_CHECK(linker, nvJitLinkAddData(linker, NVJITLINK_INPUT_LTOIR, ltoir.get(), lto_size, "lto_online"));
 
   // Add nvCOMPDx LTO library or the nvCOMPDx fatbinary
   const char* fatbin_env_ptr = std::getenv("NVCOMPDX_EXAMPLE_NVCOMPDX_FATBIN");
   const char* library_env_ptr = std::getenv("NVCOMPDX_EXAMPLE_NVCOMPDX_LIBRARY");
-  if(fatbin_env_ptr) {
+  if (fatbin_env_ptr) {
     NVJITLINK_CHECK(linker, nvJitLinkAddFile(linker, NVJITLINK_INPUT_FATBIN, fatbin_env_ptr));
-  } else if(library_env_ptr) {
+  } else if (library_env_ptr) {
     NVJITLINK_CHECK(linker, nvJitLinkAddFile(linker, NVJITLINK_INPUT_LIBRARY, library_env_ptr));
   } else {
 #if defined(NVCOMPDX_FATBIN)
@@ -347,33 +335,26 @@ static int run_nvrtc_example(const std::vector<std::vector<char>>& data)
   CU_CHECK(cuModuleGetFunction(&kernel, module, "decomp_warp_kernel"));
 
   // Set dynamic shared memory needs
-  CU_CHECK(cuFuncSetAttribute(kernel,
-                              CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
-                              decomp_shared_memory));
+  CU_CHECK(cuFuncSetAttribute(kernel, CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES, decomp_shared_memory));
 
   // Start with the actual decompression
   auto comp_chunks = compressed_data.chunk_ptrs();
   auto uncomp_chunks = decomp_data.chunk_ptrs();
   auto comp_chunk_sizes = compressed_data.chunk_sizes();
   auto decomp_chunk_sizes = decomp_data.chunk_sizes();
-  void* args[] = {
-    &batch_size,
-    &comp_chunks,
-    &uncomp_chunks,
-    &comp_chunk_sizes,
-    &decomp_chunk_sizes
-  };
-  CU_CHECK(cuLaunchKernel(kernel,
-                          block_count /* gridDimX */,
-                          1 /* gridDimY */,
-                          1 /* gridDimZ */,
-                          block_size /* blockDimX */,
-                          1 /* blockDimY */,
-                          1 /* blockDimZ */,
-                          decomp_shared_memory,
-                          NULL /* hStream */,
-                          args,
-                          NULL));
+  void* args[] = {&batch_size, &comp_chunks, &uncomp_chunks, &comp_chunk_sizes, &decomp_chunk_sizes};
+  CU_CHECK(cuLaunchKernel(
+    kernel,
+    block_count /* gridDimX */,
+    1 /* gridDimY */,
+    1 /* gridDimZ */,
+    block_size /* blockDimX */,
+    1 /* blockDimY */,
+    1 /* blockDimZ */,
+    decomp_shared_memory,
+    NULL /* hStream */,
+    args,
+    NULL));
   CU_CHECK(cuCtxSynchronize());
 
   // Validate decompressed data against input
@@ -385,17 +366,15 @@ static int run_nvrtc_example(const std::vector<std::vector<char>>& data)
   return 0;
 }
 
-template<unsigned int Arch>
+template <unsigned int Arch>
 struct Runner {
-  template<typename... Args>
-  static int run(Args&&... args)
-  {
+  template <typename... Args>
+  static int run(Args&&... args) {
     return run_nvrtc_example<Arch>(std::forward<Args>(args)...);
   }
 };
 
-int main(int argc, char* argv[])
-{
+int main(int argc, char* argv[]) {
   std::vector<std::string> file_names;
 
   do {

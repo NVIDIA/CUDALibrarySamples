@@ -30,6 +30,7 @@
 
 template<class TRSM_thread, class DataType = typename TRSM_thread::a_data_type>
 __global__ void trsm_kernel(const DataType* A, DataType* B, const unsigned int batches) {
+    CUSOLVERDX_SKIP_IF_NOT_APPLICABLE_SM(TRSM_thread);
 
     constexpr auto a_m = (TRSM_thread::side == cusolverdx::side::left) ? TRSM_thread::m_size : TRSM_thread::n_size;
 

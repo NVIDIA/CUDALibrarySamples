@@ -26,6 +26,8 @@
 
 template<class FFTR2C, class FFTC2R>
 __launch_bounds__(FFTR2C::max_threads_per_block) __global__ void convolution_kernel(cufftdx::precision_of_t<FFTR2C>* data) {
+    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFTR2C);
+
     using complex_type = typename FFTR2C::value_type;
     using scalar_type  = typename complex_type::value_type;
 
@@ -61,7 +63,7 @@ __launch_bounds__(FFTR2C::max_threads_per_block) __global__ void convolution_ker
 // applying pointwise operation, and ending with inverse FFT.
 // Data is generated on host, copied to device buffer, and then results are copied back to host.
 template<unsigned int Arch>
-void convolution() {
+int convolution() {
     using namespace cufftdx;
 
     static constexpr unsigned int ffts_per_block = 2;
@@ -107,11 +109,12 @@ void convolution() {
 
     CUDA_CHECK_AND_EXIT(cudaFree(data));
     std::cout << "Success" << std::endl;
+    return 0;
 }
 
 template<unsigned int Arch>
 struct convolution_functor {
-    void operator()() { return convolution<Arch>(); }
+    int operator()() { return convolution<Arch>(); }
 };
 
 int main(int, char**) {

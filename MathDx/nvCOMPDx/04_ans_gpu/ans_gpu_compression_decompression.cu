@@ -27,27 +27,27 @@ using namespace nvcompdx;
 
 // ANS compression kernel, using the preconfigured decompressor
 // 1 block per chunk
-template<typename compressor_type>
+template <typename compressor_type>
 __global__ void comp_block_kernel(
   size_t batch_size,
-  const void * const * uncomp_chunks,
-  const size_t * uncomp_chunk_sizes,
-  void * const * comp_chunks,
-  size_t * comp_chunk_sizes,
-  uint8_t * tmp_buffer) {
+  const void* const* uncomp_chunks,
+  const unsigned long long* uncomp_chunk_sizes,
+  void* const* comp_chunks,
+  unsigned long long* comp_chunk_sizes,
+  unsigned char* tmp_buffer) {
   // Note:
   // Given the (de)compressor expression has an SM<> operator,
   // it makes the fully-typed kernel only applicable on one targeted device architecture.
   // We need to signal to the compiler not to continue compiling this kernel whenever
   // the current compilation architecture is different from the one specified in
   // the SM<> operator.
-  NVCOMPDX_SKIP_IF_NOT_APPLICABLE(compressor_type);
+  NVCOMPDX_SKIP_IF_NOT_APPLICABLE_SM(compressor_type);
 
   const unsigned int global_chunk_id = blockIdx.x;
 
   auto compressor = compressor_type();
-  constexpr size_t tmp_size_block = compressor.tmp_size_group();
-  extern __shared__ __align__(compressor.shmem_alignment()) uint8_t shared_comp_scratch_buffer[];
+  constexpr auto tmp_size_block = compressor.tmp_size_group();
+  extern __shared__ __align__(compressor.shmem_alignment()) unsigned char shared_comp_scratch_buffer[];
   assert(reinterpret_cast<uintptr_t>(shared_comp_scratch_buffer) % compressor.shmem_alignment() == 0);
 
   // Note: The entire block must call into execute(...).
@@ -62,25 +62,25 @@ __global__ void comp_block_kernel(
 
 // ANS decompression kernel, using the preconfigured decompressor
 // 1 block per chunk
-template<typename decompressor_type>
+template <typename decompressor_type>
 __global__ void decomp_block_kernel(
   size_t batch_size,
-  const void * const * comp_chunks,
-  void * const * uncomp_chunks,
-  const size_t * comp_chunk_sizes,
-  size_t * decomp_chunk_sizes) {
+  const void* const* comp_chunks,
+  void* const* uncomp_chunks,
+  const unsigned long long* comp_chunk_sizes,
+  unsigned long long* decomp_chunk_sizes) {
   // Note:
   // Given the (de)compressor expression has an SM<> operator,
   // it makes the fully-typed kernel only applicable on one targeted device architecture.
   // We need to signal to the compiler not to continue compiling this kernel whenever
   // the current compilation architecture is different from the one specified in
   // the SM<> operator.
-  NVCOMPDX_SKIP_IF_NOT_APPLICABLE(decompressor_type);
+  NVCOMPDX_SKIP_IF_NOT_APPLICABLE_SM(decompressor_type);
 
   const unsigned int global_chunk_id = blockIdx.x;
 
   auto decompressor = decompressor_type();
-  extern __shared__ __align__(decompressor.shmem_alignment()) uint8_t shared_decomp_scratch_buffer[];
+  extern __shared__ __align__(decompressor.shmem_alignment()) unsigned char shared_decomp_scratch_buffer[];
   assert(reinterpret_cast<uintptr_t>(shared_decomp_scratch_buffer) % decompressor.shmem_alignment() == 0);
 
   // Note: The entire block must call into execute(...).
@@ -94,22 +94,23 @@ __global__ void decomp_block_kernel(
 }
 
 // Benchmark performance from the binary data file
-template<datatype DT, unsigned int Arch>
-static int ans_gpu_comp_gpu_decomp(const std::vector<std::vector<char>>& data,
-                                   size_t warmup_iteration_count,
-                                   size_t total_iteration_count)
-{
+template <datatype DT, unsigned int Arch>
+static int ans_gpu_comp_gpu_decomp(
+  const std::vector<std::vector<char>>& data,
+  size_t warmup_iteration_count,
+  size_t total_iteration_count) {
   assert(!data.empty());
-  if(warmup_iteration_count >= total_iteration_count) {
+  if (warmup_iteration_count >= total_iteration_count) {
     throw std::runtime_error("ERROR: the total iteration count must be greater than the warmup iteration count");
   }
 
   size_t total_bytes = 0;
   for (const std::vector<char>& part : data) {
     total_bytes += part.size();
-    if constexpr (DT ==  datatype::float16) {
-      if(part.size() % 2 != 0) {
-        throw std::runtime_error("ERROR: with the selected data type (float16), all input file sizes must be divisible by 2");
+    if constexpr (DT == datatype::float16) {
+      if (part.size() % 2 != 0) {
+        throw std::runtime_error(
+          "ERROR: with the selected data type (float16), all input file sizes must be divisible by 2");
       }
     }
   }
@@ -127,6 +128,7 @@ static int ans_gpu_comp_gpu_decomp(const std::vector<std::vector<char>>& data,
   constexpr size_t chunk_size = 1 << 16; // [bytes]
 
   // Configure the GPU compressor
+  // clang-format off
   using ans_compressor_type =
     decltype(Algorithm<algorithm::ans>() +
              DataType<DT>() +
@@ -135,6 +137,7 @@ static int ans_gpu_comp_gpu_decomp(const std::vector<std::vector<char>>& data,
              Block() +
              BlockWarp<num_warps_per_block, true>() +
              SM<Arch>());
+  // clang-format on
 
   // Build up GPU data
   BatchData input_data(data, chunk_size, ans_compressor_type().input_alignment());
@@ -142,15 +145,15 @@ static int ans_gpu_comp_gpu_decomp(const std::vector<std::vector<char>>& data,
   std::cout << "chunks: " << batch_size << std::endl;
 
   // Global scratch buffer
-  size_t comp_temp_bytes = ans_compressor_type().tmp_size_total(batch_size);
-  uint8_t* d_comp_temp;
+  auto comp_temp_bytes = ans_compressor_type().tmp_size_total(batch_size);
+  unsigned char* d_comp_temp;
   CUDA_CHECK(cudaMalloc(&d_comp_temp, comp_temp_bytes));
 
   // Shared scratch buffer
   const auto comp_shared_memory = ans_compressor_type().shmem_size_group();
 
   // Prepare compressed data buffer
-  size_t max_out_bytes = ans_compressor_type().max_comp_chunk_size();
+  auto max_out_bytes = ans_compressor_type().max_comp_chunk_size();
   BatchData compressed_data(max_out_bytes, batch_size, ans_compressor_type().output_alignment());
 
   // Create CUDA stream
@@ -167,8 +170,7 @@ static int ans_gpu_comp_gpu_decomp(const std::vector<std::vector<char>>& data,
       input_data.chunk_sizes(),
       compressed_data.chunk_ptrs(),
       compressed_data.chunk_sizes(),
-      d_comp_temp
-    );
+      d_comp_temp);
     CUDA_CHECK(cudaGetLastError());
   });
 
@@ -180,18 +182,14 @@ static int ans_gpu_comp_gpu_decomp(const std::vector<std::vector<char>>& data,
     batch_size * sizeof(size_t),
     cudaMemcpyDeviceToHost));
 
-  size_t comp_bytes = std::accumulate(
-        compressed_sizes_host.begin(),
-        compressed_sizes_host.end(),
-        size_t(0));
+  size_t comp_bytes = std::accumulate(compressed_sizes_host.begin(), compressed_sizes_host.end(), size_t(0));
 
-  std::cout << "comp_size: " << comp_bytes
-        << ", compressed ratio: " << std::fixed << std::setprecision(2)
-        << (double)total_bytes / comp_bytes << std::endl;
-  std::cout << "compression throughput (GB/s): "
-        << (double)total_bytes / (1.0e6 * ms) << std::endl;
+  std::cout << "comp_size: " << comp_bytes << ", compressed ratio: " << std::fixed << std::setprecision(2)
+            << (double)total_bytes / comp_bytes << std::endl;
+  std::cout << "compression throughput (GB/s): " << (double)total_bytes / (1.0e6 * ms) << std::endl;
 
   // Configure the GPU decompressor
+  // clang-format off
   using ans_decompressor_type =
     decltype(Algorithm<algorithm::ans>() +
              DataType<DT>() +
@@ -200,6 +198,7 @@ static int ans_gpu_comp_gpu_decomp(const std::vector<std::vector<char>>& data,
              Block() +
              BlockWarp<num_warps_per_block, true>() +
              SM<Arch>());
+  // clang-format on
 
   // Global scratch buffer
   // Note: ANS requires no global scratch buffer for decompression
@@ -211,14 +210,13 @@ static int ans_gpu_comp_gpu_decomp(const std::vector<std::vector<char>>& data,
   // Allocate and build up decompression batch on GPU
   BatchData decomp_data(chunk_size, batch_size, ans_decompressor_type().output_alignment());
 
-  ms = measure_ms(warmup_iteration_count, total_iteration_count, stream, [&](){
+  ms = measure_ms(warmup_iteration_count, total_iteration_count, stream, [&]() {
     decomp_block_kernel<ans_decompressor_type><<<block_count, block_size, decomp_shared_memory, stream>>>(
       batch_size,
       compressed_data.chunk_ptrs(),
       decomp_data.chunk_ptrs(),
       compressed_data.chunk_sizes(),
-      decomp_data.chunk_sizes()
-    );
+      decomp_data.chunk_sizes());
     CUDA_CHECK(cudaGetLastError());
   });
 
@@ -230,8 +228,7 @@ static int ans_gpu_comp_gpu_decomp(const std::vector<std::vector<char>>& data,
   }
 
   double decompression_throughput = ((double)total_bytes / ms) * 1e-6;
-  std::cout << "decompression throughput (GB/s): " << decompression_throughput
-            << std::endl;
+  std::cout << "decompression throughput (GB/s): " << decompression_throughput << std::endl;
 
   CUDA_CHECK(cudaFree(d_comp_temp));
   CUDA_CHECK(cudaStreamDestroy(stream));
@@ -239,34 +236,30 @@ static int ans_gpu_comp_gpu_decomp(const std::vector<std::vector<char>>& data,
   return 0;
 }
 
-void print_usage()
-{
+void print_usage() {
   std::cerr << std::endl;
   std::cerr << "Usage: ans_gpu_compression_decompression [OPTIONS]" << std::endl;
   std::cerr << "  -f <input file(s)>" << std::endl;
   std::cerr << "  -t {uint8 or float16}" << std::endl;
 }
 
-template<unsigned int Arch>
+template <unsigned int Arch>
 struct RunnerUint8 {
-  template<typename... Args>
-  static int run(Args&&... args)
-  {
+  template <typename... Args>
+  static int run(Args&&... args) {
     return ans_gpu_comp_gpu_decomp<datatype::uint8, Arch>(std::forward<Args>(args)...);
   }
 };
 
-template<unsigned int Arch>
+template <unsigned int Arch>
 struct RunnerFloat16 {
-  template<typename... Args>
-  static int run(Args&&... args)
-  {
+  template <typename... Args>
+  static int run(Args&&... args) {
     return ans_gpu_comp_gpu_decomp<datatype::float16, Arch>(std::forward<Args>(args)...);
   }
 };
 
-int main(int argc, char* argv[])
-{
+int main(int argc, char* argv[]) {
   std::vector<std::string> file_names;
 
   size_t warmup_iteration_count = 2;
@@ -286,21 +279,22 @@ int main(int argc, char* argv[])
         while (i < argc && argv[i][0] != '-') {
           file_names.emplace_back(argv[i++]);
         }
-      } else if(strcmp(current_argv, "-t") == 0) {
-        if(i >= argc) {
-            std::cerr << "Missing value for argument '-t <data type>'" << std::endl;
-            print_usage();
-            return 1;
+      } else if (strcmp(current_argv, "-t") == 0) {
+        if (i >= argc) {
+          std::cerr << "Missing value for argument '-t <data type>'" << std::endl;
+          print_usage();
+          return 1;
         }
         const char* data_type = argv[i++];
-        if(strcmp(data_type, "uint8") == 0) {
-            is_data_uint8 = true;
-        } else if(strcmp(data_type, "float16") == 0) {
-            is_data_uint8 = false;
+        if (strcmp(data_type, "uint8") == 0) {
+          is_data_uint8 = true;
+        } else if (strcmp(data_type, "float16") == 0) {
+          is_data_uint8 = false;
         } else {
-            std::cerr << "Unknown data type selected (" << data_type << "). Select from the supported options: uint8, float16." << std::endl;
-            print_usage();
-            return 1;
+          std::cerr << "Unknown data type selected (" << data_type
+                    << "). Select from the supported options: uint8, float16." << std::endl;
+          print_usage();
+          return 1;
         }
       } else {
         std::cerr << "Unknown argument: " << current_argv << std::endl;
@@ -318,7 +312,7 @@ int main(int argc, char* argv[])
 
   auto data = multi_file(file_names);
 
-  if(is_data_uint8) {
+  if (is_data_uint8) {
     return run_with_current_arch<RunnerUint8>(data, warmup_iteration_count, total_iteration_count);
   }
   return run_with_current_arch<RunnerFloat16>(data, warmup_iteration_count, total_iteration_count);

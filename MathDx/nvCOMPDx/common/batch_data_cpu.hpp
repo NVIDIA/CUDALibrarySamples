@@ -24,18 +24,14 @@
 class BatchDataCPU
 {
 public:
-  BatchDataCPU(
-      const std::vector<std::vector<char>>& host_data,
-      const size_t chunk_size) :
-      m_chunk_ptrs(),
-      m_chunk_sizes(),
-      m_data(),
-      m_batch_size(compute_batch_size(host_data, chunk_size))
-  {
+  BatchDataCPU(const std::vector<std::vector<char>>& host_data, const size_t chunk_size)
+      : m_chunk_ptrs()
+      , m_chunk_sizes()
+      , m_data()
+      , m_batch_size(compute_batch_size(host_data, chunk_size)) {
     m_chunk_sizes = compute_chunk_sizes(host_data, m_batch_size, chunk_size);
 
-    size_t data_size = std::accumulate(
-        m_chunk_sizes.begin(), m_chunk_sizes.end(), size_t(0));
+    size_t data_size = std::accumulate(m_chunk_sizes.begin(), m_chunk_sizes.end(), size_t(0));
     m_data = std::vector<uint8_t>(data_size);
 
     size_t offset = 0;
@@ -51,12 +47,11 @@ public:
     }
   }
 
-  BatchDataCPU(const size_t max_output_size, const size_t batch_size) :
-      m_chunk_ptrs(),
-      m_chunk_sizes(),
-      m_data(),
-      m_batch_size(batch_size)
-  {
+  BatchDataCPU(const size_t max_output_size, const size_t batch_size)
+      : m_chunk_ptrs()
+      , m_chunk_sizes()
+      , m_data()
+      , m_batch_size(batch_size) {
     m_data = std::vector<uint8_t>(max_output_size * m_batch_size);
 
     m_chunk_sizes = std::vector<size_t>(m_batch_size, max_output_size);
@@ -68,21 +63,18 @@ public:
   }
 
   BatchDataCPU(
-      const void* const* device_chunk_ptrs,
-      const size_t* device_chunk_sizes,
-      size_t batch_size,
-      bool copy_data = false) :
-      m_chunk_ptrs(),
-      m_chunk_sizes(),
-      m_data(),
-      m_batch_size(batch_size)
-  {
+    const void* const* device_chunk_ptrs,
+    const size_t* device_chunk_sizes,
+    size_t batch_size,
+    bool copy_data = false)
+      : m_chunk_ptrs()
+      , m_chunk_sizes()
+      , m_data()
+      , m_batch_size(batch_size) {
     m_chunk_sizes = std::vector<size_t>(m_batch_size);
-    CUDA_CHECK(cudaMemcpy(
-        chunk_sizes(), device_chunk_sizes, m_batch_size * sizeof(size_t), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(chunk_sizes(), device_chunk_sizes, m_batch_size * sizeof(size_t), cudaMemcpyDeviceToHost));
 
-    size_t data_size
-        = std::accumulate(chunk_sizes(), chunk_sizes() + m_batch_size, size_t(0));
+    size_t data_size = std::accumulate(chunk_sizes(), chunk_sizes() + m_batch_size, size_t(0));
     m_data = std::vector<uint8_t>(data_size);
 
     size_t offset = 0;
@@ -94,16 +86,12 @@ public:
 
     if (copy_data) {
       std::vector<void*> host_chunk_ptrs(m_batch_size);
-      CUDA_CHECK(cudaMemcpy(
-          host_chunk_ptrs.data(),
-          device_chunk_ptrs,
-          m_batch_size * sizeof(void*),
-          cudaMemcpyDeviceToHost));
+      CUDA_CHECK(
+        cudaMemcpy(host_chunk_ptrs.data(), device_chunk_ptrs, m_batch_size * sizeof(void*), cudaMemcpyDeviceToHost));
 
       for (size_t i = 0; i < m_batch_size; ++i) {
         const uint8_t* chunk_ptr = reinterpret_cast<const uint8_t*>(host_chunk_ptrs[i]);
-        CUDA_CHECK(
-            cudaMemcpy(m_chunk_ptrs[i], chunk_ptr, m_chunk_sizes[i], cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaMemcpy(m_chunk_ptrs[i], chunk_ptr, m_chunk_sizes[i], cudaMemcpyDeviceToHost));
       }
     }
   }
@@ -114,43 +102,21 @@ public:
   BatchDataCPU(const BatchDataCPU& other) = delete;
   BatchDataCPU& operator=(const BatchDataCPU& other) = delete;
 
-  uint8_t* data()
-  {
-    return m_data.data();
-  }
+  uint8_t* data() { return m_data.data(); }
 
-  const uint8_t* data() const
-  {
-    return m_data.data();
-  }
+  const uint8_t* data() const { return m_data.data(); }
 
-  void** chunk_ptrs()
-  {
-    return m_chunk_ptrs.data();
-  }
+  void** chunk_ptrs() { return m_chunk_ptrs.data(); }
 
-  const void* const* chunk_ptrs() const
-  {
-    return m_chunk_ptrs.data();
-  }
+  const void* const* chunk_ptrs() const { return m_chunk_ptrs.data(); }
 
-  size_t* chunk_sizes()
-  {
-    return m_chunk_sizes.data();
-  }
+  size_t* chunk_sizes() { return m_chunk_sizes.data(); }
 
-  const size_t* chunk_sizes() const
-  {
-    return m_chunk_sizes.data();
-  }
+  const size_t* chunk_sizes() const { return m_chunk_sizes.data(); }
 
-  size_t batch_size() const noexcept
-  {
-    return m_batch_size;
-  }
+  size_t batch_size() const noexcept { return m_batch_size; }
 
-  bool operator==(const BatchDataCPU& other)
-  {
+  bool operator==(const BatchDataCPU& other) {
     if (m_batch_size != other.batch_size()) {
       return false;
     }
@@ -171,10 +137,8 @@ public:
     return true;
   }
 
-  bool operator!=(const BatchDataCPU& other)
-  {
-    return !(*this == other);
-  }
+  bool operator!=(const BatchDataCPU& other) { return !(*this == other); }
+
 private:
   std::vector<void*> m_chunk_ptrs;
   std::vector<size_t> m_chunk_sizes;

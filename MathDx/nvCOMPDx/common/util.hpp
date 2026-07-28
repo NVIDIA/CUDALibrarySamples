@@ -30,37 +30,35 @@
 #include <cuda.h>
 
 #ifndef CUDA_CHECK
-#define CUDA_CHECK(func)                                                       \
-  do {                                                                         \
-    cudaError_t rt = (func);                                                   \
-    if (rt != cudaSuccess) {                                                   \
-      const char* str = cudaGetErrorString(rt);                                \
-      std::cerr << "CUDA Runtime failure \"" #func "\" with " << rt << " at "  \
-                << __FILE__ << ":" << __LINE__ << std::endl;                   \
-      std::cerr << str << std::endl;                                           \
-      std::exit(1);                                                            \
-    }                                                                          \
+#define CUDA_CHECK(func)                                                                                               \
+  do {                                                                                                                 \
+    cudaError_t rt = (func);                                                                                           \
+    if (rt != cudaSuccess) {                                                                                           \
+      const char* str = cudaGetErrorString(rt);                                                                        \
+      std::cerr << "CUDA Runtime failure \"" #func "\" with " << rt << " at " << __FILE__ << ":" << __LINE__           \
+                << std::endl;                                                                                          \
+      std::cerr << str << std::endl;                                                                                   \
+      std::exit(1);                                                                                                    \
+    }                                                                                                                  \
   } while (0)
 #endif // CUDA_CHECK
 
 #ifndef CU_CHECK
-#define CU_CHECK(func)                                                         \
-  do {                                                                         \
-    CUresult rt = (func);                                                      \
-    if (rt != CUDA_SUCCESS) {                                                  \
-      const char* str;                                                         \
-      cuGetErrorString(rt, &str);                                              \
-      std::cerr << "CUDA Driver failure \"" #func "\" with " << rt << " at "   \
-                << __FILE__ << ":" << __LINE__ << std::endl;                   \
-      std::cerr << str << std::endl;                                           \
-      std::exit(1);                                                            \
-    }                                                                          \
+#define CU_CHECK(func)                                                                                                 \
+  do {                                                                                                                 \
+    CUresult rt = (func);                                                                                              \
+    if (rt != CUDA_SUCCESS) {                                                                                          \
+      const char* str;                                                                                                 \
+      cuGetErrorString(rt, &str);                                                                                      \
+      std::cerr << "CUDA Driver failure \"" #func "\" with " << rt << " at " << __FILE__ << ":" << __LINE__            \
+                << std::endl;                                                                                          \
+      std::cerr << str << std::endl;                                                                                   \
+      std::exit(1);                                                                                                    \
+    }                                                                                                                  \
   } while (0)
 #endif // CU_CHECK
 
-size_t compute_batch_size(const std::vector<std::vector<char>>& data,
-                          const size_t chunk_size)
-{
+size_t compute_batch_size(const std::vector<std::vector<char>>& data, const size_t chunk_size) {
   size_t batch_size = 0;
   for (size_t i = 0; i < data.size(); ++i) {
     const size_t num_chunks = nvcompdx::detail::roundUpDiv(data[i].size(), chunk_size);
@@ -69,10 +67,8 @@ size_t compute_batch_size(const std::vector<std::vector<char>>& data,
   return batch_size;
 }
 
-std::vector<size_t> compute_chunk_sizes(const std::vector<std::vector<char>>& data,
-                                        const size_t batch_size,
-                                        const size_t chunk_size)
-{
+std::vector<size_t>
+compute_chunk_sizes(const std::vector<std::vector<char>>& data, const size_t batch_size, const size_t chunk_size) {
   std::vector<size_t> sizes(batch_size, chunk_size);
 
   size_t offset = 0;
@@ -86,24 +82,20 @@ std::vector<size_t> compute_chunk_sizes(const std::vector<std::vector<char>>& da
   return sizes;
 }
 
-std::vector<const void*> compute_input_ptrs(const std::vector<std::vector<char>>& data,
-                                            const size_t batch_size,
-                                            const size_t chunk_size)
-{
+std::vector<const void*>
+compute_input_ptrs(const std::vector<std::vector<char>>& data, const size_t batch_size, const size_t chunk_size) {
   std::vector<const void*> input_ptrs(batch_size);
   size_t chunk = 0;
   for (size_t i = 0; i < data.size(); ++i) {
     const size_t num_chunks = nvcompdx::detail::roundUpDiv(data[i].size(), chunk_size);
     for (size_t j = 0; j < num_chunks; ++j) {
-      input_ptrs[chunk++] =
-          static_cast<const void*>(data[i].data() + j * chunk_size);
+      input_ptrs[chunk++] = static_cast<const void*>(data[i].data() + j * chunk_size);
     }
   }
   return input_ptrs;
 }
 
-std::vector<char> read_file(const std::string& filename)
-{
+std::vector<char> read_file(const std::string& filename) {
   std::ifstream fin(filename, std::ifstream::in | std::ifstream::binary | std::ifstream::ate);
   if (!fin) {
     throw std::runtime_error("Unable to open file: " + filename);
@@ -128,22 +120,21 @@ void write_file(const std::string& filename, std::vector<char>& data) {
   fout.close();
 }
 
-std::vector<std::vector<char>> multi_file(const std::vector<std::string>& filenames)
-{
+std::vector<std::vector<char>> multi_file(const std::vector<std::string>& filenames) {
   std::vector<std::vector<char>> split_data;
 
-  for (auto const& filename : filenames) {
+  for (const auto& filename : filenames) {
     split_data.emplace_back(read_file(filename));
   }
 
   return split_data;
 }
 
-float measure_ms(const size_t warmup_iteration_count,
-                 const size_t total_iteration_count,
-                 cudaStream_t stream,
-                 const std::function<void()>& fn)
-{
+float measure_ms(
+  const size_t warmup_iteration_count,
+  const size_t total_iteration_count,
+  cudaStream_t stream,
+  const std::function<void()>& fn) {
   cudaEvent_t start, end;
   CUDA_CHECK(cudaEventCreate(&start));
   CUDA_CHECK(cudaEventCreate(&end));
@@ -170,8 +161,7 @@ float measure_ms(const size_t warmup_iteration_count,
   return ms;
 }
 
-unsigned int get_current_device_architecture()
-{
+unsigned int get_current_device_architecture() {
   int device;
   CUDA_CHECK(cudaGetDevice(&device));
   int major = 0;
@@ -181,9 +171,8 @@ unsigned int get_current_device_architecture()
   return static_cast<unsigned int>(major * 10 + minor);
 }
 
-template<template<unsigned int> class Runner, typename... Args>
-int run_with_current_arch(Args&&... args)
-{
+template <template <unsigned int> class Runner, typename... Args>
+int run_with_current_arch(Args&&... args) {
   unsigned int current_device_arch = 10 * get_current_device_architecture();
   switch (current_device_arch) {
 // Archs supported by nvCOMPDx
@@ -232,12 +221,12 @@ int run_with_current_arch(Args&&... args)
       return Runner<1210>::run(std::forward<Args>(args)...);
 #endif
     default: {
-        // Fail
-        std::cerr << "Error:" << std::endl;
-        std::cerr << "The current device architecture was not enabled during compilation." << std::endl;
-        std::cerr << "Ensure that the 'NVCOMPDX_CUDA_ARCHITECTURES' CMake varible contains" << std::endl;
-        std::cerr << "your current architecture (" << current_device_arch / 10 << ")." << std::endl;
-        return 1;
+      // Fail
+      std::cerr << "Error:" << std::endl;
+      std::cerr << "The current device architecture was not enabled during compilation." << std::endl;
+      std::cerr << "Ensure that the 'NVCOMPDX_CUDA_ARCHITECTURES' CMake variable contains" << std::endl;
+      std::cerr << "your current architecture (" << current_device_arch / 10 << ")." << std::endl;
+      return 1;
     }
   }
 }

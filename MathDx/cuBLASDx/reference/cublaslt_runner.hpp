@@ -24,7 +24,7 @@
 
 namespace example {
 
-    constexpr cublasOperation_t get_cublas_transpose_mode(cublasdx::transpose_mode tmode) {
+    constexpr cublasOperation_t get_cublas_transpose_mode(cublasdx::transpose_mode const tmode) {
         if (tmode == cublasdx::transpose_mode::non_transposed) {
             return CUBLAS_OP_N;
         } else if (tmode == cublasdx::transpose_mode::transposed) {
@@ -33,14 +33,14 @@ namespace example {
         return CUBLAS_OP_C;
     }
 
-    constexpr cublasOperation_t get_cublas_transpose_mode(cublasdx::arrangement arr) {
+    constexpr cublasOperation_t get_cublas_transpose_mode(cublasdx::arrangement const arr) {
         if (arr == cublasdx::col_major) {
             return CUBLAS_OP_N;
         }
         return CUBLAS_OP_T;
     }
 
-    constexpr cublasLtOrder_t get_cublas_layout_order(cublasdx::arrangement arr) {
+    constexpr cublasLtOrder_t get_cublas_layout_order(cublasdx::arrangement const arr) {
         return (arr == cublasdx::col_major) ? CUBLASLT_ORDER_COL : CUBLASLT_ORDER_ROW;
     }
 
@@ -144,8 +144,8 @@ namespace example {
         size_t              workspace_size_in_bytes = 32 * 1024 * 1024;
         device_vector<char> workspace_vector        = device_vector<char>(workspace_size_in_bytes);
 
-        template<class GEMMShape, class GEMMArr, class GEMMLD>
-        void initialize(GEMMShape gemm_shape, GEMMArr gemm_arr, GEMMLD gemm_ld) {
+	template<class GEMMShape, class GEMMArr, class GEMMLD>
+        void initialize(GEMMShape const gemm_shape, GEMMArr const gemm_arr, GEMMLD const gemm_ld) {
             const auto [m, n, k]             = gemm_shape;
             const auto [lda, ldb, ldc]       = gemm_ld;
             const auto [arr_a, arr_b, arr_c] = gemm_arr;
@@ -204,22 +204,22 @@ namespace example {
             if (returned_results == 0) {
                 CUBLAS_CHECK_AND_EXIT(CUBLAS_STATUS_NOT_SUPPORTED);
             }
-        }
+	}
 
         template<class GEMMShape, class GEMMArr, class GEMMLD>
-        cublaslt_runner(GEMMShape gemm_shape, GEMMArr gemm_arr, GEMMLD gemm_ld) {
-            initialize(gemm_shape, gemm_arr, gemm_ld);
+        cublaslt_runner(GEMMShape const gemm_shape, GEMMArr const gemm_arr, GEMMLD const gemm_ld) {
+	    initialize(gemm_shape, gemm_arr, gemm_ld);
         }
 
         template<class GEMMShape, class GEMMArr>
-        cublaslt_runner(GEMMShape gemm_shape, GEMMArr gemm_arr) {
-            auto const [m, n, k]             = gemm_shape;
+        cublaslt_runner(GEMMShape const gemm_shape, GEMMArr const gemm_arr) {
+            auto const [m, n, k] = gemm_shape;
             auto const [arr_a, arr_b, arr_c] = gemm_arr;
-            auto const lda                   = (arr_a == cublasdx::col_major) ? m : k;
-            auto const ldb                   = (arr_b == cublasdx::col_major) ? k : n;
-            auto const ldc                   = (arr_c == cublasdx::col_major) ? m : n;
-            auto const gemm_ld               = std::make_tuple(lda, ldb, ldc);
-            initialize(gemm_shape, gemm_arr, gemm_ld);
+            auto const lda = (arr_a == cublasdx::col_major) ? m : k;
+            auto const ldb = (arr_b == cublasdx::col_major) ? k : n;
+            auto const ldc = (arr_c == cublasdx::col_major) ? m : n;
+	    auto const gemm_ld = std::make_tuple(lda, ldb, ldc);
+	    initialize(gemm_shape, gemm_arr, gemm_ld);
         }
 
         void execute(CComputeType const& alpha,
@@ -227,8 +227,8 @@ namespace example {
                      BComputeType const* b,
                      CComputeType const& beta,
                      CComputeType*       c,
-                     cudaStream_t        stream = 0) const {
-            auto runner = [&](cudaStream_t stream) {
+                     cudaStream_t const  stream = 0) const {
+            auto runner = [&](cudaStream_t const stream) {
                 CUBLAS_CHECK_AND_EXIT(cublasLtMatmul(lt_handle,
                                                      operation_desc,
                                                      reinterpret_cast<void const*>(&alpha),
@@ -257,7 +257,7 @@ namespace example {
                                                                      BComputeType const* b,
                                                                      CComputeType const& beta,
                                                                      CComputeType*       c,
-                                                                     cudaStream_t        stream = 0) const {
+                                                                     cudaStream_t const  stream = 0) const {
             std::vector<CComputeType> results(result_size);
             this->execute(alpha, a, b, beta, c, stream);
             CUDA_CHECK_AND_EXIT(
@@ -266,16 +266,16 @@ namespace example {
             return results;
         }
 
-        [[nodiscard]] float execute_with_time(CComputeType const& alpha,
-                                              AComputeType const* a,
-                                              BComputeType const* b,
-                                              CComputeType const& beta,
-                                              CComputeType*       c,
-                                              unsigned            kernel_warm_up_repeats,
-                                              unsigned            kernel_repeats,
-                                              cudaStream_t        stream = 0) const {
+        [[nodiscard]] example::measure::execution_result execute_with_time(CComputeType const& alpha,
+                                                                           AComputeType const* a,
+                                                                           BComputeType const* b,
+                                                                           CComputeType const& beta,
+                                                                           CComputeType*       c,
+                                                                           unsigned const      kernel_warm_up_repeats,
+                                                                           unsigned const      kernel_repeats,
+                                                                           cudaStream_t const  stream = 0) const {
             // Find best algorithm
-            auto heuristic_runner = [&](auto algo, cudaStream_t stream) {
+            auto heuristic_runner = [&](auto const algo, cudaStream_t const stream) {
                 CUBLAS_CHECK_AND_EXIT(cublasLtMatmul(lt_handle,
                                                      operation_desc,
                                                      reinterpret_cast<void const*>(&alpha),
@@ -357,7 +357,7 @@ namespace example {
                 }
 
                 auto time = example::measure::execution(
-                    [&](auto stream) { heuristic_runner(heuristic_results[algo_idx].algo, stream); },
+                    [&](auto const stream) { heuristic_runner(heuristic_results[algo_idx].algo, stream); },
                     1 /* warm up runs*/,
                     repeat_algo_check /* kernel runs */,
                     stream);
@@ -369,7 +369,7 @@ namespace example {
             }
 
             auto time_cublas = example::measure::execution(
-                [&](auto stream) { heuristic_runner(heuristic_results[best_algo_index].algo, stream); },
+                [&](auto const stream) { heuristic_runner(heuristic_results[best_algo_index].algo, stream); },
                 kernel_warm_up_repeats,
                 kernel_repeats,
                 stream);
@@ -379,15 +379,16 @@ namespace example {
             return time_cublas;
         }
 
-        [[nodiscard]] std::tuple<float, std::vector<CComputeType>> execute_with_time_and_results(
+        [[nodiscard]] std::tuple<example::measure::execution_result, std::vector<CComputeType>>
+        execute_with_time_and_results(
             CComputeType const& alpha,
             AComputeType const* a,
             BComputeType const* b,
             CComputeType const& beta,
             CComputeType*       c,
-            unsigned            kernel_warm_up_repeats,
-            unsigned            kernel_repeats,
-            cudaStream_t        stream = 0) const {
+            unsigned const      kernel_warm_up_repeats,
+            unsigned const      kernel_repeats,
+            cudaStream_t const  stream = 0) const {
             auto results = this->execute_with_results(alpha, a, b, beta, c, stream);
             auto time = this->execute_with_time(alpha, a, b, beta, c, kernel_warm_up_repeats, kernel_repeats, stream);
 

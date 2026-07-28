@@ -51,6 +51,7 @@ constexpr unsigned THREADS_PER_BLOCK = 64;
 // -------------------------------------------------------------------------
 template<class BLAS, class GlobalTensorA, class GlobalTensorB>
 __global__ void trsm_thread_kernel(GlobalTensorA global_a, GlobalTensorB global_b) {
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(BLAS);
     const unsigned thread_idx  = blockIdx.x * blockDim.x + threadIdx.x;
     const unsigned total_items = cute::size<2>(global_a);
     if (thread_idx >= total_items) {
@@ -60,7 +61,7 @@ __global__ void trsm_thread_kernel(GlobalTensorA global_a, GlobalTensorB global_
     auto batch_a = cublasdx::get_batch(global_a, BLAS::get_layout_gmem_a(), thread_idx);
     auto batch_b = cublasdx::get_batch(global_b, BLAS::get_layout_gmem_b(), thread_idx);
 
-    BLAS {}.execute(batch_a, batch_b);
+    BLAS{}.execute(batch_a, batch_b);
 }
 
 // -------------------------------------------------------------------------
@@ -74,12 +75,12 @@ int simple_trsm_thread() {
     constexpr unsigned M = 10; // rows of B
     constexpr unsigned N = 12; // columns of B (= size of A for right-side)
 
-    using T             = double;
-    constexpr auto Side = cublasdx::side::right;
-    constexpr auto Fill = cublasdx::fill_mode::lower;
-    constexpr auto Diag = cublasdx::diag::non_unit;
-    constexpr auto ArrA = cublasdx::col_major;
-    constexpr auto ArrB = cublasdx::col_major;
+    using T              = double;
+    constexpr auto Side  = cublasdx::side::right;
+    constexpr auto Fill  = cublasdx::fill_mode::lower;
+    constexpr auto Diag  = cublasdx::diag::non_unit;
+    constexpr auto ArrA  = cublasdx::col_major;
+    constexpr auto ArrB  = cublasdx::col_major;
 
     constexpr unsigned num_batches = 300;
 
@@ -128,8 +129,10 @@ int simple_trsm_thread() {
     // Shape: (dim_a, dim_a, num_batches) for A
     //        (M, N, num_batches)         for B
     // -----------------------------------------------------------------------
-    auto global_a = cublasdx::make_gmem_tensor_batched<ArrA>(d_A.data(), dim_a, dim_a, num_batches);
-    auto global_b = cublasdx::make_gmem_tensor_batched<ArrB>(d_B.data(), M, N, num_batches);
+    auto global_a =
+        cublasdx::make_gmem_tensor_batched<ArrA>(d_A.data(), dim_a, dim_a, num_batches);
+    auto global_b =
+        cublasdx::make_gmem_tensor_batched<ArrB>(d_B.data(), M, N, num_batches);
 
     using global_tensor_a_t = decltype(global_a);
     using global_tensor_b_t = decltype(global_b);
@@ -148,27 +151,34 @@ int simple_trsm_thread() {
     // Download results and verify correctness against cuBLAS.
     // -----------------------------------------------------------------------
     std::vector<T> h_X(num_batches * b_per_batch);
-    CUDA_CHECK_AND_EXIT(
-        cudaMemcpy(h_X.data(), d_B.data(), sizeof(T) * num_batches * b_per_batch, cudaMemcpyDeviceToHost));
+    CUDA_CHECK_AND_EXIT(cudaMemcpy(
+        h_X.data(), d_B.data(), sizeof(T) * num_batches * b_per_batch, cudaMemcpyDeviceToHost));
 
     auto [h_B_ref, cublas_ms] = example::reference_trsm<BLAS>(h_A, h_B_orig, num_batches);
 
     const double l2_err = example::calculate_error(h_X, h_B_ref);
 
     std::cout << "cuBLASDx TRSM Thread Example" << std::endl;
-    std::cout << "  M=" << M << "  N=" << N << "  Side=" << (is_left ? "left" : "right")
+    std::cout << "  M=" << M << "  N=" << N
+              << "  Side=" << (is_left ? "left" : "right")
               << "  Fill=" << (Fill == cublasdx::fill_mode::lower ? "lower" : "upper")
-              << "  Diag=" << (Diag == cublasdx::diag::unit ? "unit" : "non_unit") << "  Precision=double"
+              << "  Diag=" << (Diag == cublasdx::diag::unit ? "unit" : "non_unit")
+              << "  Precision=double"
               << "  Batches=" << num_batches << std::endl;
     std::cout << " =================================" << std::endl;
     std::cout << "L2 Error: " << l2_err << std::endl;
     std::cout << " =================================" << std::endl;
-    return 0;
+    if (example::is_error_acceptable<T>(l2_err)) {
+        return 0;
+    }
+    std::cout << "Failure" << std::endl;
+    return 1;
 }
 
 struct simple_trsm_thread_functor {
     template<int Arch, cublasdx::sm_modifier Modifier>
-    int operator()(std::integral_constant<int, Arch>, std::integral_constant<cublasdx::sm_modifier, Modifier>) {
+    int operator()(std::integral_constant<int, Arch>,
+                   std::integral_constant<cublasdx::sm_modifier, Modifier>) {
         return simple_trsm_thread<Arch>();
     }
 };

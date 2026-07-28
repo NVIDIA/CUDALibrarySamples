@@ -81,3 +81,32 @@ set_target_properties(09_introduction_lto_example_introduction_lto_example
         INTERPROCEDURAL_OPTIMIZATION ON
         OUTPUT_NAME "introduction_lto_example"
 )
+
+# lto_query_database_example: uses same LTO artifacts and database
+add_executable(09_introduction_lto_example_lto_query_database_example
+    lto_query_database_example.cu
+)
+
+target_link_libraries(09_introduction_lto_example_lto_query_database_example
+    PRIVATE
+        cufftdx::cufftdx
+)
+
+target_link_options(09_introduction_lto_example_lto_query_database_example
+    PUBLIC
+        $<DEVICE_LINK:$<TARGET_OBJECTS:09_introduction_lto_example_introduction_lto_example_lto_lib>>
+)
+
+target_include_directories(09_introduction_lto_example_lto_query_database_example
+    PRIVATE
+        ${CMAKE_CURRENT_BINARY_DIR}/../lto_helper/09_introduction_lto_example_introduction_lto_example_artifacts
+)
+
+set_target_properties(09_introduction_lto_example_lto_query_database_example
+    PROPERTIES
+        CUDA_ARCHITECTURES "${CUFFTDX_CUDA_ARCHITECTURES}"
+        CUDA_SEPARABLE_COMPILATION ON
+        INTERPROCEDURAL_OPTIMIZATION ON
+        OUTPUT_NAME "lto_query_database_example"
+)
+

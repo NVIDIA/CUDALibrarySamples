@@ -37,12 +37,16 @@ ctest
 
 For the detailed descriptions of the examples please visit [Examples](https://docs.nvidia.com/cuda/cufftdx/lto_examples.html) section of the cuFFTDx documentation.
 
-| Group                    | Subgroup                    | Example                       | Description                                            |
-|--------------------------|-----------------------------|-------------------------------|--------------------------------------------------------|
-| Introduction Examples    | 09_introduction_lto_example | introduction_lto_example      | (offline) cuFFTDx LTO introduction                     |
-|                          | 04_nvrtc_fft                | nvrtc_fft_block_lto           | (online) cuFFTDx LTO introduction                      |
-|                          | 10_cufft_device_api_example | cufft_device_api_example.     | (offline) cuFFT Device API introduction                |
-| Simple FFT Examples      | 01_simple_fft_thread        | simple_fft_thread_lto         | (offline) Complex-to-complex (C2C) thread FFT using LTO|
-|                          | 02_simple_fft_block.        | simple_fft_block_c2r_lto      | (offline) Complex-to-real block FFT using LTO          |
-| NVRTC Examples           | 04_nvrtc_fft                | nvrtc_fft_thread_lto          | (online) Complex-to-complex thread FFT using LTO       |
-| FFT Performance          | 03_block_fft_performance    | block_fft_lto_ptx_performance | (offline) Benchmark for C2C block FFT (LTO vs PTX)     |
+| Group                  | Subgroup                    | Example                            | Description                                                                 |
+| ---------------------- | --------------------------- | ---------------------------------- | --------------------------------------------------------------------------- |
+| Introduction Examples  | 09_introduction_lto_example | introduction_lto_example           | (offline) cuFFTDx LTO introduction                                          |
+|                        | 04_nvrtc_fft                | nvrtc_fft_block_lto                | (online) cuFFTDx LTO introduction                                           |
+|                        | 10_cufft_device_api_example | cufft_device_api_example           | (offline) cuFFT Device API introduction                                     |
+| Simple FFT Examples    | 01_simple_fft_thread        | simple_fft_thread_lto              | (offline) Complex-to-complex (C2C) thread FFT using LTO                     |
+|                        | 02_simple_fft_block         | simple_fft_block_c2r_lto           | (offline) Complex-to-real block FFT using LTO                               |
+| NVRTC Examples         | 04_nvrtc_fft                | nvrtc_fft_thread_lto               | (online) Complex-to-complex thread FFT using LTO                            |
+|                        |                             | nvrtc_fft_block_lto                | (online) Complex-to-complex block FFT using LTO                             |
+| FFT Performance        | 03_block_fft_performance    | block_fft_lto_ptx_performance      | (offline) Benchmark for C2C block FFT (LTO vs PTX)                          |
+| Runtime Database Query | 09_introduction_lto_example | lto_query_database_example         | (offline) List all matching implementations from an offline LTO database    |
+|                        | 04_nvrtc_fft                | nvrtc_query_database_fft_block_lto | (offline) C2C block FFT using offline LTO database to obtain runtime traits |
+|                        | 04_nvrtc_fft                | nvrtc_query_autotune_lto           | (online) Autotune across all online LTO implementations via runtime query   |

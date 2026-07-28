@@ -34,6 +34,17 @@ namespace example {
                                      device_vector<ValueType> const& B,
                                      ValueType const&                beta,
                                      device_vector<ValueType>&       C);
+
+    template<typename ValueType>
+    void reference_gemm_naive_splitk_device(unsigned_tuple const&           gemm_shape,
+                                            arr_tuple const&                gemm_arr,
+                                            unsigned_tuple const&           gemm_ld,
+                                            ValueType const&                alpha,
+                                            device_vector<ValueType> const& A,
+                                            device_vector<ValueType> const& B,
+                                            ValueType const&                beta,
+                                            device_vector<ValueType>&       C,
+                                            unsigned int                    split_k_step);
 } // namespace example
 
 #endif // CUBLASDX_EXAMPLE_NAIVE_REFERENCE_HPP

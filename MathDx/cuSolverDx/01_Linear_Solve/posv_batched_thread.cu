@@ -34,6 +34,7 @@
 template<class POSV_thread>
 __global__ void posv_kernel(
         typename POSV_thread::a_data_type* A, typename POSV_thread::b_data_type* B, typename POSV_thread::status_type* info, const unsigned int batches) {
+    CUSOLVERDX_SKIP_IF_NOT_APPLICABLE_SM(POSV_thread);
 
     using namespace cusolverdx;
     constexpr auto m                = POSV_thread::m_size;

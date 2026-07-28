@@ -34,7 +34,9 @@ namespace example {
 
         template<typename T>
         struct elementwise_abs {
-            T operator()(T v) { return std::abs(v); }
+            T operator()(T v) {
+                return std::abs(v);
+            }
         };
 
         template<typename Inner>
@@ -46,39 +48,41 @@ namespace example {
 
         template<typename T>
         struct repeat {
-            T operator()(T v) { return v; }
+            T operator()(T v) {
+                return v;
+            }
         };
 
         template<typename Inner>
         struct repeat<cublasdx::complex<Inner>> {
-            cublasdx::complex<Inner> operator()(Inner v) { return cublasdx::complex<Inner>(v, v); }
+            cublasdx::complex<Inner> operator()(Inner v) {
+                return cublasdx::complex<Inner>(v, v);
+            }
         };
     } // namespace detail
 
 
     template<class DT, cublasdx::arrangement Arrangement>
     auto make_trsm_tensor(DT* pointer, int m, int n, int batches) {
-        auto stride =
-            cute::conditional_return < Arrangement ==
-            cublasdx::col_major > (cute::make_stride(cute::_1 {}, m, m * n), cute::make_stride(n, cute::_1 {}, m * n));
+        auto stride = cute::conditional_return<Arrangement == cublasdx::col_major>(cute::make_stride(cute::_1{}, m, m * n), cute::make_stride(n, cute::_1{}, m * n));
         return cute::make_tensor(pointer, cute::make_layout(cute::make_shape(m, n, batches), stride));
     }
     // Make each diagonal entry of A large enough to ensure diagonal dominance.
     template<class Tensor>
-    void make_diagonal_dominant(Tensor&& tensor) {
+    void make_diagonal_dominant(Tensor && tensor) {
         using T = typename cute::remove_cvref_t<Tensor>::value_type;
-        if constexpr (decltype(cute::rank(tensor))::value == 3) {
+        if constexpr(decltype(cute::rank(tensor))::value == 3) {
             for (unsigned int batch = 0; batch < cute::size<2>(tensor); batch++) {
                 make_diagonal_dominant(tensor(cublasdx::slice, cublasdx::slice, batch));
             }
         } else {
             static_assert(decltype(cute::rank(tensor))::value == 2, "Tensor must be a 2D tensor");
             for (unsigned int row = 0; row < cute::size<0>(tensor); row++) {
-                T offdiag_sum = detail::repeat<T> {}(5.f);
+                T offdiag_sum = detail::repeat<T>{}(5.f);
                 for (unsigned int col = 0; col < cute::size<1>(tensor); col++) {
                     if (col != row) {
                         T a_reg = tensor(row, col);
-                        offdiag_sum += detail::elementwise_abs<T> {}(a_reg);
+                        offdiag_sum += detail::elementwise_abs<T>{}(a_reg);
                     }
                 }
 

@@ -148,7 +148,7 @@ namespace example {
                 error.peak_error_index    = i;
             }
             nerror += std::pow(serr, 2);
-            derror += std::pow(results_value, 2);
+            derror += std::pow(reference_value, 2);
         }
     };
 
@@ -314,37 +314,37 @@ namespace example {
 // If examples are compiled via Makefile all cases are enabled, if via CMake only the SMs
 // that are part of CUFFTDX_TARGET_ARCHS/CUFFTDX_CUDA_ARCHITECTURES are enabled.
 #if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_75)
-            case 750: Functor<750>()(); return 0;
+            case 750: return Functor<750>()();
 #endif
 #if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_80)
-            case 800: Functor<800>()(); return 0;
+            case 800: return Functor<800>()();
 #endif
 #if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_86)
-            case 860: Functor<860>()(); return 0;
+            case 860: return Functor<860>()();
 #endif
 #if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_87)
-            case 870: Functor<870>()(); return 0;
+            case 870: return Functor<870>()();
 #endif
 #if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_89)
-            case 890: Functor<890>()(); return 0;
+            case 890: return Functor<890>()();
 #endif
 #if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_90)
-            case 900: Functor<900>()(); return 0;
+            case 900: return Functor<900>()();
 #endif
 #if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_100)
-            case 1000: Functor<1000>()(); return 0;
+            case 1000: return Functor<1000>()();
 #endif
 #if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_103)
-            case 1030: Functor<1030>()(); return 0;
+            case 1030: return Functor<1030>()();
 #endif
 #if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_110)
-            case 1100: Functor<1100>()(); return 0;
+            case 1100: return Functor<1100>()();
 #endif
 #if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_120)
-            case 1200: Functor<1200>()(); return 0;
+            case 1200: return Functor<1200>()();
 #endif
 #if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_121)
-            case 1210: Functor<1210>()(); return 0;
+            case 1210: return Functor<1210>()();
 #endif
         }
         print_supported_sm<cufftdx_enable_example_sm>(cuda_device_arch);

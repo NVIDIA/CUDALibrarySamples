@@ -39,8 +39,9 @@ __launch_bounds__(BLAS::max_threads_per_block) //
                      ValueType*       output,
                      ALayout          a_layout, // Static shape with dynamic strides
                      BLayout          b_layout, // Static shape with dynamic strides
-                     CLayout          c_layout)          // Static shape with dynamic strides
+                     CLayout          c_layout) // Static shape with dynamic strides
 {
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(BLAS);
     using value_type = ValueType;
     extern __shared__ __align__(16) cublasdx::byte smem[];
 
@@ -101,7 +102,7 @@ int simple_gemm() {
     constexpr unsigned int block_size = 256;
 
     // GEMM definition using cuBLASDx operators:
-    // 1. The size, the precision, the type (real or complex) and the alignements are set.
+    // 1. The size, the precision, the type (real or complex) and the alignments are set.
     // 2. The BLAS function is selected: MM (matrix multiplication).
     // 3. Block operator informs that GEMM should be performed on CUDA block level.
     // 4. BlockDim operator sets CUDA block dimensions that the kernel will be executed with.
@@ -113,7 +114,7 @@ int simple_gemm() {
 
     using value_type = typename example::uniform_value_type_t<BLAS>;
 
-    // Allocate managed memory for a, b, c, and output
+    // Allocate device memory for a, b, c, and output
     value_type* inputs;
     value_type* output;
 
@@ -123,8 +124,8 @@ int simple_gemm() {
 
     auto inputs_size       = global_a_size + global_b_size + global_c_size;
     auto inputs_size_bytes = inputs_size * sizeof(value_type);
-    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&inputs, inputs_size_bytes));
-    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&output, global_c_size * sizeof(value_type)));
+    CUDA_CHECK_AND_EXIT(cudaMalloc(&inputs, inputs_size_bytes));
+    CUDA_CHECK_AND_EXIT(cudaMalloc(&output, global_c_size * sizeof(value_type)));
 
     value_type* a     = inputs;
     value_type* b     = a + (global_a_size);

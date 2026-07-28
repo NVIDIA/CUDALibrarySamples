@@ -31,6 +31,7 @@
 
 template<class POTRF>
 __global__ void potrf_kernel(typename POTRF::a_data_type* A, typename POTRF::status_type* info, const unsigned int batches) {
+    CUSOLVERDX_SKIP_IF_NOT_APPLICABLE_SM(POTRF);
 
     constexpr auto m                = POTRF::m_size;
     const auto     one_batch_size_a = POTRF::lda * m;

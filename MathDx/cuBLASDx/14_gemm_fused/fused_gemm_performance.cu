@@ -36,9 +36,10 @@ __launch_bounds__(BLAS1::max_threads_per_block) __global__ void fused_gemm_kerne
                                                                                   const ValueType  beta2,
                                                                                   const ValueType* f,
                                                                                   ValueType*       output) {
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(BLAS1);
     using value_type = ValueType;
     extern __shared__ __align__(16) cublasdx::byte smem[];
-    constexpr unsigned int block_size = BLAS1::block_dim.x * BLAS1::block_dim.y * BLAS1::block_dim.z;
+    constexpr unsigned int                         block_size = BLAS1::block_dim.x * BLAS1::block_dim.y * BLAS1::block_dim.z;
 
     static_assert(std::is_same_v<value_type, example::uniform_value_type_t<BLAS2>>,
                   "BLAS1 and BLAS2 must have the same type and precision");

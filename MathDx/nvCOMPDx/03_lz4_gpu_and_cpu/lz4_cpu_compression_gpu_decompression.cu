@@ -31,28 +31,28 @@ using namespace nvcompdx;
 // 1 warp per chunk, but multiple chunks per thread block
 template <typename decompressor_type>
 __global__ void decomp_warp_kernel(
-    size_t batch_size,
-    const void * const * comp_chunks,
-    void * const * uncomp_chunks,
-    const size_t * comp_chunk_sizes,
-    size_t * decomp_chunk_sizes) {
+  size_t batch_size,
+  const void* const* comp_chunks,
+  void* const* uncomp_chunks,
+  const unsigned long long* comp_chunk_sizes,
+  unsigned long long* decomp_chunk_sizes) {
   // Note:
   // Given the (de)compressor expression has an SM<> operator,
   // it makes the fully-typed kernel only applicable on one targeted device architecture.
   // We need to signal to the compiler not to continue compiling this kernel whenever
   // the current compilation architecture is different from the one specified in
   // the SM<> operator.
-  NVCOMPDX_SKIP_IF_NOT_APPLICABLE(decompressor_type);
+  NVCOMPDX_SKIP_IF_NOT_APPLICABLE_SM(decompressor_type);
 
   const unsigned int global_chunk_id = (blockIdx.x * blockDim.x + threadIdx.x) / 32;
   const unsigned int local_chunk_id = threadIdx.x / 32;
-  if(global_chunk_id >= batch_size) {
+  if (global_chunk_id >= batch_size) {
     return;
   }
 
   auto decompressor = decompressor_type();
   constexpr auto shmem_size_warp = decompressor.shmem_size_group();
-  extern __shared__ __align__(decompressor.shmem_alignment()) uint8_t shared_decomp_scratch_buffer[];
+  extern __shared__ __align__(decompressor.shmem_alignment()) unsigned char shared_decomp_scratch_buffer[];
   assert(reinterpret_cast<uintptr_t>(shared_decomp_scratch_buffer) % decompressor.shmem_alignment() == 0);
 
   decompressor.execute(
@@ -65,13 +65,13 @@ __global__ void decomp_warp_kernel(
 }
 
 // Benchmark performance from the binary data file
-template<unsigned int Arch>
-static int lz4_cpu_comp_gpu_decomp(const std::vector<std::vector<char>>& data,
-                                   size_t warmup_iteration_count,
-                                   size_t total_iteration_count)
-{
+template <unsigned int Arch>
+static int lz4_cpu_comp_gpu_decomp(
+  const std::vector<std::vector<char>>& data,
+  size_t warmup_iteration_count,
+  size_t total_iteration_count) {
   assert(!data.empty());
-  if(warmup_iteration_count >= total_iteration_count) {
+  if (warmup_iteration_count >= total_iteration_count) {
     throw std::runtime_error("ERROR: the total iteration count must be greater than the warmup iteration count");
   }
 
@@ -98,22 +98,20 @@ static int lz4_cpu_comp_gpu_decomp(const std::vector<std::vector<char>>& data,
   std::cout << "chunks: " << batch_size << std::endl;
 
   // Allocate and prepare output/compressed batch
-  BatchDataCPU compressed_data_cpu(
-      LZ4_compressBound(chunk_size), batch_size);
+  BatchDataCPU compressed_data_cpu(LZ4_compressBound(chunk_size), batch_size);
 
   // Compressing on the CPU
   // Loop over chunks on the CPU, compressing each one one by one
   for (size_t i = 0; i < batch_size; ++i) {
     // Could use LZ4_compress_default or LZ4_compress_fast instead
     const int size = LZ4_compress_HC(
-        static_cast<const char*>(input_data_cpu.chunk_ptrs()[i]),
-        static_cast<char*>(compressed_data_cpu.chunk_ptrs()[i]),
-        static_cast<int>(input_data_cpu.chunk_sizes()[i]),
-        static_cast<int>(compressed_data_cpu.chunk_sizes()[i]),
-        12 /* compression level */);
+      static_cast<const char*>(input_data_cpu.chunk_ptrs()[i]),
+      static_cast<char*>(compressed_data_cpu.chunk_ptrs()[i]),
+      static_cast<int>(input_data_cpu.chunk_sizes()[i]),
+      static_cast<int>(compressed_data_cpu.chunk_sizes()[i]),
+      12 /* compression level */);
     if (size == 0) {
-      throw std::runtime_error(
-          "LZ4 CPU failed to compress chunk " + std::to_string(i) + ".");
+      throw std::runtime_error("LZ4 CPU failed to compress chunk " + std::to_string(i) + ".");
     }
 
     // Set the actual compressed size
@@ -124,11 +122,11 @@ static int lz4_cpu_comp_gpu_decomp(const std::vector<std::vector<char>>& data,
   size_t* compressed_sizes_host = compressed_data_cpu.chunk_sizes();
   size_t comp_bytes = std::accumulate(compressed_sizes_host, compressed_sizes_host + batch_size, size_t(0));
 
-  std::cout << "comp_size: " << comp_bytes
-            << ", compressed ratio: " << std::fixed << std::setprecision(2)
+  std::cout << "comp_size: " << comp_bytes << ", compressed ratio: " << std::fixed << std::setprecision(2)
             << (double)total_bytes / comp_bytes << std::endl;
 
   // Configure the GPU decompressor
+  // clang-format off
   using lz4_decompressor_type =
     decltype(Algorithm<algorithm::lz4>() +
              DataType<datatype::uint8>() +
@@ -136,6 +134,7 @@ static int lz4_cpu_comp_gpu_decomp(const std::vector<std::vector<char>>& data,
              MaxUncompChunkSize<chunk_size>() +
              Warp() +
              SM<Arch>());
+  // clang-format on
 
   // Runtime (de)compression parameters
   const auto block_count = static_cast<unsigned int>((batch_size + num_chunks_per_block - 1) / num_chunks_per_block);
@@ -157,14 +156,13 @@ static int lz4_cpu_comp_gpu_decomp(const std::vector<std::vector<char>>& data,
   cudaStream_t stream;
   CUDA_CHECK(cudaStreamCreate(&stream));
 
-  float ms = measure_ms(warmup_iteration_count, total_iteration_count, stream, [&](){
+  float ms = measure_ms(warmup_iteration_count, total_iteration_count, stream, [&]() {
     decomp_warp_kernel<lz4_decompressor_type><<<block_count, block_size, decomp_shared_memory, stream>>>(
       batch_size,
       compressed_data.chunk_ptrs(),
       decomp_data.chunk_ptrs(),
       compressed_data.chunk_sizes(),
-      decomp_data.chunk_sizes()
-    );
+      decomp_data.chunk_sizes());
     CUDA_CHECK(cudaGetLastError());
   });
 
@@ -176,32 +174,28 @@ static int lz4_cpu_comp_gpu_decomp(const std::vector<std::vector<char>>& data,
   }
 
   double decompression_throughput = ((double)total_bytes / ms) * 1e-6;
-  std::cout << "decompression throughput (GB/s): " << decompression_throughput
-            << std::endl;
+  std::cout << "decompression throughput (GB/s): " << decompression_throughput << std::endl;
 
   CUDA_CHECK(cudaStreamDestroy(stream));
 
   return 0;
 }
 
-void print_usage()
-{
+void print_usage() {
   std::cerr << std::endl;
   std::cerr << "Usage: lz4_cpu_compression [OPTIONS]" << std::endl;
   std::cerr << "  -f <input file(s)>" << std::endl;
 }
 
-template<unsigned int Arch>
+template <unsigned int Arch>
 struct Runner {
-  template<typename... Args>
-  static int run(Args&&... args)
-  {
+  template <typename... Args>
+  static int run(Args&&... args) {
     return lz4_cpu_comp_gpu_decomp<Arch>(std::forward<Args>(args)...);
   }
 };
 
-int main(int argc, char* argv[])
-{
+int main(int argc, char* argv[]) {
   std::vector<std::string> file_names;
 
   size_t warmup_iteration_count = 2;

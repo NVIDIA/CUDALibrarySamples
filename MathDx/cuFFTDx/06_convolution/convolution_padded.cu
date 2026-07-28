@@ -39,6 +39,8 @@ __launch_bounds__(FFT::max_threads_per_block) __global__ void convolution_kernel
                                                                                  ScalarType*                   out,
                                                                                  typename FFT::workspace_type  workspace,
                                                                                  typename IFFT::workspace_type workspace_inverse) {
+    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFT);
+
     using complex_type = typename FFT::value_type;
     using scalar_type  = typename complex_type::value_type;
 
@@ -240,7 +242,7 @@ measure_cufft(const unsigned int kernel_runs,
 // - for cuFFTDx kernel run, number of CUDA blocks is always divisible
 //   by maximum number of CUDA blocks that can run simultaneously on the GPU.
 template<unsigned int Arch, int SignalLength>
-void convolution() {
+int convolution() {
     using namespace cufftdx;
 
     static constexpr unsigned int minimum_input_size_bytes   = (1 << 30); // At least one GB of data will be processed by FFTs.
@@ -399,22 +401,27 @@ void convolution() {
 
     if (success) {
         std::cout << "Success!" << std::endl;
+        return 0;
     }
+    std::cout << "Failure!" << std::endl;
+    return 1;
 }
 
 template<unsigned int Arch>
 struct convolution_functor {
-    void operator()() {
+    int operator()() {
+        int rc = 0;
         std::cout << "Power of 2:" << std::endl;
-        convolution<Arch, 2048>();
+        rc |= convolution<Arch, 2048>();
         std::cout << "Power of 3:" << std::endl;
-        convolution<Arch, 6561>();
+        rc |= convolution<Arch, 6561>();
         std::cout << "Power of 12:" << std::endl;
-        convolution<Arch, 1728>();
+        rc |= convolution<Arch, 1728>();
         std::cout << "Odd length:" << std::endl;
-        convolution<Arch, 2003>();
+        rc |= convolution<Arch, 2003>();
         std::cout << "Bluestein:" << std::endl;
-        convolution<Arch, 3668>();
+        rc |= convolution<Arch, 3668>();
+        return rc ? 1 : 0;
     }
 };
 

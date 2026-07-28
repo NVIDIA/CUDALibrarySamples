@@ -13,7 +13,7 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- */ 
+ */
 
 #include <cusolverdx.hpp>
 
@@ -33,6 +33,7 @@
 template<class POSV, unsigned int BatchesPerBlock, class DataType = typename POSV::a_data_type>
 __global__ __launch_bounds__(POSV::max_threads_per_block) void posv_kernel(
         DataType* A, const unsigned int lda_gmem, DataType* B, const unsigned int ldb_gmem, typename POSV::status_type* info, const unsigned int batches) {
+    CUSOLVERDX_SKIP_IF_NOT_APPLICABLE_SM(POSV);
 
     using namespace cusolverdx;
     constexpr auto m                     = POSV::m_size;

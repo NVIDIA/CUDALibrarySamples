@@ -27,6 +27,8 @@
 
 template<class FFT, bool InputInRRIILayout = false, bool OutputInRRIILayout = false>
 __launch_bounds__(FFT::max_threads_per_block) __global__ void block_fft_kernel(typename FFT::value_type* data) {
+    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFT);
+
     using complex_type = typename FFT::value_type;
     // Local array for thread
     complex_type thread_data[FFT::storage_size];
@@ -52,7 +54,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__ void block_fft_kernel(t
 // Here, we're using complex<half2> with ((Real, Imag), (Real, Imag)) layout as the type of the input/output
 // data passed to kernel, and later on the device layout is changed into RRII when values are being loaded.
 template<unsigned int Arch>
-void simple_block_fft_complex_half2() {
+int simple_block_fft_complex_half2() {
     using namespace cufftdx;
 
     // FFT is defined, its: size, type, direction, precision. Block() operator informs that FFT
@@ -106,11 +108,12 @@ void simple_block_fft_complex_half2() {
 
     CUDA_CHECK_AND_EXIT(cudaFree(data));
     std::cout << "Success" << std::endl;
+    return 0;
 }
 
 template<unsigned int Arch>
 struct simple_block_fft_complex_half2_functor {
-    void operator()() { return simple_block_fft_complex_half2<Arch>(); }
+    int operator()() { return simple_block_fft_complex_half2<Arch>(); }
 };
 
 int main(int, char**) {

@@ -39,6 +39,8 @@ __global__ void generate_kernel(double4*                        d_out,
                                 const size_t                    size,
                                 const DataType                  mean,
                                 const DataType                  stddev) {
+    CURANDDX_SKIP_IF_NOT_APPLICABLE_SM(RNG);
+
     int i = blockDim.x * blockIdx.x + threadIdx.x;
     if (i >= size / 4)
         return;

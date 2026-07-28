@@ -19,12 +19,14 @@
 
 #include <iostream>
 #include <cassert>
-#include <cuda/std/utility>
 #include <cuda_runtime.h>
+#include <cuda/std/array>
+#include <cuda/std/cstdint>
+#include <cuda/std/type_traits>
 
 #define SLICING_FUNCTION __host__ __device__ __forceinline__
 
-union double_structure {
+union fp64_structure {
     double d;
     struct float64 {
         unsigned int mantissa_lo : 32;
@@ -34,39 +36,31 @@ union double_structure {
     } s;
 };
 
-static constexpr int bias = 1023;
+static constexpr int fp64_bias = 1023;
 
 /*
  * Signed magnitudes of length N only allow for (N-1) of effective storage.
  */
 template<class T>
 SLICING_FUNCTION constexpr int get_width() {
-    if constexpr (cuda::std::is_signed<T>()) {
+    if constexpr (cuda::std::is_signed_v<T>) {
         return 8 * sizeof(T) - 1;
     } else {
         return 8 * sizeof(T);
     };
 }
 
-SLICING_FUNCTION int64_t div_up(int64_t x, int64_t y) {
+SLICING_FUNCTION int64_t div_up(const int64_t x, const int64_t y) {
     return (x + y - 1) / y;
 }
 
-SLICING_FUNCTION int rz_width(const double_structure& em) {
-    return em.s.exponent + 1 - bias;
+SLICING_FUNCTION int rz_width(const fp64_structure& em) {
+    return em.s.exponent + 1 - fp64_bias;
 }
 // Length of a bits before the decimal point. i.e., bit width if casted to infinite-length int type.
 SLICING_FUNCTION int rz_width(const double d) {
-    double_structure em {d};
+    fp64_structure em {d};
     return rz_width(em);
-}
-
-SLICING_FUNCTION constexpr int64_t ipow_p(int64_t base, int exp, int64_t ans = 1) {
-    return exp < 1 ? ans : ipow_p(base * base, exp / 2, (exp % 2) ? ans * base : ans);
-}
-
-SLICING_FUNCTION constexpr double ipow(int base, int exp) {
-    return exp > 0 ? ipow_p(base, exp) : 1.0 / ipow_p(base, -exp);
 }
 
 template<class T>
@@ -84,12 +78,12 @@ SLICING_FUNCTION constexpr int max_exponent<int8_t>() {
     return 7;
 }
 
-SLICING_FUNCTION int32_t get_exponent(double val) {
-    double_structure em = {val};
+SLICING_FUNCTION int32_t get_exponent(const double val) {
+    fp64_structure em = {val};
 
-    int em_exponent = (em.s.exponent + 1 - bias);
+    int em_exponent = (em.s.exponent + 1 - fp64_bias);
 
-    if (em.s.mantissa_hi & (63 << 14))
+    if ((em.s.mantissa_hi & (63 << 14)) == (63 << 14))
         em_exponent++;
 
     return em_exponent;
@@ -98,10 +92,10 @@ SLICING_FUNCTION int32_t get_exponent(double val) {
 // An implementation of ldexp() to be used in scaling double-precision numbers obtained from unpacking slices
 // in the epilogue. The resulting double values must be finite and normalized, and so the fast path should
 // simply adjust the exponent field of the value, so long as the result is also finite and normalized.
-SLICING_FUNCTION void epilogue_ldexp(double_structure& em, int exp) {
-    static constexpr int exp_max             = bias - 1;
+SLICING_FUNCTION void epilogue_ldexp(fp64_structure& em, const int exp) {
+    static constexpr int exp_max             = fp64_bias - 1;
     int                  previous_exp_biased = static_cast<int>(em.s.exponent);
-    if (0 < previous_exp_biased && 0 < previous_exp_biased + exp && previous_exp_biased + exp <= exp_max + bias) {
+    if (0 < previous_exp_biased && 0 < previous_exp_biased + exp && previous_exp_biased + exp <= exp_max + fp64_bias) {
         em.s.exponent += exp;
         return;
     }
@@ -116,7 +110,7 @@ SLICING_FUNCTION void epilogue_ldexp(double_structure& em, int exp) {
  * the encoding of the signed magnitude only on the leading
  * slice among other things..
  */
-SLICING_FUNCTION int32_t max_to_exponent_shift(double row_col_max) {
+SLICING_FUNCTION int32_t max_to_exponent_shift(const double row_col_max) {
     static constexpr int scale_max_exponent = max_exponent<int8_t>();
 
     return scale_max_exponent - get_exponent(row_col_max);
@@ -133,9 +127,9 @@ SLICING_FUNCTION int32_t max_to_exponent_shift(double row_col_max) {
  * significant slice.
  */
 template<class SliceValueType, unsigned nslices>
-SLICING_FUNCTION cuda::std::array<SliceValueType, nslices> slices_from_fp64(double val, int32_t exponent_shift) {
-    static_assert(cuda::std::is_integral<SliceValueType>());
-    static_assert(cuda::std::is_signed<SliceValueType>());
+SLICING_FUNCTION cuda::std::array<SliceValueType, nslices> slices_from_fp64(const double val, const int32_t exponent_shift) {
+    static_assert(cuda::std::is_integral_v<SliceValueType>);
+    static_assert(cuda::std::is_signed_v<SliceValueType>);
 
     cuda::std::array<SliceValueType, nslices> slices = {0};
 
@@ -148,7 +142,7 @@ SLICING_FUNCTION cuda::std::array<SliceValueType, nslices> slices_from_fp64(doub
 
     uint8_t reg_pack = 0;
 
-    double_structure r0                  = {val};
+    fp64_structure r0                    = {val};
     int              denorm_compensation = 0;
     if (r0.s.exponent == 0) {
         if (r0.d == 0.0) {
@@ -160,7 +154,7 @@ SLICING_FUNCTION cuda::std::array<SliceValueType, nslices> slices_from_fp64(doub
             denorm_compensation = -52;
         }
     }
-    int exp = r0.s.exponent + exponent_shift + denorm_compensation - bias;
+    int exp = r0.s.exponent + exponent_shift + denorm_compensation - fp64_bias;
     exp += (nslices - 1) * get_width<uint8_t>(); // Use all 8 bits.
 
     // Adjust casting range.
@@ -173,7 +167,7 @@ SLICING_FUNCTION cuda::std::array<SliceValueType, nslices> slices_from_fp64(doub
     if (exp < 0) {
         r = 0;
     } else {
-        r0.s.exponent = (unsigned int)(exp + bias);
+        r0.s.exponent = (unsigned int)(exp + fp64_bias);
         r             = static_cast<int64_t>(r0.d);
     }
 
@@ -204,18 +198,16 @@ SLICING_FUNCTION cuda::std::array<SliceValueType, nslices> slices_from_fp64(doub
  * diagonals first to avoid catastrophic cancellation.
  */
 template<typename DiagonalAccType, typename SliceValueType>
-SLICING_FUNCTION double nth_slice_to_fp64(int32_t nth, DiagonalAccType nth_slice, int32_t exponent_shift) {
-    static_assert(cuda::std::is_integral<DiagonalAccType>());
-    static_assert(cuda::std::is_signed<DiagonalAccType>());
-    static_assert(cuda::std::is_integral<SliceValueType>());
-    static_assert(cuda::std::is_signed<SliceValueType>());
+SLICING_FUNCTION double nth_slice_to_fp64(const int32_t nth, const DiagonalAccType nth_slice, const int32_t exponent_shift) {
+    static_assert(cuda::std::is_integral_v<DiagonalAccType>);
+    static_assert(cuda::std::is_signed_v<DiagonalAccType>);
+    static_assert(cuda::std::is_integral_v<SliceValueType>);
+    static_assert(cuda::std::is_signed_v<SliceValueType>);
     assert(nth >= 0);
 
     /* In some instances, we use the unsigned value type to leverage all bits for storage */
-    double ko = pow(2.0, -get_width<cuda::std::make_unsigned<SliceValueType>>() * nth);
-
-    double           value_i = ko * static_cast<double>(nth_slice);
-    double_structure value   = {value_i};
-    epilogue_ldexp(value, -exponent_shift);
+    constexpr int slice_width = get_width<cuda::std::make_unsigned_t<SliceValueType>>();
+    fp64_structure value = {static_cast<double>(nth_slice)};
+    epilogue_ldexp(value, -slice_width * nth - exponent_shift);
     return value.d;
 }

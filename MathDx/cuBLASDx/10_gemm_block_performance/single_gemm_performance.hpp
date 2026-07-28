@@ -90,8 +90,7 @@ int benchmark_mixed_precision_gemm(const cudaStream_t& stream, bool verbose = fa
 
     using suggested_ld = suggested_leading_dimension_of_t<GEMM, Arch>;
     constexpr bool set_block_size {BlockSize > 0};
-    using gemm_base_type =
-        std::conditional_t<set_block_size, decltype(GEMM() + BlockDim<BlockSize>() + StaticBlockDim()), GEMM>;
+    using gemm_base_type = std::conditional_t<set_block_size, decltype(GEMM() + BlockDim<BlockSize>() + StaticBlockDim()), GEMM>;
     using gemm_type = std::conditional_t<UseSuggestedLD, decltype(gemm_base_type() + suggested_ld()), gemm_base_type>;
 
     using TA = AInputType;

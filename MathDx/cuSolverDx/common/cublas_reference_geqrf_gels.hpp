@@ -127,14 +127,14 @@ namespace common {
                 common::print_perf("Ref_cublasXgeqrfBatched", batches, m, n, 0, gflops, gb_s, ms_geqrf, 0); // dummy 0 for k andblockDim
             } else {
                 execute_cublas_geqrf_api(stream);
-
-
-                for (int i = 0; i < batches; i++) {
-                    CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(A.data() + i * a_size, d_A[i], sizeof(cuda_data_type) * a_size, cudaMemcpyDeviceToHost, stream));
-                    CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(tau.data() + i * mn, d_tau[i], sizeof(cuda_data_type) * mn, cudaMemcpyDeviceToHost, stream));
-                }
-                CUDA_CHECK_AND_EXIT(cudaStreamSynchronize(stream));
             }
+
+            // copy the results back to host for verification
+            for (int i = 0; i < batches; i++) {
+                CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(A.data() + i * a_size, d_A[i], sizeof(cuda_data_type) * a_size, cudaMemcpyDeviceToHost, stream));
+                CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(tau.data() + i * mn, d_tau[i], sizeof(cuda_data_type) * mn, cudaMemcpyDeviceToHost, stream));
+            }
+            CUDA_CHECK_AND_EXIT(cudaStreamSynchronize(stream));
 
             CUDA_CHECK_AND_EXIT(cudaFree(d_A_array));
             CUDA_CHECK_AND_EXIT(cudaFree(d_tau_array));

@@ -27,6 +27,7 @@
 template<class BLAS, class TA, class TB, class TC>
 __launch_bounds__(BLAS::max_threads_per_block) __global__
     void gemm_kernel(const TA* a, const TB* b, const TC* c, const TC alpha, const TC beta, TC* output) {
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(BLAS);
 
     extern __shared__ __align__(16) cublasdx::byte smem[];
 
@@ -96,7 +97,7 @@ int simple_gemm_mixed_precision() {
     static_assert(std::is_same<typename cublasdx::precision_of<BLAS>::b_type, PB>::value, "TB and PB do not match");
     static_assert(std::is_same<typename cublasdx::precision_of<BLAS>::c_type, PC>::value, "TC and PC do not match");
 
-    // Allocate managed memory for a, b, c, and output
+    // Allocate device memory for a, b, c, and output
     TA* a      = nullptr;
     TB* b      = nullptr;
     TC* c      = nullptr;
@@ -106,10 +107,10 @@ int simple_gemm_mixed_precision() {
     constexpr auto global_b_size = example::global_memory_size_of<BLAS>::b_size;
     constexpr auto global_c_size = example::global_memory_size_of<BLAS>::c_size;
 
-    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&a, global_a_size * sizeof(TA)));
-    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&b, global_b_size * sizeof(TB)));
-    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&c, global_c_size * sizeof(TC)));
-    CUDA_CHECK_AND_EXIT(cudaMallocManaged(&output, global_a_size * sizeof(TC)));
+    CUDA_CHECK_AND_EXIT(cudaMalloc(&a, global_a_size * sizeof(TA)));
+    CUDA_CHECK_AND_EXIT(cudaMalloc(&b, global_b_size * sizeof(TB)));
+    CUDA_CHECK_AND_EXIT(cudaMalloc(&c, global_c_size * sizeof(TC)));
+    CUDA_CHECK_AND_EXIT(cudaMalloc(&output, global_c_size * sizeof(TC)));
 
     TC alpha = TC(1.0, 0.0);
     TC beta  = TC(2.0, 0.0);

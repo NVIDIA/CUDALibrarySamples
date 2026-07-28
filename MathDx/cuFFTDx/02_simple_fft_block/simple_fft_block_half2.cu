@@ -27,6 +27,8 @@
 
 template<class FFT>
 __launch_bounds__(FFT::max_threads_per_block) __global__ void block_fft_kernel(__half2* data) {
+    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFT);
+
     using complex_type = typename FFT::value_type;
 
     // Local array for thread
@@ -54,7 +56,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__ void block_fft_kernel(_
 // the device we use special example::io_fp16 struct template to load values from two batches
 // into an array of complex<half2> with ((Real, Real), (Imag, Imag)) layout.
 template<unsigned int Arch>
-void simple_block_fft_half2() {
+int simple_block_fft_half2() {
     using namespace cufftdx;
 
     // FFT is defined, its: size, type, direction, precision. Block() operator informs that FFT
@@ -95,11 +97,12 @@ void simple_block_fft_half2() {
 
     CUDA_CHECK_AND_EXIT(cudaFree(data));
     std::cout << "Success" << std::endl;
+    return 0;
 }
 
 template<unsigned int Arch>
 struct simple_block_fft_half2_functor {
-    void operator()() { return simple_block_fft_half2<Arch>(); }
+    int operator()() { return simple_block_fft_half2<Arch>(); }
 };
 
 int main(int, char**) {

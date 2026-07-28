@@ -34,6 +34,8 @@ __global__ void generate_kernel(DataType*                                 d_out,
                                 const size_t                              size,
                                 DataType                                  input1,
                                 DataType                                  input2) {
+    CURANDDX_SKIP_IF_NOT_APPLICABLE_SM(RNG);
+
     int       tid     = blockDim.x * blockIdx.x + threadIdx.x;
     const int threads = blockDim.x * gridDim.x;
 

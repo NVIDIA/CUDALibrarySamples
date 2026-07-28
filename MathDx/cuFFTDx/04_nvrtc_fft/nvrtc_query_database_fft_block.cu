@@ -95,7 +95,7 @@ int main(int, char**) {
                                                  cufftdx::fft_direction::inverse,
                                                  cufftdx::fft_type::c2c,
                                                  example::nvrtc::get_device_architecture(current_device) * 10,
-                                                 cufftdx::detail::execution_type::block,
+                                                 cufftdx::utils::execution_type::block,
                                                  cufftdx::precision::f64,
                                                  fft_ept);
 

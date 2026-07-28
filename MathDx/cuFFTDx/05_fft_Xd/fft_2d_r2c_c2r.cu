@@ -36,6 +36,8 @@ inline constexpr unsigned int cufftdx_example_performance_runs = 20;
 template<class FFT, class InputType, class OutputType>
 __launch_bounds__(FFT::max_threads_per_block) __global__
     void fft_2d_kernel_y(const InputType* input, OutputType* output, typename FFT::workspace_type workspace) {
+    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFT);
+
     using complex_type = typename FFT::value_type;
 
     // Local array for thread
@@ -65,6 +67,8 @@ __launch_bounds__(FFTF::max_threads_per_block) __global__
                          ComplexType*                  output,
                          typename FFTF::workspace_type workspacef,
                          typename FFTI::workspace_type workspacei) {
+    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFTF);
+
     using complex_type = typename FFTF::value_type;
 
     extern __shared__ __align__(alignof(float4)) complex_type shared_mem[];
@@ -283,7 +287,7 @@ example::fft_results<RealType> cufftdx_fft_2d_r2c_c2r(RealType* real_values, Com
 // * cuFFTDx with enabled shared memory IO usually be the faster cuFFTDx option for larger (>512) sizes.
 // * The shared memory IO cuFFTDx has high shared memory requirements and will not work for all possible sizes in X dimension.
 template<unsigned int Arch>
-void fft_2d() {
+int fft_2d() {
     using precision_type                     = float;
     using complex_type                       = cufftdx::complex<precision_type>;
     using real_type                          = complex_type::value_type;
@@ -439,15 +443,16 @@ void fft_2d() {
 
     if (success) {
         std::cout << "Success\n";
+        return 0;
     } else {
         std::cout << "Failure\n";
-        std::exit(1);
+        return 1;
     }
 }
 
 template<unsigned int Arch>
 struct fft_2d_functor {
-    void operator()() { return fft_2d<Arch>(); }
+    int operator()() { return fft_2d<Arch>(); }
 };
 
 int main(int, char**) {

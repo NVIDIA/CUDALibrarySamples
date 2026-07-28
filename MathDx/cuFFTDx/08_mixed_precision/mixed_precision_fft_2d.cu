@@ -40,6 +40,8 @@ __launch_bounds__(FFTX::max_threads_per_block) __global__
                              InputOutputType*              output,
                              typename FFTX::workspace_type workspace_x,
                              typename FFTY::workspace_type workspace_y) {
+    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFTX);
+
     using complex_type      = typename FFTX::value_type;
     constexpr bool is_mixed = !std::is_same_v<InputOutputType, complex_type>;
 
@@ -260,7 +262,7 @@ example::fft_results<typename FFTX::value_type> cufftdx_mixed_fft_2d(const unsig
 // on the GPU.
 // * The best results are for a square FFTs (fft_size_x == fft_size_y).
 template<unsigned int Arch, unsigned int fft_size = 512>
-void mixed_fft_2d() {
+int mixed_fft_2d() {
 
     // Choose mixed precision options
     // Input and Output type
@@ -394,18 +396,21 @@ void mixed_fft_2d() {
 
     if (success) {
         std::cout << "Success" << std::endl;
+    } else {
+        std::cout << "Failure" << std::endl;
     }
 
     CUDA_CHECK_AND_EXIT(cudaFree(input_io));
     CUDA_CHECK_AND_EXIT(cudaFree(input_compute));
     CUDA_CHECK_AND_EXIT(cudaFree(output_io));
     CUDA_CHECK_AND_EXIT(cudaFree(output_compute));
+    return success ? 0 : 1;
 }
 
 template<unsigned int Arch>
 struct mixed_fft_2d_functor {
-    void operator()() {
-        mixed_fft_2d<Arch, 512>();
+    int operator()() {
+        return mixed_fft_2d<Arch, 512>();
     }
 };
 
