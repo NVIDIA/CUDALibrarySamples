@@ -76,7 +76,8 @@ inline bool isPtrArray(bool ptrArrayBatch, bool groupedBatch) {
 // https://docs.nvidia.com/cuda/cublas/index.html#d-block-scaling-factors-layout for more details.
 inline size_t getScaleTensorSize(int inner, int outer, cublasLtMatmulMatrixScale_t scaleMode) {
     if (scaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F ||
-        scaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_PER_BATCH_SCALAR_32F) return 1;
+        scaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_PER_BATCH_SCALAR_32F)
+        return 1;
 
     if (scaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_VEC32_UE8M0 ||
         scaleMode == CUBLASLT_MATMUL_MATRIX_SCALE_VEC16_UE4M3) {
@@ -263,7 +264,8 @@ struct TestBench {
           APtrArrayHost(isPtrArray(ptrArrayBatch, groupedBatch) ? N : 0),
           BPtrArrayHost(isPtrArray(ptrArrayBatch, groupedBatch) ? N : 0),
           CPtrArrayHost(isPtrArray(ptrArrayBatch, groupedBatch) ? N : 0),
-          DPtrArrayHost((isPtrArray(ptrArrayBatch, groupedBatch) && outOfPlace) ? N : 0), AScaleMode(AScaleMode),
+          DPtrArrayHost((isPtrArray(ptrArrayBatch, groupedBatch) && outOfPlace) ? N : 0),
+          BiasPtrArrayHost(isPtrArray(ptrArrayBatch, groupedBatch) ? N : 0), AScaleMode(AScaleMode),
           BScaleMode(BScaleMode), CScaleMode(CScaleMode), DScaleMode(DScaleMode), DOutScaleMode(DOutScaleMode),
           ptrArrayBatch(ptrArrayBatch), groupedBatch(groupedBatch) {
         assert(!(ptrArrayBatch && groupedBatch));
@@ -402,10 +404,10 @@ struct TestBench {
                     AscaleSize = std::max(AscaleSize, size_t(1));
                     BscaleSize = std::max(BscaleSize, size_t(1));
 
-                    checkCudaStatus(cudaMalloc(reinterpret_cast<void **>(&AscalePtrArrayHost[i]),
-                                               AscaleSize * sizeof(ScaleType)));
-                    checkCudaStatus(cudaMalloc(reinterpret_cast<void **>(&BscalePtrArrayHost[i]),
-                                               BscaleSize * sizeof(ScaleType)));
+                    checkCudaStatus(
+                        cudaMalloc(reinterpret_cast<void **>(&AscalePtrArrayHost[i]), AscaleSize * sizeof(ScaleType)));
+                    checkCudaStatus(
+                        cudaMalloc(reinterpret_cast<void **>(&BscalePtrArrayHost[i]), BscaleSize * sizeof(ScaleType)));
                 }
             }
         }
@@ -418,6 +420,7 @@ struct TestBench {
                 checkCudaStatus(cudaMalloc(reinterpret_cast<void **>(&DPtrArrayDev), N * sizeof(void *)));
             else
                 DPtrArrayDev = reinterpret_cast<decltype(DPtrArrayDev)>(CPtrArrayDev);
+            checkCudaStatus(cudaMalloc(reinterpret_cast<void **>(&BiasPtrArrayDev), N * sizeof(void *)));
             for (int i = 0; i < N; ++i) {
                 checkCudaStatus(
                     cudaMalloc(reinterpret_cast<void **>(&APtrArrayHost[i]), Ahost.size() * sizeof(Ahost[0]) / N));
@@ -425,6 +428,8 @@ struct TestBench {
                     cudaMalloc(reinterpret_cast<void **>(&BPtrArrayHost[i]), Bhost.size() * sizeof(Bhost[0]) / N));
                 checkCudaStatus(
                     cudaMalloc(reinterpret_cast<void **>(&CPtrArrayHost[i]), Chost.size() * sizeof(Chost[0]) / N));
+                checkCudaStatus(cudaMalloc(reinterpret_cast<void **>(&BiasPtrArrayHost[i]),
+                                           biasHost.size() * sizeof(biasHost[0]) / N));
                 if (outOfPlace)
                     checkCudaStatus(
                         cudaMalloc(reinterpret_cast<void **>(&DPtrArrayHost[i]), Dhost.size() * sizeof(Dhost[0]) / N));
@@ -496,11 +501,13 @@ struct TestBench {
                 checkCudaStatus(cudaFree(APtrArrayHost[i]));
                 checkCudaStatus(cudaFree(BPtrArrayHost[i]));
                 checkCudaStatus(cudaFree(CPtrArrayHost[i]));
+                checkCudaStatus(cudaFree(BiasPtrArrayHost[i]));
                 if (outOfPlace) checkCudaStatus(cudaFree(DPtrArrayHost[i]));
             }
             checkCudaStatus(cudaFree(APtrArrayDev));
             checkCudaStatus(cudaFree(BPtrArrayDev));
             checkCudaStatus(cudaFree(CPtrArrayDev));
+            checkCudaStatus(cudaFree(BiasPtrArrayDev));
             if (outOfPlace) checkCudaStatus(cudaFree(DPtrArrayDev));
         } else {
             checkCudaStatus(cudaFree(Bdev));
@@ -607,6 +614,8 @@ struct TestBench {
                                             cudaMemcpyHostToDevice, stream));
             checkCudaStatus(cudaMemcpyAsync(CPtrArrayDev, CPtrArrayHost.data(), N * sizeof(CPtrArrayHost[0]),
                                             cudaMemcpyHostToDevice, stream));
+            checkCudaStatus(cudaMemcpyAsync(BiasPtrArrayDev, BiasPtrArrayHost.data(), N * sizeof(BiasPtrArrayHost[0]),
+                                            cudaMemcpyHostToDevice, stream));
             if (outOfPlace)
                 checkCudaStatus(cudaMemcpyAsync(DPtrArrayDev, DPtrArrayHost.data(), N * sizeof(DPtrArrayHost[0]),
                                                 cudaMemcpyHostToDevice, stream));
@@ -616,16 +625,18 @@ struct TestBench {
                                                 Ahost.size() / N * sizeof(Ahost[0]), cudaMemcpyHostToDevice, stream));
                 checkCudaStatus(cudaMemcpyAsync(BPtrArrayHost[i], &Bhost[i * m * n],
                                                 Bhost.size() / N * sizeof(Bhost[0]), cudaMemcpyHostToDevice, stream));
+                checkCudaStatus(cudaMemcpyAsync(BiasPtrArrayHost[i], &biasHost[i * m],
+                                                biasHost.size() / N * sizeof(biasHost[0]), cudaMemcpyHostToDevice,
+                                                stream));
             }
         } else {
             checkCudaStatus(
                 cudaMemcpyAsync(Adev, Ahost.data(), Ahost.size() * sizeof(Ahost[0]), cudaMemcpyHostToDevice, stream));
             checkCudaStatus(
                 cudaMemcpyAsync(Bdev, Bhost.data(), Bhost.size() * sizeof(Bhost[0]), cudaMemcpyHostToDevice, stream));
+            checkCudaStatus(cudaMemcpyAsync(biasDev, biasHost.data(), biasHost.size() * sizeof(biasHost[0]),
+                                            cudaMemcpyHostToDevice, stream));
         }
-
-        checkCudaStatus(cudaMemcpyAsync(biasDev, biasHost.data(), biasHost.size() * sizeof(biasHost[0]),
-                                        cudaMemcpyHostToDevice, stream));
         checkCudaStatus(cudaMemcpyAsync(AscaleDev, AscaleHost.data(), AscaleHost.size() * sizeof(AscaleHost[0]),
                                         cudaMemcpyHostToDevice, stream));
         checkCudaStatus(cudaMemcpyAsync(BscaleDev, BscaleHost.data(), BscaleHost.size() * sizeof(BscaleHost[0]),
@@ -714,10 +725,12 @@ struct TestBench {
     std::vector<typename StorageType<InTypeAB>::type *> APtrArrayHost, BPtrArrayHost;
     std::vector<typename StorageType<InTypeC>::type *> CPtrArrayHost;
     std::vector<typename StorageType<OutType>::type *> DPtrArrayHost;
+    std::vector<typename StorageType<OutType>::type *> BiasPtrArrayHost;
 
     typename StorageType<InTypeAB>::type **APtrArrayDev, **BPtrArrayDev;
     typename StorageType<InTypeC>::type **CPtrArrayDev;
     typename StorageType<OutType>::type **DPtrArrayDev;
+    typename StorageType<OutType>::type **BiasPtrArrayDev;
 
     cublasLtMatmulMatrixScale_t AScaleMode, BScaleMode, CScaleMode, DScaleMode, DOutScaleMode;
 

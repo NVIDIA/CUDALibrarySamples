@@ -40,6 +40,7 @@ void LtHSHgemmGroupedSimple(cublasLtHandle_t ltHandle,
                             const void *ldcArrayDev,
                             __half *const *D,
                             const void *lddArrayDev,
+                            const void *biasPtr,
                             int batchCount,
                             void *workspace,
                             size_t workspaceSize);

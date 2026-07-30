@@ -26,8 +26,8 @@ int main() {
         LtHSHgemmGroupedSimple(props.ltHandle, props.transa, props.transb, props.mArrayDev, props.avgM, props.nArrayDev,
                                props.avgN, props.kArrayDev, props.avgK, props.alphaArrayDev, props.APtrArrayDev,
                                props.ldaArrayDev, props.BPtrArrayDev, props.ldbArrayDev, props.betaArrayDev,
-                               props.CPtrArrayDev, props.ldcArrayDev, props.DPtrArrayDev, props.lddArrayDev, props.N,
-                               props.workspace, props.workspaceSize);
+                               props.CPtrArrayDev, props.ldcArrayDev, props.DPtrArrayDev, props.lddArrayDev,
+                               props.BiasPtrArrayDev, props.N, props.workspace, props.workspaceSize);
     });
 
     return 0;

@@ -36,7 +36,7 @@ void LtBlk128x128Fp8gemmGroupedSimple(cublasLtHandle_t ltHandle,
                                       int64_t avgN,
                                       const void *kArrayDev,
                                       int64_t avgK,
-                                      const float *alpha, /* host pointer */
+                                      const float *alpha,          /* host pointer */
                                       const float *const *a_scale, /* device pointer array */
                                       const __nv_fp8_e4m3 *const *A,
                                       const void *ldaArrayDev,

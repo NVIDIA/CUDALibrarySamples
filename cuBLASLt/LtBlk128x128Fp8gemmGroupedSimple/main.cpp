@@ -27,8 +27,7 @@ int main() {
     // Uses __nv_fp8_e4m3 for A, B and __nv_bfloat16 for C, D
     // ScaleType = float (32-bit float scales)
     TestBench<__nv_fp8_e4m3, __nv_bfloat16, float, float, float, __nv_bfloat16> props(
-        CUBLAS_OP_T, CUBLAS_OP_N, 64, 128, 256, 2.0f, 1.0f, 32ULL * 1024 * 1024, 2,
-        2.0f, 0.5f, 1.0f, 1.0f,
+        CUBLAS_OP_T, CUBLAS_OP_N, 64, 128, 256, 2.0f, 1.0f, 32ULL * 1024 * 1024, 2, 2.0f, 0.5f, 1.0f, 1.0f,
         CUBLASLT_MATMUL_MATRIX_SCALE_VEC128_32F, CUBLASLT_MATMUL_MATRIX_SCALE_BLK128x128_32F,
         CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
         CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, false, true, true);

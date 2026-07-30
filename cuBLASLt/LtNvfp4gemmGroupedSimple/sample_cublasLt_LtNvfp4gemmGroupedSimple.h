@@ -39,7 +39,7 @@ void LtNvfp4gemmGroupedSimple(cublasLtHandle_t ltHandle,
                               int64_t avgN,
                               const void *kArrayDev,
                               int64_t avgK,
-                              const float *alpha, /* host pointer */
+                              const float *alpha,                  /* host pointer */
                               const __nv_fp8_e4m3 *const *a_scale, /* device pointer array */
                               const typename StorageType<__nv_fp4_e2m1>::type *const *A,
                               const void *ldaArrayDev,

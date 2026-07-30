@@ -49,6 +49,7 @@ void LtHSHgemmGroupedSimple(cublasLtHandle_t ltHandle,
                             const void *ldcArrayDev,
                             __half *const *D,
                             const void *lddArrayDev,
+                            const void *biasPtr,
                             int batchCount,
                             void *workspace,
                             size_t workspaceSize) {
@@ -83,6 +84,17 @@ void LtHSHgemmGroupedSimple(cublasLtHandle_t ltHandle,
         cublasLtGroupedMatrixLayoutCreate(&Cdesc, CUDA_R_16F, batchCount, mArrayDev, nArrayDev, ldcArrayDev));
     checkCublasStatus(
         cublasLtGroupedMatrixLayoutCreate(&Ddesc, CUDA_R_16F, batchCount, mArrayDev, nArrayDev, lddArrayDev));
+
+    // Bias epilogue
+    // Bias must be separate for each group, broadcast across all groups is not supported, hence the batch stride is 1
+    int64_t biasBatchStride = 1;
+    checkCublasStatus(
+        cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_BIAS_POINTER, &biasPtr, sizeof(biasPtr)));
+    checkCublasStatus(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_BIAS_BATCH_STRIDE,
+                                                     &biasBatchStride, sizeof(biasBatchStride)));
+    cublasLtEpilogue_t epilogue = CUBLASLT_EPILOGUE_BIAS;
+    checkCublasStatus(
+        cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_EPILOGUE, &epilogue, sizeof(epilogue)));
 
     // Since M, N, K are located on the device, it is highly recommended to
     // provide average values for them to improve the heuristics result. Without

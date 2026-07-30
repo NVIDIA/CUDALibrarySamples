@@ -26,21 +26,20 @@ int main() {
     // Uses __nv_fp8_e4m3 for A, B and __nv_bfloat16 for C, D
     // ScaleType = __nv_fp8_e8m0 (E8M0 scales for A, B), host alpha/beta shared across groups
     TestBench<__nv_fp8_e4m3, __nv_bfloat16, float, __nv_fp8_e8m0, __nv_fp8_e8m0, __nv_bfloat16> props(
-        CUBLAS_OP_T, CUBLAS_OP_N, 64, 128, 256, 2.0f, 0.0f, 32ULL * 1024 * 1024, 2,
-        __nv_fp8_e8m0{2.0f}, __nv_fp8_e8m0{0.5f}, __nv_fp8_e8m0{1.0f}, __nv_fp8_e8m0{1.0f},
-        CUBLASLT_MATMUL_MATRIX_SCALE_VEC32_UE8M0, CUBLASLT_MATMUL_MATRIX_SCALE_VEC32_UE8M0,
-        CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
-        CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, false, true, true);
+        CUBLAS_OP_T, CUBLAS_OP_N, 64, 128, 256, 2.0f, 0.0f, 32ULL * 1024 * 1024, 2, __nv_fp8_e8m0{2.0f},
+        __nv_fp8_e8m0{0.5f}, __nv_fp8_e8m0{1.0f}, __nv_fp8_e8m0{1.0f}, CUBLASLT_MATMUL_MATRIX_SCALE_VEC32_UE8M0,
+        CUBLASLT_MATMUL_MATRIX_SCALE_VEC32_UE8M0, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F,
+        CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, CUBLASLT_MATMUL_MATRIX_SCALE_SCALAR_32F, false, true, true);
 
     props.run([&props] {
-        LtMxfp8gemmGroupedSimple(
-            props.ltHandle, props.transa, props.transb, props.mArrayDev, props.avgM, props.nArrayDev, props.avgN,
-            props.kArrayDev, props.avgK, &props.alpha,
-            reinterpret_cast<const __nv_fp8_e8m0 *const *>(props.AscalePtrArrayDev), props.APtrArrayDev,
-            props.ldaArrayDev, reinterpret_cast<const __nv_fp8_e8m0 *const *>(props.BscalePtrArrayDev),
-            props.BPtrArrayDev, props.ldbArrayDev, &props.beta, props.CPtrArrayDev, props.ldcArrayDev,
-            props.DPtrArrayDev, props.lddArrayDev, props.N, props.workspace, props.workspaceSize, props.AScaleMode,
-            props.BScaleMode);
+        LtMxfp8gemmGroupedSimple(props.ltHandle, props.transa, props.transb, props.mArrayDev, props.avgM,
+                                 props.nArrayDev, props.avgN, props.kArrayDev, props.avgK, &props.alpha,
+                                 reinterpret_cast<const __nv_fp8_e8m0 *const *>(props.AscalePtrArrayDev),
+                                 props.APtrArrayDev, props.ldaArrayDev,
+                                 reinterpret_cast<const __nv_fp8_e8m0 *const *>(props.BscalePtrArrayDev),
+                                 props.BPtrArrayDev, props.ldbArrayDev, &props.beta, props.CPtrArrayDev,
+                                 props.ldcArrayDev, props.DPtrArrayDev, props.lddArrayDev, props.N, props.workspace,
+                                 props.workspaceSize, props.AScaleMode, props.BScaleMode);
     });
 
     return 0;
