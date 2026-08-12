@@ -326,11 +326,43 @@ int main(int argc, char* argv[])
     /*         ALLOCATE Psyevd WORKSPACE            */
     /* =========================================== */
 
-    cudaStat = cudaMalloc((void**)&d_syevdWork, syevdWorkspaceInBytesOnDevice);
-    SAMPLE_ASSERT(cudaStat == cudaSuccess);
+    /* To achieve better performance, allocate the device workspace with
+     * cusolverMpMalloc or — as here — with ncclMemAlloc + cusolverMpBufferRegister.
+     * Plain cudaMalloc is also accepted. */
+    /* cusolverMp bufferSize queries return this rank's requirement, while
+     * registration (like cusolverMpMalloc) is collective and requires the
+     * same size on every grid rank — register the grid-wide maximum. */
+    MPI_Allreduce(MPI_IN_PLACE, &syevdWorkspaceInBytesOnDevice, 1, MPI_UNSIGNED_LONG, MPI_MAX, MPI_COMM_WORLD);
 
-    h_syevdWork = (void*)malloc(syevdWorkspaceInBytesOnHost);
-    SAMPLE_ASSERT(h_syevdWork != NULL);
+    int syevdWorkRegistered = 0;
+    if (syevdWorkspaceInBytesOnDevice > 0)
+    {
+        ncclStat = ncclMemAlloc((void**)&d_syevdWork, syevdWorkspaceInBytesOnDevice);
+        SAMPLE_ASSERT(ncclStat == ncclSuccess);
+
+        /* No kernels may be in flight during NCCL window registration. */
+        cudaStat = cudaStreamSynchronize(stream);
+        SAMPLE_ASSERT(cudaStat == cudaSuccess);
+
+        cusolverStat = cusolverMpBufferRegister(gridA, d_syevdWork, syevdWorkspaceInBytesOnDevice);
+        if (cusolverStat == CUSOLVER_STATUS_SUCCESS)
+        {
+            syevdWorkRegistered = 1;
+        }
+        else if (rank == 0)
+        {
+            fprintf(stderr,
+                    "Warning: failed to register workspace memory with cusolverMp (status %d); "
+                    "continuing without workspace registration.\n",
+                    (int)cusolverStat);
+        }
+    }
+
+    if (syevdWorkspaceInBytesOnHost > 0)
+    {
+        h_syevdWork = (void*)malloc(syevdWorkspaceInBytesOnHost);
+        SAMPLE_ASSERT(h_syevdWork != NULL);
+    }
 
     /* =========================================== */
     /*      SCATTER MATRICES A AND B FROM MASTER   */
@@ -458,6 +490,26 @@ int main(int argc, char* argv[])
     cusolverStat = cusolverMpDestroyMatrixDesc(descQ);
     SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
+    if (d_syevdWork)
+    {
+        /* Deregistration is collective and requires quiescent grid streams
+         * (see cusolverMpBufferRegister). */
+        cudaStat = cudaStreamSynchronize(stream);
+        SAMPLE_ASSERT(cudaStat == cudaSuccess);
+
+        /* Deregister before freeing; the buffer comes from ncclMemAlloc.
+         * Must run before the grid is destroyed: the registration lives in
+         * the grid's window registry. */
+        if (syevdWorkRegistered)
+        {
+            cusolverStat = cusolverMpBufferDeregister(gridA, d_syevdWork);
+            SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
+        }
+        ncclStat = ncclMemFree(d_syevdWork);
+        SAMPLE_ASSERT(ncclStat == ncclSuccess);
+        d_syevdWork = NULL;
+    }
+
     /* =========================================== */
     /*             DESTROY MATRIX GRIDS            */
     /* =========================================== */
@@ -491,13 +543,6 @@ int main(int argc, char* argv[])
         cudaStat = cudaFree(d_D);
         SAMPLE_ASSERT(cudaStat == cudaSuccess);
         d_D = NULL;
-    }
-
-    if (d_syevdWork)
-    {
-        cudaStat = cudaFree(d_syevdWork);
-        SAMPLE_ASSERT(cudaStat == cudaSuccess);
-        d_syevdWork = NULL;
     }
 
     if (d_syevdInfo)

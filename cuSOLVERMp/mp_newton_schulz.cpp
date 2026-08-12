@@ -328,35 +328,35 @@ int main(int argc, char* argv[])
     /* =========================================== */
     /*          ALLOCATE and REGISTER WORKSPACE    */
     /* =========================================== */
-    /* Try ncclMemAlloc + window register for best collective performance.
-     * Fall back to plain cudaMalloc when symmetric memory is not supported. */
-    bool useNcclMem = false;
+    /* To achieve better performance, allocate the device workspace with
+     * cusolverMpMalloc or — as here — with ncclMemAlloc + cusolverMpBufferRegister.
+     * Plain cudaMalloc is also accepted. */
+    /* cusolverMp bufferSize queries return this rank's requirement, while
+     * registration (like cusolverMpMalloc) is collective and requires the
+     * same size on every grid rank — register the grid-wide maximum. */
+    MPI_Allreduce(MPI_IN_PLACE, &workspaceInBytesOnDevice, 1, MPI_UNSIGNED_LONG, MPI_MAX, MPI_COMM_WORLD);
+
+    bool workspaceRegistered = false;
     if (workspaceInBytesOnDevice > 0)
     {
         ncclStat = ncclMemAlloc((void**)&d_work, workspaceInBytesOnDevice);
-        if (ncclStat == ncclSuccess)
-        {
-            cusolverStat = cusolverMpBufferRegister(gridA, d_work, workspaceInBytesOnDevice);
-            if (cusolverStat == CUSOLVER_STATUS_SUCCESS)
-            {
-                useNcclMem = true;
-            }
-            else
-            {
-                /* Registration not supported — free symmetric memory and fall back */
-                ncclMemFree(d_work);
-                d_work = NULL;
-            }
-        }
+        SAMPLE_ASSERT(ncclStat == ncclSuccess);
 
-        if (!useNcclMem)
+        /* No kernels may be in flight during NCCL window registration. */
+        cudaStat = cudaStreamSynchronize(stream);
+        SAMPLE_ASSERT(cudaStat == cudaSuccess);
+
+        cusolverStat = cusolverMpBufferRegister(gridA, d_work, workspaceInBytesOnDevice);
+        if (cusolverStat == CUSOLVER_STATUS_SUCCESS)
         {
-            if (rank == 0)
-            {
-                printf("NCCL symmetric memory not available, falling back to cudaMalloc for workspace\n");
-            }
-            cudaStat = cudaMalloc((void**)&d_work, workspaceInBytesOnDevice);
-            SAMPLE_ASSERT(cudaStat == cudaSuccess);
+            workspaceRegistered = true;
+        }
+        else if (rank == 0)
+        {
+            fprintf(stderr,
+                    "Warning: failed to register workspace memory with cusolverMp (status %d); "
+                    "continuing without workspace registration.\n",
+                    (int)cusolverStat);
         }
     }
 
@@ -439,19 +439,20 @@ int main(int argc, char* argv[])
 
     if (d_work)
     {
-        if (useNcclMem)
+        /* Deregistration is collective and requires quiescent grid streams
+         * (see cusolverMpBufferRegister). */
+        cudaStat = cudaStreamSynchronize(stream);
+        SAMPLE_ASSERT(cudaStat == cudaSuccess);
+
+        /* Deregister before freeing; free with ncclMemFree in both cases
+         * since the buffer always comes from ncclMemAlloc. */
+        if (workspaceRegistered)
         {
             cusolverStat = cusolverMpBufferDeregister(gridA, d_work);
             SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
-
-            ncclStat = ncclMemFree(d_work);
-            SAMPLE_ASSERT(ncclStat == ncclSuccess);
         }
-        else
-        {
-            cudaStat = cudaFree(d_work);
-            SAMPLE_ASSERT(cudaStat == cudaSuccess);
-        }
+        ncclStat = ncclMemFree(d_work);
+        SAMPLE_ASSERT(ncclStat == ncclSuccess);
         d_work = NULL;
     }
 

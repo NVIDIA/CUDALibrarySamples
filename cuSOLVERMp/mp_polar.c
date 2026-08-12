@@ -204,18 +204,18 @@ int main(int argc, char* argv[])
     }
 
     /* A is M-by-N with offset (ia, ja) */
-    const int64_t globalRowsA         = (ia - 1) + m;
-    const int64_t globalColsA         = (ja - 1) + n;
-    const int64_t localRowsA          = cusolverMpNUMROC(globalRowsA, mbA, myRowRank, rsrc, nprow);
-    const int64_t localColsA          = cusolverMpNUMROC(globalColsA, nbA, myColRank, csrc, npcol);
-    const int64_t lldA                = (localRowsA > 0) ? localRowsA : 1;
+    const int64_t globalRowsA = (ia - 1) + m;
+    const int64_t globalColsA = (ja - 1) + n;
+    const int64_t localRowsA  = cusolverMpNUMROC(globalRowsA, mbA, myRowRank, rsrc, nprow);
+    const int64_t localColsA  = cusolverMpNUMROC(globalColsA, nbA, myColRank, csrc, npcol);
+    const int64_t lldA        = (localRowsA > 0) ? localRowsA : 1;
 
     /* H is N-by-N with offset (ih, jh) */
-    const int64_t globalRowsH         = (ih - 1) + n;
-    const int64_t globalColsH         = (jh - 1) + n;
-    const int64_t localRowsH          = cusolverMpNUMROC(globalRowsH, mbA, myRowRank, rsrc, nprow);
-    const int64_t localColsH          = cusolverMpNUMROC(globalColsH, nbA, myColRank, csrc, npcol);
-    const int64_t lldH                = (localRowsH > 0) ? localRowsH : 1;
+    const int64_t globalRowsH = (ih - 1) + n;
+    const int64_t globalColsH = (jh - 1) + n;
+    const int64_t localRowsH  = cusolverMpNUMROC(globalRowsH, mbA, myRowRank, rsrc, nprow);
+    const int64_t localColsH  = cusolverMpNUMROC(globalColsH, nbA, myColRank, csrc, npcol);
+    const int64_t lldH        = (localRowsH > 0) ? localRowsH : 1;
 
     /* =========================================== */
     /*            ALLOCATE DEVICE MEMORY           */
@@ -299,7 +299,7 @@ int main(int argc, char* argv[])
      *       (e.g., from a prior QR factorization) to skip internal QR.
      *
      * polarDesc: optional descriptor for perturbation control and diagnostics. */
-    cublasFillMode_t            uplo        = CUBLAS_FILL_MODE_FULL;  /* general input matrix */
+    cublasFillMode_t            uplo        = CUBLAS_FILL_MODE_FULL; /* general input matrix */
     cudaDataType_t              computeType = CUDA_R_64F;
     cusolverMpPolarDescriptor_t polarDesc   = NULL;
 
@@ -408,13 +408,11 @@ int main(int argc, char* argv[])
     SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
     SAMPLE_ASSERT(written == sizeof(requested_ksi_attr));
     cusolverStat = cusolverMpPolarDescriptorGetAttribute(
-            polarDesc, CUSOLVERMP_POLAR_DESCRIPTOR_ATTRIBUTE_A_NORM_FROBENIUS,
-            &a_nrmF, sizeof(a_nrmF), &written);
+            polarDesc, CUSOLVERMP_POLAR_DESCRIPTOR_ATTRIBUTE_A_NORM_FROBENIUS, &a_nrmF, sizeof(a_nrmF), &written);
     SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
     SAMPLE_ASSERT(written == sizeof(a_nrmF));
     cusolverStat = cusolverMpPolarDescriptorGetAttribute(
-            polarDesc, CUSOLVERMP_POLAR_DESCRIPTOR_ATTRIBUTE_RCOND_ESTIMATE,
-            &rcond, sizeof(rcond), &written);
+            polarDesc, CUSOLVERMP_POLAR_DESCRIPTOR_ATTRIBUTE_RCOND_ESTIMATE, &rcond, sizeof(rcond), &written);
     SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
     SAMPLE_ASSERT(written == sizeof(rcond));
     double applied_ksi = (requested_ksi_attr > 0.0) ? requested_ksi_attr : 0.0;
