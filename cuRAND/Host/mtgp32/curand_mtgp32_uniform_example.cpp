@@ -44,7 +44,7 @@ void run_on_device(const int &n, const unsigned long long &seed,
                         sizeof(data_type) * h_data.size()));
 
   /* Create pseudo-random number generator */
-  CURAND_CHECK(curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_MRG32K3A));
+  CURAND_CHECK(curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_MTGP32));
 
   /* Set cuRAND to stream */
   CURAND_CHECK(curandSetStream(gen, stream));
@@ -76,7 +76,7 @@ void run_on_host(const int &n, const unsigned long long &seed,
                  std::vector<data_type> &h_data) {
 
   /* Create pseudo-random number generator */
-  CURAND_CHECK(curandCreateGeneratorHost(&gen, CURAND_RNG_PSEUDO_MRG32K3A));
+  CURAND_CHECK(curandCreateGeneratorHost(&gen, CURAND_RNG_PSEUDO_MTGP32));
 
   /* Set cuRAND to stream */
   CURAND_CHECK(curandSetStream(gen, stream));
@@ -95,7 +95,7 @@ int main(int argc, char *argv[]) {
 
   cudaStream_t stream = NULL;
   curandGenerator_t gen = NULL;
-  curandRngType_t rng = CURAND_RNG_PSEUDO_MRG32K3A;
+  curandRngType_t rng = CURAND_RNG_PSEUDO_MTGP32;
   curandOrdering_t order = CURAND_ORDERING_PSEUDO_BEST;
 
   const int n = 10;
