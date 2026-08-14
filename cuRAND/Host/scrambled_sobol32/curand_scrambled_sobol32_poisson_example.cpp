@@ -45,7 +45,7 @@ void run_on_device(const int &n, const unsigned long long &offset,
                         sizeof(data_type) * h_data.size()));
 
   /* Create quasi-random number generator */
-  CURAND_CHECK(curandCreateGenerator(&gen, CURAND_RNG_QUASI_SCRAMBLED_SOBOL64));
+  CURAND_CHECK(curandCreateGenerator(&gen, CURAND_RNG_QUASI_SCRAMBLED_SOBOL32));
 
   /* Set cuRAND to stream */
   CURAND_CHECK(curandSetStream(gen, stream));
@@ -83,7 +83,7 @@ void run_on_host(const int &n, const unsigned long long &offset,
 
   /* Create quasi-random number generator */
   CURAND_CHECK(
-      curandCreateGeneratorHost(&gen, CURAND_RNG_QUASI_SCRAMBLED_SOBOL64));
+      curandCreateGeneratorHost(&gen, CURAND_RNG_QUASI_SCRAMBLED_SOBOL32));
 
   /* Set cuRAND to stream */
   CURAND_CHECK(curandSetStream(gen, stream));
@@ -109,7 +109,7 @@ int main(int argc, char *argv[]) {
 
   cudaStream_t stream = NULL;
   curandGenerator_t gen = NULL;
-  curandRngType_t rng = CURAND_RNG_QUASI_SCRAMBLED_SOBOL64;
+  curandRngType_t rng = CURAND_RNG_QUASI_SCRAMBLED_SOBOL32;
   curandOrdering_t order = CURAND_ORDERING_QUASI_DEFAULT;
 
   const int n = 10;
