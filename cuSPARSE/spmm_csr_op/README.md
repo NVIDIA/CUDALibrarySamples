@@ -21,7 +21,7 @@ This sample demonstrates the usage of `cusparseSpMMOp` for performing *sparse ma
 
 * Command line
     ```bash
-    nvcc -I<cuda_toolkit_path>/include spmm_csr_op_example.c -o spmm_csr_op_example -lcusparse
+    nvcc -I<cuda_toolkit_path>/include spmm_csr_op_example.c -o spmm_csr_op_example -lcusparse -lnvrtc
     ```
 
 * Linux

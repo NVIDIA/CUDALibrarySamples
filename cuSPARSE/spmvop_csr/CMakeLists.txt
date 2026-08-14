@@ -33,6 +33,6 @@ target_include_directories(${ROUTINE}_example
 )
 
 target_link_libraries(${ROUTINE}_example
-    PUBLIC cudart cusparse
+    PUBLIC cudart cusparse nvrtc
 )
 

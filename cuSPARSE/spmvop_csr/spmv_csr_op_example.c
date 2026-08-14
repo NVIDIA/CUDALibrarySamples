@@ -260,12 +260,14 @@ int main(int argc, char** argv) {
                                                  dummyY,
                                                  dummyZ,
                                                  CUDA_R_64F,
+                                                 CUSPARSE_SPMVOP_ALG_DEFAULT,
                                                  &buffer_size));
         CHECK_CUDA(cudaMalloc(&d_buffer, buffer_size));
         CHECK_CUSPARSE(cusparseSpMVOp_createDescr(handle, &descr,
                                                   CUSPARSE_OPERATION_NON_TRANSPOSE,
                                                   matA, vecX, vecY, vecZ,
                                                   CUDA_R_64F,
+                                                  CUSPARSE_SPMVOP_ALG_DEFAULT,
                                                   d_buffer));
     }
 
