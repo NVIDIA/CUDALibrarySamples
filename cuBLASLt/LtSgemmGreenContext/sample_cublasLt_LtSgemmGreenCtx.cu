@@ -56,7 +56,7 @@ void LtSgemmGCtx(cublasLtHandle_t ltHandle,
         // Note: streams created on the green context are non-blocking and need explicit synchronization.
         cudaEvent_t ev;
         checkCudaStatus(cudaEventCreate(&ev));
-        checkCudaStatus(cudaEventRecord(ev, primary_context_stream));
+        checkCudaStatus(cudaEventRecord(ev, primaryContextStream));
         checkCudaStatus(cudaStreamWaitEvent(stream, ev, 0));
         checkCudaStatus(cudaEventDestroy(ev));
     }
