@@ -30,6 +30,7 @@ constexpr float    sampling_dt  = 1e-3;
 
 // Initialize the input signal as a composite of sine waves
 // with random amplitudes and frequencies
+// Uses complex buffer layout (stride = 2 * complex_signal_size)
 void init_input_signals(unsigned batches, unsigned signal_size, float* signals) {
 	std::mt19937 e2(0);
 
@@ -59,5 +60,6 @@ void init_input_signals(unsigned batches, unsigned signal_size, float* signals) 
 		}
 	}
 }
+
 
 #endif // _COMMON__CPP_

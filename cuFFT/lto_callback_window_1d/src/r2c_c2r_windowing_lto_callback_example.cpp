@@ -25,13 +25,17 @@
 
 #include <cuda_runtime_api.h>
 #include <cufftXt.h>
-#include "r2c_c2r_reference.h"
+#include "r2c_c2r_windowing_reference.h"
 #include "common.h"
-#include "nvrtc_helper.h"
 #include "callback_params.h"
+
+// NOTE: Header containing the compiled LTO callback device function in a C array, generated with bin2c
+#include "r2c_c2r_windowing_lto_callback_device_fatbin.h"
+
 static_assert(window_size < (signal_size/2 + 1), "The window size must be smaller than the signal size in complex space");
 
 int test_r2c_window_c2r() {
+
 	// Padded array for in-place transforms
 	float  input_signals[batches][2 * complex_signal_size] = {};
 	float output_signals[batches][2 * complex_signal_size];
@@ -46,10 +50,6 @@ int test_r2c_window_c2r() {
 	CHECK_ERROR(cudaMalloc((void **)&device_signals, complex_size_bytes));
 	CHECK_ERROR(cudaMemcpy(device_signals, input_signals, complex_size_bytes, cudaMemcpyHostToDevice));
 
-	// NOTE: Use NVRTC to compile the callback function to LTO
-	std::vector<char> callback_buffer;
-	compile_file_to_lto(callback_buffer, CALLBACK_CODE_PATH("r2c_c2r_lto_callback_device.cu"));
-
 	// Create a CUFFT plan for the forward transform, and a cuFFT plan for the inverse transform with load callback
 	cufftHandle forward_plan, inverse_plan_cb;
 	size_t work_size;
@@ -59,7 +59,7 @@ int test_r2c_window_c2r() {
 
 	// NOTE: LTO callbacks must be set before plan creation and cannot be unset (yet)
 #ifdef CB_USE_CONSTANT_MEMORY
-	cb_params *device_params  = nullptr;
+	cb_params *device_params = nullptr;
 	std::string callback_name = "windowing_constant_memory_callback";
 #else
 	// Define a structure used to pass in the window size
@@ -74,10 +74,11 @@ int test_r2c_window_c2r() {
 
 	std::string callback_name = "windowing_callback";
 #endif
+	size_t lto_callback_fatbin_size = sizeof(window_callback);
 	CHECK_ERROR(cufftXtSetJITCallback(inverse_plan_cb,
                                       callback_name.c_str(),
-                                      (void*)callback_buffer.data(),
-                                      callback_buffer.size(),
+                                      (void*)window_callback,
+                                      lto_callback_fatbin_size,
                                       CUFFT_CB_LD_COMPLEX,
                                       (void **)&device_params));
 
@@ -104,12 +105,12 @@ int test_r2c_window_c2r() {
 	CHECK_ERROR(cudaFree(device_params));
 
 	// Compute reference
-	if (reference_r2c_window_c2r(batches, signal_size, window_size, input_signals[0], reference[0]) != PASS_VALUE) {
+	if(reference_r2c_window_c2r(batches, signal_size, window_size, &input_signals[0][0], &reference[0][0]) != PASS_VALUE) {
 		printf("Failed to compute the reference");
 		return ERROR_VALUE;
-	}
+	};
 
-	double l2_error = compute_error<float>(reference[0], output_signals[0], batches, signal_size);
+    double l2_error = compute_error_windowing<float>(&reference[0][0], &output_signals[0][0], batches, signal_size);
 	printf("L2 error: %e\n", l2_error);
 
 	return (l2_error < threshold) ? PASS_VALUE : ERROR_VALUE;

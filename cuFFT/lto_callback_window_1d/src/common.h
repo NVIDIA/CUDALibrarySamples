@@ -49,7 +49,7 @@ inline int checkErrors(cufftResult error, int line_number) {
 #define CHECK_ERROR(error) checkErrors(error, __LINE__)
 
 template<typename T>
-double compute_error(T* ref, T* out, unsigned batches, unsigned signal_size){
+double compute_error_windowing(T* ref, T* out, unsigned batches, unsigned signal_size){
     double squared_diff = 0;
     double squared_norm = 0;
 	const unsigned batch_offset = 2 * (signal_size / 2 + 1);
@@ -57,6 +57,23 @@ double compute_error(T* ref, T* out, unsigned batches, unsigned signal_size){
         for (int i = 0; i < signal_size; i++) {
             unsigned  ref_idx = b * batch_offset + i;
             squared_diff += std::norm(ref[ref_idx] - out[ref_idx]); // Note that std::norm(z) = z * conj(z), not the usual sqrt(z * conj(z))
+            squared_norm += std::norm(ref[ref_idx]);
+        }
+    }
+    return std::sqrt(squared_diff / squared_norm);
+}
+
+// Compute error for real buffers (padding examples)
+template<typename T>
+double compute_error_padding(T* ref, T* out, unsigned batches, unsigned signal_size){
+    double squared_diff = 0;
+    double squared_norm = 0;
+	const unsigned batch_offset = signal_size;
+    
+    for (unsigned b = 0; b < batches; b++) {
+        for (unsigned i = 0; i < signal_size; i++) {
+            unsigned ref_idx = b * batch_offset + i;
+            squared_diff += std::norm(ref[ref_idx] - out[ref_idx]);
             squared_norm += std::norm(ref[ref_idx]);
         }
     }
