@@ -44,6 +44,7 @@ Explore the examples of each CUDA library included in this repository:
 - [cuSPARSELt - Lightweight BLAS for sparse matrices](cuSPARSELt/)
 - [cuTENSOR - Tensor linear algebra library](cuTENSOR/)
 - [cuTENSORMg - Multi-GPU tensor linear algebra](cuTENSORMg/)
+- [libmathdx - C API for JIT compilation of MathDx device functions](MathDx/libmathdx/)
 - [NPP - GPU-accelerated image, video, and signal processing functions](NPP/)
 - [NPP+ - C++ extensions for NPP](NPP+/)
 - [nvJPEG - High-performance JPEG encode/decode](nvJPEG/)

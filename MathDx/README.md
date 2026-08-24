@@ -12,12 +12,13 @@ so developers can focus on algorithms rather than hardware-specific tuning.
 * **cuSolverDx**: Device-side matrix factorization, linear solve, least squares, eigenvalue solver, and singular value decomposition routines, supporting scientific and engineering workflows within a kernel.
 * **cuRANDDx**:  Random number generation library aiming to be a modern replacement for [cuRAND RNG device APIs](https://docs.nvidia.com/cuda/curand/device-api-overview.html#device-api-overview).
 * **nvCOMPDx**: Compression and decompression capabilities built into device code, essential for high-throughput streaming and storage applications.
+* **libmathdx**: Runtime library exposing MathDx functionalities through a C API, enabling JIT compilation of device functions to support MathDx usage in other languages like Python.
 
 **See [MathDx documentation](https://docs.nvidia.com/cuda/mathdx/index.html) for more details.**
 
 # MathDx Examples
 
-This folder includes examples for all libraries that are part of [MathDx package](https://docs.nvidia.com/cuda/mathdx/index.html): cuFFTDx, cuBLASDx, cuSolverDx, cuRANDDx, and nvCOMPDx. The examples are also shipped in the latest MathDx package, however, this repository may be updated more often, i.e., between MathDx releases.
+This folder includes examples for libmathdx as well as all libraries in the [MathDx package](https://docs.nvidia.com/cuda/mathdx/index.html): cuFFTDx, cuBLASDx, cuSolverDx, cuRANDDx, and nvCOMPDx. The examples are also shipped in the latest MathDx package (and, for libmathdx examples, in the latest libmathdx package), however, this repository may be updated more often, i.e., between releases. Note that libmathdx is not shipped within the MathDx package.
 
 ## [cuBLASDx](cuBLASDx)
 
@@ -200,3 +201,26 @@ This folder includes examples for all libraries that are part of [MathDx package
 | ANS GPU               | ans_gpu_compression_decompression       | Block-level GPU ANS compression and decompression                        |
 |                       | ans_gpu_decompression_reduction         | Fused block-level GPU ANS decompression followed by block-wide reduction |
 | NVRTC Examples        | lz4_cpu_compression_nvrtc_decompression | CPU compression, warp-level GPU NVRTC + nvJitLink LZ4 decompression      |
+
+
+## [libmathdx](libmathdx)
+
+* [libmathdx download page](https://developer.nvidia.com/cublasdx-downloads)
+* [libmathdx API documentation](https://docs.nvidia.com/cuda/libmathdx/index.html)
+
+#### Examples
+
+| Group               | Example                      | Description                                                                     |
+| ------------------- | ---------------------------- | ------------------------------------------------------------------------------- |
+| cuFFTDx Examples    | cufftdx                      | cuFFTDx API introduction example, performs a C2C FFT                            |
+|                     | cufftdx_heuristics           | Performs a C2C FFT with queryable tuning knobs                                  |
+| cuBLASDx Examples   | cublasdx                     | cuBLASDx API introduction example, performs a GEMM                              |
+|                     | cublasdx_tensor              | Performs a GEMM with the Opaque Tensor API                                      |
+|                     | cublasdx_pipeline            | Performs a GEMM using the pipelining APIs                                       |
+|                     | cublasdx_pipelining_callback | Performs a GEMM using pipelining/TMA instructions with a user callback function |
+| cuSolverDx Examples | cusolverdx_trsm              | cuSolverDx API introduction example, performs a triangular matrix solve         |
+|                     | cusolverdx_potrf             | Performs Cholesky factorization                                                 |
+|                     | cusolverdx_potrs             | Performs a linear solve using Cholesky factors                                  |
+| cuRANDDx Examples   | curanddx                     | cuRANDDx API introduction example, generates random numbers                     |
+| nvCOMPDx Examples   | nvcompdx                     | nvCOMPDx API introduction example, builds an LZ4 compress device function       |
+|                     | nvcompdx_batch               | End-to-end LZ4 compress/decompress round-trip across a batch of chunks          |
