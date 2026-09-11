@@ -18,6 +18,7 @@
 #ifndef CUDALIBRARYSAMPLES_CUTENSOR_UTILS_CUH
 #define CUDALIBRARYSAMPLES_CUTENSOR_UTILS_CUH
 
+#include <algorithm>
 #include <random>
 #include <chrono>
 #include <memory>
@@ -304,4 +305,3 @@ GSL_NODISCARD auto finally(F&& f) noexcept
 }
 
 #endif
-

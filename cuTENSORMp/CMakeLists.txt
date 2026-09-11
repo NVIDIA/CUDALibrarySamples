@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2019-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2019-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -159,6 +159,8 @@ endfunction()
 
 add_custom_target(cutensormp_examples)
 add_cutensormp_example(cutensormp_examples "cuTENSORMp.example.cutensorMp_contraction" cutensorMp_contraction.cu)
+add_cutensormp_example(cutensormp_examples "cuTENSORMp.example.cutensorMp_redistribute" cutensorMp_redistribute.cu)
+add_cutensormp_example(cutensormp_examples "cuTENSORMp.example.cutensorMp_unfold_fold" cutensorMp_unfold_fold.cu)
 
 # ##########################################
 # cuTENSOR_example directories
