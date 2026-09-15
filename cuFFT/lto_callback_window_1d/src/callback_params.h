@@ -25,11 +25,22 @@ struct cb_params {
 	unsigned signal_size;
 };
 
+// Callback parameters structure for padding
+struct PaddingCallbackParams {
+    unsigned int signal_size;
+    unsigned int padded_signal_size;
+};
+
 // Problem input parameters
 constexpr unsigned batches              = 830;
 constexpr unsigned signal_size          = 328;
 constexpr unsigned window_size          =  32;
 constexpr unsigned complex_signal_size  = signal_size / 2 + 1;
+
+// Padding example parameters - use single batch for simplicity
+constexpr unsigned padding_batches     = 1;
+constexpr unsigned padded_signal_size   = 2 * signal_size;
+constexpr unsigned padding_complex_signal_size = padded_signal_size / 2 + 1;
 
 // Precision threshold
 constexpr float threshold = 1e-6;
