@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2020 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -131,7 +131,7 @@ int main(int argc, char *argv[]) {
                                      d_V, ldv,
                                      traits<data_type>::cuda_data_type,           /* computeType */
                                      d_work, workspaceInBytesOnDevice, h_work, workspaceInBytesOnHost,
-                                     d_info, &h_err_sigma));
+                                     d_info, &h_err_sigma)); /* h_err_sigma is always 0 starting from 13.3U1 */
 
     CUDA_CHECK(cudaMemcpyAsync(U.data(), d_U, sizeof(data_type) * U.size(), cudaMemcpyDeviceToHost,
                                stream));
@@ -189,8 +189,6 @@ int main(int argc, char *argv[]) {
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
     std::printf("|A - U*S*V**T| = %E \n", dR_fro);
-    std::printf("h_err_sigma = %E \n", h_err_sigma);
-    std::printf("h_err_sigma is 0 if the singular value of A is not close to zero\n");
 
     /* free resources */
     CUDA_CHECK(cudaFree(d_A));

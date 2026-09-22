@@ -94,6 +94,4 @@ V = (matlab base-1)
 =====
 |S - S_exact| = 8.881784E-16
 |A - U*S*V**T| = 1.691041E-15
-h_err_sigma = 0.000000E+00
-h_err_sigma is 0 if the singular value of A is not close to zero
 ```
