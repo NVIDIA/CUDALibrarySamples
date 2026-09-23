@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <cassert>
 #include <cstdio>
 #include <stdexcept>
 #include <vector>
