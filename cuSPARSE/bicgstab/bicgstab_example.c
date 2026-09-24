@@ -17,6 +17,10 @@
 
 #include <cublas_v2.h>
 #include <cuda_runtime.h>
+#if CUDART_VERSION < 12000
+// The CUDA 11 compatibility path deliberately uses csrsv2 instead of SpSV.
+#define DISABLE_CUSPARSE_DEPRECATED
+#endif
 #include <cusparse.h>
 #include <stdio.h>  // fopen
 #include <stdlib.h> // EXIT_FAILURE
@@ -63,6 +67,110 @@ typedef struct VecStruct {
     cusparseDnVecDescr_t vec;
     double*              ptr;
 } Vec;
+
+// Keep the triangular solve setup outside the BiCGStab iteration. CUDA 11's
+// SpSV analysis can hang in find_colors_ker under concurrent GPU workloads;
+// csrsv2's level analysis avoids that kernel. CUDA 12 removed csrsv2.
+typedef struct TriangularSolveStruct {
+    void* buffer;
+#if CUSPARSE_VER_MAJOR < 12
+    cusparseMatDescr_t matrix;
+    csrsv2Info_t       info;
+    int               rows, nnz;
+    int*              row_offsets;
+    int*              columns;
+    double*           values;
+#else
+    cusparseSpMatDescr_t matrix;
+    cusparseSpSVDescr_t  info;
+#endif
+} TriangularSolve;
+
+int create_triangular_solve(cusparseHandle_t handle,
+                            cusparseSpMatDescr_t matrix, Vec x, Vec y,
+                            TriangularSolve* solve) {
+#if CUSPARSE_VER_MAJOR < 12
+    int64_t rows, columns, nnz;
+    cusparseIndexType_t row_type, column_type;
+    cusparseIndexBase_t base;
+    cudaDataType value_type;
+    cusparseFillMode_t fill;
+    cusparseDiagType_t diagonal;
+    // This sample uses 32-bit CSR indices and double values throughout.
+    CHECK_CUSPARSE( cusparseCsrGet(matrix, &rows, &columns, &nnz,
+                        (void**) &solve->row_offsets, (void**) &solve->columns,
+                        (void**) &solve->values, &row_type, &column_type,
+                        &base, &value_type) )
+    solve->rows = (int)rows;
+    solve->nnz  = (int)nnz;
+    CHECK_CUSPARSE( cusparseSpMatGetAttribute(matrix, CUSPARSE_SPMAT_FILL_MODE,
+                                              &fill, sizeof(fill)) )
+    CHECK_CUSPARSE( cusparseSpMatGetAttribute(matrix, CUSPARSE_SPMAT_DIAG_TYPE,
+                                              &diagonal, sizeof(diagonal)) )
+    CHECK_CUSPARSE( cusparseCreateMatDescr(&solve->matrix) )
+    CHECK_CUSPARSE( cusparseSetMatIndexBase(solve->matrix, base) )
+    CHECK_CUSPARSE( cusparseSetMatFillMode(solve->matrix, fill) )
+    CHECK_CUSPARSE( cusparseSetMatDiagType(solve->matrix, diagonal) )
+    CHECK_CUSPARSE( cusparseCreateCsrsv2Info(&solve->info) )
+    int buffer_size;
+    CHECK_CUSPARSE( cusparseDcsrsv2_bufferSize(handle,
+                        CUSPARSE_OPERATION_NON_TRANSPOSE, solve->rows,
+                        solve->nnz, solve->matrix, solve->values,
+                        solve->row_offsets, solve->columns, solve->info,
+                        &buffer_size) )
+    CHECK_CUDA( cudaMalloc(&solve->buffer, buffer_size) )
+    CHECK_CUSPARSE( cusparseDcsrsv2_analysis(handle,
+                        CUSPARSE_OPERATION_NON_TRANSPOSE, solve->rows,
+                        solve->nnz, solve->matrix, solve->values,
+                        solve->row_offsets, solve->columns, solve->info,
+                        CUSPARSE_SOLVE_POLICY_USE_LEVEL, solve->buffer) )
+#else
+    const double one = 1.0;
+    size_t buffer_size;
+    solve->matrix = matrix;
+    CHECK_CUSPARSE( cusparseSpSV_createDescr(&solve->info) )
+    CHECK_CUSPARSE( cusparseSpSV_bufferSize(handle,
+                        CUSPARSE_OPERATION_NON_TRANSPOSE, &one, matrix,
+                        x.vec, y.vec, CUDA_R_64F, CUSPARSE_SPSV_ALG_DEFAULT,
+                        solve->info, &buffer_size) )
+    CHECK_CUDA( cudaMalloc(&solve->buffer, buffer_size) )
+    CHECK_CUSPARSE( cusparseSpSV_analysis(handle,
+                        CUSPARSE_OPERATION_NON_TRANSPOSE, &one, matrix,
+                        x.vec, y.vec, CUDA_R_64F, CUSPARSE_SPSV_ALG_DEFAULT,
+                        solve->info, solve->buffer) )
+#endif
+    return EXIT_SUCCESS;
+}
+
+int triangular_solve(cusparseHandle_t handle, TriangularSolve* solve,
+                     Vec x, Vec y) {
+    const double one = 1.0;
+#if CUSPARSE_VER_MAJOR < 12
+    CHECK_CUSPARSE( cusparseDcsrsv2_solve(handle,
+                        CUSPARSE_OPERATION_NON_TRANSPOSE, solve->rows,
+                        solve->nnz, &one, solve->matrix, solve->values,
+                        solve->row_offsets, solve->columns, solve->info,
+                        x.ptr, y.ptr, CUSPARSE_SOLVE_POLICY_USE_LEVEL,
+                        solve->buffer) )
+#else
+    CHECK_CUSPARSE( cusparseSpSV_solve(handle,
+                        CUSPARSE_OPERATION_NON_TRANSPOSE, &one, solve->matrix,
+                        x.vec, y.vec, CUDA_R_64F, CUSPARSE_SPSV_ALG_DEFAULT,
+                        solve->info) )
+#endif
+    return EXIT_SUCCESS;
+}
+
+int destroy_triangular_solve(TriangularSolve* solve) {
+#if CUSPARSE_VER_MAJOR < 12
+    CHECK_CUSPARSE( cusparseDestroyCsrsv2Info(solve->info) )
+    CHECK_CUSPARSE( cusparseDestroyMatDescr(solve->matrix) )
+#else
+    CHECK_CUSPARSE( cusparseSpSV_destroyDescr(solve->info) )
+#endif
+    CHECK_CUDA( cudaFree(solve->buffer) )
+    return EXIT_SUCCESS;
+}
 
 //==============================================================================
 
@@ -152,35 +260,12 @@ int gpu_BiCGStab(cublasHandle_t       cublasHandle,
     const double one       = 1.0;
     const double minus_one = -1.0;
     //--------------------------------------------------------------------------
-    // Create opaque data structures that holds analysis data between calls
-    double              coeff_tmp;
-    size_t              bufferSizeL, bufferSizeU;
-    void*               d_bufferL, *d_bufferU;
-    cusparseSpSVDescr_t spsvDescrL, spsvDescrU;
-    CHECK_CUSPARSE( cusparseSpSV_createDescr(&spsvDescrL) )
-    CHECK_CUSPARSE( cusparseSpSV_bufferSize(
-                        cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE,
-                        &coeff_tmp, matM_lower, d_P.vec, d_tmp.vec, CUDA_R_64F,
-                        CUSPARSE_SPSV_ALG_DEFAULT, spsvDescrL, &bufferSizeL) )
-    CHECK_CUDA( cudaMalloc(&d_bufferL, bufferSizeL) )
-    CHECK_CUSPARSE( cusparseSpSV_analysis(
-                        cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE,
-                        &coeff_tmp, matM_lower, d_P.vec, d_tmp.vec, CUDA_R_64F,
-                        CUSPARSE_SPSV_ALG_DEFAULT, spsvDescrL, d_bufferL) )
-
-    // Calculate UPPER buffersize
-    CHECK_CUSPARSE( cusparseSpSV_createDescr(&spsvDescrU) )
-    CHECK_CUSPARSE( cusparseSpSV_bufferSize(
-                        cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE,
-                        &coeff_tmp, matM_upper, d_tmp.vec, d_P_aux.vec,
-                        CUDA_R_64F, CUSPARSE_SPSV_ALG_DEFAULT, spsvDescrU,
-                        &bufferSizeU) )
-    CHECK_CUDA( cudaMalloc(&d_bufferU, bufferSizeU) )
-    CHECK_CUSPARSE( cusparseSpSV_analysis(
-                        cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE,
-                        &coeff_tmp, matM_upper, d_tmp.vec, d_P_aux.vec,
-                        CUDA_R_64F, CUSPARSE_SPSV_ALG_DEFAULT, spsvDescrU,
-                        d_bufferU) )
+    TriangularSolve lower, upper;
+    if (create_triangular_solve(cusparseHandle, matM_lower, d_P, d_tmp,
+                                &lower) != EXIT_SUCCESS ||
+        create_triangular_solve(cusparseHandle, matM_upper, d_tmp, d_P_aux,
+                                &upper) != EXIT_SUCCESS)
+        return EXIT_FAILURE;
     //--------------------------------------------------------------------------
     // ### 1 ### R0 = b - A * X0 (using initial guess in X)
     //    (a) copy b in R0
@@ -243,19 +328,13 @@ int gpu_BiCGStab(cublasHandle_t       cublasHandle,
         //    (a) M_L^-1 P_i => tmp    (triangular solver)
         CHECK_CUDA( cudaMemset(d_tmp.ptr,   0x0, m * sizeof(double)) )
         CHECK_CUDA( cudaMemset(d_P_aux.ptr, 0x0, m * sizeof(double)) )
-        CHECK_CUSPARSE( cusparseSpSV_solve(cusparseHandle,
-                                           CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                           &one, matM_lower, d_P.vec, d_tmp.vec,
-                                           CUDA_R_64F,
-                                           CUSPARSE_SPSV_ALG_DEFAULT,
-                                           spsvDescrL) )
+        if (triangular_solve(cusparseHandle, &lower, d_P, d_tmp) !=
+            EXIT_SUCCESS)
+            return EXIT_FAILURE;
         //    (b) M_U^-1 tmp => P_aux    (triangular solver)
-        CHECK_CUSPARSE( cusparseSpSV_solve(cusparseHandle,
-                                           CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                           &one, matM_upper, d_tmp.vec,
-                                           d_P_aux.vec, CUDA_R_64F,
-                                           CUSPARSE_SPSV_ALG_DEFAULT,
-                                           spsvDescrU) )
+        if (triangular_solve(cusparseHandle, &upper, d_tmp, d_P_aux) !=
+            EXIT_SUCCESS)
+            return EXIT_FAILURE;
         //----------------------------------------------------------------------
         // ### 10 ### alpha = (R'0, R_i-1) / (R'0, A * P_aux)
         //    (a) V = A * P_aux
@@ -296,19 +375,13 @@ int gpu_BiCGStab(cublasHandle_t       cublasHandle,
         //    (a) M_L^-1 S => tmp    (triangular solver)
         cudaMemset(d_tmp.ptr, 0x0, m * sizeof(double));
         cudaMemset(d_S_aux.ptr, 0x0, m * sizeof(double));
-        CHECK_CUSPARSE( cusparseSpSV_solve(cusparseHandle,
-                                           CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                           &one, matM_lower, d_S.vec, d_tmp.vec,
-                                           CUDA_R_64F,
-                                           CUSPARSE_SPSV_ALG_DEFAULT,
-                                           spsvDescrL) )
+        if (triangular_solve(cusparseHandle, &lower, d_S, d_tmp) !=
+            EXIT_SUCCESS)
+            return EXIT_FAILURE;
         //    (b) M_U^-1 tmp => S_aux    (triangular solver)
-        CHECK_CUSPARSE( cusparseSpSV_solve(cusparseHandle,
-                                           CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                           &one, matM_upper, d_tmp.vec,
-                                           d_S_aux.vec, CUDA_R_64F,
-                                           CUSPARSE_SPSV_ALG_DEFAULT,
-                                           spsvDescrU))
+        if (triangular_solve(cusparseHandle, &upper, d_tmp, d_S_aux) !=
+            EXIT_SUCCESS)
+            return EXIT_FAILURE;
         //----------------------------------------------------------------------
         // ### 15 ### omega = (A * S_aux, s) / (A * S_aux, A * S_aux)
         //    (a) T = A * S_aux
@@ -363,10 +436,9 @@ int gpu_BiCGStab(cublasHandle_t       cublasHandle,
     CHECK_CUBLAS( cublasDnrm2(cublasHandle, m, d_R.ptr, 1, &nrm_R) )
     printf("Final error norm = %e\n", nrm_R);
     //--------------------------------------------------------------------------
-    CHECK_CUSPARSE( cusparseSpSV_destroyDescr(spsvDescrL) )
-    CHECK_CUSPARSE( cusparseSpSV_destroyDescr(spsvDescrU) )
-    CHECK_CUDA( cudaFree(d_bufferL) )
-    CHECK_CUDA( cudaFree(d_bufferU) )
+    if (destroy_triangular_solve(&lower) != EXIT_SUCCESS ||
+        destroy_triangular_solve(&upper) != EXIT_SUCCESS)
+        return EXIT_FAILURE;
     return EXIT_SUCCESS;
 }
 
@@ -544,10 +616,11 @@ int main(int argc, char** argv) {
     //--------------------------------------------------------------------------
     // ### Run BiCGStab computation ###
     printf("BiCGStab loop:\n");
-    gpu_BiCGStab(cublasHandle, cusparseHandle, m,
-                 matA, matM_lower, matM_upper,
-                 d_B, d_X, d_R0, d_R, d_P, d_P_aux, d_S, d_S_aux, d_V, d_T,
-                 d_tmp, d_bufferMV, maxIterations, tolerance);
+    if (gpu_BiCGStab(cublasHandle, cusparseHandle, m,
+                    matA, matM_lower, matM_upper,
+                    d_B, d_X, d_R0, d_R, d_P, d_P_aux, d_S, d_S_aux, d_V, d_T,
+                    d_tmp, d_bufferMV, maxIterations, tolerance) != EXIT_SUCCESS)
+        return EXIT_FAILURE;
     //--------------------------------------------------------------------------
     // ### Free resources ###
     CHECK_CUSPARSE( cusparseDestroyDnVec(d_B.vec) )
