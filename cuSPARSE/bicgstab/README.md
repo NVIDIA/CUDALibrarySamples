@@ -64,6 +64,17 @@ the code contains the line references to the above algorithm
 * [CUDA 11.3 toolkit](https://developer.nvidia.com/cuda-downloads) (or above) and compatible driver (see [CUDA Driver Release Notes](https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/index.html#cuda-major-component-versions)).
 * [CMake 3.9](https://cmake.org/download/) or above on Windows
 
+On CUDA 11.x, the sample uses `cusparseDcsrsv2` with level analysis for its
+triangular solves. CUDA 11.8's `cusparseSpSV_analysis` can hang in its GPU
+coloring kernel when other GPU workloads are running concurrently; the
+`csrsv2` analysis follows a different kernel path. The matrix, ILU
+preconditioner, and BiCGStab iteration are the same for both APIs.
+
+CUDA 12 and newer use `cusparseSpSV`, since `csrsv2` was removed in CUDA 12.
+CUDA 12.3 or newer is recommended for that path: NVIDIA's
+[CUDA 12.3 release notes](https://docs.nvidia.com/cuda/archive/12.3.0/cuda-toolkit-release-notes/index.html#cusparse-release-12-3)
+report a fix for an intermittent `cusparseSpSV_analysis` hang.
+
 
 ## Sample Output
 
