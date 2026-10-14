@@ -24,6 +24,8 @@
 
 #include <npp.h>
 
+#include <nppworkspace.h>
+
 
 
 #ifdef _WIN32
@@ -90,6 +92,9 @@ int main() {
 
     cudaStreamCreate(&ctx.hStream);
 
+    // Attach an NPP workspace so label generation takes its scratch from a reusable high-water-mark buffer.
+    nppiWorkspaceCreate(&ctx);
+
 
 
     // Allocate device and host memory
@@ -112,15 +117,9 @@ int main() {
 
     // Labeling
 
-    int scratchSize = 0;
-
-    nppiLabelMarkersUFGetBufferSize_32u_C1R(roi, &scratchSize);
-
-    Npp8u* d_scratch = nullptr; cudaMalloc(&d_scratch, scratchSize);
 
 
-
-    nppiLabelMarkersUF_8u32u_C1R_Ctx(d_input, WIDTH, d_labels, WIDTH * sizeof(Npp32u), roi, nppiNormInf, d_scratch, ctx);
+    nppiLabelMarkersUF_8u32u_C1R_Ctx(d_input, WIDTH, d_labels, WIDTH * sizeof(Npp32u), roi, nppiNormInf, NULL /* scratch from workspace */, ctx);
 
     cudaMemcpy2DAsync(h_labels, WIDTH * sizeof(Npp32u), d_labels, WIDTH * sizeof(Npp32u), WIDTH * sizeof(Npp32u), HEIGHT, cudaMemcpyDeviceToHost, ctx.hStream);
 
@@ -140,11 +139,18 @@ int main() {
 
     nppiCompressMarkerLabelsGetBufferSize_32u_C1R(WIDTH * HEIGHT, &compScratchSize);
 
-    Npp8u* d_compScratch = nullptr; cudaMalloc(&d_compScratch, compScratchSize);
+    Npp8u* d_compScratch = nullptr;
 
     int compressedCount = 0;
 
-    nppiCompressMarkerLabelsUF_32u_C1IR_Ctx(d_labels, WIDTH * sizeof(Npp32u), roi, WIDTH * HEIGHT, &compressedCount, d_compScratch, ctx);
+    // Try the NPP workspace first (NULL scratch buffer). Libraries without workspace support for this function
+    // return NPP_NULL_POINTER_ERROR, in which case allocate the scratch buffer and call again.
+    NppStatus compStatus = nppiCompressMarkerLabelsUF_32u_C1IR_Ctx(d_labels, WIDTH * sizeof(Npp32u), roi, WIDTH * HEIGHT, &compressedCount, nullptr, ctx);
+
+    if (compStatus == NPP_NULL_POINTER_ERROR) {
+        cudaMalloc(&d_compScratch, compScratchSize > 0 ? compScratchSize : 1); // never pass NPP a null buffer outside the workspace path
+        nppiCompressMarkerLabelsUF_32u_C1IR_Ctx(d_labels, WIDTH * sizeof(Npp32u), roi, WIDTH * HEIGHT, &compressedCount, d_compScratch, ctx);
+    }
 
     cudaMemcpy2DAsync(h_labels, WIDTH * sizeof(Npp32u), d_labels, WIDTH * sizeof(Npp32u), WIDTH * sizeof(Npp32u), HEIGHT, cudaMemcpyDeviceToHost, ctx.hStream);
 
@@ -170,11 +176,31 @@ int main() {
 
     Npp32u* d_offsets = nullptr; cudaMalloc(&d_offsets, (compressedCount + 4) * sizeof(Npp32u));
 
-    NppiCompressedMarkerLabelsInfo* d_info = nullptr; cudaMalloc(&d_info, compressedCount * sizeof(NppiCompressedMarkerLabelsInfo));
+    // The info list needs more room than compressedCount entries; ask NPP for the exact size.
+    unsigned int infoListSize = 0;
+
+    nppiCompressedMarkerLabelsUFGetInfoListSize_32u_C1R(compressedCount, &infoListSize);
+
+    NppiCompressedMarkerLabelsInfo* d_info = nullptr; cudaMalloc(&d_info, infoListSize);
 
 
 
-    nppiCompressedMarkerLabelsUFInfo_32u_C1R_Ctx(d_labels, WIDTH * sizeof(Npp32u), roi, compressedCount, d_info, d_contours, WIDTH, d_directions, WIDTH * sizeof(NppiContourPixelDirectionInfo), nullptr, d_counts, nullptr, d_offsets, nullptr, ctx); 
+    // When a contour direction image is requested, NPP also requires the host totals structure and the host
+    // pixel-count and starting-offset lists (it returns NPP_NULL_POINTER_ERROR otherwise).
+    NppiContourTotalsInfo contourTotals = {};
+
+    Npp32u* h_counts = (Npp32u*)malloc((compressedCount + 4) * sizeof(Npp32u));
+
+    Npp32u* h_offsets = (Npp32u*)malloc((compressedCount + 4) * sizeof(Npp32u));
+
+    NppStatus infoStatus = nppiCompressedMarkerLabelsUFInfo_32u_C1R_Ctx(d_labels, WIDTH * sizeof(Npp32u), roi, compressedCount, d_info, d_contours, WIDTH, d_directions, WIDTH * sizeof(NppiContourPixelDirectionInfo), &contourTotals, d_counts, h_counts, d_offsets, h_offsets, ctx);
+
+    cudaStreamSynchronize(ctx.hStream);
+
+    if (infoStatus != NPP_SUCCESS) {
+        fprintf(stderr, "nppiCompressedMarkerLabelsUFInfo_32u_C1R_Ctx failed with status %d\n", (int)infoStatus);
+        return 1;
+    }
 
 
 
@@ -192,19 +218,23 @@ int main() {
 
     // Clean up
 
-    cudaFree(d_input); cudaFree(d_labels); cudaFree(d_scratch);
+    cudaFree(d_input); cudaFree(d_labels);
 
     cudaFree(d_compScratch); cudaFree(d_contours); cudaFree(d_directions);
 
     cudaFree(d_counts); cudaFree(d_found); cudaFree(d_offsets); cudaFree(d_info);
 
-    free(h_input); free(h_labels); free(h_contours);
+    free(h_input); free(h_labels); free(h_contours); free(h_counts); free(h_offsets);
+
+    nppiWorkspaceDestroy(&ctx);
 
     cudaStreamDestroy(ctx.hStream);
 
 
 
     printf("Done. Compressed Labels: %d\n", compressedCount);
+
+    printf("Contour pixels: %u\n", (unsigned)contourTotals.nTotalImagePixelContourCount);
 
     return 0;
 

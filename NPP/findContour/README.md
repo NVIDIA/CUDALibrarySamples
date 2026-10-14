@@ -54,6 +54,7 @@ Then open `findContour.sln` in Visual Studio (2017 or later) and build the solut
 
 ./build/findContour 
 Done. Compressed Labels: 274
+Contour pixels: 213526
 
 ```
 
@@ -107,3 +108,11 @@ Done. Compressed Labels: 274
 
 ![Reconstructed Contours](/NPP/findContour/CircuitBoard_ContoursReconstructed_8Way_2048x1024_8u.jpg)
 
+## NPP workspace (CUDA 13.4)
+
+This sample includes `nppworkspace.h`: label generation (`nppiLabelMarkersUF_8u32u_C1R_Ctx`) takes its scratch buffer from an NPP workspace attached to the stream context (`nppiWorkspaceCreate`), so no `GetBufferSize`/`cudaMalloc` is needed. Label compression (`nppiCompressMarkerLabelsUF_32u_C1IR_Ctx`) also tries a `NULL` buffer first; if the NPP library returns `NPP_NULL_POINTER_ERROR` (CUDA 13.4 does; later NPP builds accept `NULL`) the sample allocates the scratch buffer and calls again.
+
+## Contour info call requirements
+`nppiCompressedMarkerLabelsUFInfo_32u_C1R_Ctx` returns an error that is easy to miss if the status is not checked, and the sample checks it:
+- When a contour direction image is requested, the host totals structure (`NppiContourTotalsInfo`) and the host pixel-count and starting-offset lists must also be passed; with `NULL` the call returns `NPP_NULL_POINTER_ERROR` and the contour image is left unwritten.
+- The info list must be at least the size returned by `nppiCompressedMarkerLabelsUFGetInfoListSize_32u_C1R`, which is larger than `compressedCount` entries. An undersized list makes the call fail with `NPP_CUDA_KERNEL_EXECUTION_ERROR` (-1000); Compute Sanitizer reports a memset past the end of the allocation.

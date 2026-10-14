@@ -70,3 +70,7 @@ Processed coins_overlay_500x569_8u_Gray.raw
 ## Credits
 - Sample provided by NVIDIA Corporation.
 - Based on academic work cited above.
+
+## NPP workspace (CUDA 13.4)
+
+This sample includes `nppworkspace.h`: the single workspace's high-water-mark scratch buffer is shared by all five images (they have different sizes), replacing a per-image `GetBufferSize` + `cudaMalloc`.

@@ -25,6 +25,7 @@
 #include <nppdefs.h>
 #include <nppcore.h>
 #include <nppi_filtering_functions.h>
+#include <nppworkspace.h>
 
 // Set path to whereever your source image files are located.
 // In this sample output files are output at the same path location.
@@ -68,6 +69,7 @@ Npp32f * pOutputTransformImage0_32f_Device = 0;
 Npp32f * pOutputTransformImage1_32f_Device = 0;
 
 Npp8u * pScratchDeviceBuffer[6] = {0, 0, 0, 0, 0, 0};
+NppStreamContext * pWorkspaceCtx = 0; // stream context that owns the NPP workspace, if one was created
 
 int nImage0Width = 313;
 int nImage0Height = 317;
@@ -122,6 +124,12 @@ loadRaw8BitImage(Npp8u * pImage, int nImage)
 // Deallocate all allocated memory
 void shutDown()
 {
+    if (pWorkspaceCtx != 0)
+    {
+        nppiWorkspaceDestroy(pWorkspaceCtx);
+        pWorkspaceCtx = 0;
+    }
+
     for (int i = 0; i < 6; i++)
     {
         if (pScratchDeviceBuffer[i] != 0)
@@ -235,7 +243,7 @@ void shutDown()
 int main(int argc,char **argv)
 {
     NppStatus nppStatus;
-    NppStreamContext nppStreamCtx;
+    NppStreamContext nppStreamCtx = {}; // zero-initialize: hWorkspace (formerly nReserved0) must be 0 unless nppiWorkspaceCreate() is used
 
     nppStreamCtx.hStream = 0; // The NULL stream by default, set this to whatever your created stream ID is if not the NULL stream.
 
@@ -312,29 +320,67 @@ int main(int argc,char **argv)
         return -1;
     }
 
-    size_t nScratchBufferSize;
+    // Let the NPP workspace supply the distance transform scratch buffers when the NPP library supports it.
+    // Older libraries return NPP_NULL_POINTER_ERROR for a NULL buffer, in which case the buffers are allocated here.
+    bool bWorkspaceScratch = false;
 
-    for (int i = 0; i < 2; i++)
+    if (nppiWorkspaceCreate(&nppStreamCtx) == NPP_NO_ERROR)
     {
-        nppStatus = nppiDistanceTransformPBAGetBufferSize(oImageSizeROI[i], &nScratchBufferSize);
+        pWorkspaceCtx = &nppStreamCtx;
 
-        if (nppStatus != NPP_NO_ERROR)
+        // Probe with a tiny image: success with a NULL buffer means the workspace is used for this function.
+        const int nProbeSize = 64;
+        NppiSize oProbeROI = {nProbeSize, nProbeSize};
+        Npp8u * pProbeSrc = 0;
+        Npp16u * pProbeDst = 0;
+        cudaMalloc((void **) &pProbeSrc, nProbeSize * nProbeSize * sizeof(Npp8u));
+        cudaMalloc((void **) &pProbeDst, nProbeSize * nProbeSize * sizeof(Npp16u));
+        cudaMemset(pProbeSrc, 0, nProbeSize * nProbeSize * sizeof(Npp8u));
+
+        if (pProbeSrc != 0 && pProbeDst != 0)
+        {
+            bWorkspaceScratch = (nppiDistanceTransformPBA_8u16u_C1R_Ctx(pProbeSrc, nProbeSize, 0, 0,
+                                                                      0, 0, 0, 0, 0, 0,
+                                                                      pProbeDst, nProbeSize * sizeof(Npp16u),
+                                                                      oProbeROI, 0, nppStreamCtx) == NPP_SUCCESS);
+            cudaStreamSynchronize(nppStreamCtx.hStream);
+        }
+
+        cudaFree(pProbeSrc);
+        cudaFree(pProbeDst);
+    }
+
+    printf("Scratch buffers: %s\n", bWorkspaceScratch ? "provided by the NPP workspace" : "allocated by the application (library does not accept a NULL buffer for this function)");
+
+    if (!bWorkspaceScratch)
+    {
+        size_t nScratchBufferSize;
+
+        for (int i = 0; i < 2; i++)
+        {
+            nppStatus = nppiDistanceTransformPBAGetBufferSize(oImageSizeROI[i], &nScratchBufferSize);
+
+            if (nppStatus != NPP_NO_ERROR)
+            {
+                shutDown();
+                return -1;
+            }
+
+            if (nScratchBufferSize == 0)
+                nScratchBufferSize = 1; // never pass NPP a null buffer
+
+            cudaMalloc((void **) &pScratchDeviceBuffer[(i * 3)], nScratchBufferSize);
+            cudaMalloc((void **) &pScratchDeviceBuffer[(i * 3) + 1], nScratchBufferSize);
+            cudaMalloc((void **) &pScratchDeviceBuffer[(i * 3) + 2], nScratchBufferSize);
+        }
+
+        if (pScratchDeviceBuffer[0] == 0 || pScratchDeviceBuffer[1] == 0 || 
+            pScratchDeviceBuffer[2] == 0 || pScratchDeviceBuffer[3] == 0 ||
+            pScratchDeviceBuffer[4] == 0 || pScratchDeviceBuffer[5] == 0)
         {
             shutDown();
             return -1;
         }
-
-        cudaMalloc((void **) &pScratchDeviceBuffer[(i * 3)], nScratchBufferSize);
-        cudaMalloc((void **) &pScratchDeviceBuffer[(i * 3) + 1], nScratchBufferSize);
-        cudaMalloc((void **) &pScratchDeviceBuffer[(i * 3) + 2], nScratchBufferSize);
-    }
-
-    if (pScratchDeviceBuffer[0] == 0 || pScratchDeviceBuffer[1] == 0 || 
-        pScratchDeviceBuffer[2] == 0 || pScratchDeviceBuffer[3] == 0 ||
-        pScratchDeviceBuffer[4] == 0 || pScratchDeviceBuffer[5] == 0)
-    {
-        shutDown();
-        return -1;
     }
 
     cudaMalloc((void **) &pInputImage0_8u_Device, oImageSizeROI[0].width * sizeof(Npp8u) * oImageSizeROI[0].height);

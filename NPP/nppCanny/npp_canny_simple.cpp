@@ -32,6 +32,7 @@
 
 #include <opencv2/opencv.hpp>
 #include <npp.h>
+#include <nppworkspace.h>
 #include <cuda_runtime.h>
 #include <iostream>
 #include <chrono>
@@ -56,8 +57,8 @@
 
 class NPPCanny {
 private:
-    Npp8u *d_src, *d_dst, *d_buffer;
-    int buffer_size;
+    Npp8u *d_src, *d_dst;
+    NppStreamContext ctx;
     int max_width, max_height;
 
 public:
@@ -66,16 +67,31 @@ public:
         CHECK_CUDA(cudaMalloc(&d_src, height * width * 3));
         CHECK_CUDA(cudaMalloc(&d_dst, height * width));
 
-        // Get buffer size
-        NppiSize roi = {width, height};
-        CHECK_NPP(nppiFilterCannyBorderGetBufferSize(roi, &buffer_size));
-        CHECK_CUDA(cudaMalloc(&d_buffer, buffer_size));
+        // Initialize the NPP stream context once and attach a workspace to it.  The workspace
+        // supplies Canny's scratch buffer (high-water-mark, allocated on first use and reused),
+        // so there is no GetBufferSize query and no scratch cudaMalloc/cudaFree.
+        cudaDeviceProp deviceProp;
+        int deviceId = 0;
+        CHECK_CUDA(cudaGetDevice(&deviceId));
+        CHECK_CUDA(cudaGetDeviceProperties(&deviceProp, deviceId));
+
+        ctx = {};
+        ctx.hStream = 0;  // Default stream
+        ctx.nCudaDeviceId = deviceId;
+        ctx.nMultiProcessorCount = deviceProp.multiProcessorCount;
+        ctx.nMaxThreadsPerMultiProcessor = deviceProp.maxThreadsPerMultiProcessor;
+        ctx.nMaxThreadsPerBlock = deviceProp.maxThreadsPerBlock;
+        ctx.nSharedMemPerBlock = deviceProp.sharedMemPerBlock;
+        ctx.nCudaDevAttrComputeCapabilityMajor = deviceProp.major;
+        ctx.nCudaDevAttrComputeCapabilityMinor = deviceProp.minor;
+        ctx.nStreamFlags = 0;
+        CHECK_NPP(nppiWorkspaceCreate(&ctx));
     }
 
     ~NPPCanny() {
         cudaFree(d_src);
         cudaFree(d_dst);
-        cudaFree(d_buffer);
+        nppiWorkspaceDestroy(&ctx);
     }
 
     cv::Mat detect(const cv::Mat& image, int low_thresh = 50, int high_thresh = 100) {
@@ -95,23 +111,6 @@ public:
         // Setup NPP
         NppiSize roi = {width, height};
 
-        // Initialize NPP stream context properly
-        NppStreamContext ctx;
-        cudaDeviceProp deviceProp;
-        int deviceId = 0;
-        CHECK_CUDA(cudaGetDevice(&deviceId));
-        CHECK_CUDA(cudaGetDeviceProperties(&deviceProp, deviceId));
-
-        ctx.hStream = 0;  // Default stream
-        ctx.nCudaDeviceId = deviceId;
-        ctx.nMultiProcessorCount = deviceProp.multiProcessorCount;
-        ctx.nMaxThreadsPerMultiProcessor = deviceProp.maxThreadsPerMultiProcessor;
-        ctx.nMaxThreadsPerBlock = deviceProp.maxThreadsPerBlock;
-        ctx.nSharedMemPerBlock = (int)deviceProp.sharedMemPerBlock;
-        ctx.nCudaDevAttrComputeCapabilityMajor = deviceProp.major;
-        ctx.nCudaDevAttrComputeCapabilityMinor = deviceProp.minor;
-        ctx.nStreamFlags = 0;
-
         // Run 3-channel Canny
         CHECK_NPP(nppiFilterCannyBorder_8u_C3C1R_Ctx(
             d_src, width * 3,           // 3-channel input
@@ -124,7 +123,7 @@ public:
             (Npp16s)high_thresh,
             nppiNormL2,
             NPP_BORDER_REPLICATE,
-            d_buffer,
+            NULL,                       // scratch buffer comes from the workspace in ctx
             ctx
         ));
 

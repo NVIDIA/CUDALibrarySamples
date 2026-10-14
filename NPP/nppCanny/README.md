@@ -419,3 +419,7 @@ BSD 3-Clause License (same as CUDA Samples)
 ---
 
 **⚡ Get 20× faster edge detection with NPP 3-channel Canny!**
+
+## NPP workspace (CUDA 13.4)
+
+This sample includes `nppworkspace.h`: the `NppStreamContext` is built once in the constructor with an NPP workspace attached, and `nppiFilterCannyBorder_8u_C3C1R_Ctx` is called with a `NULL` scratch buffer.

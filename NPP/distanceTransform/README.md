@@ -109,3 +109,7 @@ Done!
 ## 🧾 License
 
 This sample is released under the NVIDIA Software License Agreement. Refer to the `LICENSE` file for more details.
+
+## NPP workspace (CUDA 13.4)
+
+The sample creates a workspace (`nppiWorkspaceCreate`) and probes `nppiDistanceTransformPBA_8u16u_C1R_Ctx` with a `NULL` scratch buffer on a small image at start-up. If NPP accepts it, the workspace supplies the scratch buffers; if it returns `NPP_NULL_POINTER_ERROR` (CUDA 13.4 does; later NPP builds accept `NULL`) the sample allocates them as before. It prints which path is in use. `NppStreamContext` is zero-initialized so `hWorkspace` is zero when unused.

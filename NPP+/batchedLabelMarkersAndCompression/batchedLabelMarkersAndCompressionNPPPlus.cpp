@@ -216,7 +216,7 @@ int main(int argc, const char *argv[])
     int nCompressedLabelCount = 0;
     cudaError_t cudaError;
     NppStatus nppStatus;
-    NppStreamContext nppStreamCtx;
+    NppStreamContext nppStreamCtx = {}; // zero-initialize: unused fields must not hold garbage
     FILE * bmpFile;
 
     for (int j = 0; j < params.numofbatch; j++)
@@ -466,6 +466,12 @@ int main(int argc, const char *argv[])
                 printf("PCB2_CompressedMarkerLabelsUF_8Way_1024x683_32u succeeded, compressed label count is %d.\n", nCompressedLabelCount);
             else if (nImage == 4)
                 printf("PCB_CompressedMarkerLabelsUF_8Way_1280x720_32u succeeded, compressed label count is %d.\n", nCompressedLabelCount);
+        }
+        else
+        {
+            printf("Failed to load the input image, check the images directory.\n");
+            tearDown();
+            return -1;
         }
     }
 

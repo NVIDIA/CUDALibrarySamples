@@ -68,17 +68,26 @@
     Npp16u * pSignedDistanceTransformImageHost_16u[NUMBER_OF_IMAGES];
     Npp8u  * pSignedScratchBufferDev;
 
-void tearDown() // Clean up and tear down
+void tearDown() // Clean up and tear down; safe to call more than once because every pointer is cleared after it is released
 {
 
     for (int j = 0; j < NUMBER_OF_IMAGES; j++)
     {
         if (pScratchBufferDev[j] != 0)
+        {
             cudaFree(pScratchBufferDev[j]);
+            pScratchBufferDev[j] = 0;
+        }
         if (pDistanceTransformImageDev[j] != 0)
+        {
             cudaFree(pDistanceTransformImageDev[j]);
+            pDistanceTransformImageDev[j] = 0;
+        }
         if (pInputImageDev[j] != 0)
+        {
             cudaFree(pInputImageDev[j]);
+            pInputImageDev[j] = 0;
+        }
         if (pDistanceTransformImageHost_16u[j] != 0)
         {
             free(pDistanceTransformImageHost_16u[j]);
@@ -90,9 +99,15 @@ void tearDown() // Clean up and tear down
             pDistanceTransformImageHost[j] = 0;
         }
         if (pInputImageHost[j] != 0)
+        {
             free(pInputImageHost[j]);
+            pInputImageHost[j] = 0;
+        }
         if (pSignedDistanceTransformImageDev[j] != 0)
+        {
             cudaFree(pSignedDistanceTransformImageDev[j]);
+            pSignedDistanceTransformImageDev[j] = 0;
+        }
         if (pSignedInputImageDev[j] != 0)
         {
             cudaFree(pSignedInputImageDev[j]);
@@ -109,13 +124,19 @@ void tearDown() // Clean up and tear down
             pSignedDistanceTransformImageHost[j] = 0;
         }
         if (pSignedInputImageHost[j] != 0)
+        {
             free(pSignedInputImageHost[j]);
+            pSignedInputImageHost[j] = 0;
+        }
     }
     if (pSignedScratchBufferDev != 0)
+    {
         cudaFree(pSignedScratchBufferDev);
+        pSignedScratchBufferDev = 0;
+    }
 }
 
-const std::string & Path = std::string("../images");
+const std::string & Path = std::string("../images/");
 
 const std::string & InputFile0 = Path + std::string("DistanceSampler_512x512_8u.raw");
 const std::string & InputFile1 = Path + std::string("DistanceSampler_512x512_Inverted_8u.raw");
@@ -255,7 +276,7 @@ main( int argc, char** argv )
 {
     cudaError_t cudaError;
     NppStatus nppStatus;
-    NppStreamContext nppStreamCtx;
+    NppStreamContext nppStreamCtx = {}; // zero-initialize: unused fields must not hold garbage
 	FILE * bmpFile;
 
     for (int j = 0; j < NUMBER_OF_IMAGES; j++)
@@ -429,6 +450,12 @@ main( int argc, char** argv )
             }
             fclose(bmpFile);
         }
+        else
+        {
+            printf("Failed to load the input image, check the images directory.\n");
+            tearDown();
+            return -1;
+        }
     }
 
 
@@ -542,6 +569,12 @@ main( int argc, char** argv )
                 nSize += fwrite(&pSignedDistanceTransformImageHost_16u[nImage][j * oSizeROI[nImage].width], sizeof(Npp16u), oSizeROI[nImage].width, bmpFile);
             }
             fclose(bmpFile);
+        }
+        else
+        {
+            printf("Failed to load the input image, check the images directory.\n");
+            tearDown();
+            return -1;
         }
     }
 
@@ -710,6 +743,21 @@ main( int argc, char** argv )
         }
         fclose(bmpFile);
 
+    }
+    else
+    {
+        printf("Failed to load the input image, check the images directory.\n");
+        cudaFree(pSignedLithInputImageDev);
+        free(pSignedLithInputImageHost);
+        cudaFree(pSignedLithDistanceTransformImageDev);
+        free(pSignedLithDistanceTransformImageHost);
+        free(pSignedLithDistanceTransformImageHost_16u);
+        cudaFree(pOutputIndicesDev);
+        cudaFree(pOutputManhattanDev);
+        free(pOutputIndicesHost);
+        free(pOutputManhattanHost);
+        tearDown();
+        return -1;
     }
 
     cudaFree(pSignedLithInputImageDev);

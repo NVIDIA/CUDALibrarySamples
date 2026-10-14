@@ -18,6 +18,7 @@
 
 #include "watershedSegmentation.h"
 #include <npp.h>
+#include <nppworkspace.h>
 #include <cuda_runtime.h>
 #include <iostream>
 #include <fstream>
@@ -27,7 +28,7 @@
 #define NUM_IMAGES 5
 
 Npp8u *d_input[NUM_IMAGES], *h_input[NUM_IMAGES];
-Npp8u *d_scratch[NUM_IMAGES], *d_segments[NUM_IMAGES], *h_segments[NUM_IMAGES];
+Npp8u *d_segments[NUM_IMAGES], *h_segments[NUM_IMAGES];
 Npp32u *d_labels[NUM_IMAGES], *h_labels[NUM_IMAGES];
 
 const std::string base_path = "../images/";
@@ -42,7 +43,6 @@ const std::string input_files[] = {
 void cleanup() {
     for (int i = 0; i < NUM_IMAGES; ++i) {
         cudaFree(d_input[i]);
-        cudaFree(d_scratch[i]);
         cudaFree(d_segments[i]);
         cudaFree(d_labels[i]);
         free(h_input[i]);
@@ -63,6 +63,13 @@ int main(int argc, char **argv) {
     NppStreamContext ctx = {};
     cudaGetDevice(&ctx.nCudaDeviceId);
     cudaStreamCreate(&ctx.hStream);
+
+    // Attach an NPP workspace: one high-water-mark scratch buffer shared by every image below.  It grows only when an
+    // image needs more scratch than any previous one, so there is no per-image GetBufferSize/cudaMalloc/cudaFree.
+    if (nppiWorkspaceCreate(&ctx) != NPP_SUCCESS) {
+        std::cerr << "nppiWorkspaceCreate failed\n";
+        return -1;
+    }
 
     NppiSize rois[NUM_IMAGES] = {{512,512}, {512,512}, {512,512}, {500,383}, {500,569}};
 
@@ -87,14 +94,10 @@ int main(int argc, char **argv) {
                      rois[i].width, rois[i].height, cudaMemcpyHostToDevice);
         cudaMemcpy(d_segments[i], d_input[i], size, cudaMemcpyDeviceToDevice);
 
-        size_t scratch_size;
-        nppiSegmentWatershedGetBufferSize_8u_C1R(rois[i], &scratch_size);
-        cudaMalloc(&d_scratch[i], scratch_size);
-
         nppiSegmentWatershed_8u_C1IR_Ctx(d_segments[i], rois[i].width,
                                          d_labels[i], rois[i].width * sizeof(Npp32u),
                                          nppiNormInf, NPP_WATERSHED_SEGMENT_BOUNDARIES_NONE,
-                                         rois[i], d_scratch[i], ctx);
+                                         rois[i], NULL /* scratch from workspace */, ctx);
 
         cudaMemcpy(h_segments[i], d_segments[i], size, cudaMemcpyDeviceToHost);
         cudaMemcpy(h_labels[i], d_labels[i], size * sizeof(Npp32u), cudaMemcpyDeviceToHost);
@@ -111,6 +114,7 @@ int main(int argc, char **argv) {
     }
 
     cleanup();
+    nppiWorkspaceDestroy(&ctx);
     cudaStreamDestroy(ctx.hStream);
     return 0;
 }

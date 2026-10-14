@@ -30,6 +30,8 @@ find_package(CUDAToolkit REQUIRED)
 #export NPP_PLUS_INCLUDE_DIR=/usr/include/libnpp_plus/12
 #cmake .. -DNPP_PLUS_PATH=/usr/lib/x86_64-linux-gnu 
 add_definitions(-DNPP_PLUS_ON)
+# The NPP+ headers enable the nppPlusV:: namespace only when NPP_PLUS_ENABLE is defined
+add_definitions(-DNPP_PLUS_ENABLE)
 find_library(NPP_PLUS_IF_LIBRARY
      NAMES npp_plus_if
      PATHS ${NPP_PLUS_PATH}/12)
@@ -60,8 +62,10 @@ else()
   message(INFO, " NPP_PLUS_ISU_LIBRARY library found here: ${NPP_PLUS_ISU_LIBRARY}")
 endif()
 
+# HINTS are searched before the system paths, so the NPP+ package headers win over an older /usr/include/npp.h
 find_path(NPP_HEADER_PATH
     NAMES npp.h
+    HINTS /usr/include/libnpp_plus/12
     PATHS /usr/include/libnpp_plus/12
 )
 

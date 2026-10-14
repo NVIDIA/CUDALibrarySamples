@@ -42,7 +42,6 @@
 
     Npp8u  * pInputImageDev[NUMBER_OF_IMAGES];
     Npp8u  * pInputImageHost[NUMBER_OF_IMAGES];
-    Npp8u  * pUFGenerateLabelsScratchBufferDev[NUMBER_OF_IMAGES];
     Npp8u  * pUFCompressedLabelsScratchBufferDev[NUMBER_OF_IMAGES];
     Npp32u * pUFLabelDev[NUMBER_OF_IMAGES];
     Npp32u * pUFLabelHost[NUMBER_OF_IMAGES];
@@ -55,8 +54,15 @@
     Npp32u * pUFBatchPerImageCompressedCountListDev = 0;
     Npp32u * pUFBatchPerImageCompressedCountListHost = 0;
 
+NppStreamContext * pWorkspaceCtx = 0; // Stream context that owns the NPP workspace (see nppworkspace.h)
+
 void tearDown() // Clean up and tear down
 {
+    if (pWorkspaceCtx != 0)
+    {
+        nppiWorkspaceDestroy(pWorkspaceCtx);
+        pWorkspaceCtx = 0;
+    }
     if (pUFBatchPerImageCompressedCountListDev != 0)
         cudaFree(pUFBatchPerImageCompressedCountListDev);
     if (pUFBatchSrcDstScratchBufferListDev != 0)
@@ -78,8 +84,6 @@ void tearDown() // Clean up and tear down
     {
         if (pUFCompressedLabelsScratchBufferDev[j] != 0)
             cudaFree(pUFCompressedLabelsScratchBufferDev[j]);
-        if (pUFGenerateLabelsScratchBufferDev[j] != 0)
-            cudaFree(pUFGenerateLabelsScratchBufferDev[j]);
         if (pUFLabelDev[j] != 0)
             cudaFree(pUFLabelDev[j]);
         if (pInputImageDev[j] != 0)
@@ -204,20 +208,18 @@ int main(int argc, const char *argv[])
     params.numofbatch = std::atoi(argv[pidx + 1]);
     }
 
-    int      aGenerateLabelsScratchBufferSize[NUMBER_OF_IMAGES];
     int      aCompressLabelsScratchBufferSize[NUMBER_OF_IMAGES];
 
     int nCompressedLabelCount = 0;
     cudaError_t cudaError;
     NppStatus nppStatus;
-    NppStreamContext nppStreamCtx;
+    NppStreamContext nppStreamCtx = {}; // zero-initialize so hWorkspace (formerly nReserved0) is 0 unless a workspace is created below
     FILE * bmpFile;
 
     for (int j = 0; j < params.numofbatch; j++)
     {
         pInputImageDev[j] = 0;
         pInputImageHost[j] = 0;
-        pUFGenerateLabelsScratchBufferDev[j] = 0;
         pUFCompressedLabelsScratchBufferDev[j] = 0;
         pUFLabelDev[j] = 0;
         pUFLabelHost[j] = 0;
@@ -265,6 +267,17 @@ int main(int argc, const char *argv[])
     nppStreamCtx.nMaxThreadsPerMultiProcessor = oDeviceProperties.maxThreadsPerMultiProcessor;
     nppStreamCtx.nMaxThreadsPerBlock = oDeviceProperties.maxThreadsPerBlock;
     nppStreamCtx.nSharedMemPerBlock = oDeviceProperties.sharedMemPerBlock;
+
+    // Attach an NPP workspace to the stream context.  The workspace owns a single high-water-mark device scratch buffer
+    // that grows on demand, so the per-image label generation below passes a NULL scratch buffer pointer and does not
+    // need to call nppiLabelMarkersUFGetBufferSize_32u_C1R() / cudaMalloc() / cudaFree() for each image size.
+    nppStatus = nppiWorkspaceCreate(&nppStreamCtx);
+    if (nppStatus != NPP_SUCCESS)
+    {
+        printf("nppiWorkspaceCreate failed: %d\n", (int)nppStatus);
+        return nppStatus;
+    }
+    pWorkspaceCtx = &nppStreamCtx;
 
     NppiSize oSizeROI[NUMBER_OF_IMAGES];
 
@@ -317,13 +330,7 @@ int main(int argc, const char *argv[])
 
         // Use UF functions throughout this sample.
 
-        nppStatus = nppiLabelMarkersUFGetBufferSize_32u_C1R(oSizeROI[nImage], &aGenerateLabelsScratchBufferSize[nImage]);
-
         // One at a time image processing
-
-        cudaError = cudaMalloc ((void **)&pUFGenerateLabelsScratchBufferDev[nImage], aGenerateLabelsScratchBufferSize[nImage]);
-        if (cudaError != cudaSuccess)
-            return NPP_MEMORY_ALLOCATION_ERR;
 
         if (loadRaw8BitImage(pInputImageHost[nImage], oSizeROI[nImage].width * sizeof(Npp8u), oSizeROI[nImage].height, nImage) == 0)
         {
@@ -337,7 +344,7 @@ int main(int argc, const char *argv[])
                                                          oSizeROI[nImage].width * sizeof(Npp32u),
                                                          oSizeROI[nImage],
                                                          nppiNormInf,
-                                                         pUFGenerateLabelsScratchBufferDev[nImage],
+                                                         NULL, // scratch buffer is taken from the workspace in nppStreamCtx
                                                          nppStreamCtx); 
 
             if (nppStatus != NPP_SUCCESS)  
@@ -392,15 +399,24 @@ int main(int argc, const char *argv[])
             if (nppStatus != NPP_NO_ERROR)
                 return nppStatus;
 
-            cudaError = cudaMalloc ((void **)&pUFCompressedLabelsScratchBufferDev[nImage], aCompressLabelsScratchBufferSize[nImage]);
-            if (cudaError != cudaSuccess)
-                return NPP_MEMORY_ALLOCATION_ERR;
-
             nCompressedLabelCount = 0;
 
+            // Try the NPP workspace first (NULL scratch buffer). Libraries without workspace support for this
+            // function return NPP_NULL_POINTER_ERROR, in which case allocate the scratch buffer and call again.
             nppStatus = nppiCompressMarkerLabelsUF_32u_C1IR_Ctx(pUFLabelDev[nImage], oSizeROI[nImage].width * sizeof(Npp32u), oSizeROI[nImage], 
                                                             oSizeROI[nImage].width * oSizeROI[nImage].height, &nCompressedLabelCount, 
-                                                            pUFCompressedLabelsScratchBufferDev[nImage], nppStreamCtx);
+                                                            NULL, nppStreamCtx);
+
+            if (nppStatus == NPP_NULL_POINTER_ERROR)
+            {
+                cudaError = cudaMalloc ((void **)&pUFCompressedLabelsScratchBufferDev[nImage], aCompressLabelsScratchBufferSize[nImage] > 0 ? aCompressLabelsScratchBufferSize[nImage] : 1); // at least 1 byte: NPP rejects a null buffer
+                if (cudaError != cudaSuccess)
+                    return NPP_MEMORY_ALLOCATION_ERR;
+
+                nppStatus = nppiCompressMarkerLabelsUF_32u_C1IR_Ctx(pUFLabelDev[nImage], oSizeROI[nImage].width * sizeof(Npp32u), oSizeROI[nImage], 
+                                                                oSizeROI[nImage].width * oSizeROI[nImage].height, &nCompressedLabelCount, 
+                                                                pUFCompressedLabelsScratchBufferDev[nImage], nppStreamCtx);
+            }
 
             if (nppStatus != NPP_SUCCESS)  
             {
@@ -475,7 +491,7 @@ int main(int argc, const char *argv[])
     for (int k = 0; k < NUMBER_OF_IMAGES; k++)
         nTotalBatchedUFCompressLabelsScratchBufferDevSize += aCompressLabelsScratchBufferSize[k];
 
-    cudaError = cudaMalloc ((void **)&pUFCompressedLabelsScratchBufferDev[0], nTotalBatchedUFCompressLabelsScratchBufferDevSize);
+    cudaError = cudaMalloc ((void **)&pUFCompressedLabelsScratchBufferDev[0], nTotalBatchedUFCompressLabelsScratchBufferDevSize > 0 ? nTotalBatchedUFCompressLabelsScratchBufferDevSize : 1);
     if (cudaError != cudaSuccess)
         return NPP_MEMORY_ALLOCATION_ERR;
 

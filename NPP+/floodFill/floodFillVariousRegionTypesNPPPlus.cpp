@@ -164,7 +164,7 @@ main( int argc, char** argv )
 
     cudaError_t cudaError;
     NppStatus nppStatus;
-    NppStreamContext nppStreamCtx;
+    NppStreamContext nppStreamCtx = {}; // zero-initialize: unused fields must not hold garbage
 	FILE * bmpFile;
 
     for (int j = 0; j < NUMBER_OF_IMAGES; j++)
@@ -417,6 +417,12 @@ main( int argc, char** argv )
 					oConnectedRegionInfo.oBoundingBox.width, oConnectedRegionInfo.oBoundingBox.height, 
 					oConnectedRegionInfo.nConnectedPixelCount,
 					oConnectedRegionInfo.aSeedPixelValue[0], oConnectedRegionInfo.aSeedPixelValue[1], oConnectedRegionInfo.aSeedPixelValue[2]);
+        }
+        else
+        {
+            printf("Failed to load the input image, check the images directory.\n");
+            tearDown();
+            return -1;
         }
         tearDown();
     }

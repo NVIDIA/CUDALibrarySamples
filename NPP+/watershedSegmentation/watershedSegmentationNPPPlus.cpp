@@ -138,7 +138,7 @@ main( int argc, char** argv )
 
     cudaError_t cudaError;
     NppStatus nppStatus;
-    NppStreamContext nppStreamCtx;
+    NppStreamContext nppStreamCtx = {}; // zero-initialize: unused fields must not hold garbage
 	FILE * bmpFile;
     NppiNorm eNorm = nppiNormInf; // default to 8 way neighbor search
 
@@ -492,6 +492,12 @@ main( int argc, char** argv )
                 printf("Rocks_SegmentsWithContrastingBoundaries_8Way_512x512_8u succeeded.\n");
             else if (nImage == 2)
                 printf("Corn_SegmentsWithContrastingBoundaries_8Way_614x461_8u succeeded.\n");
+        }
+        else
+        {
+            printf("Failed to load the input image, check the images directory.\n");
+            tearDown();
+            return -1;
         }
     }
 

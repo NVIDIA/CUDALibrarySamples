@@ -89,3 +89,7 @@ PCB2_CompressedMarkerLabelsUFBatch_8Way_1024x683_32u succeeded, compressed label
 PCB_CompressedMarkerLabelsUFBatch_8Way_1280x720_32u succeeded, compressed label count is 1454.
 
 ```
+
+## NPP workspace (CUDA 13.4)
+
+This sample includes `nppworkspace.h`: the one-image-at-a-time stage passes a `NULL` label-generation scratch buffer and uses the workspace attached to the stream context. The per-image compression call also tries a `NULL` buffer first and allocates its scratch buffer only if the NPP library returns `NPP_NULL_POINTER_ERROR` (CUDA 13.4 does; later NPP builds accept `NULL`). The batched compression API (`nppiCompressMarkerLabelsUFBatch_*_Advanced`) still takes explicit per-image buffers.

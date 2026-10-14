@@ -39,6 +39,7 @@
 #include <fstream>
 
 #include <npp.h>
+#include <nppworkspace.h>
 
 
 #ifdef __unix
