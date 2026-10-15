@@ -16,8 +16,11 @@ The following benchmarks are built on NVBench. Each executable registers separat
 
   ```
   benchmark_ans_chunked {-f|--input_file} <input_file>
-                        [{-t|--type} {char|uchar|float16|float8_e4m3}]
+                        [{-t|--type} {char|uchar|float16|float32|float8_e4m3}]
                         [{-s|--max-sub-chunk-count} <power-of-2 in [4, 64], or 0 for default>]
+                        [{-n|--states-per-lane} {0|1|2}]
+                        [{-S|--histogram-reduction-log2} {0..8}]
+                        [{-k|--skip-validate} {0|1}]
   ```
 
 - [Bitcomp benchmark](benchmark_bitcomp_chunked.cu)
@@ -26,20 +29,14 @@ The following benchmarks are built on NVBench. Each executable registers separat
 
   ```
   benchmark_bitcomp_chunked {-f|--input_file} <input_file>
-                            [{-t|--type} {char|uchar|short|ushort|int|uint|longlong|ulonglong}]
+                            [{-t|--type} {char|uchar|short|ushort|int|uint|longlong|ulonglong|float16|float32|float64}]
                             [{--alg|--algorithm} {0|1}]
+                            [{--mode} {lossless|lossy-signed|lossy-unsigned}]
+                            [{--delta} <quantization error-bound, e.g., 0.5>]
   ```
 
-- [Bitcomp lossy benchmark](benchmark_bitcomp_lossy.cu)
-
-  The sample demonstrates the lossy Bitcomp (Native API) compression and decompression usage and performance via nvCOMP.
-
-  ```
-  benchmark_bitcomp_lossy {-f|--input_file} <input_file>
-                          [{--delta} <quantization accuracy, e.g., 0.5>]
-                          [{--fp} {16|32|64}]
-                          [{--alg|--algorithm} {0|1}]
-  ```
+  Lossless mode accepts integral and floating-point types. Lossy modes require a floating-point type and an explicit
+  `--delta`.
 
 - [Cascaded benchmark](benchmark_cascaded_chunked.cu)
 
@@ -48,10 +45,23 @@ The following benchmarks are built on NVBench. Each executable registers separat
   ```
   benchmark_cascaded_chunked {-f|--input_file} <input_file>
                              [{-t|--type} {char|uchar|short|ushort|int|uint|longlong|ulonglong}]
-                             [{-r|--num_rles} <num_RLE_passes>]
-                             [{--nd|--num_deltas} <num_delta_passes>]
-                             [{--bp|--use_bp} {0|1}]
+                             [{--cm|--mode} {asymmetric|symmetric}]
+                             [{--cl|--level} <compression_level>]
+                             [{--cf|--fine_grained_encodings} {none|delta|rle|for|...}]
   ```
+
+  Asymmetric mode selects useful Delta and RLE stages independently per internal
+  chunk and prioritizes compression ratio; it is the default compression mode.
+  Symmetric mode balances compression and
+  decompression throughput and supports only `int`, `uint`, `longlong`, and
+  `ulonglong`.
+
+  Fine-grained encodings are supplied as a comma-separated list. Asymmetric mode
+  currently requires Frame Of Reference to be enabled. Frame Of Reference is
+  optional in symmetric mode. Symmetric mode currently ignores the compression
+  level and considers every encoding in the list. Low-level compression and
+  specified-mode decompression options must use the same mode. Cascaded
+  bitpacking is currently required as the terminal codec.
 
 - [Deflate benchmark](benchmark_deflate_chunked.cu)
 
@@ -105,21 +115,31 @@ The following benchmarks are built on NVBench. Each executable registers separat
   benchmark_zstd_chunked {-f|--input_file} <input_file>
   ```
 
+- [Gzip streaming benchmark](benchmark_gzip_streaming.cpp)
+
+  Benchmarks the gzip streaming API (`nvcompGzipStreamingCompress` /
+  `nvcompGzipStreamingDecompress`), which compresses or decompresses a single
+  contiguous byte stream rather than an array of independent chunks. The
+  benchmark supports two I/O modes:
+
+  - **memory** – the input is loaded into memory and streamed via `std::istringstream`
+    / `std::ostringstream`. This minimises I/O overhead and measures pure
+    compression/decompression throughput.
+  - **disk** – the input is read directly from the filesystem via `std::ifstream`
+    and the output is written to a temporary file. This mode measures end-to-end
+    throughput including I/O, which is useful for evaluating performance with OS I/O overheads.
+
+  On Windows, only the compression benchmark is available; decompression requires
+  concurrent managed memory access which is not supported on Windows.
+
+  ```
+  benchmark_gzip_streaming  {-f|--input_file} <input_file>
+                            [{-m|--mode} {memory|disk}]
+                            [{--alg|--algorithm} {0|1|2|3|4|5}]
+                            [{-x|--duplicate_data} <num_copies>]
+  ```
+
 ### Other benchmarks
-
-- [High-level interface benchmark](benchmark_hlif.cpp)
-
-  The sample demonstrates the high-level interface usage and performance with the selected algorithm via nvCOMP.
-
-  ```
-  benchmark_hlif {ans|bitcomp|cascaded|gdeflate|deflate|lz4|snappy|zstd}
-              {-f|--input_file} <input_file>
-              [{-c|--chunk_size} <chunk size, e.g. 64kB>]
-              [{-g|--gpu} <device ordinal, e.g. 0>]
-              [{-n|--num_iters} <number of iterations used for performance benchmarking, e.g. 1>]
-              [{-t|--type} {char|short|int|longlong|float16}]
-              [{-m|--memory} # boolean flag, enabling GPU memory allocation size reporting]
-  ```
 
 - [CRC32 benchmark](benchmark_crc32.cpp)
 
@@ -154,6 +174,35 @@ The following benchmarks are built on NVBench. Each executable registers separat
                          [{-p} <chunk size in bytes, e.g., 65536>]
   ```
 
+- [Python (HLIF) benchmark](benchmark_python.py)
+
+  The sample demonstrates the high-level Python API usage and performance via nvCOMP.
+  Requires `cupy`, `numpy`, and the `nvidia.nvcomp` package.
+
+  Each algorithm is benchmarked with its default options. Algorithm-specific
+  settings can be overridden via `--codec-opts`. For all supported codec options see the nvCOMP Python documentation.
+
+  ```
+  benchmark_python.py {-f|--input_file} <input_file>
+                      {-a|--algorithm} {ANS|Bitcomp|Cascaded|Deflate|GDeflate|Gzip|LZ4|Snappy|Zstd}
+                      [{-b|--bitstream_kind} {NVCOMP_NATIVE|RAW|WITH_UNCOMPRESSED_SIZE}]
+                      [{-p|--chunk_size} <chunk size, default 64 KiB>]
+                      [{-x|--duplicate_data} <num_copies>]
+                      [{--seconds} <per-operation timing budget>]
+                      [{--min-samples} <min samples per operation>]
+                      [{--csv} <output_file>]
+                      [{--data_type} <typestr, e.g. <i4>]
+                      [{--device_id} <CUDA device id>]
+                      [{--codec-opts} <key=val ...>  # forwarded to nvcomp.Codec]
+  ```
+
+  `--seconds` is the per-operation timing budget: compression and decompression are
+  each run repeatedly, accumulating per-run GPU timings until they sum to this many
+  seconds, and the reported GB/s is the average over those samples (default 2 s).
+  `--min-samples` sets a floor on the sample count (default 10), collected even after
+  the `--seconds` budget is spent, so slow operations that fit only a few runs in the
+  budget still get a stable average.
+
 Most of the benchmark executables also support:
 
 ```
@@ -168,7 +217,7 @@ Most of the benchmark executables also support:
 {-o|--output_decompressed_file} <output_file>        Path for the resulting decompressed data (chunks)
 {--single|--single_output_buffer} {false|true}       Use a single buffer for decompressing data
 {--compressed|--compressed_inputs} {false|true}      The input dataset is compressed
-{-?|--help}                                          Show help text for the benchmark
+{-h|--help}                                          Show help text for the benchmark
 ```
 
 For compressors that accept a data type option (`--type`), input data for which all of the input matches that type will usually compress better than arbitrary data. The sizes of the types are 1 byte for `char/uchar/bits`, 2 bytes for `short/ushort`, 4 bytes for `int/uint`, and 8 bytes for `longlong/ulonglong`. Input files whose sizes aren't multiples of the data type size are unsupported. However, one can apply a padding to the input data via `--multiple_of` to make sure that the overall input size becomes an integer multiple of the data type size.

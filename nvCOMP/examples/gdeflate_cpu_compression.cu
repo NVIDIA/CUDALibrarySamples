@@ -16,7 +16,7 @@
  */
 
 #include "BatchData.h"
-#include "nvcomp/gdeflate.h"
+#include "nvcomp.h"
 #include "nvcomp/native/gdeflate_cpu.h"
 
 static void
@@ -41,7 +41,7 @@ run_example(const std::vector<std::vector<char>> &data, size_t warmup_iteration_
   // Selected chunk size
   const size_t chunk_size = 1 << 16;
   static_assert(
-    chunk_size <= gdeflate::nvcompGdeflateCPUCompressionMaxAllowedChunkSize,
+    chunk_size <= nvcomp::gdeflate::nvcompGdeflateCPUCompressionMaxAllowedChunkSize,
     "Chunk size must be less than the constant specified in the nvCOMP library"
   );
 
@@ -53,14 +53,14 @@ run_example(const std::vector<std::vector<char>> &data, size_t warmup_iteration_
   // Gdeflate CPU Compression
   // Get max output size per chunk
   size_t max_out_bytes;
-  gdeflate::compressCPUGetMaxOutputChunkSize(chunk_size, &max_out_bytes);
+  nvcomp::gdeflate::compressCPUGetMaxOutputChunkSize(chunk_size, &max_out_bytes);
   assert(max_out_bytes > 0);
 
   // Allocate and prepare output/compressed batch
   BatchDataCPU compressed_data_cpu(max_out_bytes, chunk_count);
 
   // Compress on the CPU using gdeflate CPU batched API
-  gdeflate::compressCPU(
+  nvcomp::gdeflate::compressCPU(
     input_data_cpu.ptrs(),
     input_data_cpu.sizes(),
     chunk_size,
@@ -109,16 +109,17 @@ run_example(const std::vector<std::vector<char>> &data, size_t warmup_iteration_
 
   // Gdeflate GPU decompression
   size_t decomp_temp_bytes;
-  status = nvcompBatchedGdeflateDecompressGetTempSizeAsync(
+  status = nvcompBatchedGdeflateDecompressGetTempSize(
     chunk_count,
     chunk_size,
     decompress_opts,
     &decomp_temp_bytes,
-    chunk_count * chunk_size
+    chunk_count * chunk_size,
+    stream
   );
   if (status != nvcompSuccess)
   {
-    throw std::runtime_error("ERROR: nvcompBatchedGdeflateDecompressGetTempSizeAsync() not successful");
+    throw std::runtime_error("ERROR: nvcompBatchedGdeflateDecompressGetTempSize() not successful");
   }
 
   void *d_decomp_temp;

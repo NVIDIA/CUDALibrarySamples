@@ -20,8 +20,6 @@
 #include <random>
 
 #include "nvcomp.hpp"
-#include "nvcomp/lz4.hpp"
-#include "nvcomp/nvcompManagerFactory.hpp"
 #include "util.h"
 
 /*
@@ -77,7 +75,14 @@ void decomp_compressed_with_manager_factory_example(uint8_t *device_input_ptrs, 
   // construct the manager
 
   nvcompDecompressBackend_t backend = NVCOMP_DECOMPRESS_BACKEND_DEFAULT;
-  auto decomp_nvcomp_manager = create_manager(comp_buffer, stream, NoComputeNoVerify, backend, false /* use_de_sort */);
+  auto decomp_nvcomp_manager = create_manager(
+    comp_buffer,
+    stream,
+    ChecksumPolicy::NoComputeNoVerify,
+    ExecutionPolicy::Concurrency,
+    backend,
+    false /* use_de_sort */
+  );
 
   DecompressionConfig decomp_config = decomp_nvcomp_manager->configure_decompression(comp_buffer);
   uint8_t *res_decomp_buffer;
@@ -159,8 +164,6 @@ void multi_comp_decomp_example(
 )
 {
   size_t num_buffers = input_buffer_lengths.size();
-
-  using namespace std;
 
   cudaStream_t stream;
   CUDA_CHECK(cudaStreamCreate(&stream));
@@ -412,7 +415,15 @@ void multi_comp_decomp_raw(const std::vector<uint8_t *> &device_input_ptrs, std:
     nvcompBatchedLZ4DecompressOpts_t decompress_opts = nvcompBatchedLZ4DecompressDefaultOpts;
     // Chunk_size is ignored when we use BitstreamKind::RAW, since data is compressed as is.
     // However, the input data itself still needs to satisfy the maximum chunk size limitations.
-    LZ4Manager nvcomp_manager{chunk_size, compress_opts, decompress_opts, stream, NoComputeNoVerify, BitstreamKind::RAW};
+    LZ4Manager nvcomp_manager{
+      chunk_size,
+      compress_opts,
+      decompress_opts,
+      stream,
+      ChecksumPolicy::NoComputeNoVerify,
+      ExecutionPolicy::Concurrency,
+      BitstreamKind::RAW
+    };
 
     size_t num_buffers = input_buffer_lengths.size();
 
@@ -485,27 +496,27 @@ void comp_decomp_with_single_manager_with_checksums(uint8_t *device_input_ptrs, 
    * There are 5 possible modes for checksum processing as
    * described below.
    * 
-   * Mode: NoComputeNoVerify
+   * Mode: ChecksumPolicy::NoComputeNoVerify
    * Description:
    *   - During compression, do not compute checksums
    *   - During decompression, do not verify checksums
    *
-   * Mode: ComputeAndNoVerify
+   * Mode: ChecksumPolicy::ComputeAndNoVerify
    * Description:
    *   - During compression, compute checksums
    *   - During decompression, do not attempt to verify checksums
    *
-   * Mode: NoComputeAndVerifyIfPresent
+   * Mode: ChecksumPolicy::NoComputeAndVerifyIfPresent
    * Description:
    *   - During compression, do not compute checksums
    *   - During decompression, verify checksums if they were included
    *
-   * Mode: ComputeAndVerifyIfPresent
+   * Mode: ChecksumPolicy::ComputeAndVerifyIfPresent
    * Description:
    *   - During compression, compute checksums
    *   - During decompression, verify checksums if they were included
    *
-   * Mode: ComputeAndVerify
+   * Mode: ChecksumPolicy::ComputeAndVerify
    * Description:
    *   - During compression, compute checksums
    *   - During decompression, verify checksums. A runtime error will be 
@@ -520,7 +531,7 @@ void comp_decomp_with_single_manager_with_checksums(uint8_t *device_input_ptrs, 
   {
     nvcompBatchedLZ4CompressOpts_t compress_opts = nvcompBatchedLZ4CompressDefaultOpts;
     nvcompBatchedLZ4DecompressOpts_t decompress_opts = nvcompBatchedLZ4DecompressDefaultOpts;
-    LZ4Manager nvcomp_manager{chunk_size, compress_opts, decompress_opts, stream, ComputeAndVerify};
+    LZ4Manager nvcomp_manager{chunk_size, compress_opts, decompress_opts, stream, ChecksumPolicy::ComputeAndVerify};
     CompressionConfig comp_config = nvcomp_manager.configure_compression(input_buffer_len);
 
     uint8_t *comp_buffer;
@@ -579,7 +590,7 @@ void decomp_compressed_with_manager_factory_with_checksums(uint8_t *device_input
     */
     nvcompBatchedLZ4CompressOpts_t compress_opts = nvcompBatchedLZ4CompressDefaultOpts;
     nvcompBatchedLZ4DecompressOpts_t decompress_opts = nvcompBatchedLZ4DecompressDefaultOpts;
-    LZ4Manager nvcomp_manager{chunk_size, compress_opts, decompress_opts, stream, ComputeAndNoVerify};
+    LZ4Manager nvcomp_manager{chunk_size, compress_opts, decompress_opts, stream, ChecksumPolicy::ComputeAndNoVerify};
     CompressionConfig comp_config = nvcomp_manager.configure_compression(input_buffer_len);
 
     uint8_t *comp_buffer;
@@ -595,8 +606,14 @@ void decomp_compressed_with_manager_factory_with_checksums(uint8_t *device_input
     // supplied in the compressed buffer. For a full description of the checksum modes, see the
     // above example.
     nvcompDecompressBackend_t backend = NVCOMP_DECOMPRESS_BACKEND_DEFAULT;
-    auto decomp_nvcomp_manager =
-      create_manager(comp_buffer, stream, NoComputeAndVerifyIfPresent, backend, false /* use_de_sort */);
+    auto decomp_nvcomp_manager = create_manager(
+      comp_buffer,
+      stream,
+      ChecksumPolicy::NoComputeAndVerifyIfPresent,
+      ExecutionPolicy::Concurrency,
+      backend,
+      false /* use_de_sort */
+    );
 
     DecompressionConfig decomp_config = decomp_nvcomp_manager->configure_decompression(comp_buffer);
     uint8_t *res_decomp_buffer;

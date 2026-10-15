@@ -23,7 +23,7 @@
 #include <vector>
 
 #include "BatchData.h"
-#include "nvcomp/crc32.h"
+#include "nvcomp.h"
 
 // Forward declarations of helper functions.
 static uint32_t reverse(uint32_t x);

@@ -16,7 +16,7 @@
  */
 
 #include "BatchData.h"
-#include "nvcomp/snappy.h"
+#include "nvcomp.h"
 
 #include <snappy.h>
 
@@ -105,16 +105,17 @@ run_example(const std::vector<std::vector<char>> &data, size_t warmup_iteration_
 
   // Snappy GPU decompression
   size_t decomp_temp_bytes;
-  status = nvcompBatchedSnappyDecompressGetTempSizeAsync(
+  status = nvcompBatchedSnappyDecompressGetTempSize(
     chunk_count,
     chunk_size,
     decompress_opts,
     &decomp_temp_bytes,
-    chunk_count * chunk_size
+    chunk_count * chunk_size,
+    stream
   );
   if (status != nvcompSuccess)
   {
-    throw std::runtime_error("nvcompBatchedSnappyDecompressGetTempSizeAsync() failed.");
+    throw std::runtime_error("nvcompBatchedSnappyDecompressGetTempSize() failed.");
   }
 
   void *d_decomp_temp;

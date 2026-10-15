@@ -17,17 +17,15 @@
 
 #pragma once
 
-#ifndef VERBOSE
-#define VERBOSE 0
-#endif
-
 #include <cuda_fp16.h>
 
 #include <cassert>
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
-#include <cstring>
+#include <cstdlib>
 #include <fstream>
+#include <functional>
 #include <iomanip>
 #include <iostream>
 #include <limits>
@@ -38,8 +36,6 @@
 #include <vector>
 
 #include "nvcomp.hpp"
-#include "nvcomp/cascaded.h"
-#include "nvcomp/utils.hpp"
 
 #define CUDA_CHECK(func)                                                                                               \
   do                                                                                                                   \
@@ -125,24 +121,10 @@ inline double average_gbs(const std::vector<float> &durations, size_t s)
   return (double)s / 1e9 / avg_duration;
 }
 
-#ifdef __GNUC__
-#pragma GCC diagnostic pop
-#endif
-
-#ifdef __GNUC__
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-function"
-#endif
-
 template <>
 inline nvcompType_t TypeOf<float>()
 {
   return NVCOMP_TYPE_INT;
-}
-
-inline bool startsWith(const std::string input, const std::string subStr)
-{
-  return input.substr(0, subStr.length()) == subStr;
 }
 
 #ifdef __GNUC__
@@ -156,6 +138,22 @@ void benchmark_assert(const bool pass, const std::string &msg)
     printf("unhandled exception in benchmark, msg %s\n", msg.c_str());
     throw std::runtime_error("ERROR: " + msg);
   }
+}
+
+// Checks that num_bytes is a multiple of type_size, printing the standard
+// error message used across the benchmarks/CLI when it is not. Callers are
+// responsible for computing type_size (e.g. via a format-specific supported
+// type check) since not every format supports every nvcompType_t.
+inline bool ensure_length_type_aligned(size_t num_bytes, size_t type_size)
+{
+  if ((num_bytes % type_size) != 0)
+  {
+    std::cerr << "ERROR: Input data must have a length and chunk size that "
+                 "are a multiple of "
+              << type_size << ", the size of the specified data type." << std::endl;
+    return false;
+  }
+  return true;
 }
 
 std::vector<uint8_t> gen_data(const int max_byte, const size_t size, std::mt19937 &rng)
@@ -381,6 +379,35 @@ inline void default_to_single_device(std::vector<char *> &nvbench_argv)
   static char devices_value[] = "0";
   nvbench_argv.push_back(devices_flag);
   nvbench_argv.push_back(devices_value);
+}
+
+constexpr const char *const REQUIRED_PARAMETER = "_REQUIRED_";
+
+struct parameter_type
+{
+  std::string short_flag;
+  std::string long_flag;
+  std::string description;
+  std::string default_value;
+  std::function<bool(const char *)> handler;
+};
+
+template <typename StateT, typename ExecTagT, typename KernelLauncherT>
+inline void exec_or_waive_on_oom(StateT &state, ExecTagT exec_tag, KernelLauncherT &&kernel_launcher)
+{
+  try
+  {
+    state.exec(exec_tag, std::forward<KernelLauncherT>(kernel_launcher));
+  }
+  catch (const std::exception &e)
+  {
+    if (std::string(e.what()).find(cudaGetErrorName(cudaErrorMemoryAllocation)) != std::string::npos)
+    {
+      std::cerr << "WARNING: Out of memory during NVBench measurement. Could not run benchmark." << std::endl;
+      std::exit(3);
+    }
+    throw;
+  }
 }
 
 } // namespace nvcomp

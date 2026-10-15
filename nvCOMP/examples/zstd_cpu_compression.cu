@@ -16,7 +16,7 @@
  */
 
 #include "BatchData.h"
-#include "nvcomp/zstd.h"
+#include "nvcomp.h"
 
 #include <zstd.h>
 
@@ -129,18 +129,19 @@ static void run_example(
   CUDA_CHECK(cudaEventCreate(&end));
 
   // Zstandard GPU decompression
-  // Determine scratch space needed asynchronously
-  size_t decomp_temp_bytes_async;
-  status = nvcompBatchedZstdDecompressGetTempSizeAsync(
+  // Determine scratch space needed without launching device work
+  size_t decomp_temp_bytes_query;
+  status = nvcompBatchedZstdDecompressGetTempSize(
     chunk_count,
     chunk_size,
     decompress_opts,
-    &decomp_temp_bytes_async,
-    chunk_count * chunk_size
+    &decomp_temp_bytes_query,
+    chunk_count * chunk_size,
+    stream
   );
   if (status != nvcompSuccess)
   {
-    throw std::runtime_error("nvcompBatchedZstdDecompressGetTempSizeAsync() failed.");
+    throw std::runtime_error("nvcompBatchedZstdDecompressGetTempSize() failed.");
   }
 
   // Determine scratch space needed synchronously
@@ -160,7 +161,13 @@ static void run_example(
   {
     throw std::runtime_error("nvcompBatchedZstdDecompressGetTempSizeSync() failed.");
   }
-  size_t decomp_temp_bytes = std::min(decomp_temp_bytes_sync, decomp_temp_bytes_async);
+
+  size_t decomp_temp_bytes = decomp_temp_bytes_sync;
+  if (decomp_temp_bytes_sync > decomp_temp_bytes_query)
+  {
+    std::cerr << "The required synchronous decompression temp space is greater than the value returned by GetTempSize()."
+              << std::endl;
+  }
 
   void *d_decomp_temp;
   CUDA_CHECK(cudaMallocSafe(&d_decomp_temp, decomp_temp_bytes));

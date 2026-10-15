@@ -16,7 +16,7 @@
  */
 
 #include "BatchData.h"
-#include "nvcomp/gzip.h"
+#include "nvcomp.h"
 
 #include <zlib.h>
 
@@ -87,16 +87,17 @@ run_example(const std::vector<std::vector<char>> &data, size_t warmup_iteration_
 
   // Allocate the temporary workspace required by the compressor
   size_t comp_temp_bytes;
-  status = nvcompBatchedGzipCompressGetTempSizeAsync(
+  status = nvcompBatchedGzipCompressGetTempSize(
     chunk_count,
     chunk_size,
     compress_opts,
     &comp_temp_bytes,
-    chunk_count * chunk_size
+    chunk_count * chunk_size,
+    stream
   );
   if (status != nvcompSuccess)
   {
-    throw std::runtime_error("nvcompBatchedGzipCompressGetTempSizeAsync() failed.");
+    throw std::runtime_error("nvcompBatchedGzipCompressGetTempSize() failed.");
   }
 
   void *d_comp_temp;

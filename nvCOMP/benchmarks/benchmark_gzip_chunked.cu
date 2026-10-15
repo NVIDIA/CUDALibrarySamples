@@ -16,7 +16,7 @@
  */
 
 #include "benchmark_template_chunked.cuh"
-#include "nvcomp/gzip.h"
+#include "nvcomp.h"
 
 NVBENCH_REGISTER_CRITERION(total_time_criterion);
 
@@ -84,7 +84,7 @@ void run_benchmark(nvbench::state &state)
   if constexpr (DO_COMPRESSION)
   {
     run_compression(
-      nvcompBatchedGzipCompressGetTempSizeAsync,
+      nvcompBatchedGzipCompressGetTempSize,
       nvcompBatchedGzipCompressGetTempSizeSync,
       nvcompBatchedGzipCompressGetMaxOutputChunkSize,
       nvcompBatchedGzipCompressAsync,
@@ -98,15 +98,27 @@ void run_benchmark(nvbench::state &state)
   }
   else
   {
-    run_decompression(
-      nvcompBatchedGzipDecompressGetTempSizeAsync,
-      nvcompBatchedGzipDecompressGetTempSizeSync,
-      nvcompBatchedGzipDecompressAsync,
-      nvcompBatchedGzipGetDecompressSizeAsync,
-      nvcompBatchedGzipDecompressGetRequiredAlignments,
-      nvcompBatchedGzipDecompressOpts,
-      state
-    );
+    auto run = [&](auto exec_tag) {
+      run_decompression(
+        nvcompBatchedGzipDecompressGetTempSize,
+        nvcompBatchedGzipDecompressGetTempSizeSync,
+        nvcompBatchedGzipDecompressAsync,
+        nvcompBatchedGzipGetDecompressSizeAsync,
+        nvcompBatchedGzipDecompressGetRequiredAlignments,
+        nvcompBatchedGzipDecompressOpts,
+        state,
+        exec_tag
+      );
+    };
+
+    if (nvcompBatchedGzipDecompressOpts.algorithm == NVCOMP_GZIP_DECOMPRESS_ALGORITHM_LOOKAHEAD)
+    {
+      run(nvbench::exec_tag::no_batch | nvbench::exec_tag::sync);
+    }
+    else
+    {
+      run(nvbench::exec_tag::no_batch);
+    }
   }
 }
 

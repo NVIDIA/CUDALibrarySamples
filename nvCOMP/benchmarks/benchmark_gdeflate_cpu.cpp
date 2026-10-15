@@ -72,10 +72,10 @@ int main(int argc, char **argv)
     else if (arg == "-p" && i + 1 < argc)
     {
       chunk_size = std::stoull(argv[++i]);
-      if (chunk_size > gdeflate::nvcompGdeflateCPUCompressionMaxAllowedChunkSize)
+      if (chunk_size > nvcomp::gdeflate::nvcompGdeflateCPUCompressionMaxAllowedChunkSize)
       {
-        std::cerr << "Gdeflate CPU doens't support chunk sizes larger than "
-                  << gdeflate::nvcompGdeflateCPUCompressionMaxAllowedChunkSize << std::endl;
+        std::cerr << "Gdeflate CPU doesn't support chunk sizes larger than "
+                  << nvcomp::gdeflate::nvcompGdeflateCPUCompressionMaxAllowedChunkSize << std::endl;
         return 1;
       }
     }
@@ -113,7 +113,7 @@ int main(int argc, char **argv)
 
   // Allocate space for compressed data
   size_t max_compressed_chunk_size;
-  gdeflate::compressCPUGetMaxOutputChunkSize(max_input_chunk_size, &max_compressed_chunk_size);
+  nvcomp::gdeflate::compressCPUGetMaxOutputChunkSize(max_input_chunk_size, &max_compressed_chunk_size);
   std::vector<std::vector<char>> compressed_data(batch_size, std::vector<char>(max_compressed_chunk_size));
   std::vector<const char *> in_ptrs(batch_size);
   std::vector<char *> compressed_ptrs(batch_size);
@@ -137,7 +137,7 @@ int main(int argc, char **argv)
   // Warmup
   for (size_t w = 0; w < warmup_count; ++w)
   {
-    gdeflate::compressCPU(
+    nvcomp::gdeflate::compressCPU(
       reinterpret_cast<const void *const *>(in_ptrs.data()),
       input_sizes.data(),
       max_input_chunk_size,
@@ -153,7 +153,7 @@ int main(int argc, char **argv)
 
   for (size_t iter = 0; iter < iteration_count; ++iter)
   {
-    gdeflate::compressCPU(
+    nvcomp::gdeflate::compressCPU(
       reinterpret_cast<const void *const *>(in_ptrs.data()),
       input_sizes.data(),
       max_input_chunk_size,
@@ -169,7 +169,7 @@ int main(int argc, char **argv)
   // Benchmark decompression
   for (size_t iter = 0; iter < iteration_count; ++iter)
   {
-    gdeflate::decompressCPU(
+    nvcomp::gdeflate::decompressCPU(
       reinterpret_cast<const void *const *>(compressed_ptrs.data()),
       compressed_sizes.data(),
       batch_size,

@@ -16,7 +16,7 @@
  */
 
 #include "BatchData.h"
-#include "nvcomp/deflate.h"
+#include "nvcomp.h"
 
 #include <libdeflate.h>
 #include <zlib.h>
@@ -73,18 +73,22 @@ static void run_example(
   BatchData input_data(data, chunk_size, compression_alignment_reqs.input);
   const size_t chunk_count = input_data.size();
 
+  cudaStream_t stream;
+  CUDA_CHECK(cudaStreamCreate(&stream));
+
   // Compress on the GPU using batched API
   size_t comp_temp_bytes;
-  status = nvcompBatchedDeflateCompressGetTempSizeAsync(
+  status = nvcompBatchedDeflateCompressGetTempSize(
     chunk_count,
     chunk_size,
     nvcompBatchedDeflateOpts,
     &comp_temp_bytes,
-    chunk_count * chunk_size
+    chunk_count * chunk_size,
+    stream
   );
   if (status != nvcompSuccess)
   {
-    throw std::runtime_error("ERROR: nvcompBatchedDeflateCompressGetTempSizeAsync() not successful");
+    throw std::runtime_error("ERROR: nvcompBatchedDeflateCompressGetTempSize() not successful");
   }
 
   void *d_comp_temp;
@@ -98,9 +102,6 @@ static void run_example(
   }
 
   BatchData compressed_data(max_out_bytes, chunk_count, compression_alignment_reqs.output);
-
-  cudaStream_t stream;
-  CUDA_CHECK(cudaStreamCreate(&stream));
 
   cudaEvent_t start, end;
   CUDA_CHECK(cudaEventCreate(&start));

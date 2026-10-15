@@ -19,7 +19,7 @@
 #include <iostream>
 #include <random>
 
-#include "nvcomp/lz4.h"
+#include "nvcomp.h"
 #include "util.h"
 
 /*
@@ -99,12 +99,13 @@ void execute_example(char *input_data, const size_t in_bytes)
 
   // Then we need to allocate the temporary workspace and output space needed by the compressor.
   size_t temp_bytes;
-  nvcompBatchedLZ4CompressGetTempSizeAsync(
+  nvcompBatchedLZ4CompressGetTempSize(
     batch_size,
     chunk_size,
     nvcompBatchedLZ4CompressDefaultOpts,
     &temp_bytes,
-    batch_size * chunk_size
+    batch_size * chunk_size,
+    stream
   );
   void *device_temp_ptr;
   CUDA_CHECK(cudaMallocSafe(&device_temp_ptr, temp_bytes));
@@ -174,12 +175,13 @@ void execute_example(char *input_data, const size_t in_bytes)
 
   // Next, allocate the temporary buffer
   size_t decomp_temp_bytes;
-  nvcompBatchedLZ4DecompressGetTempSizeAsync(
+  nvcompBatchedLZ4DecompressGetTempSize(
     batch_size,
     chunk_size,
     decompress_opts,
     &decomp_temp_bytes,
-    batch_size * chunk_size
+    batch_size * chunk_size,
+    stream
   );
   void *device_decomp_temp;
   CUDA_CHECK(cudaMallocSafe(&device_decomp_temp, decomp_temp_bytes));

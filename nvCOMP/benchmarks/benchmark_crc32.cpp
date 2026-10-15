@@ -29,9 +29,9 @@
 #include <vector>
 
 #include "benchmark_common.h"
+#include "nvcomp.h"
 
 #include <curand.h>
-#include <nvcomp/crc32.h>
 
 #define CURAND_CHECK(call)                                                                                             \
   do                                                                                                                   \

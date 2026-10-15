@@ -18,7 +18,7 @@
 #include <limits>
 
 #include "benchmark_template_chunked.cuh"
-#include "nvcomp/gdeflate.h"
+#include "nvcomp.h"
 
 #include <stdint.h>
 
@@ -69,7 +69,7 @@ void run_benchmark(nvbench::state &state)
   if constexpr (DO_COMPRESSION)
   {
     run_compression(
-      nvcompBatchedGdeflateCompressGetTempSizeAsync,
+      nvcompBatchedGdeflateCompressGetTempSize,
       nvcompBatchedGdeflateCompressGetTempSizeSync,
       nvcompBatchedGdeflateCompressGetMaxOutputChunkSize,
       nvcompBatchedGdeflateCompressAsync,
@@ -84,7 +84,7 @@ void run_benchmark(nvbench::state &state)
   else
   {
     run_decompression(
-      nvcompBatchedGdeflateDecompressGetTempSizeAsync,
+      nvcompBatchedGdeflateDecompressGetTempSize,
       nvcompBatchedGdeflateDecompressGetTempSizeSync,
       nvcompBatchedGdeflateDecompressAsync,
       nvcompBatchedGdeflateGetDecompressSizeAsync,

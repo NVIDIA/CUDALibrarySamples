@@ -36,7 +36,6 @@
 #include <iostream>
 
 #include "nvcomp.hpp"
-#include "nvcomp/lz4.hpp"
 #include "util.h"
 
 #include <cufile.h>

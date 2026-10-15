@@ -16,7 +16,7 @@
  */
 
 #include "BatchData.h"
-#include "nvcomp/gzip.h"
+#include "nvcomp.h"
 
 #include <zlib.h>
 
@@ -138,16 +138,17 @@ run_example(const std::vector<std::vector<char>> &data, size_t warmup_iteration_
 
   // deflate GPU decompression
   size_t decomp_temp_bytes;
-  status = nvcompBatchedGzipDecompressGetTempSizeAsync(
+  status = nvcompBatchedGzipDecompressGetTempSize(
     chunk_count,
     chunk_size,
     decompress_opts,
     &decomp_temp_bytes,
-    chunk_count * chunk_size
+    chunk_count * chunk_size,
+    stream
   );
   if (status != nvcompSuccess)
   {
-    throw std::runtime_error("nvcompBatchedGzipDecompressGetTempSizeAsync() failed.");
+    throw std::runtime_error("nvcompBatchedGzipDecompressGetTempSize() failed.");
   }
 
   void *d_decomp_temp;

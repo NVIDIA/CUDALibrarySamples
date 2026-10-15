@@ -41,14 +41,18 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
   set(GPU_ARCHS "75;80;86;89;90")
   if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "13")
-    set(GPU_ARCHS ${GPU_ARCHS} "70")
+    list(APPEND GPU_ARCHS "70")
   endif()
   if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "12.8")
-    set(GPU_ARCHS ${GPU_ARCHS} "100;120")
+    list(APPEND GPU_ARCHS "100" "120")
+  endif()
+  # Tegra support (aarch64 only)
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
     if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "13")
-      set(GPU_ARCHS ${GPU_ARCHS} "110")
-    else()
-      set(GPU_ARCHS ${GPU_ARCHS} "101")
+      list(APPEND GPU_ARCHS "110")
+    endif()
+    if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "13.2")
+      list(APPEND GPU_ARCHS "87")
     endif()
   endif()
 
@@ -208,6 +212,13 @@ function(add_benchmark BENCHMARK_SOURCE NVCOMP_LIB_TYPE)
     ${TARGET_NAME} PROPERTIES CUDA_ARCHITECTURES "${GPU_ARCHS}" OUTPUT_NAME
                                                                 ${BARE_NAME})
 
+  if(MSVC)
+    target_compile_options(
+      ${TARGET_NAME}
+      PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/Zc:preprocessor>
+              $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/Zc:preprocessor>)
+  endif()
+
   # MSVC creates .exp, .lib and .pdb files for executables. They need to be
   # stored in different directories for the dynamic and static builds.
   if(NVCOMP_LIB_TYPE STREQUAL "static")
@@ -234,6 +245,12 @@ function(add_benchmark BENCHMARK_SOURCE NVCOMP_LIB_TYPE)
     ${TARGET_NAME} PRIVATE ${NVCOMP_LIB} ${NVCOMP_CPU_LIB} CUDA::cudart_static
                            CUDA::cuda_driver ${OPTIONAL_LINK_LIBRARIES})
 
+  # Needed for std::filesystem with GCC < 9
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION
+                                              VERSION_LESS 9)
+    target_link_libraries(${TARGET_NAME} PRIVATE stdc++fs)
+  endif()
+
   install(
     TARGETS ${TARGET_NAME}
     DESTINATION ${INSTALL_DESTINATION}
@@ -243,11 +260,12 @@ endfunction()
 set(NVBENCH_BENCHMARKS
     benchmark_ans_chunked
     benchmark_bitcomp_chunked
-    benchmark_bitcomp_lossy
+    benchmark_bitcomp_cpu
     benchmark_cascaded_chunked
     benchmark_deflate_chunked
     benchmark_gdeflate_chunked
     benchmark_gzip_chunked
+    benchmark_gzip_streaming
     benchmark_lz4_chunked
     benchmark_snappy_chunked
     benchmark_zstd_chunked)

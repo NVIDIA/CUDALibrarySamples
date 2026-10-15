@@ -16,17 +16,23 @@
  */
 
 #include "benchmark_template_chunked.cuh"
-#include "nvcomp/ans.h"
+#include "nvcomp.h"
+#include "nvcomp.hpp"
 
 NVBENCH_REGISTER_CRITERION(total_time_criterion);
 
+constexpr uint8_t ANS_BENCH_AUTO_STATES_PER_LANE = 2;
+
 static nvcompBatchedANSCompressOpts_t nvcompBatchedANSCompressOpts = nvcompBatchedANSCompressDefaultOpts;
-static nvcompBatchedANSDecompressOpts_t nvcompBatchedANSDecompressOpts = nvcompBatchedANSDecompressDefaultOpts;
+// Set states_per_lane to the default value of 2 in order to launch the specialized kernel if the user
+// only sets the data type.
+static nvcompBatchedANSDecompressOpts_t nvcompBatchedANSDecompressOpts =
+  {NVCOMP_DECOMPRESS_BACKEND_DEFAULT, NVCOMP_TYPE_BITS, 0, ANS_BENCH_AUTO_STATES_PER_LANE, 0, {0}};
 
 const std::vector<parameter_type> custom_params = {
   {"t",
    "type",
-   "ANS data type to use. Must be one of (u)char, float16, or float8_e4m3.",
+   "ANS data type to use. Must be one of (u)char, float16, float32, or float8_e4m3.",
    "char",
    [](const char *arg) -> bool {
      bool valid;
@@ -40,13 +46,14 @@ const std::vector<parameter_type> custom_params = {
        case NVCOMP_TYPE_CHAR:
        case NVCOMP_TYPE_UCHAR:
        case NVCOMP_TYPE_FLOAT16:
+       case NVCOMP_TYPE_FLOAT32:
        case NVCOMP_TYPE_FLOAT8_E4M3:
          nvcompBatchedANSCompressOpts.data_type = type;
          // Set the decompress data_type so it uses the type-specialized kernel.
          nvcompBatchedANSDecompressOpts.data_type = type;
          return true;
        default:
-         std::cerr << "ERROR: ANS data type must be (u)char, float16, or float8_e4m3, "
+         std::cerr << "ERROR: ANS data type must be (u)char, float16, float32, or float8_e4m3, "
                       "but it is "
                    << arg << std::endl;
          return false;
@@ -71,31 +78,77 @@ const std::vector<parameter_type> custom_params = {
      nvcompBatchedANSCompressOpts.max_sub_chunk_count = static_cast<uint8_t>(count);
      nvcompBatchedANSDecompressOpts.max_sub_chunk_count = static_cast<uint8_t>(count);
      return true;
+   }},
+  {"n",
+   "states-per-lane",
+   "Interleaved rANS states per lane: 0 (auto, default), 1 (single stream), or 2 (two streams).",
+   "0",
+   [](const char *arg) -> bool {
+     const int states = std::atoi(arg);
+     if (states != 0 && states != 1 && states != 2)
+     {
+       std::cerr << "ERROR: --states-per-lane must be 0 (auto), 1, or 2, got " << states << std::endl;
+       return false;
+     }
+     nvcompBatchedANSCompressOpts.states_per_lane = static_cast<uint8_t>(states);
+     nvcompBatchedANSDecompressOpts.states_per_lane = (states != 0) ? static_cast<uint8_t>(states)
+                                                                    : ANS_BENCH_AUTO_STATES_PER_LANE;
+     return true;
+   }},
+  {"S",
+   "histogram-reduction-log2",
+   "Right-shift of each warp's histogram slice: 0 (exact, default) through " +
+     std::to_string(nvcompANSMaxHistogramReductionLog2) + " (keep 1/" +
+     std::to_string(1u << nvcompANSMaxHistogramReductionLog2) + ").",
+   "0",
+   [](const char *arg) -> bool {
+     const int shift = std::atoi(arg);
+     if (shift < 0 || shift > static_cast<int>(nvcompANSMaxHistogramReductionLog2))
+     {
+       std::cerr << "ERROR: --histogram-reduction-log2 must be 0 through "
+                 << static_cast<int>(nvcompANSMaxHistogramReductionLog2) << ", got " << shift << std::endl;
+       return false;
+     }
+     nvcompBatchedANSCompressOpts.histogram_reduction_log2 = static_cast<uint8_t>(shift);
+     return true;
+   }},
+  {"k",
+   "skip-validate",
+   "Skip per-chunk header/request checks during decompress: 0 (default) or 1 (trusted input).",
+   "0",
+   [](const char *arg) -> bool {
+     const int skip = std::atoi(arg);
+     if (skip != 0 && skip != 1)
+     {
+       std::cerr << "ERROR: --skip-validate must be 0 or 1, got " << skip << std::endl;
+       return false;
+     }
+     nvcompBatchedANSDecompressOpts.skip_validate = static_cast<uint8_t>(skip);
+     return true;
    }}
 };
 
 static bool isANSInputValid(
   const std::vector<std::vector<char>> &data,
   bool compressed_inputs,
-  [[maybe_unused]] const nvcompBatchedANSCompressOpts_t compress_opts,
+  const nvcompBatchedANSCompressOpts_t compress_opts,
   [[maybe_unused]] const nvcompBatchedANSDecompressOpts_t decompress_opts
 )
 {
+  const size_t max_chunk_size = compressed_inputs ? nvcompANSDecompressionMaxAllowedChunkSize
+                                                  : nvcompANSCompressionMaxAllowedChunkSize;
   for (const auto &chunk : data)
   {
-    if (chunk.size() > nvcompANSCompressionMaxAllowedChunkSize)
+    if (chunk.size() > max_chunk_size)
     {
-      std::cerr << "ERROR: ANS doesn't support chunk sizes larger than "
-                   "2^32-1 bytes."
-                << std::endl;
+      std::cerr << "ERROR: ANS doesn't support " << (compressed_inputs ? "compressed" : "uncompressed")
+                << " chunk sizes larger than " << max_chunk_size << " bytes." << std::endl;
       return false;
     }
 
-    if (nvcompBatchedANSCompressOpts.data_type == NVCOMP_TYPE_FLOAT16 && chunk.size() % 2 != 0)
+    if (!compressed_inputs && chunk.size() % nvcomp::sizeOfnvcompType(compress_opts.data_type) != 0)
     {
-      std::cerr << "Error: chunk size must be a multiple of 2 when using "
-                   "ANS on float16 data."
-                << std::endl;
+      std::cerr << "ERROR: chunk size must be a multiple of the selected ANS data type size." << std::endl;
       return false;
     }
   }
@@ -109,7 +162,7 @@ void run_benchmark(nvbench::state &state)
   if constexpr (DO_COMPRESSION)
   {
     run_compression(
-      nvcompBatchedANSCompressGetTempSizeAsync,
+      nvcompBatchedANSCompressGetTempSize,
       nvcompBatchedANSCompressGetTempSizeSync,
       nvcompBatchedANSCompressGetMaxOutputChunkSize,
       nvcompBatchedANSCompressAsync,
@@ -123,7 +176,7 @@ void run_benchmark(nvbench::state &state)
   else
   {
     run_decompression(
-      nvcompBatchedANSDecompressGetTempSizeAsync,
+      nvcompBatchedANSDecompressGetTempSize,
       nvcompBatchedANSDecompressGetTempSizeSync,
       nvcompBatchedANSDecompressAsync,
       nvcompBatchedANSGetDecompressSizeAsync,

@@ -19,13 +19,17 @@
 #include <vector>
 
 #include "benchmark_template_chunked.cuh"
-#include "nvcomp/cascaded.h"
+#include "cascaded_cli_options.hpp"
+#include "nvcomp.h"
 
 NVBENCH_REGISTER_CRITERION(total_time_criterion);
 
-static nvcompBatchedCascadedCompressOpts_t nvcompBatchedCascadedCompressOpts = {4096, NVCOMP_TYPE_UINT, 2, 1, 1, {0}};
-static nvcompBatchedCascadedDecompressOpts_t nvcompBatchedCascadedDecompressOpts =
-  nvcompBatchedCascadedDecompressDefaultOpts;
+static nvcompBatchedCascadedCompressOpts_t nvcompBatchedCascadedCompressOpts = nvcompBatchedCascadedCompressDefaultOpts;
+static nvcompBatchedCascadedDecompressOpts_t nvcompBatchedCascadedDecompressOpts = [] {
+  auto opts = nvcompBatchedCascadedDecompressDefaultOpts;
+  opts.common_opts = nvcompBatchedCascadedCompressDefaultOpts.common_opts;
+  return opts;
+}();
 
 const std::vector<parameter_type> custom_params = {
   {"t",
@@ -34,46 +38,34 @@ const std::vector<parameter_type> custom_params = {
    "uint",
    [](const char *arg) -> bool {
      bool valid;
-     nvcompBatchedCascadedCompressOpts.type = string_to_data_type(arg, valid);
+     nvcompBatchedCascadedCompressOpts.common_opts.data_type = string_to_data_type(arg, valid);
+     nvcompBatchedCascadedDecompressOpts.common_opts.data_type =
+       nvcompBatchedCascadedCompressOpts.common_opts.data_type;
      return valid;
    }},
-  {"r",
-   "num_rles",
-   "Number of RLE layers (max. 7).",
-   "2",
+  {"cm",
+   "mode",
+   "Compression mode: asymmetric or symmetric.",
+   "asymmetric",
    [](const char *arg) -> bool {
-     int n = atoi(arg);
-     if (n < 0 || n > 7)
+     const bool valid = apply_cascaded_mode_arg(arg, nvcompBatchedCascadedCompressOpts);
+     if (valid)
      {
-       std::cerr << "ERROR: num_rles must be between 0 and 7, but it is " << n << std::endl;
-       return false;
+       nvcompBatchedCascadedDecompressOpts.common_opts.mode = nvcompBatchedCascadedCompressOpts.common_opts.mode;
      }
-     nvcompBatchedCascadedCompressOpts.num_RLEs = n;
-     return true;
+     return valid;
    }},
-  {"nd",
-   "num_deltas",
-   "Number of delta layers (max. 3).",
-   "1",
+  {"cl",
+   "level",
+   "Asymmetric compression level (0-255); currently ignored by symmetric mode.",
+   "3",
+   [](const char *arg) -> bool { return apply_cascaded_level_arg(arg, nvcompBatchedCascadedCompressOpts); }},
+  {"cf",
+   "fine_grained_encodings",
+   "Fine-grained encodings: none or comma-separated delta,rle,for.",
+   "delta,rle",
    [](const char *arg) -> bool {
-     int n = atoi(arg);
-     if (n < 0 || n > 3)
-     {
-       std::cerr << "ERROR: num_deltas must be between 0 and 3, but it is " << n << std::endl;
-       return false;
-     }
-     nvcompBatchedCascadedCompressOpts.num_deltas = n;
-     return true;
-   }},
-  {"bp", "use_bp", "Whether to use bit-packing (0 or 1).", "1", [](const char *arg) -> bool {
-     int n = atoi(arg);
-     if (n < 0 || n > 1)
-     {
-       std::cerr << "ERROR: use_bp can only be 0 or 1, but it is " << n << std::endl;
-       return false;
-     }
-     nvcompBatchedCascadedCompressOpts.use_bp = n;
-     return true;
+     return apply_cascaded_fine_grained_encodings_arg(arg, nvcompBatchedCascadedCompressOpts);
    }}
 };
 
@@ -86,7 +78,7 @@ static bool isCascadedInputValid(
 {
   // Find the type size, to check that all chunk sizes are a multiple of it.
   size_t typeSize = 1;
-  auto type = nvcompBatchedCascadedCompressOpts.type;
+  auto type = nvcompBatchedCascadedCompressOpts.common_opts.data_type;
   switch (type)
   {
     case NVCOMP_TYPE_CHAR:
@@ -117,11 +109,8 @@ static bool isCascadedInputValid(
   {
     for (const auto &chunk : data)
     {
-      if ((chunk.size() % typeSize) != 0)
+      if (!nvcomp::ensure_length_type_aligned(chunk.size(), typeSize))
       {
-        std::cerr << "ERROR: Input data must have a length and chunk size that "
-                     "are a multiple of "
-                  << typeSize << ", the size of the specified data type." << std::endl;
         return false;
       }
     }
@@ -129,39 +118,34 @@ static bool isCascadedInputValid(
   return true;
 }
 
-template <bool DO_COMPRESSION>
-void run_benchmark(nvbench::state &state)
+static void run_benchmark_compress(nvbench::state &state)
 {
-  if constexpr (DO_COMPRESSION)
-  {
-    run_compression(
-      nvcompBatchedCascadedCompressGetTempSizeAsync,
-      nvcompBatchedCascadedCompressGetTempSizeSync,
-      nvcompBatchedCascadedCompressGetMaxOutputChunkSize,
-      nvcompBatchedCascadedCompressAsync,
-      nvcompBatchedCascadedCompressGetRequiredAlignments,
-      isCascadedInputValid,
-      nvcompBatchedCascadedCompressOpts,
-      nvcompBatchedCascadedDecompressOpts,
-      state
-    );
-  }
-  else
-  {
-    run_decompression(
-      nvcompBatchedCascadedDecompressGetTempSizeAsync,
-      nvcompBatchedCascadedDecompressGetTempSizeSync,
-      nvcompBatchedCascadedDecompressAsync,
-      nvcompBatchedCascadedGetDecompressSizeAsync,
-      nvcompBatchedCascadedDecompressGetRequiredAlignments,
-      nvcompBatchedCascadedDecompressOpts,
-      state
-    );
-  }
+  run_compression(
+    nvcompBatchedCascadedCompressGetTempSize,
+    nvcompBatchedCascadedCompressGetTempSizeSync,
+    nvcompBatchedCascadedCompressGetMaxOutputChunkSize,
+    nvcompBatchedCascadedCompressAsync,
+    nvcompBatchedCascadedCompressGetRequiredAlignments,
+    isCascadedInputValid,
+    nvcompBatchedCascadedCompressOpts,
+    nvcompBatchedCascadedDecompressOpts,
+    state
+  );
 }
 
-static void run_benchmark_compress(nvbench::state &state) { run_benchmark<true>(state); }
-static void run_benchmark_decompress(nvbench::state &state) { run_benchmark<false>(state); }
+void run_benchmark_decompress(nvbench::state &state)
+{
+  run_decompression(
+    nvcompBatchedCascadedDecompressGetTempSize,
+    nvcompBatchedCascadedDecompressGetTempSizeSync,
+    nvcompBatchedCascadedDecompressAsync,
+    nvcompBatchedCascadedGetDecompressSizeAsync,
+    nvcompBatchedCascadedDecompressGetRequiredAlignments,
+    nvcompBatchedCascadedDecompressOpts,
+    state
+  );
+}
+
 NVBENCH_BENCH(run_benchmark_compress)
   .set_name("Cascaded Chunked Compression")
   .set_stopping_criterion("total-time-criterion")

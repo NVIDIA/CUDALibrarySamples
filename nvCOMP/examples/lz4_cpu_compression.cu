@@ -16,7 +16,7 @@
  */
 
 #include "BatchData.h"
-#include "nvcomp/lz4.h"
+#include "nvcomp.h"
 
 #include <lz4.h>
 #include <lz4hc.h>
@@ -113,16 +113,17 @@ run_example(const std::vector<std::vector<char>> &data, size_t warmup_iteration_
 
   // LZ4 GPU decompression
   size_t decomp_temp_bytes;
-  status = nvcompBatchedLZ4DecompressGetTempSizeAsync(
+  status = nvcompBatchedLZ4DecompressGetTempSize(
     chunk_count,
     chunk_size,
     decompress_opts,
     &decomp_temp_bytes,
-    chunk_count * chunk_size
+    chunk_count * chunk_size,
+    stream
   );
   if (status != nvcompSuccess)
   {
-    throw std::runtime_error("nvcompBatchedLZ4DecompressGetTempSizeAsync() failed.");
+    throw std::runtime_error("nvcompBatchedLZ4DecompressGetTempSize() failed.");
   }
 
   void *d_decomp_temp;

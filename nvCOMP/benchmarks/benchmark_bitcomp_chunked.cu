@@ -16,25 +16,30 @@
  */
 
 #include "benchmark_template_chunked.cuh"
-#include "nvcomp/bitcomp.h"
+#include "nvcomp.h"
 
 NVBENCH_REGISTER_CRITERION(total_time_criterion);
 
 static nvcompBatchedBitcompCompressOpts_t nvcompBatchedBitcompCompressOpts = nvcompBatchedBitcompCompressDefaultOpts;
 static nvcompBatchedBitcompDecompressOpts_t nvcompBatchedBitcompDecompressOpts =
   nvcompBatchedBitcompDecompressDefaultOpts;
+static bool bitcomp_delta_was_specified = false;
 
 const std::vector<parameter_type> custom_params = {
   {"t",
    "type",
-   "Bitcomp data type. Must be one of (u)char, (u)short, (u)int, or (u)longlong.",
+   "Bitcomp data type. Must be an integral type, float16, float32, or float64.",
    "uchar",
    [](const char *arg) -> bool {
      bool valid;
      nvcompBatchedBitcompCompressOpts.data_type = string_to_data_type(arg, valid);
      return valid;
    }},
-  {"alg", "algorithm", "Bitcomp algorithm to use (0 or 1).", "0", [](const char *arg) -> bool {
+  {"alg",
+   "algorithm",
+   "Bitcomp algorithm to use (0 or 1).",
+   "0",
+   [](const char *arg) -> bool {
      int algorithm_type = atoi(arg);
      if (algorithm_type < 0 || algorithm_type > 1)
      {
@@ -43,57 +48,68 @@ const std::vector<parameter_type> custom_params = {
      }
      nvcompBatchedBitcompCompressOpts.algorithm = algorithm_type;
      return true;
+   }},
+  {"",
+   "mode",
+   "Bitcomp mode: lossless, lossy-signed, or lossy-unsigned. Lossy modes require --delta.",
+   "lossless",
+   [](const char *arg) -> bool {
+     if (strcmp(arg, "lossless") == 0)
+     {
+       nvcompBatchedBitcompCompressOpts.mode = BITCOMP_LOSSLESS;
+       nvcompBatchedBitcompCompressOpts.delta = 0.0;
+       return true;
+     }
+     if (strcmp(arg, "lossy-signed") == 0)
+     {
+       nvcompBatchedBitcompCompressOpts.mode = BITCOMP_LOSSY_FP_TO_SIGNED;
+       return true;
+     }
+     if (strcmp(arg, "lossy-unsigned") == 0)
+     {
+       nvcompBatchedBitcompCompressOpts.mode = BITCOMP_LOSSY_FP_TO_UNSIGNED;
+       return true;
+     }
+     std::cerr << "ERROR: Bitcomp mode must be lossless, lossy-signed, or lossy-unsigned." << std::endl;
+     return false;
+   }},
+  {"", "delta", "Lossy compression delta (required for lossy modes).", "", [](const char *arg) -> bool {
+     nvcompBatchedBitcompCompressOpts.delta = atof(arg);
+     bitcomp_delta_was_specified = true;
+     return true;
    }}
 };
 
 static bool isBitcompInputValid(
   const std::vector<std::vector<char>> &data,
   bool compressed_inputs,
-  [[maybe_unused]] const nvcompBatchedBitcompCompressOpts_t compress_opts,
+  const nvcompBatchedBitcompCompressOpts_t compress_opts,
   [[maybe_unused]] const nvcompBatchedBitcompDecompressOpts_t decompress_opts
 )
 {
-
-  // Find the type size, to check that all chunk sizes are a multiple of it.
-  size_t typeSize = 1;
-  auto type = nvcompBatchedBitcompCompressOpts.data_type;
-  switch (type)
+  if (compressed_inputs)
   {
-    case NVCOMP_TYPE_CHAR:
-    case NVCOMP_TYPE_UCHAR:
-      // Type size is 1 byte, so chunk sizes are always a multiple of it.
-      return true;
-    case NVCOMP_TYPE_SHORT:
-    case NVCOMP_TYPE_USHORT:
-      typeSize = sizeof(uint16_t);
-      break;
-    case NVCOMP_TYPE_INT:
-    case NVCOMP_TYPE_UINT:
-      typeSize = sizeof(uint32_t);
-      break;
-    case NVCOMP_TYPE_LONGLONG:
-    case NVCOMP_TYPE_ULONGLONG:
-      typeSize = sizeof(uint64_t);
-      break;
-    default:
-      std::cerr << "ERROR: Bitcomp data type must be 0-7 (CHAR, UCHAR, SHORT, "
-                   "USHORT, INT, UINT, LONGLONG, or ULONGLONG), "
-                   "but it is "
-                << int(type) << std::endl;
-      return false;
+    return true;
   }
 
-  if (!compressed_inputs)
+  const auto type = compress_opts.data_type;
+  const bool integral_type = type == NVCOMP_TYPE_BITS || (type >= NVCOMP_TYPE_CHAR && type <= NVCOMP_TYPE_ULONGLONG);
+  const bool floating_point_type = type == NVCOMP_TYPE_FLOAT16 || type == NVCOMP_TYPE_FLOAT32 ||
+                                   type == NVCOMP_TYPE_FLOAT64;
+  // Lossy modes require a floating-point type; lossless additionally accepts integral types.
+  const bool valid_mode_and_type = floating_point_type || (compress_opts.mode == BITCOMP_LOSSLESS && integral_type);
+  if (!valid_mode_and_type)
   {
-    for (const auto &chunk : data)
+    std::cerr << "ERROR: Lossy Bitcomp requires a floating-point type." << std::endl;
+    return false;
+  }
+
+  const size_t type_size = nvcomp::sizeOfnvcompType(type);
+  for (const auto &chunk : data)
+  {
+    if (!nvcomp::ensure_length_type_aligned(chunk.size(), type_size))
     {
-      if ((chunk.size() % typeSize) != 0)
-      {
-        std::cerr << "ERROR: Input data must have a length and chunk size that "
-                     "are a multiple of "
-                  << typeSize << ", the size of the specified data type." << std::endl;
-        return false;
-      }
+      return false;
     }
   }
   return true;
@@ -102,10 +118,15 @@ static bool isBitcompInputValid(
 template <bool DO_COMPRESSION>
 void run_benchmark(nvbench::state &state)
 {
+  benchmark_assert(
+    nvcompBatchedBitcompCompressOpts.mode == BITCOMP_LOSSLESS || bitcomp_delta_was_specified,
+    "Lossy Bitcomp mode requires --delta."
+  );
+
   if constexpr (DO_COMPRESSION)
   {
     run_compression(
-      nvcompBatchedBitcompCompressGetTempSizeAsync,
+      nvcompBatchedBitcompCompressGetTempSize,
       nvcompBatchedBitcompCompressGetTempSizeSync,
       nvcompBatchedBitcompCompressGetMaxOutputChunkSize,
       nvcompBatchedBitcompCompressAsync,
@@ -113,21 +134,22 @@ void run_benchmark(nvbench::state &state)
       isBitcompInputValid,
       nvcompBatchedBitcompCompressOpts,
       nvcompBatchedBitcompDecompressOpts,
-      state,
-      nvbench::exec_tag::sync
+      state
     );
   }
   else
   {
     run_decompression(
-      nvcompBatchedBitcompDecompressGetTempSizeAsync,
+      nvcompBatchedBitcompDecompressGetTempSize,
       nvcompBatchedBitcompDecompressGetTempSizeSync,
       nvcompBatchedBitcompDecompressAsync,
       nvcompBatchedBitcompGetDecompressSizeAsync,
       nvcompBatchedBitcompDecompressGetRequiredAlignments,
       nvcompBatchedBitcompDecompressOpts,
       state,
-      nvbench::exec_tag::sync
+      nvbench::exec_tag::sync,
+      nvcompBatchedBitcompCompressOpts.mode == BITCOMP_LOSSLESS ? 0.0 : nvcompBatchedBitcompCompressOpts.delta,
+      nvcompBatchedBitcompCompressOpts.data_type
     );
   }
 }

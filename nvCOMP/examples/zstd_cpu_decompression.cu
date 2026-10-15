@@ -16,7 +16,7 @@
  */
 
 #include "BatchData.h"
-#include "nvcomp/zstd.h"
+#include "nvcomp.h"
 
 #include <zstd.h>
 
@@ -69,18 +69,22 @@ run_example(const std::vector<std::vector<char>> &data, size_t warmup_iteration_
   BatchData input_data(data, chunk_size, compression_alignment_reqs.input);
   const size_t chunk_count = input_data.size();
 
+  cudaStream_t stream;
+  CUDA_CHECK(cudaStreamCreate(&stream));
+
   // Compress on the GPU using batched API
   size_t comp_temp_bytes;
-  status = nvcompBatchedZstdCompressGetTempSizeAsync(
+  status = nvcompBatchedZstdCompressGetTempSize(
     chunk_count,
     chunk_size,
     nvcompBatchedZstdOpts,
     &comp_temp_bytes,
-    chunk_count * chunk_size
+    chunk_count * chunk_size,
+    stream
   );
   if (status != nvcompSuccess)
   {
-    throw std::runtime_error("ERROR: nvcompBatchedZstdCompressGetTempSizeAsync() not successful");
+    throw std::runtime_error("ERROR: nvcompBatchedZstdCompressGetTempSize() not successful");
   }
 
   void *d_comp_temp;
@@ -94,9 +98,6 @@ run_example(const std::vector<std::vector<char>> &data, size_t warmup_iteration_
   }
 
   BatchData compressed_data(max_out_bytes, chunk_count, compression_alignment_reqs.output);
-
-  cudaStream_t stream;
-  CUDA_CHECK(cudaStreamCreate(&stream));
 
   cudaEvent_t start, end;
   CUDA_CHECK(cudaEventCreate(&start));

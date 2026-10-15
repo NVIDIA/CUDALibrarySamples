@@ -16,7 +16,7 @@
  */
 
 #include "BatchData.h"
-#include "nvcomp/gdeflate.h"
+#include "nvcomp.h"
 #include "nvcomp/native/gdeflate_cpu.h"
 
 BatchDataCPU GetBatchDataCPU(const BatchData &batch_data, bool copy_data)
@@ -68,18 +68,22 @@ run_example(const std::vector<std::vector<char>> &data, size_t warmup_iteration_
   const size_t chunk_count = input_data.size();
   std::cout << "chunks: " << chunk_count << std::endl;
 
+  cudaStream_t stream;
+  CUDA_CHECK(cudaStreamCreate(&stream));
+
   // Compress on the GPU using batched API
   size_t comp_temp_bytes;
-  status = nvcompBatchedGdeflateCompressGetTempSizeAsync(
+  status = nvcompBatchedGdeflateCompressGetTempSize(
     chunk_count,
     chunk_size,
     nvcompBatchedGdeflateOpts,
     &comp_temp_bytes,
-    chunk_count * chunk_size
+    chunk_count * chunk_size,
+    stream
   );
   if (status != nvcompSuccess)
   {
-    throw std::runtime_error("ERROR: nvcompBatchedGdeflateCompressGetTempSizeAsync() not successful");
+    throw std::runtime_error("ERROR: nvcompBatchedGdeflateCompressGetTempSize() not successful");
   }
 
   void *d_comp_temp;
@@ -93,9 +97,6 @@ run_example(const std::vector<std::vector<char>> &data, size_t warmup_iteration_
   }
 
   BatchData compress_data(max_out_bytes, chunk_count, compression_alignment_reqs.output);
-
-  cudaStream_t stream;
-  CUDA_CHECK(cudaStreamCreate(&stream));
 
   cudaEvent_t start, end;
   CUDA_CHECK(cudaEventCreate(&start));
@@ -157,7 +158,7 @@ run_example(const std::vector<std::vector<char>> &data, size_t warmup_iteration_
   BatchDataCPU decompress_data_cpu(chunk_size, chunk_count);
 
   // Gdeflate CPU decompression
-  gdeflate::decompressCPU(
+  nvcomp::gdeflate::decompressCPU(
     compress_data_cpu.ptrs(),
     compress_data_cpu.sizes(),
     chunk_count,

@@ -18,13 +18,13 @@
 
 #include <cuda_fp16.h>
 
+#include <cassert>
 #include <cmath>
 #include <iomanip>
 #include <iostream>
 #include <type_traits>
 
 #include "nvcomp.hpp"
-#include "nvcomp/bitcomp.h"
 #include "nvcomp/native/bitcomp.h"
 
 namespace nvcomp
@@ -88,12 +88,12 @@ inline void verifyLossyCompression(
   const void *output,
   const size_t num_bytes,
   const double delta,
-  const bitcompDataType_t data_type
+  const nvcompType_t data_type
 )
 {
   switch (data_type)
   {
-    case BITCOMP_FP16_DATA:
+    case NVCOMP_TYPE_FLOAT16:
       assert(num_bytes % sizeof(half) == 0);
       verifyLossyCompressionInternal(
         reinterpret_cast<const half *>(input),
@@ -102,7 +102,7 @@ inline void verifyLossyCompression(
         delta
       );
       break;
-    case BITCOMP_FP32_DATA:
+    case NVCOMP_TYPE_FLOAT32:
       assert(num_bytes % sizeof(float) == 0);
       verifyLossyCompressionInternal(
         reinterpret_cast<const float *>(input),
@@ -111,7 +111,7 @@ inline void verifyLossyCompression(
         delta
       );
       break;
-    case BITCOMP_FP64_DATA:
+    case NVCOMP_TYPE_FLOAT64:
       assert(num_bytes % sizeof(double) == 0);
       verifyLossyCompressionInternal(
         reinterpret_cast<const double *>(input),

@@ -16,7 +16,7 @@
  */
 
 #include "benchmark_template_chunked.cuh"
-#include "nvcomp/lz4.h"
+#include "nvcomp.h"
 
 NVBENCH_REGISTER_CRITERION(total_time_criterion);
 
@@ -84,11 +84,8 @@ static bool isLZ4InputValid(
   {
     for (const auto &chunk : data)
     {
-      if ((chunk.size() % typeSize) != 0)
+      if (!nvcomp::ensure_length_type_aligned(chunk.size(), typeSize))
       {
-        std::cerr << "ERROR: Input data must have a length and chunk size that "
-                     "are a multiple of "
-                  << typeSize << ", the size of the specified data type." << std::endl;
         return false;
       }
     }
@@ -102,7 +99,7 @@ void run_benchmark(nvbench::state &state)
   if constexpr (DO_COMPRESSION)
   {
     run_compression(
-      nvcompBatchedLZ4CompressGetTempSizeAsync,
+      nvcompBatchedLZ4CompressGetTempSize,
       nvcompBatchedLZ4CompressGetTempSizeSync,
       nvcompBatchedLZ4CompressGetMaxOutputChunkSize,
       nvcompBatchedLZ4CompressAsync,
@@ -116,7 +113,7 @@ void run_benchmark(nvbench::state &state)
   else
   {
     run_decompression(
-      nvcompBatchedLZ4DecompressGetTempSizeAsync,
+      nvcompBatchedLZ4DecompressGetTempSize,
       nvcompBatchedLZ4DecompressGetTempSizeSync,
       nvcompBatchedLZ4DecompressAsync,
       nvcompBatchedLZ4GetDecompressSizeAsync,

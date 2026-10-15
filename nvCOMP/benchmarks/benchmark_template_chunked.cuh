@@ -31,13 +31,13 @@
 #include <cuda_fp16.h>
 
 #include <algorithm>
+#include <cstring>
 #include <fstream>
 #include <functional>
 #include <iostream>
-#include <memory>
 #include <numeric>
-#include <sstream>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -73,6 +73,9 @@ struct args_type
   size_t chunk_size;
   bool compressed_inputs;
   bool single_output_buffer;
+  // Include host-side launch/dispatch in the timed region by disabling NVBench's
+  // blocking kernel and its throttle guard.
+  bool include_launch_overhead;
   std::string output_compressed_filename;
   std::string output_decompressed_filename;
 };
@@ -172,6 +175,14 @@ static nvcompType_t string_to_data_type(const char *name, bool &valid)
   {
     return NVCOMP_TYPE_FLOAT16;
   }
+  if (strcmp(name, "float32") == 0)
+  {
+    return NVCOMP_TYPE_FLOAT32;
+  }
+  if (strcmp(name, "float64") == 0)
+  {
+    return NVCOMP_TYPE_FLOAT64;
+  }
   if (strcmp(name, "float8_e4m3") == 0)
   {
     return NVCOMP_TYPE_FLOAT8_E4M3;
@@ -186,8 +197,6 @@ using namespace nvcomp;
 
 namespace
 {
-
-constexpr const char *const REQUIRED_PARAMETER = "_REQUIRED_";
 
 class BatchData
 {
@@ -323,26 +332,19 @@ std::vector<std::vector<char>> readFileWithPageSizes(const std::string &filename
 
 } // namespace
 
-template <typename ExecTagT, typename KernelLauncherT>
-void exec_or_waive_on_oom(nvbench::state &state, ExecTagT exec_tag, KernelLauncherT &&kernel_launcher)
+static void configure_state_timing(nvbench::state &state)
 {
-  try
+  // Set it large so that it never triggers in practice, unless a deadlock is truly happening.
+  state.set_blocking_kernel_timeout(600.0);
+  if (args.include_launch_overhead)
   {
-    state.exec(exec_tag, std::forward<KernelLauncherT>(kernel_launcher));
-  }
-  catch (const std::exception &e)
-  {
-    if (std::string(e.what()).find(cudaGetErrorName(cudaErrorMemoryAllocation)) != std::string::npos)
-    {
-      std::cerr << "WARNING: Out of memory during NVBench measurement. Could not run benchmark." << std::endl;
-      std::exit(3);
-    }
-    throw;
+    state.set_disable_blocking_kernel(true);
+    state.set_throttle_threshold(0.0f);
   }
 }
 
 template <
-  typename CompGetTempAsyncT,
+  typename CompGetTempT,
   typename CompGetTempSyncT,
   typename CompGetSizeT,
   typename CompAsyncT,
@@ -352,7 +354,7 @@ template <
   typename DecompressOptsT,
   typename ExecTagT = decltype(nvbench::exec_tag::no_batch)>
 void run_compression(
-  CompGetTempAsyncT BatchedCompressGetTempSizeAsync,
+  CompGetTempT BatchedCompressGetTempSize,
   CompGetTempSyncT BatchedCompressGetTempSizeSync,
   CompGetSizeT BatchedCompressGetMaxOutputChunkSize,
   CompAsyncT BatchedCompressAsync,
@@ -405,15 +407,16 @@ void run_compression(
   BatchData compressed_data(max_compressed_chunk_size, batch_size, compression_alignment_reqs.output);
 
   // Compress on the GPU using batched API
-  size_t comp_temp_bytes_async = 0;
-  status = BatchedCompressGetTempSizeAsync(
+  size_t comp_temp_bytes_query = 0;
+  status = BatchedCompressGetTempSize(
     batch_size,
     max_uncompressed_chunk_size,
     compress_opts,
-    &comp_temp_bytes_async,
-    batch_size * max_uncompressed_chunk_size
+    &comp_temp_bytes_query,
+    batch_size * max_uncompressed_chunk_size,
+    stream
   );
-  benchmark_assert(status == nvcompSuccess, "BatchedCompressGetTempSizeAsync() failed.");
+  benchmark_assert(status == nvcompSuccess, "BatchedCompressGetTempSize() failed.");
 
   size_t comp_temp_bytes_sync = 0;
   status = BatchedCompressGetTempSizeSync(
@@ -429,8 +432,10 @@ void run_compression(
   benchmark_assert(status == nvcompSuccess, "BatchedCompressGetTempSizeSync() failed.");
 
   const size_t comp_temp_bytes = comp_temp_bytes_sync;
-  if (comp_temp_bytes_sync > comp_temp_bytes_async) {
-    std::cerr << "The required sync compression temp space is greater than the async one." << std::endl;
+  if (comp_temp_bytes_sync > comp_temp_bytes_query)
+  {
+    std::cerr << "The required sync compression temp space is greater than the value returned by GetTempSize()."
+              << std::endl;
   }
 
   void *d_comp_temp;
@@ -443,8 +448,7 @@ void run_compression(
   CUDA_CHECK(cudaStreamSynchronize(stream));
 
   state.add_element_count(total_bytes, "Bytes");
-  // Set it large so that it never triggers in practice, unless a deadlock is truly happening.
-  state.set_blocking_kernel_timeout(600.0);
+  configure_state_timing(state);
 
   exec_or_waive_on_oom(state, exec_tag, [&](nvbench::launch &launch) {
     status = BatchedCompressAsync(
@@ -508,10 +512,7 @@ void run_compression(
       );
       if (!args.output_compressed_filename.empty())
       {
-        std::ofstream outfile{
-          args.output_compressed_filename.c_str() + std::string(".") + std::to_string(i),
-          outfile.binary
-        };
+        std::ofstream outfile{args.output_compressed_filename + std::string(".") + std::to_string(i), outfile.binary};
         outfile.write(reinterpret_cast<char *>(compressed_data_host.back().data()), compressed_sizes_host[i]);
         outfile.close();
       }
@@ -548,7 +549,7 @@ static bool device_has_decompress_engine()
 }
 
 template <
-  typename DecompGetTempAsyncT,
+  typename DecompGetTempT,
   typename DecompGetTempSyncT,
   typename DecompAsyncT,
   typename DecompGetSizeT,
@@ -556,7 +557,7 @@ template <
   typename DecompressOptsT,
   typename ExecTagT = decltype(nvbench::exec_tag::no_batch)>
 void run_decompression(
-  DecompGetTempAsyncT BatchedDecompressGetTempSizeAsync,
+  DecompGetTempT BatchedDecompressGetTempSize,
   DecompGetTempSyncT BatchedDecompressGetTempSizeSync,
   DecompAsyncT BatchedDecompressAsync,
   DecompGetSizeT BatchedDecompressGetSize,
@@ -565,7 +566,7 @@ void run_decompression(
   nvbench::state &state,
   ExecTagT exec_tag = nvbench::exec_tag::no_batch,
   const double lossy_delta = 0.0,
-  const int lossy_fp_bits = 0
+  const nvcompType_t lossy_data_type = NVCOMP_TYPE_BITS
 )
 {
   if (!args.compressed_inputs && compressed_data_host.empty())
@@ -612,15 +613,16 @@ void run_decompression(
   nvcompStatus_t *d_decomp_statuses;
   CUDA_CHECK(cudaMallocSafe(&d_decomp_statuses, batch_size * sizeof(nvcompStatus_t)));
 
-  size_t decomp_temp_bytes_async;
-  status = BatchedDecompressGetTempSizeAsync(
+  size_t decomp_temp_bytes_query;
+  status = BatchedDecompressGetTempSize(
     batch_size,
     max_uncompressed_chunk_size,
     decompress_opts,
-    &decomp_temp_bytes_async,
-    batch_size * max_uncompressed_chunk_size
+    &decomp_temp_bytes_query,
+    batch_size * max_uncompressed_chunk_size,
+    stream
   );
-  benchmark_assert(status == nvcompSuccess, "BatchedDecompressGetTempSizeAsync() failed.");
+  benchmark_assert(status == nvcompSuccess, "BatchedDecompressGetTempSize() failed.");
 
   size_t decomp_temp_bytes_sync;
   status = BatchedDecompressGetTempSizeSync(
@@ -637,8 +639,10 @@ void run_decompression(
   benchmark_assert(status == nvcompSuccess, "BatchedDecompressGetTempSizeSync() failed.");
 
   const size_t decomp_temp_bytes = decomp_temp_bytes_sync;
-  if (decomp_temp_bytes_sync > decomp_temp_bytes_async) {
-    std::cerr << "The required sync decompression temp space is greater than the async one." << std::endl;
+  if (decomp_temp_bytes_sync > decomp_temp_bytes_query)
+  {
+    std::cerr << "The required sync decompression temp space is greater than the value returned by GetTempSize()."
+              << std::endl;
   }
 
   void *d_decomp_temp;
@@ -691,8 +695,7 @@ void run_decompression(
   CUDA_CHECK(cudaStreamSynchronize(stream));
 
   state.add_element_count(total_uncomp_size, "Bytes");
-  // Set it large so that it never triggers in practice, unless a deadlock is truly happening.
-  state.set_blocking_kernel_timeout(600.0);
+  configure_state_timing(state);
 
   auto decompression_launcher = [&](nvbench::launch &launch) {
     status = BatchedDecompressAsync(
@@ -791,7 +794,7 @@ void run_decompression(
           act_data.data(),
           exp_chunk.size(),
           lossy_delta,
-          getLossyDataType(lossy_fp_bits)
+          lossy_data_type
         );
       }
       else
@@ -824,7 +827,7 @@ void run_decompression(
       if (!args.single_output_buffer)
       {
         std::ofstream outfile{
-          args.output_decompressed_filename.c_str() + std::string(".") + std::to_string(ix_chunk),
+          args.output_decompressed_filename + std::string(".") + std::to_string(ix_chunk),
           outfile.binary
         };
         outfile.write(reinterpret_cast<char *>(&uncomp_data[ix_offset]), h_decomp_sizes[ix_chunk]);
@@ -834,7 +837,7 @@ void run_decompression(
     }
     if (args.single_output_buffer)
     {
-      std::ofstream outfile{args.output_decompressed_filename.c_str(), outfile.binary};
+      std::ofstream outfile{args.output_decompressed_filename, outfile.binary};
       outfile.write(reinterpret_cast<char *>(uncomp_data.data()), total_decomp_bytes);
       outfile.close();
     }
@@ -851,15 +854,6 @@ void run_decompression(
   CUDA_CHECK(cudaFree(d_decomp_buffer_sizes));
   CUDA_CHECK(cudaFree(d_decomp_sizes));
 }
-
-struct parameter_type
-{
-  std::string short_flag;
-  std::string long_flag;
-  std::string description;
-  std::string default_value;
-  std::function<bool(const char *)> handler;
-};
 
 // Each benchmark must define this vector with its custom parameters and
 // their parsing functions. If the benchmark has no custom parameters,
@@ -907,7 +901,7 @@ void usage(const std::string &name, const std::vector<parameter_type> &parameter
   }
 }
 
-bool parse_args(int &argc, char **argv)
+std::pair<bool, std::vector<char *>> parse_args(int argc, char **argv)
 {
   bool skip_benchmark = false;
   args.multiple_of = 1;
@@ -916,9 +910,10 @@ bool parse_args(int &argc, char **argv)
   args.chunk_size = 65536;
   args.compressed_inputs = false;
   args.single_output_buffer = false;
+  args.include_launch_overhead = false;
 
   std::vector<parameter_type> params{
-    {"?", "help", "Show options.", "", nullptr},
+    {"h", "help", "Show options.", "", nullptr},
     {"db",
      "decompress_backend",
      "Decompression backend to use : Best available (0), HW (1) or CUDA (2). "
@@ -998,6 +993,16 @@ bool parse_args(int &argc, char **argv)
        args.single_output_buffer = parse_bool(arg);
        return true;
      }},
+    {"ilo",
+     "include_launch_overhead",
+     "Include host-side launch/dispatch in the timed region by disabling "
+     "NVBench's blocking kernel and its throttle guard (samples otherwise "
+     "get discarded when the idle GPU downclocks).",
+     std::to_string(args.include_launch_overhead),
+     [](const char *arg) {
+       args.include_launch_overhead = parse_bool(arg);
+       return true;
+     }},
     {"oc",
      "output_compressed_file",
      "Output compressed basename",
@@ -1012,22 +1017,21 @@ bool parse_args(int &argc, char **argv)
      }},
   };
 
-  char **const argv_orig = argv;
-  char **argv_end = argv + argc;
   const std::string name(argv[0]);
-  argv += 1;
 
-  // Collect args not consumed by us, to pass through to NVBench.
-  std::vector<char *> remaining_argv{argv_orig[0]};
+  // Collect args not consumed by us, to pass through to NVBench, starting with
+  // the program name.
+  std::vector<char *> remaining_argv{argv[0]};
 
   auto all_params = params;
   all_params.insert(all_params.end(), custom_params.begin(), custom_params.end());
 
-  // Remove handled arguments from argv, so that NVBench does not get confused.
-  while (argv != argv_end)
+  // Walk the arguments, consuming the flags we handle and copying everything
+  // else into remaining_argv, to pass to NVBench.
+  for (int i = 1; i < argc; ++i)
   {
-    char *const cur_arg_ptr = *argv;
-    std::string arg(*(argv++));
+    char *const cur_arg_ptr = argv[i];
+    const std::string_view arg(cur_arg_ptr);
     bool found = false;
     for (const parameter_type &param : all_params)
     {
@@ -1039,15 +1043,14 @@ bool parse_args(int &argc, char **argv)
         if (param.long_flag == "help")
         {
           usage(name, params);
-          // NVBench does not recognize "-?" as a help flag, so we add the long one instead
-          static char help_flag[] = "--help";
-          remaining_argv.push_back(help_flag);
+          // We consumed the help flag, so re-add it for NVBench.
+          remaining_argv.push_back(cur_arg_ptr);
           skip_benchmark = true;
           break;
         }
 
         // everything from here on out requires an extra parameter
-        if (argv >= argv_end)
+        if (i + 1 >= argc)
         {
           std::cerr << "ERROR: Missing argument for '" << arg << "'." << std::endl;
           usage(name, params);
@@ -1056,15 +1059,14 @@ bool parse_args(int &argc, char **argv)
         if (param.long_flag == "input_file")
         {
           // read all following arguments until a new flag is found
-          char **next_argv_ptr = argv;
-          while (next_argv_ptr < argv_end && (*next_argv_ptr)[0] != '-')
+          while (i + 1 < argc && argv[i + 1][0] != '-')
           {
-            args.filenames.emplace_back(*next_argv_ptr);
-            next_argv_ptr = ++argv;
+            args.filenames.emplace_back(argv[i + 1]);
+            ++i;
           }
           break;
         }
-        if (!param.handler(*(argv++)))
+        if (!param.handler(argv[++i]))
         {
           std::exit(1);
         }
@@ -1084,20 +1086,12 @@ bool parse_args(int &argc, char **argv)
     skip_benchmark = true;
   }
 
-  // Compact argv in-place with only the args NVBench should see.
-  for (size_t i = 0; i < remaining_argv.size(); ++i)
-  {
-    argv_orig[i] = remaining_argv[i];
-  }
-  argv_orig[remaining_argv.size()] = nullptr;
-  argc = static_cast<int>(remaining_argv.size());
-
-  return skip_benchmark;
+  return {skip_benchmark, std::move(remaining_argv)};
 }
 
 int main(int argc, char **argv)
 {
-  bool skip_benchmark = parse_args(argc, argv);
+  auto [skip_benchmark, remaining_argv] = parse_args(argc, argv);
 
   if (!skip_benchmark)
   {
@@ -1106,9 +1100,8 @@ int main(int argc, char **argv)
 
   // Default to a single GPU (device 0) unless the user passed NVBench's
   // -d/--device/--devices; NVBench otherwise runs on all visible devices.
-  std::vector<char *> nvbench_argv(argv, argv + argc);
-  nvcomp::default_to_single_device(nvbench_argv);
-  int nvbench_argc = static_cast<int>(nvbench_argv.size());
+  nvcomp::default_to_single_device(remaining_argv);
+  int nvbench_argc = static_cast<int>(remaining_argv.size());
 
-  NVBENCH_MAIN_BODY(nvbench_argc, nvbench_argv.data());
+  NVBENCH_MAIN_BODY(nvbench_argc, remaining_argv.data());
 }

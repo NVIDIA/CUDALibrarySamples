@@ -32,8 +32,7 @@
 #include <iostream>
 #include <vector>
 
-#include "nvcomp/lz4_cpu.hpp"
-#include "nvcomp/nvcompManagerFactory.hpp"
+#include "nvcomp_cpu.hpp"
 #include "util.h"
 
 using namespace nvcomp;
@@ -85,8 +84,14 @@ static void run_example(const std::vector<std::vector<char>> &data)
   CUDA_CHECK(cudaMemcpyAsync(d_comp, host_comp.data(), comp_size, cudaMemcpyHostToDevice, stream));
   CUDA_CHECK(cudaStreamSynchronize(stream));
 
-  std::shared_ptr<nvcompManagerBase> decomp_manager =
-    create_manager(d_comp, stream, NoComputeNoVerify, NVCOMP_DECOMPRESS_BACKEND_DEFAULT, false);
+  std::shared_ptr<nvcompManagerBase> decomp_manager = create_manager(
+    d_comp,
+    stream,
+    ChecksumPolicy::NoComputeNoVerify,
+    ExecutionPolicy::Concurrency,
+    NVCOMP_DECOMPRESS_BACKEND_DEFAULT,
+    false
+  );
 
   DecompressionConfig decomp_config = decomp_manager->configure_decompression(d_comp);
   if (decomp_config.decomp_data_size != uncomp_size)

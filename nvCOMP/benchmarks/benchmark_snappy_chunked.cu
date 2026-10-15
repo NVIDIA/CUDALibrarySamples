@@ -16,7 +16,7 @@
  */
 
 #include "benchmark_template_chunked.cuh"
-#include "nvcomp/snappy.h"
+#include "nvcomp.h"
 
 NVBENCH_REGISTER_CRITERION(total_time_criterion);
 
@@ -28,7 +28,7 @@ void run_benchmark(nvbench::state &state)
   if constexpr (DO_COMPRESSION)
   {
     run_compression(
-      nvcompBatchedSnappyCompressGetTempSizeAsync,
+      nvcompBatchedSnappyCompressGetTempSize,
       nvcompBatchedSnappyCompressGetTempSizeSync,
       nvcompBatchedSnappyCompressGetMaxOutputChunkSize,
       nvcompBatchedSnappyCompressAsync,
@@ -42,7 +42,7 @@ void run_benchmark(nvbench::state &state)
   else
   {
     run_decompression(
-      nvcompBatchedSnappyDecompressGetTempSizeAsync,
+      nvcompBatchedSnappyDecompressGetTempSize,
       nvcompBatchedSnappyDecompressGetTempSizeSync,
       nvcompBatchedSnappyDecompressAsync,
       nvcompBatchedSnappyGetDecompressSizeAsync,

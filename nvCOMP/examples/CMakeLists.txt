@@ -41,14 +41,18 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
   set(GPU_ARCHS "75;80;86;89;90")
   if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "13")
-    set(GPU_ARCHS ${GPU_ARCHS} "70")
+    list(APPEND GPU_ARCHS "70")
   endif()
   if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "12.8")
-    set(GPU_ARCHS ${GPU_ARCHS} "100;120")
+    list(APPEND GPU_ARCHS "100" "120")
+  endif()
+  # Tegra support (aarch64 only)
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
     if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "13")
-      set(GPU_ARCHS ${GPU_ARCHS} "110")
-    else()
-      set(GPU_ARCHS ${GPU_ARCHS} "101")
+      list(APPEND GPU_ARCHS "110")
+    endif()
+    if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "13.2")
+      list(APPEND GPU_ARCHS "87")
     endif()
   endif()
 
@@ -85,6 +89,13 @@ function(add_example EXAMPLE_SOURCE NVCOMP_LIB_TYPE)
   set_target_properties(
     ${TARGET_NAME} PROPERTIES CUDA_ARCHITECTURES "${GPU_ARCHS}" OUTPUT_NAME
                                                                 ${BARE_NAME})
+
+  if(MSVC)
+    target_compile_options(
+      ${TARGET_NAME}
+      PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/Zc:preprocessor>
+              $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/Zc:preprocessor>)
+  endif()
 
   # MSVC creates .exp, .lib and .pdb files for executables. They need to be
   # stored in different directories for the dynamic and static builds.

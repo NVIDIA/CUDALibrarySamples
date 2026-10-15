@@ -16,7 +16,7 @@
  */
 
 #include "benchmark_template_chunked.cuh"
-#include "nvcomp/zstd.h"
+#include "nvcomp.h"
 
 NVBENCH_REGISTER_CRITERION(total_time_criterion);
 
@@ -49,7 +49,7 @@ void run_benchmark(nvbench::state &state)
   if constexpr (DO_COMPRESSION)
   {
     run_compression(
-      nvcompBatchedZstdCompressGetTempSizeAsync,
+      nvcompBatchedZstdCompressGetTempSize,
       nvcompBatchedZstdCompressGetTempSizeSync,
       nvcompBatchedZstdCompressGetMaxOutputChunkSize,
       nvcompBatchedZstdCompressAsync,
@@ -63,7 +63,7 @@ void run_benchmark(nvbench::state &state)
   else
   {
     run_decompression(
-      nvcompBatchedZstdDecompressGetTempSizeAsync,
+      nvcompBatchedZstdDecompressGetTempSize,
       nvcompBatchedZstdDecompressGetTempSizeSync,
       nvcompBatchedZstdDecompressAsync,
       nvcompBatchedZstdGetDecompressSizeAsync,
