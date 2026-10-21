@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,7 +32,12 @@
 
 #include <cuda_runtime.h>
 #include <npp.h>
+#if __has_include(<nppworkspace.h>)
 #include <nppworkspace.h>
+#define NPP_HAS_WORKSPACE 1 // NPP 13.2.0.58 (CTK 13.4 and later)
+#else
+#define NPP_HAS_WORKSPACE 0 // older NPP: the application allocates the scratch buffers
+#endif
 
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
@@ -190,7 +195,9 @@ int main(int argc, char** argv)
     cudaStream_t stream;
     CHECK_CUDA(cudaStreamCreate(&stream));
     NppStreamContext ctx = makeStreamContext(stream);
+#if NPP_HAS_WORKSPACE
     CHECK_NPP(nppiWorkspaceCreate(&ctx));
+#endif
 
     cudaDeviceProp prop;
     CHECK_CUDA(cudaGetDeviceProperties(&prop, ctx.nCudaDeviceId));
@@ -218,9 +225,16 @@ int main(int argc, char** argv)
     auto nppGauss = [&]() {
         CHECK_NPP(nppiFilterGaussBorder_8u_C1R_Ctx(d_gray, W, full, {0, 0}, d_out, W, full, NPP_MASK_SIZE_5_X_5, NPP_BORDER_REPLICATE, ctx));
     };
+    // Without an NPP workspace the Canny scratch buffer is allocated once here.
+    Npp8u* d_cannyScratch = nullptr;
+#if !NPP_HAS_WORKSPACE
+    int cannyScratchSize = 0;
+    CHECK_NPP(nppiFilterCannyBorderGetBufferSize(full, &cannyScratchSize));
+    CHECK_CUDA(cudaMalloc(&d_cannyScratch, cannyScratchSize > 0 ? cannyScratchSize : 1));
+#endif
     auto nppCanny = [&]() {
         CHECK_NPP(nppiFilterCannyBorder_8u_C1R_Ctx(d_gray, W, full, {0, 0}, d_out, W, full, NPP_FILTER_SOBEL, NPP_MASK_SIZE_3_X_3, 60, 120,
-                                                   nppiNormL2, NPP_BORDER_REPLICATE, nullptr /* scratch from workspace */, ctx));
+                                                   nppiNormL2, NPP_BORDER_REPLICATE, d_cannyScratch /* nullptr: scratch from workspace */, ctx));
     };
     auto nppResize = [&]() {
         CHECK_NPP(nppiResize_8u_C1R_Ctx(d_gray, W, full, fullRect, d_half, OW, half, halfRect, NPPI_INTER_LINEAR, ctx));
@@ -290,7 +304,10 @@ int main(int argc, char** argv)
         printf("%-22s %11.3f %11.3f %11.3f %11.3f | %8.1fx %8.1fx %8.1fx | %.2f\n", r.name, r.gpuKernel, r.gpuE2E, r.cpu1, r.cpuN,
                r.cpu1 / r.gpuKernel, r.cpu1 / r.gpuE2E, r.cpuN / r.gpuE2E, r.diff);
 
+#if NPP_HAS_WORKSPACE
     nppiWorkspaceDestroy(&ctx);
+#endif
+    cudaFree(d_cannyScratch);
     cudaFree(d_gray); cudaFree(d_rgb); cudaFree(d_out); cudaFree(d_half);
     cudaFreeHost(h_in); cudaFreeHost(h_out); cudaFreeHost(h_rgbIn);
     cudaStreamDestroy(stream);

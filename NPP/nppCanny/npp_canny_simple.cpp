@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,7 +32,12 @@
 
 #include <opencv2/opencv.hpp>
 #include <npp.h>
+#if __has_include(<nppworkspace.h>)
 #include <nppworkspace.h>
+#define NPP_HAS_WORKSPACE 1 // NPP 13.2.0.58 (CTK 13.4 and later)
+#else
+#define NPP_HAS_WORKSPACE 0 // older NPP: the application allocates the scratch buffers
+#endif
 #include <cuda_runtime.h>
 #include <iostream>
 #include <chrono>
@@ -57,7 +62,7 @@
 
 class NPPCanny {
 private:
-    Npp8u *d_src, *d_dst;
+    Npp8u *d_src, *d_dst, *d_buffer = NULL; // d_buffer stays NULL when the NPP workspace supplies the scratch buffer
     NppStreamContext ctx;
     int max_width, max_height;
 
@@ -85,13 +90,23 @@ public:
         ctx.nCudaDevAttrComputeCapabilityMajor = deviceProp.major;
         ctx.nCudaDevAttrComputeCapabilityMinor = deviceProp.minor;
         ctx.nStreamFlags = 0;
+#if NPP_HAS_WORKSPACE
         CHECK_NPP(nppiWorkspaceCreate(&ctx));
+#else
+        int buffer_size = 0;
+        NppiSize roi = {width, height};
+        CHECK_NPP(nppiFilterCannyBorderGetBufferSize(roi, &buffer_size));
+        CHECK_CUDA(cudaMalloc(&d_buffer, buffer_size));
+#endif
     }
 
     ~NPPCanny() {
         cudaFree(d_src);
         cudaFree(d_dst);
+        cudaFree(d_buffer);
+#if NPP_HAS_WORKSPACE
         nppiWorkspaceDestroy(&ctx);
+#endif
     }
 
     cv::Mat detect(const cv::Mat& image, int low_thresh = 50, int high_thresh = 100) {
@@ -123,7 +138,7 @@ public:
             (Npp16s)high_thresh,
             nppiNormL2,
             NPP_BORDER_REPLICATE,
-            NULL,                       // scratch buffer comes from the workspace in ctx
+            d_buffer,                   // NULL: scratch buffer comes from the workspace in ctx
             ctx
         ));
 

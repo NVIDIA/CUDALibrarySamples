@@ -23,7 +23,7 @@ NPP covers the stages of a typical GPU image processing pipeline. The samples ar
 | Template matching | Locate a pattern, robust to gain and offset | `nppiCrossCorrValid_NormLevel`, `nppiMaxIndx` | [templateMatching](templateMatching/) |
 | Segmentation | Region labeling, watershed | `nppiLabelMarkersUF`, `nppiCompressMarkerLabelsUF`, `nppiSegmentWatershed` | [batchedLabelMarkersAndCompression](batchedLabelMarkersAndCompression/), [watershedSegmentation](watershedSegmentation/) |
 | Shape analysis | Contours, Euclidean distance transform | `nppiCompressedMarkerLabelsUFInfo`, `nppiDistanceTransformPBA` | [findContour](findContour/), [distanceTransform](distanceTransform/) |
-| Pipeline efficiency | Scratch buffer handling across frames, CPU comparison | `nppiWorkspaceCreate`, `_Ctx` calls | [workspaceLoop](workspaceLoop/), [opencvBenchmark](opencvBenchmark/) |
+| Pipeline efficiency | Scratch buffer handling across frames, CPU comparison | `nppiWorkspaceCreate`, `_Ctx` calls | [opencvBenchmark](opencvBenchmark/) |
 
 ## Examples Included
 
@@ -47,9 +47,6 @@ NPP covers the stages of a typical GPU image processing pipeline. The samples ar
 
 - [Hough Lines](houghLines/)
   Detects straight lines with Canny edge detection followed by the Hough line transform.
-
-- [Workspace Loop](workspaceLoop/)
-  Compares per-frame allocation, a preallocated buffer and the NPP workspace in a multi-resolution frame loop.
 
 - [OpenCV Benchmark](opencvBenchmark/)
   Times Gaussian blur, Canny, resize and RGB to gray on NPP versus single- and multi-threaded OpenCV, kernel-only and end-to-end.
@@ -79,6 +76,8 @@ Samples using it: [nppCanny](nppCanny/), [findContour](findContour/), [watershed
 [distanceTransform](distanceTransform/) therefore try the workspace first and allocate the scratch buffer only if NPP reports that error,
 so they work with both.
 Applications that do not use a workspace must zero-initialize `NppStreamContext` (as `distanceTransform` now does).
+The samples check for `nppworkspace.h` with `__has_include`
+and fall back to allocating the scratch buffers themselves, so they also build with CUDA toolkits that predate it.
 
 ### Earlier: NPP 13.0.3.9 (CUDA Toolkit 13.0 Update 3)
 

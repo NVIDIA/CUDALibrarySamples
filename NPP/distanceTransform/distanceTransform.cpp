@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,7 +25,12 @@
 #include <nppdefs.h>
 #include <nppcore.h>
 #include <nppi_filtering_functions.h>
+#if __has_include(<nppworkspace.h>)
 #include <nppworkspace.h>
+#define NPP_HAS_WORKSPACE 1 // NPP 13.2.0.58 (CTK 13.4 and later)
+#else
+#define NPP_HAS_WORKSPACE 0 // older NPP: the application allocates the scratch buffers
+#endif
 
 // Set path to whereever your source image files are located.
 // In this sample output files are output at the same path location.
@@ -124,11 +129,13 @@ loadRaw8BitImage(Npp8u * pImage, int nImage)
 // Deallocate all allocated memory
 void shutDown()
 {
+#if NPP_HAS_WORKSPACE
     if (pWorkspaceCtx != 0)
     {
         nppiWorkspaceDestroy(pWorkspaceCtx);
         pWorkspaceCtx = 0;
     }
+#endif
 
     for (int i = 0; i < 6; i++)
     {
@@ -324,6 +331,7 @@ int main(int argc,char **argv)
     // Older libraries return NPP_NULL_POINTER_ERROR for a NULL buffer, in which case the buffers are allocated here.
     bool bWorkspaceScratch = false;
 
+#if NPP_HAS_WORKSPACE
     if (nppiWorkspaceCreate(&nppStreamCtx) == NPP_NO_ERROR)
     {
         pWorkspaceCtx = &nppStreamCtx;
@@ -349,6 +357,7 @@ int main(int argc,char **argv)
         cudaFree(pProbeSrc);
         cudaFree(pProbeDst);
     }
+#endif
 
     printf("Scratch buffers: %s\n", bWorkspaceScratch ? "provided by the NPP workspace" : "allocated by the application (library does not accept a NULL buffer for this function)");
 

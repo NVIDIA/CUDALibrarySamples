@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2020 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -58,11 +58,13 @@ NppStreamContext * pWorkspaceCtx = 0; // Stream context that owns the NPP worksp
 
 void tearDown() // Clean up and tear down
 {
+#if NPP_HAS_WORKSPACE
     if (pWorkspaceCtx != 0)
     {
         nppiWorkspaceDestroy(pWorkspaceCtx);
         pWorkspaceCtx = 0;
     }
+#endif
     if (pUFBatchPerImageCompressedCountListDev != 0)
         cudaFree(pUFBatchPerImageCompressedCountListDev);
     if (pUFBatchSrcDstScratchBufferListDev != 0)
@@ -271,6 +273,7 @@ int main(int argc, const char *argv[])
     // Attach an NPP workspace to the stream context.  The workspace owns a single high-water-mark device scratch buffer
     // that grows on demand, so the per-image label generation below passes a NULL scratch buffer pointer and does not
     // need to call nppiLabelMarkersUFGetBufferSize_32u_C1R() / cudaMalloc() / cudaFree() for each image size.
+#if NPP_HAS_WORKSPACE
     nppStatus = nppiWorkspaceCreate(&nppStreamCtx);
     if (nppStatus != NPP_SUCCESS)
     {
@@ -278,6 +281,7 @@ int main(int argc, const char *argv[])
         return nppStatus;
     }
     pWorkspaceCtx = &nppStreamCtx;
+#endif
 
     NppiSize oSizeROI[NUMBER_OF_IMAGES];
 
@@ -338,14 +342,28 @@ int main(int argc, const char *argv[])
                                                           oSizeROI[nImage].width * sizeof(Npp8u), oSizeROI[nImage].width * sizeof(Npp8u), oSizeROI[nImage].height, 
                                                           cudaMemcpyHostToDevice, nppStreamCtx.hStream);
 
+            // Without an NPP workspace the label generation scratch buffer is allocated here for each image.
+            Npp8u * pLabelScratchDev = NULL;
+#if !NPP_HAS_WORKSPACE
+            int nLabelScratchSize = 0;
+            nppStatus = nppiLabelMarkersUFGetBufferSize_32u_C1R(oSizeROI[nImage], &nLabelScratchSize);
+            if (nppStatus != NPP_SUCCESS)
+                return nppStatus;
+            cudaError = cudaMalloc ((void **)&pLabelScratchDev, nLabelScratchSize > 0 ? nLabelScratchSize : 1);
+            if (cudaError != cudaSuccess)
+                return NPP_MEMORY_ALLOCATION_ERR;
+#endif
+
             nppStatus = nppiLabelMarkersUF_8u32u_C1R_Ctx(pInputImageDev[nImage],
                                                          oSizeROI[nImage].width * sizeof(Npp8u),
                                                          pUFLabelDev[nImage],
                                                          oSizeROI[nImage].width * sizeof(Npp32u),
                                                          oSizeROI[nImage],
                                                          nppiNormInf,
-                                                         NULL, // scratch buffer is taken from the workspace in nppStreamCtx
+                                                         pLabelScratchDev, // NULL: the scratch buffer is taken from the workspace in nppStreamCtx
                                                          nppStreamCtx); 
+
+            cudaFree(pLabelScratchDev); // no-op for NULL; synchronizes with the labeling above
 
             if (nppStatus != NPP_SUCCESS)  
             {

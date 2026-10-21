@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,7 +24,12 @@
 
 #include <npp.h>
 
+#if __has_include(<nppworkspace.h>)
 #include <nppworkspace.h>
+#define NPP_HAS_WORKSPACE 1 // NPP 13.2.0.58 (CTK 13.4 and later)
+#else
+#define NPP_HAS_WORKSPACE 0 // older NPP: the application allocates the scratch buffers
+#endif
 
 
 
@@ -93,7 +98,9 @@ int main() {
     cudaStreamCreate(&ctx.hStream);
 
     // Attach an NPP workspace so label generation takes its scratch from a reusable high-water-mark buffer.
+#if NPP_HAS_WORKSPACE
     nppiWorkspaceCreate(&ctx);
+#endif
 
 
 
@@ -119,7 +126,28 @@ int main() {
 
 
 
-    nppiLabelMarkersUF_8u32u_C1R_Ctx(d_input, WIDTH, d_labels, WIDTH * sizeof(Npp32u), roi, nppiNormInf, NULL /* scratch from workspace */, ctx);
+    // With an NPP workspace the scratch buffer is NULL; otherwise allocate it here.
+    Npp8u* d_scratch = nullptr;
+
+#if !NPP_HAS_WORKSPACE
+    int scratchSize = 0;
+
+    NppStatus bufStatus = nppiLabelMarkersUFGetBufferSize_32u_C1R(roi, &scratchSize);
+
+    if (bufStatus != NPP_SUCCESS) {
+        fprintf(stderr, "nppiLabelMarkersUFGetBufferSize_32u_C1R failed with status %d\n", (int)bufStatus);
+        return 1;
+    }
+
+    cudaError_t mallocStatus = cudaMalloc(&d_scratch, scratchSize > 0 ? scratchSize : 1);
+
+    if (mallocStatus != cudaSuccess) {
+        fprintf(stderr, "cudaMalloc of the label scratch buffer failed: %s\n", cudaGetErrorString(mallocStatus));
+        return 1;
+    }
+#endif
+
+    nppiLabelMarkersUF_8u32u_C1R_Ctx(d_input, WIDTH, d_labels, WIDTH * sizeof(Npp32u), roi, nppiNormInf, d_scratch, ctx);
 
     cudaMemcpy2DAsync(h_labels, WIDTH * sizeof(Npp32u), d_labels, WIDTH * sizeof(Npp32u), WIDTH * sizeof(Npp32u), HEIGHT, cudaMemcpyDeviceToHost, ctx.hStream);
 
@@ -218,7 +246,7 @@ int main() {
 
     // Clean up
 
-    cudaFree(d_input); cudaFree(d_labels);
+    cudaFree(d_input); cudaFree(d_labels); cudaFree(d_scratch);
 
     cudaFree(d_compScratch); cudaFree(d_contours); cudaFree(d_directions);
 
@@ -226,7 +254,9 @@ int main() {
 
     free(h_input); free(h_labels); free(h_contours); free(h_counts); free(h_offsets);
 
+#if NPP_HAS_WORKSPACE
     nppiWorkspaceDestroy(&ctx);
+#endif
 
     cudaStreamDestroy(ctx.hStream);
 

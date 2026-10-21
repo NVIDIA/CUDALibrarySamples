@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2020 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -39,7 +39,12 @@
 #include <fstream>
 
 #include <npp.h>
+#if __has_include(<nppworkspace.h>)
 #include <nppworkspace.h>
+#define NPP_HAS_WORKSPACE 1 // NPP 13.2.0.58 (CTK 13.4 and later)
+#else
+#define NPP_HAS_WORKSPACE 0 // older NPP: the application allocates the scratch buffers
+#endif
 
 
 #ifdef __unix

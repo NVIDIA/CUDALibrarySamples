@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2020 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,7 +18,12 @@
 
 #include "watershedSegmentation.h"
 #include <npp.h>
+#if __has_include(<nppworkspace.h>)
 #include <nppworkspace.h>
+#define NPP_HAS_WORKSPACE 1 // NPP 13.2.0.58 (CTK 13.4 and later)
+#else
+#define NPP_HAS_WORKSPACE 0 // older NPP: the application allocates the scratch buffers
+#endif
 #include <cuda_runtime.h>
 #include <iostream>
 #include <fstream>
@@ -66,10 +71,12 @@ int main(int argc, char **argv) {
 
     // Attach an NPP workspace: one high-water-mark scratch buffer shared by every image below.  It grows only when an
     // image needs more scratch than any previous one, so there is no per-image GetBufferSize/cudaMalloc/cudaFree.
+#if NPP_HAS_WORKSPACE
     if (nppiWorkspaceCreate(&ctx) != NPP_SUCCESS) {
         std::cerr << "nppiWorkspaceCreate failed\n";
         return -1;
     }
+#endif
 
     NppiSize rois[NUM_IMAGES] = {{512,512}, {512,512}, {512,512}, {500,383}, {500,569}};
 
@@ -94,10 +101,31 @@ int main(int argc, char **argv) {
                      rois[i].width, rois[i].height, cudaMemcpyHostToDevice);
         cudaMemcpy(d_segments[i], d_input[i], size, cudaMemcpyDeviceToDevice);
 
+        // Without an NPP workspace the scratch buffer is allocated here for each image.
+        Npp8u *d_scratch = NULL;
+#if !NPP_HAS_WORKSPACE
+        size_t scratch_size = 0;
+        NppStatus bufStatus = nppiSegmentWatershedGetBufferSize_8u_C1R(rois[i], &scratch_size);
+        if (bufStatus != NPP_SUCCESS) {
+            std::cerr << "nppiSegmentWatershedGetBufferSize_8u_C1R failed: " << (int)bufStatus << "\n";
+            cleanup();
+            cudaStreamDestroy(ctx.hStream);
+            return -1;
+        }
+        cudaError_t mallocStatus = cudaMalloc(&d_scratch, scratch_size > 0 ? scratch_size : 1);
+        if (mallocStatus != cudaSuccess) {
+            std::cerr << "cudaMalloc of the scratch buffer failed: " << cudaGetErrorString(mallocStatus) << "\n";
+            cleanup();
+            cudaStreamDestroy(ctx.hStream);
+            return -1;
+        }
+#endif
+
         nppiSegmentWatershed_8u_C1IR_Ctx(d_segments[i], rois[i].width,
                                          d_labels[i], rois[i].width * sizeof(Npp32u),
                                          nppiNormInf, NPP_WATERSHED_SEGMENT_BOUNDARIES_NONE,
-                                         rois[i], NULL /* scratch from workspace */, ctx);
+                                         rois[i], d_scratch /* NULL: scratch from workspace */, ctx);
+        cudaFree(d_scratch);
 
         cudaMemcpy(h_segments[i], d_segments[i], size, cudaMemcpyDeviceToHost);
         cudaMemcpy(h_labels[i], d_labels[i], size * sizeof(Npp32u), cudaMemcpyDeviceToHost);
@@ -114,7 +142,9 @@ int main(int argc, char **argv) {
     }
 
     cleanup();
+#if NPP_HAS_WORKSPACE
     nppiWorkspaceDestroy(&ctx);
+#endif
     cudaStreamDestroy(ctx.hStream);
     return 0;
 }
