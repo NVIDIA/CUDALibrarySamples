@@ -192,7 +192,7 @@ static void approximate_eigenpair_cudss(
   cudssIndexBase_t indexBase = (base == CUSPARSE_INDEX_BASE_ZERO) ? 
     CUDSS_BASE_ZERO : CUDSS_BASE_ONE;
   CUDSS_CHECK(cudssMatrixCreateCsr(&obj_B, m, m, nnzB, d_csrRowPtrB, nullptr,
-                                   d_csrColIndB, d_csrValB, CUDA_R_32I,
+                                   d_csrColIndB, d_csrValB, CUDA_R_32I, CUDA_R_32I,
                                    dtype, CUDSS_MTYPE_GENERAL, CUDSS_MVIEW_FULL,
                                    indexBase));
   CUDSS_CHECK(cudssMatrixCreateDn(&obj_x, m, 1, m, d_x, dtype, CUDSS_LAYOUT_COL_MAJOR));

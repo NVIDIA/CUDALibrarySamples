@@ -35,7 +35,7 @@ codes `cuSolverSp2cuDSS.hpp` and `cuSolverRf2cuDSS.hpp`.
 | handling        | cusparseSetMatIndexBase                   | cudssMatrixCreateDn                                     |
 |                 |                                           | cudssMatrixDestroy                                      |
 +-----------------+-------------------------------------------+---------------------------------------------------------+
-| Reorder &       | cusolverSpXcsrmetisndHost                 | cudssConfigSet(config, CUDSS_REORDERING_ALG, ...)       |
+| Reorder &       | cusolverSpXcsrmetisndHost                 | cudssConfigSet(config, CUDSS_CONFIG_REORDERING_ALG, ...)|
 | Analyze         | cusolverSpXcsr{chol,lu}Analysis[Host]     | cudssExecute(cudss, CUDSS_PHASE_ANALYSIS, ...)          |
 +-----------------+-------------------------------------------+---------------------------------------------------------+
 | Factorize       | cusolverSpXcsr{chol,lu}BufferInfo[Host]'  | cudssExecute(cudss, CUDSS_PHASE_FACTORIZATION, ...)     |
@@ -54,7 +54,7 @@ codes `cuSolverSp2cuDSS.hpp` and `cuSolverRf2cuDSS.hpp`.
 |                 | cusolverRfSolve                           |                                                         |
 +-----------------+-------------------------------------------+---------------------------------------------------------+
 | Finalize        | cusolverRfDestroy                         | cudssDataDestroy                                        |
-|                 | cusparseDestroyMatDescr                   | cudssDataDestroy                                        |
+|                 | cusparseDestroyMatDescr                   | cudssMatrixDestroy                                      |
 |                 | cusolverSpDestroyCsr{chol,lu}Info[Host]   | cudssConfigDestroy                                      |
 |                 | cusolverSpDestroy                         | cudssDestroy                                            |
 +-----------------+-------------------------------------------+---------------------------------------------------------+
@@ -80,7 +80,7 @@ The examples demonstrate how to implement this functionality using cuDSS and aux
 
 # Building the examples
 
-These examples are compatible with cuDSS 0.5.0 and CUDA Toolkit 12.x or higher.
+These examples are compatible with cuDSS 1.0.0 and CUDA Toolkit 12.x or higher.
 Download and install the packages from
 
 * [developer.nvidia.com/cuda-downloads](https://developer.nvidia.com/cuda-downloads)
@@ -90,7 +90,6 @@ Download and install the packages from
 To demonstrate the cmake build procedure, we use the following environment variables.
 
 ```sh
-    $ export CUDSS_ROOT=/cudss/install/path
     $ export SAMPLE_SOURCE_PATH=/cudalibrarysamples/cuSOLVERSp2cuDSS
     $ export SAMPLE_BUILD_PATH=/your/sample-build/path
 ```
@@ -100,7 +99,7 @@ Configure and build the examples using cmake.
 ```sh
     $ mkdir -p ${SAMPLE_BUILD_PATH}
     $ cd ${SAMPLE_BUILD_PATH}
-    $ cmake -DCMAKE_BUILD_TYPE=Release -DCUDSS_ROOT=${CUDSS_ROOT} -S ${SAMPLE_SOURCE_PATH}
+    $ cmake -DCMAKE_BUILD_TYPE=Release -S ${SAMPLE_SOURCE_PATH}
     $ make
 ```
 
@@ -111,6 +110,7 @@ After successfully building the samples, the following executables have been gen
 * `cuSolverSp2cuDSS_<float,double,scomplex,dcomplex>`: sparse Cholesky factorization using cuSOLVERSp and cuDSS.
 * `cuSolverRf2cuDSS_double`: sparse LU factorization and refactorization using cuSOLVERSp/Rf and cuDSS.
 * `csreigvsi2cuDSS_double`: computes an eigenvalue and corresponding eigenvector using inverse iteration.
+* `csreigs2cuDSS_dcomplex`: counts the eigenvalues inside a box in the complex plane.
 
 The usage of each sample code can be listed with a `--help` command line argument.
 An example usage is shown below.
@@ -149,7 +149,7 @@ Outputs from cuSolverSp2cuDSS:
        timer: disabled
        verbose: 0
     -- read matrixmarket file
-    -- |A| = 35.6371, |Ax-b| = 2.60134e-15, |Ax-b|/|A| = 7.29952e-17
+    -- |A| = 35.6371, |Ax-b| = 4.57757e-15, |Ax-b|/|A| = 1.2845e-16
 ```
 
 Outputs from cuSolverRf2cuDSS:
@@ -174,10 +174,10 @@ Outputs from cuSolverRf2cuDSS:
        timer: disabled
        verbose: 0
     -- read matrixmarket file
-    -- |A| = 35.6371, |Ax-b| = 9.15513e-16, |Ax-b|/|A| = 2.56899e-17
+    -- |A| = 35.6371, |Ax-b| = 1.61746e-15, |Ax-b|/|A| = 4.53871e-17
     -- the entries of A are modified
     -- A is refactorized
-    -- |A| = 35.9739, |Ax-b| = 2.67377e-15, |Ax-b|/|A| = 7.43253e-17
+    -- |A| = 35.9739, |Ax-b| = 3.29392e-15, |Ax-b|/|A| = 9.15643e-17
  ```
  
 Outputs from csreigvsi2cuDSS_double:
@@ -202,9 +202,10 @@ Outputs from csreigvsi2cuDSS_double:
 
 Outputs from csreigs2cuDSS_dcomplex:
 ```
-Box is defined by the bottom left corner [-1 + -3i] and the top right corner [1 + 1i]
-Compute eigenvalue count in box with cusolverSp
-Number of eigenvalues = 2
-Compute eigenvalue count in box with cuDSS
-Number of eigenvalues = 2
+   $ ./csreigs2cuDSS_dcomplex
+   Box is defined by the bottom left corner [-1 + -3i] and the top right corner [1 + 1i]
+   Compute eigenvalue count in box with cusolverSp
+   Number of eigenvalues = 2
+   Compute eigenvalue count in box with cuDSS
+   Number of eigenvalues = 2
 ```

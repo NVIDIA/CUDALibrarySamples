@@ -177,12 +177,12 @@ static void approximate_eigenvalue_count_cudss(
   CUDSS_CHECK(cudssConfigCreate(&config));
   CUDSS_CHECK(cudssDataCreate(cudss, &data));
 
-  // Configure cuDSS to use CUDSS_ALG_1 for robustness. Alternatively,
-  // CUDSS_ALG_DEFAULT yields a faster, but maybe less accurate
+  // Configure cuDSS to use CUDSS_REORDERING_ALG_BTF_COLAMD for robustness. Alternatively,
+  // CUDSS_REORDERING_ALG_DEFAULT yields a faster, but maybe less accurate
   // computation.
-  cudssAlgType_t reordering_alg = CUDSS_ALG_1;
+  cudssReorderingAlg_t reordering_alg = CUDSS_REORDERING_ALG_BTF_COLAMD;
   CUDSS_CHECK(cudssConfigSet(config, CUDSS_CONFIG_REORDERING_ALG,
-    &reordering_alg, sizeof(cudssAlgType_t)));
+    &reordering_alg, sizeof(cudssReorderingAlg_t)));
 
   // Set data type and index base.
   constexpr cudaDataType_t dtype = CUDA_C_64F;
@@ -227,7 +227,7 @@ static void approximate_eigenvalue_count_cudss(
   //
   cudssMatrix_t obj_B, obj_X, obj_I;
   CUDSS_CHECK(cudssMatrixCreateCsr(&obj_B, m, m, nnzA, d_csrRowPtrA, nullptr,
-                                   d_csrColIndA, d_csrValA, CUDA_R_32I,
+                                   d_csrColIndA, d_csrValA, CUDA_R_32I, CUDA_R_32I,
                                    dtype, CUDSS_MTYPE_GENERAL, CUDSS_MVIEW_FULL,
                                    indexBase));
   // Create right-hand side matrix as the identity matrix.

@@ -272,6 +272,7 @@ int driver(int argc, char * argv[]) {
                                        d_ap, nullptr,
                                        d_aj, d_ax, 
                                        CUDA_R_32I,
+                                       CUDA_R_32I,
                                        cuda_data_type,
                                        CUDSS_MTYPE_HPD,
                                        CUDSS_MVIEW_FULL,

@@ -32,9 +32,8 @@ set(CMAKE_CUDA_EXTENSIONS OFF)
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -O0 -g")
 set(CMAKE_CUDA_FLAGS_DEBUG "${CMAKE_CUDA_FLAGS} -O0 -g -lineinfo")
 
-option(CUDSS_ROOT "Path to cudss install path") 
-set(CUDSS_INCLUDE_DIRS "${CUDSS_ROOT}/include")
-set(CUDSS_LIBRARY_DIRS "${CUDSS_ROOT}/lib")
+# Find cuDSS
+find_package(cudss 1.0.0 REQUIRED)
 
 #
 # build_driver
@@ -60,7 +59,7 @@ function(build_driver)
         cusolver
         cublas
         cusparse
-        -L${CUDSS_LIBRARY_DIRS} -lcudss
+        cudss
       )
     endforeach()
   endforeach()
