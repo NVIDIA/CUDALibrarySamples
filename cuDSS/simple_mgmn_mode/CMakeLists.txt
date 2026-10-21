@@ -50,7 +50,7 @@ set(NCCL_INCLUDE_DIRECTORIES "${NCCL_PATH}/include" CACHE STRING "Path to NCCL h
 set(NCCL_LINK_DIRECTORIES "${NCCL_PATH}/lib" CACHE STRING "Path to NCCL libraries")
 
 # Find cuDSS
-find_package(cudss 0.8.0 REQUIRED)
+find_package(cudss 1.0.0 REQUIRED)
 
 if(BUILD_MGMN_WITH_OPENMPI AND
         ((NOT IS_DIRECTORY ${OPENMPI_PATH}) AND
@@ -199,6 +199,7 @@ foreach(backend ${CUDSS_MGMN_COMM_BACKENDS})
             target_link_directories(${EXAMPLE_NAME}_example_${backend}_static PUBLIC ${cudss_LIBRARY_DIR})
             target_link_libraries(${EXAMPLE_NAME}_example_${backend}_static PUBLIC
                 cudss_static
+                nvrtc
             )
         else()
             target_link_libraries(${EXAMPLE_NAME}_example_${backend}_static PUBLIC

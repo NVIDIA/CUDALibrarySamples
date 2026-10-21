@@ -175,23 +175,7 @@ int main(int argc, char *argv[]) {
     /* Parsing the communication layer information from the input parameters */
     char comm_backend_name[1024];
     char comm_layer_libname[1024];
-    if (argc > 2) {
-        strcpy(comm_backend_name, argv[1]);
-        if (rank == 0)
-            printf("Communication backend name is: %s\n", comm_backend_name);
-        strcpy(comm_layer_libname, argv[2]);
-        printf("Communication layer library name is: %s\n", comm_layer_libname);
-        fflush(0);
-    } else if (argc == 2) {
-        strcpy(comm_backend_name, argv[1]);
-        if (rank == 0)
-            printf("Communication backend name is: %s\n", comm_backend_name);
-        if (rank == 0)
-            printf("Since communication layer library name was not provided as input \n"
-                   "argument for the executable, the layer library name will be \n"
-                   "taken from CUDSS_COMM_LIB environment variable\n");
-        fflush(0);
-    } else {
+    if (argc < 2) {
         if (rank == 0) {
             printf(
                 "Error: this example requires passing at least one argument:\n"
@@ -208,7 +192,24 @@ int main(int argc, char *argv[]) {
 #endif
         return -2;
     }
-
+    else {
+        snprintf(comm_backend_name, sizeof(comm_backend_name), "%s", argv[1]);
+        if (argc > 2) {
+            snprintf(comm_layer_libname, sizeof(comm_layer_libname), "%s", argv[2]);
+        }
+        if (rank == 0) {
+            printf("Communication backend name is: %s\n", comm_backend_name);
+            if (argc > 2) {
+                printf("Communication layer library name is: %s\n", comm_layer_libname);
+            }
+            else {
+                printf("Since communication layer library name was not provided as input \n"
+                       "argument for the executable, the layer library name will be \n"
+                       "taken from CUDSS_COMM_LIB environment variable\n");
+            }
+            fflush(0);
+        }
+    }
 
     /* Creating a communicator of the type matching the communication backend */
 #ifdef USE_MPI
@@ -362,10 +363,10 @@ int main(int argc, char *argv[]) {
     int64_t nrows = n, ncols = n;
     int     ldb = nrows, ldx = ncols;
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateDn(&b, nrows, nrhs, ldb, b_values_d,
-                                             CUDSS_R_64F, CUDSS_LAYOUT_COL_MAJOR),
+                                             CUDA_R_64F, CUDSS_LAYOUT_COL_MAJOR),
                          status, "cudssMatrixCreateDn for b");
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateDn(&x, ncols, nrhs, ldx, x_values_d,
-                                             CUDSS_R_64F, CUDSS_LAYOUT_COL_MAJOR),
+                                             CUDA_R_64F, CUDSS_LAYOUT_COL_MAJOR),
                          status, "cudssMatrixCreateDn for x");
 
     /* Create a matrix object for the sparse input matrix.
@@ -377,8 +378,8 @@ int main(int argc, char *argv[]) {
     cudssMatrixViewType_t mview = CUDSS_MVIEW_UPPER;
     cudssIndexBase_t      base  = CUDSS_BASE_ZERO;
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateCsr(&A, nrows, ncols, nnz, csr_offsets_d, NULL,
-                                              csr_columns_d, csr_values_d, CUDSS_R_32I,
-                                              CUDSS_R_32I, CUDSS_R_64F, mtype, mview,
+                                              csr_columns_d, csr_values_d, CUDA_R_32I,
+                                              CUDA_R_32I, CUDA_R_64F, mtype, mview,
                                               base),
                          status, "cudssMatrixCreateCsr");
 

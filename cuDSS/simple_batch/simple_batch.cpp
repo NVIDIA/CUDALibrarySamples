@@ -296,12 +296,12 @@ int main(int argc, char *argv[]) {
     int *nrows = n, *ncols = n;
     int *ldb = nrows, *ldx = ncols;
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateBatchDn(&b, batchCount, nrows, nrhs, ldb,
-                                                  batch_b_values_d, CUDSS_R_32I,
-                                                  CUDSS_R_64F, CUDSS_LAYOUT_COL_MAJOR),
+                                                  batch_b_values_d, CUDA_R_32I,
+                                                  CUDA_R_64F, CUDSS_LAYOUT_COL_MAJOR),
                          status, "cudssMatrixCreateBatchDn for b");
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateBatchDn(&x, batchCount, ncols, nrhs, ldx,
-                                                  batch_x_values_d, CUDSS_R_32I,
-                                                  CUDSS_R_64F, CUDSS_LAYOUT_COL_MAJOR),
+                                                  batch_x_values_d, CUDA_R_32I,
+                                                  CUDA_R_64F, CUDSS_LAYOUT_COL_MAJOR),
                          status, "cudssMatrixCreateBatchDn for x");
 
     /* Create a matrix object for the batch of sparse input matrices. */
@@ -311,8 +311,8 @@ int main(int argc, char *argv[]) {
     cudssIndexBase_t      base  = CUDSS_BASE_ZERO;
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateBatchCsr(
                              &A, batchCount, nrows, ncols, nnz, batch_csr_offsets_d, NULL,
-                             batch_csr_columns_d, batch_csr_values_d, CUDSS_R_32I,
-                             CUDSS_R_32I, CUDSS_R_64F, mtype, mview, base),
+                             batch_csr_columns_d, batch_csr_values_d, CUDA_R_32I,
+                             CUDA_R_32I, CUDA_R_64F, mtype, mview, base),
                          status, "cudssMatrixCreateBatchCsr");
 
     /* Symbolic factorization */

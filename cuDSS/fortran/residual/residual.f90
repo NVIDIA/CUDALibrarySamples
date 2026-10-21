@@ -1,0 +1,188 @@
+! SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+! SPDX-License-Identifier: Apache-2.0
+!
+! Licensed under the Apache License, Version 2.0 (the "License");
+! you may not use this file except in compliance with the License.
+! You may obtain a copy of the License at
+!
+! http://www.apache.org/licenses/LICENSE-2.0
+!
+! Unless required by applicable law or agreed to in writing, software
+! distributed under the License is distributed on an "AS IS" BASIS,
+! WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+! See the License for the specific language governing permissions and
+! limitations under the License.
+!
+! This example shows how to compute one of the most common
+! accuracy estimates for solving a system of linear
+! algebraic equations with a sparse matrix.
+! The system is:
+!                         Ax = b,
+! where:
+!     A is the sparse input matrix,
+!     b is the (dense) right-hand side vector (or a matrix),
+!     x is the (dense) solution vector (or a matrix).
+! The accuracy is estimated by computing the relative residual norm
+!       || r || / (|| A ||_F * || x || + || b ||),
+! where r = A * x - b is the residual.
+! The host/device kernels in the C++ sample are only for demonstration purposes
+! and are not optimized for performance; this Fortran port uses a compact host check.
+! Matches examples/cudss_residual.cpp.
+program main
+  use iso_c_binding
+  use iso_fortran_env, only: wp => real64
+  use cudautils
+  use cudss
+  implicit none
+
+  integer, parameter :: n = 5, nnz = 8, nrhs = 2
+  integer, parameter :: nrows = n, ncols = n
+  integer, parameter :: ldx = n + 5, ldb = n + n/2
+  real(wp), parameter :: tol = 1.0e-12_wp
+
+  integer, allocatable :: csr_offsets(:), csr_columns(:)
+  real(wp), allocatable :: csr_values(:), x_values(:), b_values(:)
+  type(c_ptr) :: csr_offsets_d, csr_columns_d, csr_values_d, x_values_d, b_values_d
+
+  type(cudssHandle) :: h
+  type(cudssConfig) :: solverConfig
+  type(cudssData) :: solverData
+  type(cudssStatus) :: statusDSS
+  type(cudssMatrix) :: A, b, x
+  type(cudssMatrixType) :: mtype = CUDSS_MTYPE_GENERAL
+  type(cudssMatrixViewType) :: mview = CUDSS_MVIEW_FULL
+  type(cudssIndexBase) :: base = CUDSS_BASE_ONE
+
+  integer :: status, i, j
+  integer(cuda_stream_kind) :: stream
+  real(wp) :: rel
+
+  allocate( &
+       csr_offsets(n+1), &
+       csr_columns(nnz), &
+       csr_values(nnz), &
+       x_values(nrhs*ldx), &
+       b_values(nrhs*ldb))
+
+  csr_offsets = [1, 3, 5, 7, 8, 9]
+  csr_columns = [1, 3, 2, 3, 3, 5, 4, 5]
+  csr_values = [4.0_wp, 1.0_wp, 3.0_wp, 2.0_wp, 5.0_wp, 1.0_wp, 1.0_wp, 2.0_wp]
+  ! Right-hand side j is filled with the constant j, as in the cpp example.
+  do j = 1, nrhs
+    do i = 1, n
+      b_values((j - 1) * ldb + i) = real(j, wp)
+    end do
+  end do
+  x_values = 0.0_wp
+
+  call dev_malloc_i4(csr_offsets_d, csr_offsets)
+  call dev_malloc_i4(csr_columns_d, csr_columns)
+  call dev_malloc_r8(csr_values_d, csr_values)
+  call dev_malloc_r8(b_values_d, b_values)
+  call dev_malloc_r8(x_values_d, x_values)
+
+  status = cudaStreamCreate(stream)
+  if (status /= cudaSuccess) print *, 'cudaStreamCreate: ', status
+
+  statusDSS = cudssCreate(h)
+  if (statusDSS /= cudss_status_success) print *, 'cudssCreate: ', statusDSS
+
+  statusDSS = cudssSetStream(h, stream)
+  if (statusDSS /= cudss_status_success) print *, 'cudssSetStream: ', statusDSS
+
+  statusDSS = cudssConfigCreate(solverConfig)
+  if (statusDSS /= cudss_status_success) print *, 'cudssConfigCreate: ', statusDSS
+
+  statusDSS = cudssDataCreate(h, solverData)
+  if (statusDSS /= cudss_status_success) print *, 'cudssDataCreate: ', statusDSS
+
+  statusDSS = cudssMatrixCreateDn(b, int(nrows, 8), int(nrhs, 8), int(ldb, 8), &
+       b_values_d, CUDSS_R_64F, CUDSS_LAYOUT_COL_MAJOR)
+  if (statusDSS /= cudss_status_success) print *, 'cudssMatrixCreateDn b: ', statusDSS
+
+  statusDSS = cudssMatrixCreateDn(x, int(ncols, 8), int(nrhs, 8), int(ldx, 8), &
+       x_values_d, CUDSS_R_64F, CUDSS_LAYOUT_COL_MAJOR)
+  if (statusDSS /= cudss_status_success) print *, 'cudssMatrixCreateDn x: ', statusDSS
+
+  statusDSS = cudssMatrixCreateCsr(A, int(nrows, 8), int(ncols, 8), int(nnz, 8), &
+       csr_offsets_d, csr_columns_d, csr_values_d, CUDSS_R_32I, CUDSS_R_32I, CUDSS_R_64F, &
+       mtype, mview, base)
+  if (statusDSS /= cudss_status_success) print *, 'cudssMatrixCreateCsr A: ', statusDSS
+
+  statusDSS = cudssExecute(h, CUDSS_PHASE_ANALYSIS, solverConfig, solverData, A, x, b)
+  if (statusDSS /= cudss_status_success) print *, 'cudssExecute analysis: ', statusDSS
+
+  statusDSS = cudssExecute(h, CUDSS_PHASE_FACTORIZATION, solverConfig, solverData, A, x, b)
+  if (statusDSS /= cudss_status_success) print *, 'cudssExecute factorization: ', statusDSS
+
+  statusDSS = cudssExecute(h, CUDSS_PHASE_SOLVE, solverConfig, solverData, A, x, b)
+  if (statusDSS /= cudss_status_success) print *, 'cudssExecute solve: ', statusDSS
+
+  status = cudaStreamSynchronize(stream)
+  if (status /= cudaSuccess) print *, 'cudaStreamSynchronize: ', status
+  status = cudaDeviceSynchronize()
+  if (status /= cudaSuccess) print *, 'cudaDeviceSynchronize: ', status
+
+  call dev_copy_d2h_r8(x_values, x_values_d, size(x_values))
+
+  rel = general_relative_residual_r64(n, nrhs, csr_offsets, csr_columns, csr_values, &
+       x_values, ldx, b_values, ldb)
+  if (rel > tol) then
+    print *, 'FAILED: relative residual', rel, ' > ', tol
+    error stop 2
+  end if
+
+  statusDSS = cudssMatrixDestroy(A)
+  statusDSS = cudssMatrixDestroy(b)
+  statusDSS = cudssMatrixDestroy(x)
+  statusDSS = cudssDataDestroy(h, solverData)
+  statusDSS = cudssConfigDestroy(solverConfig)
+  statusDSS = cudssDestroy(h)
+  status = cudaStreamDestroy(stream)
+
+  call dev_free(csr_offsets_d)
+  call dev_free(csr_columns_d)
+  call dev_free(csr_values_d)
+  call dev_free(x_values_d)
+  call dev_free(b_values_d)
+  deallocate(csr_offsets, csr_columns, csr_values, x_values, b_values)
+
+  print *, 'Example cudss_residual PASSED'
+
+contains
+
+  ! Relative residual || r || / (|| A ||_F * || x || + || b ||) for a general CSR
+  ! matrix (1-based indices), evaluated per right-hand side column and reduced to
+  ! the worst (max) column value. Mirrors the RMS-style norms used in the cpp
+  ! example's relative_residual() for CUDSS_MTYPE_GENERAL.
+  function general_relative_residual_r64(n, nrhs, csr_offsets, csr_columns, csr_values, &
+       x, ldx, b, ldb) result(rel)
+    integer, intent(in) :: n, nrhs, ldx, ldb
+    integer, intent(in) :: csr_offsets(n+1), csr_columns(*)
+    real(wp), intent(in) :: csr_values(*), x(*), b(*)
+    real(wp) :: rel
+    real(wp) :: y(n), af, num, den, colrel
+    integer :: i, k, j, col, nz
+
+    nz = csr_offsets(n+1) - 1
+    af = sqrt(sum(csr_values(1:nz)**2))
+
+    rel = 0.0_wp
+    do j = 1, nrhs
+      y = 0.0_wp
+      do i = 1, n
+        do k = csr_offsets(i), csr_offsets(i+1) - 1
+          col = csr_columns(k)
+          y(i) = y(i) + csr_values(k) * x((j-1)*ldx + col)
+        end do
+      end do
+      num = sqrt(sum((y - b((j-1)*ldb+1:(j-1)*ldb+n))**2) / n)
+      den = af * sqrt(sum(x((j-1)*ldx+1:(j-1)*ldx+n)**2) / n) + &
+            sqrt(sum(b((j-1)*ldb+1:(j-1)*ldb+n)**2) / n)
+      if (den <= 0.0_wp) den = 1.0_wp
+      colrel = num / den
+      if (colrel > rel) rel = colrel
+    end do
+  end function general_relative_residual_r64
+
+end program main

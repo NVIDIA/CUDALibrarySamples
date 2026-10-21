@@ -84,7 +84,7 @@ int main(int argc, char *argv[]) {
     /* Parsing the threading layer information from the input parameters */
     char threading_layer_libname[1024];
     if (argc > 1) {
-        strcpy(threading_layer_libname, argv[1]);
+        snprintf(threading_layer_libname, sizeof(threading_layer_libname), "%s", argv[1]);
         printf("Threading layer library name is: %s\n", threading_layer_libname);
         fflush(0);
     } else {
@@ -221,10 +221,10 @@ int main(int argc, char *argv[]) {
     int64_t nrows = n, ncols = n;
     int     ldb = nrows, ldx = ncols;
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateDn(&b, nrows, nrhs, ldb, b_values_d,
-                                             CUDSS_R_64F, CUDSS_LAYOUT_COL_MAJOR),
+                                             CUDA_R_64F, CUDSS_LAYOUT_COL_MAJOR),
                          status, "cudssMatrixCreateDn for b");
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateDn(&x, ncols, nrhs, ldx, x_values_d,
-                                             CUDSS_R_64F, CUDSS_LAYOUT_COL_MAJOR),
+                                             CUDA_R_64F, CUDSS_LAYOUT_COL_MAJOR),
                          status, "cudssMatrixCreateDn for x");
 
     /* Create a matrix object for the sparse input matrix. */
@@ -233,8 +233,8 @@ int main(int argc, char *argv[]) {
     cudssMatrixViewType_t mview = CUDSS_MVIEW_UPPER;
     cudssIndexBase_t      base  = CUDSS_BASE_ZERO;
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateCsr(&A, nrows, ncols, nnz, csr_offsets_d, NULL,
-                                              csr_columns_d, csr_values_d, CUDSS_R_32I,
-                                              CUDSS_R_32I, CUDSS_R_64F, mtype, mview,
+                                              csr_columns_d, csr_values_d, CUDA_R_32I,
+                                              CUDA_R_32I, CUDA_R_64F, mtype, mview,
                                               base),
                          status, "cudssMatrixCreateCsr");
 

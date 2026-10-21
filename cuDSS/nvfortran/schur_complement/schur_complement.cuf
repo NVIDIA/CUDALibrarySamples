@@ -1,0 +1,178 @@
+! SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+! SPDX-License-Identifier: Apache-2.0
+!
+! Licensed under the Apache License, Version 2.0 (the "License");
+! you may not use this file except in compliance with the License.
+! You may obtain a copy of the License at
+!
+! http://www.apache.org/licenses/LICENSE-2.0
+!
+! Unless required by applicable law or agreed to in writing, software
+! distributed under the License is distributed on an "AS IS" BASIS,
+! WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+! See the License for the specific language governing permissions and
+! limitations under the License.
+!
+! CUDA Fortran port: cudafor device arrays (0-based) + = for host/device copies.
+
+program main
+  use iso_fortran_env, only: wp => real64
+  use iso_c_binding, only: c_int, c_int64_t, c_size_t, c_sizeof, c_loc
+  use cudafor
+  use cudss
+  implicit none
+
+  integer, parameter :: n = 5, nnz = 8, nrhs = 1
+  integer, allocatable, target :: schur_idx(:)
+  integer :: csr_offsets(0:n), csr_columns(0:nnz-1)
+  real(wp) :: csr_values(0:nnz-1), x_values(n), b_values(n), br(2)
+  integer, device, target :: csr_offsets_d(0:n), csr_columns_d(0:nnz-1)
+  real(wp), device, target :: csr_values_d(0:nnz-1), x_values_d(n), b_values_d(n)
+  real(wp), device, allocatable, target :: schur_d(:)
+
+  type(cudssHandle) :: h
+  type(cudssConfig) :: cfg
+  type(cudssData) :: dat
+  type(cudssMatrix) :: A, b, x
+  type(cudssMatrix), target :: S
+  type(cudssStatus) :: st
+  type(cudssMatrixType) :: mtype = CUDSS_MTYPE_SYMMETRIC
+  type(cudssMatrixViewType) :: mview = CUDSS_MVIEW_UPPER
+  type(cudssIndexBase) :: base = CUDSS_BASE_ZERO
+  integer(cuda_stream_kind) :: stream
+  integer :: status, i, j
+  integer(c_int), target :: compute_schur
+  integer(c_int64_t), target :: schur_shape(3)
+  integer(c_size_t), target :: written
+  integer(c_int64_t) :: snr, snc, sld
+  real(wp), allocatable, target :: schur_host(:)
+  type(cudssPhase) :: ph
+  integer(c_int64_t) :: ldb, ldx
+
+  print *, '---------------------------------------------------------'
+  print *, 'cuDSS example: computing a 2x2 Schur complement for a'
+  print *, 'real linear 5x5 system with a symmetric matrix'
+  print *, '---------------------------------------------------------'
+
+  print *, 'CUDSS Version (Major,Minor,PatchLevel): ', CUDSS_VERSION_MAJOR, CUDSS_VERSION_MINOR, CUDSS_VERSION_PATCH
+
+  csr_offsets = [0, 2, 4, 6, 7, 8]
+  csr_columns = [0, 2, 1, 2, 2, 4, 3, 4]
+  csr_values = [4.0_wp, 1.0_wp, 3.0_wp, 2.0_wp, 5.0_wp, 1.0_wp, 1.0_wp, 2.0_wp]
+  b_values = [7.0_wp, 12.0_wp, 25.0_wp, 4.0_wp, 13.0_wp]
+
+  allocate(schur_idx(n))
+  schur_idx = [0, 1, 0, 0, 1]
+
+  csr_offsets_d = csr_offsets
+  csr_columns_d = csr_columns
+  csr_values_d = csr_values
+  b_values_d = b_values
+  x_values_d = 0.0_wp
+
+  status = cudaStreamCreate(stream)
+  st = cudssCreate(h)
+  st = cudssSetStream(h, stream)
+  st = cudssConfigCreate(cfg)
+  st = cudssDataCreate(h, dat)
+
+  compute_schur = 1
+  st = cudssConfigSet(cfg, CUDSS_CONFIG_SCHUR_MODE, compute_schur, c_sizeof(compute_schur))
+  st = cudssDataSet(h, dat, CUDSS_DATA_USER_SCHUR_INDICES, schur_idx, &
+       int(n, kind=c_size_t) * c_sizeof(schur_idx(1)))
+
+  ldb = int(n, 8)
+  ldx = int(n, 8)
+  st = cudssMatrixCreateDn(b, int(n, 8), int(nrhs, 8), ldb, c_loc(b_values_d(1)), &
+       CUDSS_R_64F, CUDSS_LAYOUT_COL_MAJOR)
+  st = cudssMatrixCreateDn(x, int(n, 8), int(nrhs, 8), ldx, c_loc(x_values_d(1)), &
+       CUDSS_R_64F, CUDSS_LAYOUT_COL_MAJOR)
+  st = cudssMatrixCreateCsr(A, int(n, 8), int(n, 8), int(nnz, 8), &
+       c_loc(csr_offsets_d(0)), c_loc(csr_columns_d(0)), c_loc(csr_values_d(0)), &
+       CUDSS_R_32I, CUDSS_R_32I, CUDSS_R_64F, mtype, mview, base)
+
+  st = cudssExecute(h, CUDSS_PHASE_ANALYSIS, cfg, dat, A, x, b)
+  st = cudssDataGet(h, dat, CUDSS_DATA_SCHUR_SHAPE, c_loc(schur_shape(1)), &
+       int(c_sizeof(schur_shape), kind=c_size_t), c_loc(written))
+  print *, 'schur shape: nrows = ', schur_shape(1), ', ncols = ', schur_shape(2), &
+       ', sparse nnz (for a general matrix) = ', schur_shape(3)
+
+  st = cudssExecute(h, CUDSS_PHASE_FACTORIZATION, cfg, dat, A, x, b)
+
+  snr = schur_shape(1)
+  snc = schur_shape(2)
+  sld = snr
+
+  allocate(schur_d(int(snr * snc)))
+  st = cudssMatrixCreateDn(S, snr, snc, sld, c_loc(schur_d(1)), CUDSS_R_64F, CUDSS_LAYOUT_COL_MAJOR)
+  st = cudssDataGet(h, dat, CUDSS_DATA_SCHUR_MATRIX, c_loc(S), int(c_sizeof(S), kind=c_size_t), c_loc(written))
+
+  status = cudaStreamSynchronize(stream)
+
+  allocate(schur_host(int(snr * snc)))
+  schur_host = schur_d
+
+  do i = 1, int(snr)
+    do j = 1, int(snc)
+      print *, 'schur_matrix_values(', i - 1, ',', j - 1, ') = ', &
+           schur_host((j - 1) * int(snr) + i)
+    end do
+  end do
+
+  ph%val = ior(CUDSS_PHASE_SOLVE_FWD_PERM%val, CUDSS_PHASE_SOLVE_FWD%val)
+  st = cudssExecute(h, ph, cfg, dat, A, x, b)
+  st = cudssExecute(h, CUDSS_PHASE_SOLVE_DIAG, cfg, dat, A, b, x)
+
+  status = cudaStreamSynchronize(stream)
+  b_values = b_values_d
+  associate (ns => int(snr))
+    br(1) = b_values(n - ns + 1)
+    br(2) = b_values(n - ns + 2)
+    call solve_2x2(schur_host(1), schur_host(2), schur_host(3), schur_host(4), br(1), br(2))
+    b_values(n - ns + 1) = br(1)
+    b_values(n - ns + 2) = br(2)
+    b_values_d = b_values
+  end associate
+
+  ph%val = ior(CUDSS_PHASE_SOLVE_BWD%val, CUDSS_PHASE_SOLVE_BWD_PERM%val)
+  st = cudssExecute(h, ph, cfg, dat, A, x, b)
+
+  status = cudaStreamSynchronize(stream)
+  x_values = x_values_d
+
+  do i = 1, n
+    if (abs(x_values(i) - real(i, kind=wp)) > 2.e-15_wp) then
+       print *, 'FAILED x(', i, ')=', x_values(i), ' expected ', real(i, kind=wp)
+       error stop 2
+    end if
+  end do
+
+  st = cudssMatrixDestroy(A)
+  st = cudssMatrixDestroy(b)
+  st = cudssMatrixDestroy(x)
+  st = cudssMatrixDestroy(S)
+  st = cudssDataDestroy(h, dat)
+  st = cudssConfigDestroy(cfg)
+  st = cudssDestroy(h)
+
+  status = cudaStreamDestroy(stream)
+  status = cudaDeviceSynchronize()
+
+  deallocate(schur_host, schur_d, schur_idx)
+
+  print *, 'Example cudss_schur_complement PASSED'
+
+contains
+
+  pure subroutine solve_2x2(a11, a21, a12, a22, rhs1, rhs2)
+    real(wp), intent(in) :: a11, a21, a12, a22
+    real(wp), intent(inout) :: rhs1, rhs2
+    real(wp) :: det, x1, x2
+    det = a11 * a22 - a12 * a21
+    x1 = (rhs1 * a22 - rhs2 * a12) / det
+    x2 = (a11 * rhs2 - a21 * rhs1) / det
+    rhs1 = x1
+    rhs2 = x2
+  end subroutine solve_2x2
+
+end program main

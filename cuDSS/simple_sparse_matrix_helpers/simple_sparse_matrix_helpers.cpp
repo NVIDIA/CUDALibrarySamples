@@ -207,8 +207,8 @@ int main(int argc, char *argv[]) {
     cudssMatrixViewType_t mview = CUDSS_MVIEW_UPPER;
     cudssIndexBase_t      base  = CUDSS_BASE_ZERO;
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateCsr(&A, nrows, ncols, nnz, csrA_offsets_d, NULL,
-                                              csrA_columns_d, csrA_values_d, CUDSS_R_32I,
-                                              CUDSS_R_32I, CUDSS_R_64F, mtype, mview,
+                                              csrA_columns_d, csrA_values_d, CUDA_R_32I,
+                                              CUDA_R_32I, CUDA_R_64F, mtype, mview,
                                               base),
                          status, "cudssMatrixCreateCsr");
 
@@ -218,7 +218,7 @@ int main(int argc, char *argv[]) {
     void                 *csrA_offsets_out = NULL;
     void                 *csrA_columns_out = NULL;
     void                 *csrA_values_out  = NULL;
-    cudssDataType_t       offset_type_out, index_type_out, value_type_out;
+    cudaDataType_t       offset_type_out, index_type_out, value_type_out;
     cudssMatrixType_t     mtype_out;
     cudssMatrixViewType_t mview_out;
     cudssIndexBase_t      index_base_out;
@@ -231,8 +231,8 @@ int main(int argc, char *argv[]) {
 
     if (csrA_offsets_out != csrA_offsets_d || csrA_columns_out != csrA_columns_d ||
         csrA_values_out != csrA_values_d || nrows_out != nrows || ncols_out != ncols ||
-        nnz_out != nnz || offset_type_out != CUDSS_R_32I ||
-        index_type_out != CUDSS_R_32I || value_type_out != CUDSS_R_64F ||
+        nnz_out != nnz || offset_type_out != CUDA_R_32I ||
+        index_type_out != CUDA_R_32I || value_type_out != CUDA_R_64F ||
         mtype_out != mtype || mview_out != mview || index_base_out != base) {
         printf("Error: Example FAILED: wrong data returned for matrix A\n");
         CUDSS_EXAMPLE_FREE;

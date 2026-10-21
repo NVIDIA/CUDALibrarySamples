@@ -35,7 +35,7 @@ option(BUILD_STATIC           "Building statically linked examples" OFF)
 option(BUILD_MT_WITH_OPENMP   "Enable OpenMP backend for the MT mode examples" ON)
 
 # Find cuDSS
-find_package(cudss 0.8.0 REQUIRED)
+find_package(cudss 1.0.0 REQUIRED)
 
 # Find OpenMP
 if (BUILD_MT_WITH_OPENMP)
@@ -126,6 +126,7 @@ foreach(backend ${MT_BACKENDS})
         else()
             target_link_libraries(${EXAMPLE_NAME}_example_${backend}_static PUBLIC
                 cudss_static
+                nvrtc
             )
         endif()
 

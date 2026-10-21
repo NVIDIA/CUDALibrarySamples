@@ -525,14 +525,14 @@ int main(int argc, char *argv[]) {
     int64_t nrows = n, ncols = n;
     int     ldb = ncols, ldx = nrows;
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateDn(&b, ncols, nrhs, ldb, b_values_d,
-                                             CUDSS_R_64F, CUDSS_LAYOUT_COL_MAJOR),
+                                             CUDA_R_64F, CUDSS_LAYOUT_COL_MAJOR),
                          status, "cudssMatrixCreateDn for b");
     /* Set row-wise 1D distribution for  X */
     CUDSS_CALL_AND_CHECK(cudssMatrixSetDistributionRow1d(b, b_row_start, b_row_end),
                          status, "cudssMatrixSetDistributionRow1d");
 
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateDn(&x, nrows, nrhs, ldx, x_values_d,
-                                             CUDSS_R_64F, CUDSS_LAYOUT_COL_MAJOR),
+                                             CUDA_R_64F, CUDSS_LAYOUT_COL_MAJOR),
                          status, "cudssMatrixCreateDn for x");
     /* Set row-wise 1D distribution for  X */
     CUDSS_CALL_AND_CHECK(cudssMatrixSetDistributionRow1d(x, x_row_start, x_row_end),
@@ -548,8 +548,8 @@ int main(int argc, char *argv[]) {
     cudssMatrixViewType_t mview = CUDSS_MVIEW_UPPER;
     cudssIndexBase_t      base  = CUDSS_BASE_ZERO;
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateCsr(&A, nrows, ncols, nnz, csr_offsets_d, NULL,
-                                              csr_columns_d, csr_values_d, CUDSS_R_32I,
-                                              CUDSS_R_32I, CUDSS_R_64F, mtype, mview,
+                                              csr_columns_d, csr_values_d, CUDA_R_32I,
+                                              CUDA_R_32I, CUDA_R_64F, mtype, mview,
                                               base),
                          status, "cudssMatrixCreateCsr");
     /* Set row-wise 1D distribution for matrix A */

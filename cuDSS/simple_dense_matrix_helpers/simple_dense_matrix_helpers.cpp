@@ -132,21 +132,21 @@ int main(int argc, char *argv[]) {
     /* Create a matrix object for the dense matrix B. */
 
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateDn(&B, nrows, ncols, ld, denseB_values_d,
-                                             CUDSS_R_64F, CUDSS_LAYOUT_COL_MAJOR),
+                                             CUDA_R_64F, CUDSS_LAYOUT_COL_MAJOR),
                          status, "cudssMatrixCreateDn for b");
 
     /* Note: cuDSS matrix objects are lightweight wrappers around the user data.*/
 
     int64_t         nrows_out, ncols_out, ldb_out;
     void           *denseB_values_out = NULL;
-    cudssDataType_t denseB_type_out;
+    cudaDataType_t denseB_type_out;
     cudssLayout_t   denseB_layout_out;
     CUDSS_CALL_AND_CHECK(cudssMatrixGetDn(B, &nrows_out, &ncols_out, &ldb_out,
                                           &denseB_values_out, &denseB_type_out,
                                           &denseB_layout_out),
                          status, "cudssMatrixGetDn for B");
     if (denseB_values_out != denseB_values_d || nrows_out != nrows ||
-        ncols_out != ncols || ldb_out != ld || denseB_type_out != CUDSS_R_64F ||
+        ncols_out != ncols || ldb_out != ld || denseB_type_out != CUDA_R_64F ||
         denseB_layout_out != CUDSS_LAYOUT_COL_MAJOR) {
         printf("Error: Example FAILED: wrong data returned for matrix B\n");
         CUDSS_EXAMPLE_FREE;

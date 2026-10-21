@@ -1,0 +1,137 @@
+! SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+! SPDX-License-Identifier: Apache-2.0
+!
+! Licensed under the Apache License, Version 2.0 (the "License");
+! you may not use this file except in compliance with the License.
+! You may obtain a copy of the License at
+!
+! http://www.apache.org/licenses/LICENSE-2.0
+!
+! Unless required by applicable law or agreed to in writing, software
+! distributed under the License is distributed on an "AS IS" BASIS,
+! WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+! See the License for the specific language governing permissions and
+! limitations under the License.
+!
+! CUDA Fortran port: cudafor device arrays + uniform batch flattened layout.
+
+program main
+  use iso_c_binding, only: c_loc, c_sizeof
+  use cudafor
+  use cudss
+  use cudssutils
+  use validation
+  implicit none
+
+  integer, parameter :: uniformBatchSize = 2, n = 5, nnz = 8, nrhs = 1
+  integer, parameter :: nrows = n, ncols = n, ldx = ncols, ldb = nrows
+
+  integer, allocatable :: csr_offsets(:), csr_columns(:)
+  real(8), allocatable :: csr_values(:,:), x_values(:,:), b_values(:,:)
+  integer, device, allocatable, target :: csr_offsets_d(:), csr_columns_d(:)
+  real(8), device, allocatable, target :: csr_values_d(:), x_values_d(:), b_values_d(:)
+
+  type(cudssHandle) :: h
+  type(cudssMatrix) :: A, b, x
+  type(cudssConfig) :: solverConfig
+  type(cudssData) :: solverData
+  type(cudssStatus) :: statusDSS
+  type(cudssMatrixType) :: mtype = CUDSS_MTYPE_SPD
+  type(cudssMatrixViewType) :: mview = CUDSS_MVIEW_UPPER
+  type(cudssIndexBase) :: base = CUDSS_BASE_ONE
+  integer :: status, i
+  integer(cuda_stream_kind) :: stream
+  real(8), parameter :: tol = 1.d-11
+
+  print "('Maj/Min/Patch:', 3(1x, i0))", CUDSS_VERSION_MAJOR, CUDSS_VERSION_MINOR, CUDSS_VERSION_PATCH
+
+  allocate(csr_offsets(n+1), csr_columns(nnz), csr_values(nnz,2), x_values(nrhs*n,2), b_values(nrhs*n,2))
+  allocate(csr_offsets_d(n+1), csr_columns_d(nnz), csr_values_d(nnz*2), x_values_d(nrhs*n*2), b_values_d(nrhs*n*2))
+
+  csr_offsets = [1, 3, 5, 7, 8, 9]
+  csr_columns = [1, 3, 2, 3, 3, 5, 4, 5]
+  csr_values(:,1) = [4.0, 1.0, 3.0, 2.0, 5.0, 1.0, 1.0, 2.0]
+  csr_values(:,2) = [2.0, 1.0, 3.0, 1.0, 6.0, 2.0, 4.0, 8.0]
+  b_values(:,1) = [7.0, 12.0, 25.0, 4.0, 13.0]
+  b_values(:,2) = [13.0, 15.0, 29.0, 8.0, 14.0]
+  x_values = 0.0d0
+
+  csr_offsets_d = csr_offsets
+  csr_columns_d = csr_columns
+  csr_values_d = reshape(csr_values, [size(csr_values)])
+  b_values_d = reshape(b_values, [size(b_values)])
+  x_values_d = reshape(x_values, [size(x_values)])
+
+  status = cudaStreamCreate(stream)
+  statusDSS = cudssCreate(h)
+  statusDSS = cudssSetStream(h, stream)
+  statusDSS = cudssConfigCreate(solverConfig)
+  statusDSS = cudssDataCreate(h, solverData)
+
+  statusDSS = cudssMatrixCreateDn(b, int(nrows,8), int(nrhs,8), int(ldb,8), c_loc(b_values_d(1)), &
+       CUDSS_R_64F, CUDSS_LAYOUT_COL_MAJOR)
+  call printMatrix(b, solverConfig)
+
+  statusDSS = cudssMatrixCreateDn(x, int(ncols,8), int(nrhs,8), int(ldx,8), c_loc(x_values_d(1)), &
+       CUDSS_R_64F, CUDSS_LAYOUT_COL_MAJOR)
+  statusDSS = cudssMatrixCreateCsr(A, int(nrows,8), int(ncols,8), int(nnz,8), &
+       c_loc(csr_offsets_d(1)), c_loc(csr_columns_d(1)), c_loc(csr_values_d(1)), &
+       CUDSS_R_32I, CUDSS_R_32I, CUDSS_R_64F, mtype, mview, base)
+  call printMatrix(A, solverConfig)
+
+  ! cuDSS will factorize and solve all matrices in the batch simultaneously
+  statusDSS = cudssConfigSet(solverConfig, CUDSS_CONFIG_UBATCH_SIZE, uniformBatchSize, c_sizeof(uniformBatchSize))
+
+  statusDSS = cudssExecute(h, CUDSS_PHASE_ANALYSIS, solverConfig, solverData, A, x, b)
+  statusDSS = cudssExecute(h, CUDSS_PHASE_FACTORIZATION, solverConfig, solverData, A, x, b)
+  statusDSS = cudssExecute(h, CUDSS_PHASE_SOLVE, solverConfig, solverData, A, x, b)
+  status = cudaStreamSynchronize(stream)
+
+  block
+    real(8) :: flat(size(x_values))
+    flat = x_values_d
+    x_values = reshape(flat, shape(x_values))
+  end block
+
+  do i = 1, uniformBatchSize
+    if (.not. validate_spd_upper_solution_r64(n, csr_offsets, csr_columns, csr_values(:,i), &
+         x_values(:,i), b_values(:,i), tol)) error stop 1
+  end do
+
+  call printMatrix(x, solverConfig)
+
+  ! Optionally ubatch_index can be set to factorize one specific matrix of the
+  ! batch or use a specific factorized matrix on solve. That allows to keep
+  ! in memory multiple factorized matrices.
+  block
+    integer :: ubatch_index
+    real(8) :: flat(n*nrhs)
+    ubatch_index = 1
+
+    statusDSS = cudssConfigSet(solverConfig, CUDSS_CONFIG_UBATCH_INDEX, &
+         ubatch_index, c_sizeof(ubatch_index))
+
+    statusDSS = cudssMatrixSetValues(A, c_loc(csr_values_d(ubatch_index*nnz + 1)))
+    statusDSS = cudssMatrixSetValues(b, c_loc(b_values_d(ubatch_index*n*nrhs + 1)))
+
+    statusDSS = cudssExecute(h, CUDSS_PHASE_FACTORIZATION, solverConfig, solverData, A, x, b)
+    statusDSS = cudssExecute(h, CUDSS_PHASE_SOLVE, solverConfig, solverData, A, x, b)
+    status = cudaStreamSynchronize(stream)
+
+    flat = x_values_d(1:n*nrhs)
+    if (.not. validate_spd_upper_solution_r64(n, csr_offsets, csr_columns, csr_values(:,ubatch_index+1), &
+         flat, b_values(:,ubatch_index+1), tol)) error stop 1
+  end block
+
+  statusDSS = cudssMatrixDestroy(A)
+  statusDSS = cudssMatrixDestroy(b)
+  statusDSS = cudssMatrixDestroy(x)
+  statusDSS = cudssDataDestroy(h, solverData)
+  statusDSS = cudssConfigDestroy(solverConfig)
+  statusDSS = cudssDestroy(h)
+  status = cudaStreamDestroy(stream)
+
+  deallocate(csr_offsets, csr_columns, csr_values, x_values, b_values)
+  deallocate(csr_offsets_d, csr_columns_d, csr_values_d, x_values_d, b_values_d)
+  print *, 'Example cudss_uniform_batch PASSED'
+end program main

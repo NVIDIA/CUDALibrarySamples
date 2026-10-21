@@ -95,17 +95,17 @@ int main(int argc, char *argv[]) {
     using index_type = int;
     using value_type = double;
 
-    constexpr cudssDataType_t cuda_error_type = CUDSS_DATA_TYPE_UNSET;
+    constexpr cudaDataType_t cuda_error_type = CUDSS_DATA_TYPE_UNSET;
 
     // These values are adapted to index_type and value_type
-    const cudssDataType_t cuda_index_type =
+    const cudaDataType_t cuda_index_type =
         std::is_same<index_type, int>::value
-            ? CUDSS_R_32I
-            : (std::is_same<index_type, int64_t>::value ? CUDSS_R_64I : cuda_error_type);
-    const cudssDataType_t cuda_value_type =
+            ? CUDA_R_32I
+            : (std::is_same<index_type, int64_t>::value ? CUDA_R_64I : cuda_error_type);
+    const cudaDataType_t cuda_value_type =
         std::is_same<value_type, double>::value
-            ? CUDSS_R_64F
-            : (std::is_same<value_type, float>::value ? CUDSS_R_32F : cuda_error_type);
+            ? CUDA_R_64F
+            : (std::is_same<value_type, float>::value ? CUDA_R_32F : cuda_error_type);
 
     int major, minor, patch;
     cudssGetProperty(MAJOR_VERSION, &major);
@@ -249,8 +249,7 @@ int main(int argc, char *argv[]) {
                                         &reorder_alg, sizeof(cudssReorderingAlg_t)),
                          status, "cudssConfigSet for reordering alg");
 
-    cudssMatchingAlg_t matching_alg =
-        CUDSS_MATCHING_ALG_AUTO; // matching with scaling, same as CUDSS_MATCHING_ALG_MAX_DIAG_PRODUCT
+    cudssMatchingAlg_t matching_alg = CUDSS_MATCHING_ALG_AUTO;
     CUDSS_CALL_AND_CHECK(cudssConfigSet(solverConfig, CUDSS_CONFIG_MATCHING_ALG,
                                         &matching_alg, sizeof(cudssMatchingAlg_t)),
                          status, "cudssConfigSet for matching alg");
@@ -308,6 +307,13 @@ int main(int argc, char *argv[]) {
     CUDSS_CALL_AND_CHECK(cudssConfigGet(solverConfig, CUDSS_CONFIG_MATCHING_ALG,
                                         &matching_alg, sizeof(cudssMatchingAlg_t), &sizeWritten),
                             status, "cudssConfigGet for matching_alg");
+    int force_nonsymmetric_matching;
+    CUDSS_CALL_AND_CHECK(cudssConfigGet(solverConfig, CUDSS_CONFIG_FORCE_NONSYMMETRIC_MATCHING,
+                                        &force_nonsymmetric_matching,
+                                        sizeof(int), &sizeWritten),
+                         status, "cudssConfigGet for force_nonsymmetric_matching");
+    printf("matching alg = %d\n", int(matching_alg));
+    printf("matching force-nonsymmetric flag = %d\n", int(force_nonsymmetric_matching));
     int used_matching = matching_alg != CUDSS_MATCHING_ALG_NONE;
 
     if (used_matching) {

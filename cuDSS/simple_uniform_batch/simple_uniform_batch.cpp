@@ -152,14 +152,14 @@ int main(int argc, char *argv[]) {
     /* Note: Right-hand side b is initialized with values which correspond
        to the exact solution vectors {1, 2, 3, 4, 5}
                                  and {5, 4, 3, 2, 1} */
-    // Fill the first right-hand-side
+    // Fill the first right-hand side
     i               = 0;
     b_values_h[i++] = 7.0;
     b_values_h[i++] = 12.0;
     b_values_h[i++] = 25.0;
     b_values_h[i++] = 4.0;
     b_values_h[i++] = 13.0;
-    // Fill the second right-hand-side
+    // Fill the second right-hand side
     b_values_h[i++] = 13.0;
     b_values_h[i++] = 15.0;
     b_values_h[i++] = 29.0;
@@ -220,10 +220,10 @@ int main(int argc, char *argv[]) {
     int64_t nrows = n, ncols = n;
     int     ldb = nrows, ldx = ncols;
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateDn(&b, nrows, nrhs, ldb, b_values_d,
-                                             CUDSS_R_64F, CUDSS_LAYOUT_COL_MAJOR),
+                                             CUDA_R_64F, CUDSS_LAYOUT_COL_MAJOR),
                          status, "cudssMatrixCreateDn for b");
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateDn(&x, ncols, nrhs, ldx, x_values_d,
-                                             CUDSS_R_64F, CUDSS_LAYOUT_COL_MAJOR),
+                                             CUDA_R_64F, CUDSS_LAYOUT_COL_MAJOR),
                          status, "cudssMatrixCreateDn for x");
 
     /* Create a matrix object for the sparse input matrix. */
@@ -232,8 +232,8 @@ int main(int argc, char *argv[]) {
     cudssMatrixViewType_t mview = CUDSS_MVIEW_UPPER;
     cudssIndexBase_t      base  = CUDSS_BASE_ZERO;
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateCsr(&A, nrows, ncols, nnz, csr_offsets_d, NULL,
-                                              csr_columns_d, csr_values_d, CUDSS_R_32I,
-                                              CUDSS_R_32I, CUDSS_R_64F, mtype, mview,
+                                              csr_columns_d, csr_values_d, CUDA_R_32I,
+                                              CUDA_R_32I, CUDA_R_64F, mtype, mview,
                                               base),
                          status, "cudssMatrixCreateCsr");
 

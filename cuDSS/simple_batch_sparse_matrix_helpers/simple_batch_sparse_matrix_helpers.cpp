@@ -340,8 +340,8 @@ int main(int argc, char *argv[]) {
     int *nrows = n, *ncols = n;
     int *ldb = nrows;
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateBatchDn(&b, batchCount, nrows, nrhs, ldb,
-                                                  batch_b_values_d, CUDSS_R_32I,
-                                                  CUDSS_R_64F, CUDSS_LAYOUT_COL_MAJOR),
+                                                  batch_b_values_d, CUDA_R_32I,
+                                                  CUDA_R_64F, CUDSS_LAYOUT_COL_MAJOR),
                          status, "cudssMatrixCreateBatchDn for b");
 
     /* Create a matrix object for the batch of sparse input matrices. */
@@ -351,8 +351,8 @@ int main(int argc, char *argv[]) {
     cudssIndexBase_t      base  = CUDSS_BASE_ZERO;
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateBatchCsr(
                              &A, batchCount, nrows, ncols, nnz, batch_csr_offsets_d, NULL,
-                             batch_csr_columns_d, batch_csr_values_d, CUDSS_R_32I,
-                             CUDSS_R_32I, CUDSS_R_64F, mtype, mview, base),
+                             batch_csr_columns_d, batch_csr_values_d, CUDA_R_32I,
+                             CUDA_R_32I, CUDA_R_64F, mtype, mview, base),
                          status, "cudssMatrixCreateBatchCsr");
 
     /* Note: cuDSS matrix objects are lightweight wrappers around the user data.*/
@@ -361,7 +361,7 @@ int main(int argc, char *argv[]) {
     void                **batch_csr_offsets_out = NULL;
     void                **batch_csr_columns_out = NULL;
     void                **batch_csr_values_out  = NULL;
-    cudssDataType_t       offset_type_out, index_type_out, value_type_out;
+    cudaDataType_t       offset_type_out, index_type_out, value_type_out;
     cudssMatrixType_t     mtype_out;
     cudssMatrixViewType_t mview_out;
     cudssIndexBase_t      index_base_out;
@@ -376,7 +376,7 @@ int main(int argc, char *argv[]) {
         batch_csr_columns_out != batch_csr_columns_d ||
         batch_csr_values_out != batch_csr_values_d || batchCount_out != batchCount ||
         nrows_out != nrows || ncols_out != ncols || nnz_out != nnz ||
-        index_type_out != CUDSS_R_32I || value_type_out != CUDSS_R_64F ||
+        index_type_out != CUDA_R_32I || value_type_out != CUDA_R_64F ||
         mtype_out != mtype || mview_out != mview || index_base_out != base) {
         printf("Error: Example FAILED: wrong data returned for matrix A\n");
         CUDSS_EXAMPLE_FREE;
@@ -395,7 +395,7 @@ int main(int argc, char *argv[]) {
 
     if (batch_b_values_out != batch_b_values_d || batchCount_out != batchCount ||
         nrows_out != nrows || nrhs_out != nrhs || ldb_out != ldb ||
-        index_type_out != CUDSS_R_32I || value_type_out != CUDSS_R_64F ||
+        index_type_out != CUDA_R_32I || value_type_out != CUDA_R_64F ||
         layout_out != CUDSS_LAYOUT_COL_MAJOR) {
         printf("Error: Example FAILED: wrong data returned for matrix B\n");
         CUDSS_EXAMPLE_FREE;

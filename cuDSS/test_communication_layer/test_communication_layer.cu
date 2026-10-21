@@ -250,7 +250,7 @@ static int test_bcast_device(test_context_t *ctx) {
     memset(ctx->data_h, 0, ctx->number_elements * sizeof(int));
 
     if (ctx->comm != NULL) {
-        if (ctx->commIface->cudssBcastDevice(data_d, ctx->number_elements, CUDSS_R_32I, 0,
+        if (ctx->commIface->cudssBcastDevice(data_d, ctx->number_elements, CUDA_R_32I, 0,
                                              ctx->comm, ctx->stream) != 0)
             test_err = 1;
         CUDA_CALL_AND_CHECK(cudaStreamSynchronize(ctx->stream),
@@ -303,7 +303,7 @@ static int test_bcast_host(test_context_t *ctx) {
             memset(host_buf, 0, small_count * sizeof(int));
         }
         if (ctx->comm != NULL &&
-            ctx->commIface->cudssBcastHost(host_buf, small_count, CUDSS_R_32I, 0,
+            ctx->commIface->cudssBcastHost(host_buf, small_count, CUDA_R_32I, 0,
                                            host_comm_world(ctx), ctx->stream) != 0)
             test_err = 1;
         for (int i = 0; i < small_count && test_err == 0; ++i) {
@@ -329,7 +329,7 @@ static int test_reduce_allreduce(test_context_t *ctx) {
     if (ctx->comm != NULL) {
         memcpy(recv_vals, send_vals, sizeof(send_vals));
         if (ctx->commIface->cudssReduceHost(send_vals, recv_vals, reduce_count,
-                                            CUDSS_R_32I, CUDSS_SUM, 0,
+                                            CUDA_R_32I, CUDSS_SUM, 0,
                                             host_comm_world(ctx), ctx->stream) != 0)
             test_err = 1;
         if (ctx->rank == 0) {
@@ -343,7 +343,7 @@ static int test_reduce_allreduce(test_context_t *ctx) {
         }
         memcpy(recv_f64, send_f64, sizeof(send_f64));
         if (ctx->commIface->cudssAllreduceHost(send_f64, recv_f64, reduce_count,
-                                               CUDSS_R_64F, CUDSS_MAX,
+                                               CUDA_R_64F, CUDSS_MAX,
                                                host_comm_world(ctx), ctx->stream) != 0)
             test_err = 1;
         for (i = 0; i < reduce_count; ++i) {
@@ -366,7 +366,7 @@ static int test_reduce_allreduce(test_context_t *ctx) {
         "cudaMemcpy HostToDevice (send_vals -> send_d) failed");
     test_err = 0;
     if (ctx->comm != NULL &&
-        ctx->commIface->cudssReduceDevice(send_d, recv_d, reduce_count, CUDSS_R_32I,
+        ctx->commIface->cudssReduceDevice(send_d, recv_d, reduce_count, CUDA_R_32I,
                                           CUDSS_MIN, 0, ctx->comm, ctx->stream) != 0)
         test_err = 1;
     CUDA_CALL_AND_CHECK(cudaStreamSynchronize(ctx->stream),
@@ -399,7 +399,7 @@ static int test_reduce_allreduce(test_context_t *ctx) {
     test_err = 0;
     if (ctx->comm != NULL && ctx->commIface->cudssAllreduceDevice(
                                  allreduce_send, allreduce_recv, reduce_count,
-                                 CUDSS_R_32I, CUDSS_MIN, ctx->comm, ctx->stream) != 0)
+                                 CUDA_R_32I, CUDSS_MIN, ctx->comm, ctx->stream) != 0)
         test_err = 1;
     CUDA_CALL_AND_CHECK(cudaStreamSynchronize(ctx->stream),
                         "cudaStreamSynchronize after Allreduce failed");
@@ -429,14 +429,14 @@ static int test_send_recv(test_context_t *ctx) {
         int send_buf[8];
         for (int i = 0; i < sendrecv_count; ++i)
             send_buf[i] = send_host_base + i;
-        if (ctx->commIface->cudssSendHost(send_buf, sendrecv_count, CUDSS_R_32I, 1,
+        if (ctx->commIface->cudssSendHost(send_buf, sendrecv_count, CUDA_R_32I, 1,
                                           tag_host, host_comm_world(ctx),
                                           ctx->stream) != 0)
             test_err = 1;
     } else if (ctx->rank == 1) {
         int recv_buf[8];
         memset(recv_buf, 0, sizeof(recv_buf));
-        if (ctx->commIface->cudssRecvHost(recv_buf, sendrecv_count, CUDSS_R_32I, 0,
+        if (ctx->commIface->cudssRecvHost(recv_buf, sendrecv_count, CUDA_R_32I, 0,
                                           tag_host, host_comm_world(ctx),
                                           ctx->stream) != 0)
             test_err = 1;
@@ -465,13 +465,13 @@ static int test_send_recv(test_context_t *ctx) {
         CUDA_CALL_AND_CHECK(cudaMemcpy(send_d_buf, send_h, sendrecv_count * sizeof(int),
                                        cudaMemcpyHostToDevice),
                             "cudaMemcpy HostToDevice (send_h -> send_d_buf) failed");
-        if (ctx->commIface->cudssSendDevice(send_d_buf, sendrecv_count, CUDSS_R_32I, 1,
+        if (ctx->commIface->cudssSendDevice(send_d_buf, sendrecv_count, CUDA_R_32I, 1,
                                             tag_device, ctx->comm, ctx->stream) != 0)
             test_err = 1;
         CUDA_CALL_AND_CHECK(cudaStreamSynchronize(ctx->stream),
                             "cudaStreamSynchronize after cudssSendDevice failed");
     } else if (ctx->rank == 1) {
-        if (ctx->commIface->cudssRecvDevice(recv_d_buf, sendrecv_count, CUDSS_R_32I, 0,
+        if (ctx->commIface->cudssRecvDevice(recv_d_buf, sendrecv_count, CUDA_R_32I, 0,
                                             tag_device, ctx->comm, ctx->stream) != 0)
             test_err = 1;
         CUDA_CALL_AND_CHECK(cudaStreamSynchronize(ctx->stream),
@@ -522,8 +522,8 @@ static int test_scatterv(test_context_t *ctx) {
         }
     }
     if (test_err == 0 && ctx->comm != NULL &&
-        ctx->commIface->cudssScattervHost(sendbuf_h, sendcounts, displs, CUDSS_R_32I,
-                                          recvbuf_h, recv_count_per_rank, CUDSS_R_32I, 0,
+        ctx->commIface->cudssScattervHost(sendbuf_h, sendcounts, displs, CUDA_R_32I,
+                                          recvbuf_h, recv_count_per_rank, CUDA_R_32I, 0,
                                           host_comm_world(ctx), ctx->stream) != 0)
         test_err = 1;
     if (ctx->rank == 0 && sendbuf_h)
@@ -581,8 +581,8 @@ static int test_scatterv(test_context_t *ctx) {
      * non-NULL placeholder since the API does not guarantee NULL is accepted. */
     if (ctx->comm != NULL &&
         ctx->commIface->cudssScattervDevice(
-            ctx->rank == 0 ? sendbuf_d : recvbuf_d, sendcounts_h, displs_h, CUDSS_R_32I,
-            recvbuf_d, recv_count_per_rank, CUDSS_R_32I, 0, ctx->comm, ctx->stream) != 0)
+            ctx->rank == 0 ? sendbuf_d : recvbuf_d, sendcounts_h, displs_h, CUDA_R_32I,
+            recvbuf_d, recv_count_per_rank, CUDA_R_32I, 0, ctx->comm, ctx->stream) != 0)
         test_err = 1;
     CUDA_CALL_AND_CHECK(cudaStreamSynchronize(ctx->stream),
                         "cudaStreamSynchronize after Scatterv failed");

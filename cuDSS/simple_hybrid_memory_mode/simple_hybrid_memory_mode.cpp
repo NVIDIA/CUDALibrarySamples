@@ -206,10 +206,10 @@ int main(int argc, char *argv[]) {
     int64_t nrows = n, ncols = n;
     int     ldb = nrows, ldx = ncols;
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateDn(&b, nrows, nrhs, ldb, b_values_d,
-                                             CUDSS_R_64F, CUDSS_LAYOUT_COL_MAJOR),
+                                             CUDA_R_64F, CUDSS_LAYOUT_COL_MAJOR),
                          status, "cudssMatrixCreateDn for b");
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateDn(&x, ncols, nrhs, ldx, x_values_d,
-                                             CUDSS_R_64F, CUDSS_LAYOUT_COL_MAJOR),
+                                             CUDA_R_64F, CUDSS_LAYOUT_COL_MAJOR),
                          status, "cudssMatrixCreateDn for x");
 
     /* Create a matrix object for the sparse input matrix. */
@@ -218,8 +218,8 @@ int main(int argc, char *argv[]) {
     cudssMatrixViewType_t mview = CUDSS_MVIEW_UPPER;
     cudssIndexBase_t      base  = CUDSS_BASE_ZERO;
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateCsr(&A, nrows, ncols, nnz, csr_offsets_d, NULL,
-                                              csr_columns_d, csr_values_d, CUDSS_R_32I,
-                                              CUDSS_R_32I, CUDSS_R_64F, mtype, mview,
+                                              csr_columns_d, csr_values_d, CUDA_R_32I,
+                                              CUDA_R_32I, CUDA_R_64F, mtype, mview,
                                               base),
                          status, "cudssMatrixCreateCsr");
 
@@ -230,7 +230,7 @@ int main(int argc, char *argv[]) {
                                         &hybrid_mode, sizeof(hybrid_mode)),
                          status, "cudssConfigSet CUDSS_CONFIG_HYBRID_MEMORY_MODE");
 
-    /* Symbolic factorization */
+    /* The x and b shapes passed to analysis determine the hybrid memory minimum. */
     CUDSS_CALL_AND_CHECK(
         cudssExecute(handle, CUDSS_PHASE_ANALYSIS, solverConfig, solverData, A, x, b),
         status, "cudssExecute for analysis");
@@ -252,7 +252,8 @@ int main(int argc, char *argv[]) {
     /* (optional) User can specify how much device memory is available for cuDSS
        Note: By default, cuDSS would attempt to use all available device memory if needed
      */
-    int64_t hybrid_device_memory_limit = 40 * 1024; // in bytes = 40 KB
+    // The exact minimum has no headroom for input or configuration changes.
+    int64_t hybrid_device_memory_limit = device_memory_min;
     CUDSS_CALL_AND_CHECK(
         cudssConfigSet(solverConfig, CUDSS_CONFIG_HYBRID_DEVICE_MEMORY_LIMIT,
                        &hybrid_device_memory_limit, sizeof(hybrid_device_memory_limit)),

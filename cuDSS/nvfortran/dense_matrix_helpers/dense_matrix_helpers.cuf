@@ -1,0 +1,98 @@
+! SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+! SPDX-License-Identifier: Apache-2.0
+!
+! Licensed under the Apache License, Version 2.0 (the "License");
+! you may not use this file except in compliance with the License.
+! You may obtain a copy of the License at
+!
+! http://www.apache.org/licenses/LICENSE-2.0
+!
+! Unless required by applicable law or agreed to in writing, software
+! distributed under the License is distributed on an "AS IS" BASIS,
+! WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+! See the License for the specific language governing permissions and
+! limitations under the License.
+!
+! This example demonstrates usage of cuDSS helper APIs for matrix objects.
+! Matches examples/cudss_dense_matrix_helpers.cpp (dense helpers only; no full linear solve).
+! CUDA Fortran port: cudafor device arrays + = for host/device copies.
+
+program main
+  use iso_fortran_env, only: wp => real64
+  use iso_c_binding, only: c_int, c_int64_t, c_ptr, c_intptr_t, c_f_pointer, c_loc
+  use cudafor
+  use cudss
+  use cudssutils
+  implicit none
+
+  integer(c_int64_t) :: nrows, ncols, ld
+  integer :: i, j, lin
+  real(wp), allocatable :: dense_h(:), dense_h2(:)
+  real(wp), device, allocatable, target :: dense_d(:), dense_d2(:)
+  type(cudssHandle) :: handle
+  type(cudssMatrix) :: B
+  type(cudssStatus) :: st
+  type(cudssMatrixFormat) :: mf
+  integer(c_int64_t) :: nr_o, nc_o, ldb_o
+  type(c_ptr), target :: vals_o
+  integer(c_int) :: dt_o
+  type(cudssLayout) :: lay_o
+  real(wp) :: newv
+  integer(c_int) :: fm
+
+  print "('Maj/Min/Patch:', 3(1x, i0))", CUDSS_VERSION_MAJOR, CUDSS_VERSION_MINOR, CUDSS_VERSION_PATCH
+
+  nrows = 6; ncols = nrows/2; ld = 2*nrows
+  allocate(dense_h(ld*ncols), dense_h2(ld*ncols), dense_d(ld*ncols), dense_d2(ld*ncols))
+  lin = 0
+  do j = 1, ncols
+    do i = 1, ld
+      lin = lin + 1
+      dense_h(lin) = real(lin, kind=wp)
+    end do
+  end do
+  dense_h2 = dense_h
+  dense_d = dense_h
+  dense_d2 = dense_h2
+
+  st = cudssCreate(handle)
+  st = cudssMatrixCreateDn(B, nrows, ncols, ld, c_loc(dense_d(1)), CUDSS_R_64F, CUDSS_LAYOUT_COL_MAJOR)
+  st = cudssMatrixGetDn(B, nr_o, nc_o, ldb_o, vals_o, dt_o, lay_o)
+
+  if (nr_o /= nrows .or. nc_o /= ncols .or. ldb_o /= ld .or. dt_o /= CUDSS_R_64F &
+       .or. lay_o /= CUDSS_LAYOUT_COL_MAJOR &
+       .or. transfer(vals_o, 0_c_intptr_t) /= transfer(c_loc(dense_d(1)), 0_c_intptr_t)) then
+     print *, 'FAILED: cudssMatrixGetDn consistency'; error stop 2
+  end if
+  call printMatrix(B)
+
+  newv = -1.0_wp; dense_h(1) = newv; dense_d = dense_h
+  st = cudssMatrixGetDn(B, values=vals_o)
+  call copy_cptr_to_host_r8(dense_h, vals_o, size(dense_h))
+  if (abs(dense_h(1) - newv) > epsilon(1.0_wp)) error stop 3
+  call printMatrix(B)
+
+  newv = -4.0_wp; dense_h2(2) = newv; dense_d2 = dense_h2
+  st = cudssMatrixSetValues(B, c_loc(dense_d2(1)))
+  st = cudssMatrixGetDn(B, values=vals_o)
+  call copy_cptr_to_host_r8(dense_h, vals_o, size(dense_h))
+  if (abs(dense_h(2) - newv) > epsilon(1.0_wp)) error stop 4
+  call printMatrix(B)
+
+  st = cudssMatrixGetFormat(B, mf)
+  if (iand(mf%val, CUDSS_MFORMAT_DENSE%val) == 0) error stop 5
+
+  st = cudssMatrixDestroy(B); st = cudssDestroy(handle)
+  deallocate(dense_h, dense_h2, dense_d, dense_d2)
+  print *, 'Example cudss_dense_matrix_helpers PASSED'
+
+contains
+  subroutine copy_cptr_to_host_r8(host, dev_cptr, n)
+    real(wp), intent(out) :: host(:)
+    type(c_ptr), intent(in) :: dev_cptr
+    integer, intent(in) :: n
+    real(wp), device, pointer :: dev_p(:)
+    call c_f_pointer(dev_cptr, dev_p, [n])
+    host = dev_p
+  end subroutine copy_cptr_to_host_r8
+end program main

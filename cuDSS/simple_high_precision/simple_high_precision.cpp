@@ -73,6 +73,25 @@
     } while (0);
 
 
+#ifdef __cplusplus
+
+// Type corresponding to CUDSS_R_64F_MP2
+struct alignas(2 * sizeof(double)) cudss_fp64mp2_t {
+    double hi;
+    double lo;
+};
+
+#else
+
+// Type corresponding to CUDSS_R_64F_MP2
+typedef struct {
+    _Alignas(2 * sizeof(double)) double hi;
+    double lo;
+} cudss_fp64mp2_t;
+
+#endif // __cplusplus
+
+
 cudss_fp64mp2_t to_cudss_fp64mp2_t(double x) {
     return cudss_fp64mp2_t{x, 0.0};
 }
@@ -125,7 +144,7 @@ int main(int argc, char *argv[]) {
         return -1;
     }
     cudaDeviceProp device_prop;
-    cuda_error = cudaGetDeviceProperties(&device_prop, 0);
+    cuda_error = cudaGetDeviceProperties(&device_prop, device);
     if (cuda_error != cudaSuccess) {
         printf("Error: cudaGetDeviceProperties failed with error %d\n", cuda_error);
         return -1;
@@ -266,10 +285,10 @@ int main(int argc, char *argv[]) {
     int64_t nrows = n, ncols = n;
     int     ldb = nrows, ldx = ncols;
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateDn(&b, nrows, nrhs, ldb, b_values_d,
-                                             CUDSS_R_64F_64F, CUDSS_LAYOUT_COL_MAJOR),
+                                             CUDSS_R_64F_MP2, CUDSS_LAYOUT_COL_MAJOR),
                          status, "cudssMatrixCreateDn for b");
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateDn(&x, ncols, nrhs, ldx, x_values_d,
-                                             CUDSS_R_64F_64F, CUDSS_LAYOUT_COL_MAJOR),
+                                             CUDSS_R_64F_MP2, CUDSS_LAYOUT_COL_MAJOR),
                          status, "cudssMatrixCreateDn for x");
 
     /* Create a matrix object for the sparse input matrix. */
@@ -278,8 +297,8 @@ int main(int argc, char *argv[]) {
     cudssMatrixViewType_t mview = CUDSS_MVIEW_UPPER;
     cudssIndexBase_t      base  = CUDSS_BASE_ZERO;
     CUDSS_CALL_AND_CHECK(cudssMatrixCreateCsr(&A, nrows, ncols, nnz, csr_offsets_d, NULL,
-                                              csr_columns_d, csr_values_d, CUDSS_R_32I,
-                                              CUDSS_R_32I, CUDSS_R_64F_64F, mtype, mview,
+                                              csr_columns_d, csr_values_d, CUDA_R_32I,
+                                              CUDA_R_32I, CUDSS_R_64F_MP2, mtype, mview,
                                               base),
                          status, "cudssMatrixCreateCsr");
 

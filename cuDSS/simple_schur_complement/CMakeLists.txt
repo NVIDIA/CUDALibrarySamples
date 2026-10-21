@@ -36,7 +36,7 @@ option(BUILD_STATIC "Building statically linked examples" OFF)
 # Find CUDA toolkit (for cusolver)
 find_package(CUDAToolkit REQUIRED)
 # Find cuDSS
-find_package(cudss 0.8.0 REQUIRED)
+find_package(cudss 1.0.0 REQUIRED)
 # CUDAToolkit may expose CUDA::cusolver (CMake 3.17+) or not in some configs; fallback to library name
 if(NOT TARGET CUDA::cusolver AND NOT TARGET CUDAToolkit::cusolver)
     find_library(CUSOLVER_LIBRARY cusolver
@@ -95,6 +95,7 @@ if(BUILD_STATIC)
     else()
         target_link_libraries(${EXAMPLE_NAME}_example_static PUBLIC
             cudss_static ${CUSOLVER_TARGET}
+            nvrtc
         )
     endif()
 

@@ -40,7 +40,7 @@ set(CMAKE_CUDA_EXTENSIONS        OFF)
 option(BUILD_STATIC           "Building statically linked examples" OFF)
 
 # Find cuDSS
-find_package(cudss 0.8.0 REQUIRED)
+find_package(cudss 1.0.0 REQUIRED)
 
 # Find OpenMP
 find_package(OpenMP REQUIRED)
@@ -107,6 +107,7 @@ foreach(backend ${MT_BACKENDS})
 
         target_link_libraries(${EXAMPLE_NAME}_example_${backend}_static PUBLIC
             cudss_static OpenMP::OpenMP_CXX
+            nvrtc
         )
 
         add_test(NAME ${EXAMPLE_NAME}_example_${backend}_static COMMAND ${EXAMPLE_NAME}_example_${backend}_static ${extra_mt_input_arg})

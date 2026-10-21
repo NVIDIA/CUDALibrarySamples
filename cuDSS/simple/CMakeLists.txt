@@ -34,7 +34,7 @@ set(CMAKE_CUDA_EXTENSIONS        OFF)
 option(BUILD_STATIC "Building statically linked examples" OFF)
 
 # Find cuDSS
-find_package(cudss 0.8.0 REQUIRED)
+find_package(cudss 1.0.0 REQUIRED)
 
 set_source_files_properties(${EXAMPLE_NAME}.cpp PROPERTIES LANGUAGE CUDA)
 
@@ -74,6 +74,7 @@ if(BUILD_STATIC)
     else()
         target_link_libraries(${EXAMPLE_NAME}_example_static PUBLIC
             cudss_static
+            nvrtc
         )
     endif()
 

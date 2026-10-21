@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <tuple>
@@ -30,7 +31,9 @@ enum MtxReaderStatus {
     MtxReaderErrorLowerViewButUpperFound,
     MtxReaderErrorOutOfBoundRowIndex,
     MtxReaderErrorOfBoundColIndex,
-    MtxReaderErrorInvalidFormatInHeader
+    MtxReaderErrorInvalidFormatInHeader,
+    MtxReaderErrorInvalidN,
+    MtxReaderErrorNotSquare
 };
 
 template <typename value_type>
@@ -96,6 +99,15 @@ int matrix_reader(std::string filename, int &n, int &nnz, int **csr_offsets_h,
             int n1;
             lineData >> n >> n1 >> declared_nnz;
             printf("MATRIX READER: n0= %d, n1= %d, nnz= %d\n", n, n1, declared_nnz);
+            if (n < 0 ||
+                n >= std::numeric_limits<int>::max()/static_cast<int>(sizeof(int))) {
+                fprintf(stderr, "ERROR: Invalid value of n = %d\n", n);
+                return MtxReaderErrorInvalidN;
+            }
+            if (n1 != n) {
+                fprintf(stderr, "ERROR: Only square matrices are supported.\n");
+                return MtxReaderErrorNotSquare;
+            }
             foundSize = true;
         }
         // Get line
@@ -196,7 +208,9 @@ int rhs_reader(std::string filename, int &n, value_type **b_values_h) {
 
     if (!file.is_open()) {
         fprintf(stderr, "Error: Could not open file %s\n", filename.c_str());
-        return EXIT_FAILURE;
+        (*b_values_h) = NULL;
+        n = 0;
+        return MtxReaderErrorFileNotFound;
     }
 
     std::string line;
@@ -242,6 +256,11 @@ int rhs_reader(std::string filename, int &n, value_type **b_values_h) {
                 fprintf(stderr, "Only one RHS is supported, %d found\n.", num_rhs);
                 return EXIT_FAILURE;
             }
+            if (n < 0 ||
+                n > std::numeric_limits<int>::max()/static_cast<int>(sizeof(value_type))) {
+                fprintf(stderr, "ERROR: Invalid value of n = %d\n", n);
+                return MtxReaderErrorInvalidN;
+            }
             *b_values_h = (value_type *)malloc(n * sizeof(value_type));
             printf("RHS READER: allocated host memory\n");
             printf("RHS READER: n = %d\n", n);
@@ -249,6 +268,14 @@ int rhs_reader(std::string filename, int &n, value_type **b_values_h) {
         } else {
             value_type val;
             lineData >> val;
+            if (row >= n) {
+                fprintf(stderr, "ERROR: Too many rows found: row = %d\n", row);
+                if (*b_values_h != NULL) {
+                    free(*b_values_h);
+                    *b_values_h = NULL;
+                }
+                return MtxReaderErrorOutOfBoundRowIndex;
+            }
             (*b_values_h)[row]  = val;
             row                += 1;
         }

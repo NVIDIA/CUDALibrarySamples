@@ -1,0 +1,121 @@
+! SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+! SPDX-License-Identifier: Apache-2.0
+!
+! Licensed under the Apache License, Version 2.0 (the "License");
+! you may not use this file except in compliance with the License.
+! You may obtain a copy of the License at
+!
+! http://www.apache.org/licenses/LICENSE-2.0
+!
+! Unless required by applicable law or agreed to in writing, software
+! distributed under the License is distributed on an "AS IS" BASIS,
+! WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+! See the License for the specific language governing permissions and
+! limitations under the License.
+!
+! CUDA Fortran port: cudafor device arrays (0-based) + = for host/device copies.
+
+program main
+  use iso_fortran_env, only: wp => real64
+  use iso_c_binding, only: c_int, c_int64_t, c_ptr, c_intptr_t, c_f_pointer, c_loc
+  use cudafor
+  use cudss
+  implicit none
+
+  integer, parameter :: nrows = 5, ncols = 5, nnz = 9, nnz2 = 5
+  integer :: csr_offsets(0:nrows), csr_columns(0:nnz-1), csr_offsets2(0:nrows), csr_columns2(0:nnz2-1)
+  real(wp) :: csr_values(0:nnz-1), csr_values2(0:nnz2-1)
+  integer, device, target :: csr_offsets_d(0:nrows), csr_columns_d(0:nnz-1)
+  real(wp), device, target :: csr_values_d(0:nnz-1)
+  integer, device, target :: csr_offsets_d2(0:nrows), csr_columns_d2(0:nnz2-1)
+  real(wp), device, target :: csr_values_d2(0:max(nnz, nnz2)-1)
+
+  type(cudssHandle) :: handle
+  type(cudssMatrix) :: A
+  type(cudssStatus) :: st
+  type(cudssMatrixType) :: mtype = CUDSS_MTYPE_SYMMETRIC
+  type(cudssMatrixViewType) :: mview = CUDSS_MVIEW_UPPER
+  type(cudssIndexBase) :: base = CUDSS_BASE_ZERO
+  integer(c_int64_t) :: nr_o, nc_o, nz_o, nz_new
+  type(c_ptr), target :: ro, co, vo
+  integer(c_int) :: ot, it, vt
+  type(cudssMatrixType) :: mt_o
+  type(cudssMatrixViewType) :: mv_o
+  type(cudssIndexBase) :: ib_o
+  real(wp) :: newv
+  type(cudssMatrixFormat) :: mf
+  integer :: i
+
+  print *, 'CUDSS Version (Major,Minor,PatchLevel): ', CUDSS_VERSION_MAJOR, CUDSS_VERSION_MINOR, CUDSS_VERSION_PATCH
+
+  csr_offsets = [0, 2, 4, 6, 8, 9]
+  csr_columns = [0, 1, 1, 2, 2, 3, 3, 4, 4]
+  do i = 0, nnz-1; csr_values(i) = real(2*i, kind=wp); end do
+  csr_offsets2 = [0, 1, 2, 3, 4, 5]
+  do i = 0, nrows-1; csr_columns2(i) = i; end do
+  do i = 0, nnz2-1; csr_values2(i) = real(4*i, kind=wp); end do
+
+  csr_offsets_d = csr_offsets; csr_columns_d = csr_columns; csr_values_d = csr_values
+  csr_offsets_d2 = csr_offsets2; csr_columns_d2 = csr_columns2
+  csr_values_d2(0:nnz2-1) = csr_values2
+
+  st = cudssCreate(handle)
+  st = cudssMatrixCreateCsr(A, int(nrows,8), int(ncols,8), int(nnz,8), &
+       c_loc(csr_offsets_d(0)), c_loc(csr_columns_d(0)), c_loc(csr_values_d(0)), &
+       CUDSS_R_32I, CUDSS_R_32I, CUDSS_R_64F, mtype, mview, base)
+
+  st = cudssMatrixGetCsr(A, nrows=nr_o, ncols=nc_o, nnz=nz_o, rowStart=ro, colIndices=co, values=vo, &
+       offsetType=ot, indexType=it, valueType=vt, mtype=mt_o, mview=mv_o, indexBase=ib_o)
+
+  if (nr_o /= nrows .or. nc_o /= ncols .or. nz_o /= nnz .or. ot /= CUDSS_R_32I .or. it /= CUDSS_R_32I &
+       .or. vt /= CUDSS_R_64F .or. mt_o /= mtype .or. mv_o /= mview .or. ib_o /= base &
+       .or. transfer(ro, 0_c_intptr_t) /= transfer(c_loc(csr_offsets_d(0)), 0_c_intptr_t) &
+       .or. transfer(co, 0_c_intptr_t) /= transfer(c_loc(csr_columns_d(0)), 0_c_intptr_t) &
+       .or. transfer(vo, 0_c_intptr_t) /= transfer(c_loc(csr_values_d(0)), 0_c_intptr_t)) then
+     print *, 'FAILED GetCsr initial'; error stop 2
+  end if
+
+  ! Modifying values of the matrix A in-place
+  newv = -1.0_wp; csr_values(0) = newv; csr_values_d = csr_values
+  st = cudssMatrixGetCsr(A, values=vo)
+  call copy_cptr_to_host_r8_lb(csr_values, vo, 0, nnz-1)
+  if (abs(csr_values(0) - newv) > epsilon(1.0_wp)) error stop 3
+
+  ! Replacing values of matrix A with new data
+  newv = -4.0_wp
+  block
+    real(wp) :: buf(0:max(nnz, nnz2)-1)
+    buf = csr_values_d2
+    buf(1) = newv
+    csr_values_d2 = buf
+  end block
+  st = cudssMatrixSetValues(A, c_loc(csr_values_d2(0)))
+  st = cudssMatrixGetCsr(A, values=vo)
+  call copy_cptr_to_host_r8_lb(csr_values, vo, 0, nnz-1)
+  if (abs(csr_values(1) - newv) > epsilon(1.0_wp)) error stop 4
+
+  ! Changing the matrix structure (here: removing the last entry)
+  st = cudssMatrixSetCsrPointers(A, c_loc(csr_offsets_d2(0)), c_loc(csr_columns_d2(0)), c_loc(csr_values_d2(0)))
+  st = cudssMatrixGetCsr(A, nnz=nz_new, rowStart=ro, colIndices=co, values=vo)
+  ! Note: changing the matrix structure does not change the nnz returned by
+  ! cudssMatrixGetCsr; the original value passed to cudssMatrixCreateCsr is returned.
+  if (nz_new /= nz_o) error stop 6
+
+  ! Demonstrating cudssMatrixGetFormat
+  st = cudssMatrixGetFormat(A, mf)
+  if (mf%val /= CUDSS_MFORMAT_CSR%val) error stop 5
+
+  ! Destroying opaque objects, matrix wrappers and the cuDSS library handle
+  st = cudssMatrixDestroy(A); st = cudssDestroy(handle)
+  print *, 'Example cudss_sparse_matrix_helpers PASSED'
+
+contains
+  subroutine copy_cptr_to_host_r8_lb(host, dev_cptr, lo, hi)
+    real(wp), intent(out) :: host(lo:)
+    type(c_ptr), intent(in) :: dev_cptr
+    integer, intent(in) :: lo, hi
+    real(wp), device, pointer :: dev_p(:)
+    call c_f_pointer(dev_cptr, dev_p, [hi-lo+1])
+    host(lo:hi) = dev_p
+  end subroutine copy_cptr_to_host_r8_lb
+end program main
