@@ -155,12 +155,22 @@ void spmg(dim_t fft, gpus_t gpus, cpudata_t &h_data_in, cpudata_t &h_data_out,
     // Execute the plan_r2c
     CUFFT_CALL(cufftXtExecDescriptor(plan_r2c, indesc, indesc, CUFFT_FORWARD));
 
+#if CUFFT_VERSION >= 10400
+    // The transform runs on the plan's stream; wait for it before reading back
+    CUDA_RT_CALL(cudaStreamSynchronize(stream));
+#endif
+
     // Scale complex results
     float scale{2.f};
     scaleComplex(indesc, scale, h_data_out.size(), gpus.size());
 
     // Execute the plan_c2r
     CUFFT_CALL(cufftXtExecDescriptor(plan_c2r, indesc, indesc, CUFFT_INVERSE));
+
+#if CUFFT_VERSION >= 10400
+    // The transform runs on the plan's stream; wait for it before reading back
+    CUDA_RT_CALL(cudaStreamSynchronize(stream));
+#endif
 
     // Copy output data to CPU
     CUFFT_CALL(cufftXtMemcpy(plan_c2r, (void *)h_data_out.data(), (void *)indesc,
