@@ -131,6 +131,11 @@ static void print_info(nvtiffStream_t tiff_stream, size_t ifd_offset, const std:
 
     // NOTE: SubIFDs might also form their own chains; these chains can be explored with the same
     // `nvtiffStreamGetNextIFDOffset` machinery as the root IFD chain.
+    //
+    // To keep this example simple, the recursion below is not hardened against maliciously
+    // crafted or corrupt files: a SubIFD tag that points back at an ancestor IFD recurses 
+    // without bound. Production code that reads untrusted TIFFs should limit the depth and/or 
+    // track the IFD offsets it has already visited.
     for (size_t i = 0; i < subifd_offsets.size(); i++) {
         size_t subifd_offset = subifd_offsets[i];
         print_info(tiff_stream, subifd_offset, label + " SubIFD " + std::to_string(i));

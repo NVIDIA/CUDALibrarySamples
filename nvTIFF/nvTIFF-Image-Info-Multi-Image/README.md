@@ -36,8 +36,8 @@ multipage.tif: TIFF, 2 image(s)
 image 0 (IFD offset 8):
   725 x 489, 3 channel(s), 24 bits per pixel, RGB, LZW
   layout: 4 strip(s) of 725 x 128
-  10 tag(s): 256 257 258 259 262 273 277 278 279 284
+  12 tag(s): 256 257 258 259 262 273 277 278 279 284 317 339
 
-image 1 (IFD offset 158):
+image 1 (IFD offset 202):
   ...
 ```

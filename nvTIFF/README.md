@@ -3,7 +3,7 @@
 ## Description
 
 Samples demonstrating GPU-accelerated TIFF decoding and encoding with the
-[nvTIFF library](https://docs.nvidia.com/cuda/nvtiff/index.html) (0.8 API).
+[nvTIFF library](https://docs.nvidia.com/cuda/nvtiff/index.html) (0.9 API).
 
 ## Examples
 
@@ -42,9 +42,10 @@ x86_64, arm64-sbsa, aarch64-jetson
 
 - A Linux or Windows system with recent NVIDIA drivers.
 - The [CUDA toolkit](https://developer.nvidia.com/cuda-downloads).
-- [nvTIFF](https://developer.nvidia.com/nvtiff-downloads) 0.8 or later.
+- [nvTIFF](https://developer.nvidia.com/nvtiff-downloads) 0.9 or later.
 - Optional runtime dependencies, loaded on demand:
-  [nvCOMP](https://developer.nvidia.com/nvcomp-download) for Deflate,
+  [nvCOMP](https://developer.nvidia.com/nvcomp-download) 6.0 or later for
+  Deflate and Zstandard,
   nvJPEG (part of the CUDA toolkit) for JPEG, and
   [nvJPEG2000](https://developer.nvidia.com/nvjpeg2000-downloads) for
   JPEG2000/Aperio streams.

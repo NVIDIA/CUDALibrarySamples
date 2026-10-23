@@ -67,6 +67,7 @@ inline const char* compression_string(nvtiffCompression_t compression)
         case NVTIFF_COMPRESSION_APERIO_JP2000_YCC: return "Aperio JPEG2000 YCC";
         case NVTIFF_COMPRESSION_APERIO_JP2000_RGB: return "Aperio JPEG2000 RGB";
         case NVTIFF_COMPRESSION_JP2000: return "JPEG2000";
+        case NVTIFF_COMPRESSION_ZSTD: return "Zstandard";
         case NVTIFF_COMPRESSION_UNKNOWN: return "unknown";
     }
     return "unknown";
