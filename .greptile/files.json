@@ -1,0 +1,12 @@
+{
+  "files": [
+    {
+      "path": "LICENSE.md",
+      "description": "Project Apache 2.0 license; compare reviewed file notices with this license and established project-owned headers."
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "description": "Project contribution conventions, including imperative MR/PR and commit titles, single-concern changes, and DCO sign-off; reference for squash-ready descriptions."
+    }
+  ]
+}
