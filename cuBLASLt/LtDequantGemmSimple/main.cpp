@@ -36,14 +36,14 @@ int main() {
 
     {
         // B is the quantized operand: the K-inner requirement makes this an NN gemm
-        printf("Dequantization gemm with a quantized B matrix: fp16 A x int8 B -> fp16 D\n");
-        MixedTestBench<__half, int8_t, __half, float> props(CUBLAS_OP_N, CUBLAS_OP_N, 128, 128, 128, 2.0f, 0.0f,
-                                                            32 * 1024 * 1024);
+        printf("Dequantization gemm with a quantized B matrix: bf16 A x int8 B -> bf16 D\n");
+        MixedTestBench<__nv_bfloat16, int8_t, __nv_bfloat16, float> props(CUBLAS_OP_N, CUBLAS_OP_N, 128, 128, 128,
+                                                                          2.0f, 0.0f, 32 * 1024 * 1024);
 
         props.run([&props] {
             LtDequantGemmSimple(props.ltHandle, props.transa, props.transb, props.m, props.n, props.k, &props.alpha,
-                                CUDA_R_16F, props.Adev, props.lda, CUDA_R_8I, props.Bdev, props.ldb, &props.beta,
-                                CUDA_R_16F, props.Cdev, props.ldc, props.workspace, props.workspaceSize);
+                                CUDA_R_16BF, props.Adev, props.lda, CUDA_R_8I, props.Bdev, props.ldb, &props.beta,
+                                CUDA_R_16BF, props.Cdev, props.ldc, props.workspace, props.workspaceSize);
         });
     }
 

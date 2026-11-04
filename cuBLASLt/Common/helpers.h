@@ -813,4 +813,18 @@ inline void TestBench<__nv_fp4_e2m1, __nv_bfloat16, float, __nv_fp8_e4m3, float,
     for (size_t i = 0; i < biasHost.size(); i++) biasHost[i] = __nv_bfloat16(float(i % 5) + 1);
 }
 
+template <> inline void MixedTestBench<int8_t, __half, __half, float>::fillData() {
+    for (size_t i = 0; i < Ahost.size(); i++) Ahost[i] = int8_t(i % 10);
+    for (size_t i = 0; i < Bhost.size(); i++) Bhost[i] = __float2half_rn(float(i % 10));
+    for (size_t i = 0; i < Chost.size(); i++) Chost[i] = __float2half_rn(float(i % 10));
+    for (size_t i = 0; i < biasHost.size(); i++) biasHost[i] = __float2half_rn(float(i + 1));
+}
+
+template <> inline void MixedTestBench<__nv_bfloat16, int8_t, __nv_bfloat16, float>::fillData() {
+    for (size_t i = 0; i < Ahost.size(); i++) Ahost[i] = __nv_bfloat16(i % 10);
+    for (size_t i = 0; i < Bhost.size(); i++) Bhost[i] = int8_t(i % 10);
+    for (size_t i = 0; i < Chost.size(); i++) Chost[i] = __nv_bfloat16(i % 10);
+    for (size_t i = 0; i < biasHost.size(); i++) biasHost[i] = __nv_bfloat16(i + 1);
+}
+
 const char *tileToString(cublasLtMatmulTile_t tile);
