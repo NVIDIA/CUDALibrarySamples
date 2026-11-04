@@ -111,21 +111,23 @@ inline size_t getScaleTensorSize(int inner, int outer, cublasLtMatmulMatrixScale
     return 0;
 }
 
-template <typename T> static bool isNarrowPrecision() {
-    return std::is_same<T, __nv_fp8_e4m3>::value || std::is_same<T, __nv_fp8_e5m2>::value ||
-           std::is_same<T, __nv_fp4_e2m1>::value;
+template <typename T, typename U = T> static bool isNarrowPrecision() {
+    return std::is_same<T, U>::value &&
+           (std::is_same<T, __nv_fp8_e4m3>::value || std::is_same<T, __nv_fp8_e5m2>::value ||
+            std::is_same<T, __nv_fp4_e2m1>::value);
 }
 
-template <typename InTypeAB,
-          typename OutType = InTypeAB,
+template <typename InTypeA,
+          typename InTypeB = InTypeA,
+          typename OutType = InTypeA,
           typename ComputeType = OutType,
           typename ScaleType = ComputeType,
           typename DScaleType = ScaleType,
           typename InTypeC = OutType>
-struct TestBench {
+struct MixedTestBench {
     using SampleRunner = std::function<void()>;
 
-    TestBench(cublasOperation_t transa,
+    MixedTestBench(cublasOperation_t transa,
               cublasOperation_t transb,
               int m,
               int n,
@@ -137,7 +139,7 @@ struct TestBench {
               bool ptrArrayBatch = false,
               bool forceOutOfPlace = false,
               bool groupedBatch = false)
-        : TestBench(transa,
+        : MixedTestBench(transa,
                     transb,
                     m,
                     n,
@@ -160,7 +162,7 @@ struct TestBench {
                     groupedBatch) {
     }
 
-    TestBench(cublasOperation_t transa,
+    MixedTestBench(cublasOperation_t transa,
               cublasOperation_t transb,
               int m,
               int n,
@@ -174,7 +176,7 @@ struct TestBench {
               cublasLtMatmulMatrixScale_t CScaleMode,
               cublasLtMatmulMatrixScale_t DScaleMode,
               cublasLtMatmulMatrixScale_t DOutScaleMode)
-        : TestBench(transa,
+        : MixedTestBench(transa,
                     transb,
                     m,
                     n,
@@ -197,7 +199,7 @@ struct TestBench {
                     false) {
     }
 
-    TestBench(cublasOperation_t transa,
+    MixedTestBench(cublasOperation_t transa,
               cublasOperation_t transb,
               int m,
               int n,
@@ -213,7 +215,7 @@ struct TestBench {
               bool ptrArrayBatch = false,
               bool forceOutOfPlace = false,
               bool groupedBatch = false)
-        : TestBench(transa,
+        : MixedTestBench(transa,
                     transb,
                     m,
                     n,
@@ -236,7 +238,7 @@ struct TestBench {
                     groupedBatch) {
     }
 
-    TestBench(cublasOperation_t transa,
+    MixedTestBench(cublasOperation_t transa,
               cublasOperation_t transb,
               int m,
               int n,
@@ -259,8 +261,8 @@ struct TestBench {
               bool groupedBatch = false)
         : outOfPlace(forceOutOfPlace || !std::is_same<InTypeC, OutType>::value), transa(transa), transb(transb), m(m),
           n(n), k(k), N(N), lda(transa != CUBLAS_OP_N ? k : m), ldb(transb != CUBLAS_OP_N ? n : k), ldc(m), ldd(m),
-          alpha(alpha), beta(beta), workspaceSize(workspaceSize), Ahost(sizeofElements<InTypeAB>(m * k * N)),
-          Bhost(sizeofElements<InTypeAB>(n * k * N)), Chost(sizeofElements<InTypeC>(m * n * N)),
+          alpha(alpha), beta(beta), workspaceSize(workspaceSize), Ahost(sizeofElements<InTypeA>(m * k * N)),
+          Bhost(sizeofElements<InTypeB>(n * k * N)), Chost(sizeofElements<InTypeC>(m * n * N)),
           Dhost(outOfPlace ? sizeofElements<OutType>(m * n * N) : 0), biasHost(sizeofElements<OutType>(m * N)),
           APtrArrayHost(isPtrArray(ptrArrayBatch, groupedBatch) ? N : 0),
           BPtrArrayHost(isPtrArray(ptrArrayBatch, groupedBatch) ? N : 0),
@@ -272,9 +274,10 @@ struct TestBench {
         assert(!(ptrArrayBatch && groupedBatch));
         // Currently only fp8 supports per-tensor scaling (from second file)
         perTensorScalingEnabled =
-            std::is_same<InTypeAB, __nv_fp8_e4m3>::value || std::is_same<InTypeAB, __nv_fp8_e5m2>::value;
+            std::is_same<InTypeA, InTypeB>::value &&
+            (std::is_same<InTypeA, __nv_fp8_e4m3>::value || std::is_same<InTypeA, __nv_fp8_e5m2>::value);
 
-        if (isNarrowPrecision<InTypeAB>()) {
+        if (isNarrowPrecision<InTypeA, InTypeB>()) {
             AscaleHost.resize(
                 getScaleTensorSize(transa != CUBLAS_OP_N ? k : m, transa != CUBLAS_OP_N ? m : k, AScaleMode));
             BscaleHost.resize(
@@ -299,15 +302,15 @@ struct TestBench {
             // Grouped GEMM requires m, n, k to be 16 bytes aligned, for now we limit it to 1 byte data type size or
             // larger
             constexpr size_t alignment_requirement = 16; // the smallest
-            const size_t element_size = sizeofElements<InTypeAB>(1);
+            const size_t element_size = sizeofElements<InTypeA>(1);
             const size_t alignment_factor = alignment_requirement / element_size;
             assert(element_size >= 1);
             assert(alignment_requirement % element_size == 0);
             m = roundoff(m, alignment_factor);
             n = roundoff(n, alignment_factor);
             k = roundoff(k, alignment_factor);
-            Ahost.resize(sizeofElements<InTypeAB>(m * k * N));
-            Bhost.resize(sizeofElements<InTypeAB>(n * k * N));
+            Ahost.resize(sizeofElements<InTypeA>(m * k * N));
+            Bhost.resize(sizeofElements<InTypeB>(n * k * N));
             Chost.resize(sizeofElements<InTypeC>(m * n * N));
             if (outOfPlace) {
                 Dhost.resize(sizeofElements<OutType>(m * n * N));
@@ -381,7 +384,7 @@ struct TestBench {
 
             // Allocate per-group scale tensors for narrow precision types
             // Note: D scaling and amax are not supported for grouped GEMM
-            if (isNarrowPrecision<InTypeAB>() || perTensorScalingEnabled) {
+            if (isNarrowPrecision<InTypeA, InTypeB>() || perTensorScalingEnabled) {
                 AscalePtrArrayHost.resize(N);
                 BscalePtrArrayHost.resize(N);
 
@@ -469,7 +472,7 @@ struct TestBench {
         fillScales(Ascale, Bscale, Cscale, Dscale);
     }
 
-    ~TestBench() {
+    ~MixedTestBench() {
         checkCublasStatus(cublasLtDestroy(ltHandle));
 
         if (groupedBatch) {
@@ -528,8 +531,8 @@ struct TestBench {
     }
 
     void fillData() {
-        for (size_t i = 0; i < Ahost.size(); i++) Ahost[i] = InTypeAB(i);
-        for (size_t i = 0; i < Bhost.size(); i++) Bhost[i] = InTypeAB(i);
+        for (size_t i = 0; i < Ahost.size(); i++) Ahost[i] = InTypeA(i);
+        for (size_t i = 0; i < Bhost.size(); i++) Bhost[i] = InTypeB(i);
         for (size_t i = 0; i < Chost.size(); i++) Chost[i] = InTypeC(i);
         for (size_t i = 0; i < biasHost.size(); i++) biasHost[i] = OutType(i + 1);
     }
@@ -715,20 +718,24 @@ struct TestBench {
     void *workspace;
     size_t workspaceSize;
 
-    std::vector<typename StorageType<InTypeAB>::type> Ahost, Bhost;
+    std::vector<typename StorageType<InTypeA>::type> Ahost;
+    std::vector<typename StorageType<InTypeB>::type> Bhost;
     std::vector<typename StorageType<InTypeC>::type> Chost;
     std::vector<typename StorageType<OutType>::type> Dhost, biasHost;
 
-    typename StorageType<InTypeAB>::type *Adev, *Bdev;
+    typename StorageType<InTypeA>::type *Adev;
+    typename StorageType<InTypeB>::type *Bdev;
     typename StorageType<InTypeC>::type *Cdev;
     typename StorageType<OutType>::type *Ddev, *biasDev;
 
-    std::vector<typename StorageType<InTypeAB>::type *> APtrArrayHost, BPtrArrayHost;
+    std::vector<typename StorageType<InTypeA>::type *> APtrArrayHost;
+    std::vector<typename StorageType<InTypeB>::type *> BPtrArrayHost;
     std::vector<typename StorageType<InTypeC>::type *> CPtrArrayHost;
     std::vector<typename StorageType<OutType>::type *> DPtrArrayHost;
     std::vector<typename StorageType<OutType>::type *> BiasPtrArrayHost;
 
-    typename StorageType<InTypeAB>::type **APtrArrayDev, **BPtrArrayDev;
+    typename StorageType<InTypeA>::type **APtrArrayDev;
+    typename StorageType<InTypeB>::type **BPtrArrayDev;
     typename StorageType<InTypeC>::type **CPtrArrayDev;
     typename StorageType<OutType>::type **DPtrArrayDev;
     typename StorageType<OutType>::type **BiasPtrArrayDev;
@@ -766,6 +773,15 @@ struct TestBench {
     std::vector<ScaleType *> AscalePtrArrayHost, BscalePtrArrayHost;
     ScaleType **AscalePtrArrayDev, **BscalePtrArrayDev;
 };
+
+// Convenience alias for the common case where both input matrices use the same data type
+template <typename InTypeAB,
+          typename OutType = InTypeAB,
+          typename ComputeType = OutType,
+          typename ScaleType = ComputeType,
+          typename DScaleType = ScaleType,
+          typename InTypeC = OutType>
+using TestBench = MixedTestBench<InTypeAB, InTypeAB, OutType, ComputeType, ScaleType, DScaleType, InTypeC>;
 
 template <> inline void TestBench<__half, __half, float>::fillData() {
     for (size_t i = 0; i < Ahost.size(); i++) Ahost[i] = __float2half_rn(float(i));
