@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2019 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2019-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,11 +19,17 @@
 #pragma once
 
 #include <cmath>
+#include <cstdint>
+#include <cstring>
+#include <fstream>
 #include <functional>
 #include <iostream>
 #include <random>
+#include <sstream>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
+#include <vector>
 
 #include <cuComplex.h>
 #include <cuda_runtime_api.h>
@@ -243,6 +249,87 @@ void make_diag_dominant_matrix(cusolver_int_t m, cusolver_int_t n, T *A, int lda
         }
         A_col[j] = traits<T>::add(A_col[j], col_sum);
     }
+}
+
+// Reads a Matrix Market file (coordinate format) and expands it to a dense column-major m x n
+// matrix A with leading dimension lda = m
+template <typename T>
+void read_mtx_and_convert_to_dense(const std::string &path, int64_t &m, int64_t &n,
+                                   std::vector<T> &A, int64_t &lda) {
+    std::ifstream file(path);
+    if (!file)
+        throw std::runtime_error("Unable to open " + path);
+
+    // banner: %%MatrixMarket matrix coordinate <field> <symmetry>
+    std::string line;
+    if (!std::getline(file, line))
+        throw std::runtime_error(path + ": empty file");
+    std::istringstream banner(line);
+    std::string magic, object, format, field, symmetry;
+    banner >> magic >> object >> format >> field >> symmetry;
+
+    if (magic != "%%MatrixMarket" || object != "matrix")
+        throw std::runtime_error(path + ": not a Matrix Market matrix file");
+    if (format != "coordinate")
+        throw std::runtime_error(path + ": only coordinate (sparse) format is supported");
+    if (field != "real" && field != "complex")
+        throw std::runtime_error(path + ": only real and complex fields are supported");
+    if (symmetry != "general" && symmetry != "symmetric")
+        throw std::runtime_error(path + ": only general and symmetric are supported");
+
+    using Real = typename traits<T>::S;
+    const bool is_complex = (field == "complex");
+    if (is_complex && std::is_same<T, Real>::value)
+        throw std::runtime_error(path + ": complex matrix cannot be read into a real type");
+
+    // skip comment and blank lines, then read line with: rows cols nnz
+    do {
+        if (!std::getline(file, line))
+            throw std::runtime_error(path + ": missing line with shape and sparsity information");
+    } while (line.empty() || line[0] == '%');
+
+    int64_t rows = 0, cols = 0, nnz = 0;
+    std::istringstream shape_sparsity_line(line);
+    if (!(shape_sparsity_line >> rows >> cols >> nnz))
+        throw std::runtime_error(path + ": malformed line with shape and sparsity information");
+    if (rows < 1 || cols < 1 || nnz < 0)
+        throw std::runtime_error(path + ": invalid matrix dimensions");
+    if (symmetry == "symmetric" && rows != cols)
+        throw std::runtime_error(path + ": symmetric matrix must be square");
+
+    // Prepare dense storage.
+    A.assign(static_cast<size_t>(rows) * cols, T{});
+    m = rows;
+    n = cols;
+    lda = rows;
+
+    // Fill the matrix.
+#define A(i,j) A[(i) + lda * (j)]
+    for (int64_t k = 0; k < nnz; ++k) {
+        int64_t row = 0, col = 0;
+        double re = 0.0, im = 0.0;
+        if (is_complex)
+            file >> row >> col >> re >> im;
+        else
+            file >> row >> col >> re;
+        if (!file || row < 1 || row > rows || col < 1 || col > cols)
+            throw std::runtime_error(path + ": invalid matrix entry");
+
+        // Assembly matrix entry.
+        const Real parts[2] = {static_cast<Real>(re), static_cast<Real>(im)};
+        T value;
+        std::memcpy(&value, parts, sizeof(T));
+
+        // Convert the 1-based indexing the mtx file uses to 0-based indexing.
+        int64_t i = row - 1;
+        int64_t j = col - 1;
+
+        A(i,j) = traits<T>::add(A(i,j), value);
+        if (symmetry == "symmetric" && row != col) {
+            A(j,i) = traits<T>::add(A(j,i), value);
+        }
+    }
+#undef A
 }
 
 // Returns cudaDataType value as defined in library_types.h for the string containing type name

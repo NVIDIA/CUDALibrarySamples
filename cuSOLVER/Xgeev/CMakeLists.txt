@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -68,6 +68,13 @@ if(NOT CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "12.6")
     add_cusolver_example(cusolver_examples "cusolver_Xgeev_example3" cusolver_Xgeev_example3.cu)
 else()
     message("XGEEV solver routine was introduced in CUDA 12.6, update toolkit to get XGEEV functionality in cuSOLVER")
+endif()
+
+# Mixed precision Xgeev (ALG_1) was added in 13.5.0
+if(NOT CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "13.5")
+    add_cusolver_example(cusolver_examples "cusolver_Xgeev_example4" cusolver_Xgeev_example4.cu)
+else()
+    message("Mixed precision XGEEV was introduced in CUDA 13.5, update toolkit to use this algorithm option")
 endif()
 
 # ##########################################

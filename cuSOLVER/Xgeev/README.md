@@ -2,7 +2,7 @@
 
 ## Description
 
-This chapter provides three examples that demonstrate the usage of cuSOLVER geev for computing the eigenvalues _&lambda;<sub>k</sub>_ and corresponding eigenvectors _x<sub>k</sub>_ of a non-Hermitian matrix _**A**_ such that
+This chapter provides four examples that demonstrate the usage of cuSOLVER geev for computing the eigenvalues _&lambda;<sub>k</sub>_ and corresponding eigenvectors _x<sub>k</sub>_ of a non-Hermitian matrix _**A**_ such that
 
 _**A** x<sub>k</sub> = &lambda;<sub>k</sub> x<sub>k</sub>_.
 
@@ -22,6 +22,7 @@ A = | 2.00 + 1.00j | -1.00 + 0.00j | 1.00 + 2.00j |
     | 1.00 + 2.00j | -1.00 + 2.00j | 0.00 + 1.00j |.
 ```
 
+Example 4 demonstrates the usage of the algorithm option `ALG_1`, which selects mixed precision with iterative refinement.
 
 ## Supported SM Architectures
 
@@ -67,7 +68,7 @@ $ Open cusolver_examples.sln project in Visual Studio and build
 
 # Example 1
 ```
-$  ./cusolver_geev_example1
+$  ./cusolver_Xgeev_example1
 ```
 
 Sample example output:
@@ -93,7 +94,7 @@ VR = (matlab base -1)
 
 # Example 2
 ```
-$  ./cusolver_geev_example2
+$  ./cusolver_Xgeev_example2
 ```
 
 Sample example output:
@@ -118,7 +119,7 @@ VR =
 
 # Example 3
 ```
-$  ./cusolver_geev_example3
+$  ./cusolver_Xgeev_example3
 ```
 
 Sample example output:
@@ -141,4 +142,38 @@ VR =
 0.64 + 0.01j 0.62 + 0.00j 0.71 + 0.00j 
 =====
 |A*VR - VR*diag(W)| = 2.970989E-15 
+```
+
+# Example 4
+
+Download the matrices from the SuiteSparse Matrix
+Collection and unpack the `.mtx` files next to the executable:
+
+```
+$ wget https://suitesparse-collection-website.herokuapp.com/MM/QCD/conf5_0-4x4-22.tar.gz
+$ wget https://suitesparse-collection-website.herokuapp.com/MM/DRIVCAV/cavity24.tar.gz
+$ for f in *.tar.gz; do tar xzf $f --strip-components=1; done
+```
+
+Currently, `ALG_1` only supports inputs of `double complex` type.
+
+The matrix `conf5_0-4x4-22` has well-separated eigenvalues and a moderate departure of normality.
+Mixed precision with iterative refinement typically works well with such matrices,
+especially on GPUs with strong low precision throughput.
+In contrast, matrices with large eigenvalue clusters such as `cavity24` can be expected to benefit less or even encounter a performance penalty compared to `ALG_0`. Note that `cavity24` is real-valued and is converted to a dense, complex matrix in the example.
+
+
+```
+$  ./cusolver_Xgeev_example4
+```
+
+Sample example output:
+
+```
+conf5_0-4x4-22.mtx: n = 3072
+info = 0 : Xgeev converged
+|A*VR - VR*diag(W)|/|A| = 4.839914E-14
+cavity24.mtx: n = 4562
+info = 0 : Xgeev converged
+|A*VR - VR*diag(W)|/|A| = 4.608837E-14
 ```
