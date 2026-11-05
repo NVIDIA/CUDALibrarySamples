@@ -22,13 +22,17 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <array>
+#include <cctype>
+#include <cstring>
+#include <filesystem>
+#include <stdexcept>
 
 #include <string.h>  // strcmpi
 #ifndef _WIN64
 #include <sys/time.h>  // timings
 #include <unistd.h>
 #endif
-#include <dirent.h>  
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -37,13 +41,17 @@
 #include <nvjpeg.h>
 
 
+struct sample_error : std::runtime_error {
+  int code;
+  sample_error(int code, const std::string &message) : std::runtime_error(message), code(code) {}
+};
+
 #define CHECK_CUDA(call)                                                        \
     {                                                                           \
         cudaError_t _e = (call);                                                \
         if (_e != cudaSuccess)                                                  \
         {                                                                       \
-            std::cout << "CUDA Runtime failure: '#" << _e << "' at " <<  __FILE__ << ":" << __LINE__ << std::endl;\
-            exit(1);                                                            \
+            throw sample_error(1, std::string(#call) + ": " + cudaGetErrorString(_e)); \
         }                                                                       \
     }
 
@@ -52,8 +60,10 @@
         nvjpegStatus_t _e = (call);                                             \
         if (_e != NVJPEG_STATUS_SUCCESS)                                        \
         {                                                                       \
-            std::cout << "NVJPEG failure: '#" << _e << "' at " <<  __FILE__ << ":" << __LINE__ << std::endl;\
-            exit(1);                                                            \
+            int code = (_e == NVJPEG_STATUS_ARCH_MISMATCH ||                      \
+                        _e == NVJPEG_STATUS_IMPLEMENTATION_NOT_SUPPORTED ||     \
+                        _e == NVJPEG_STATUS_JPEG_NOT_SUPPORTED) ? 3 : 1;        \
+            throw sample_error(code, std::string(#call) + ": nvJPEG status=" + std::to_string(_e)); \
         }                                                                       \
     }
 
@@ -93,6 +103,14 @@ struct decode_params_t {
   std::string output_dir;
 
   bool hw_decode_available;
+  bool require_hardware = false;
+  bool raw_output = false;
+  bool help = false;
+  int scale = 1;
+  size_t decoded = 0;
+  std::string format_name = "rgb";
+  std::string reference_dir;
+  std::vector<std::array<size_t, NVJPEG_MAX_COMPONENT>> output_rows;
 };
 
 int read_next_batch(FileNames &image_names, int batch_size,
@@ -117,24 +135,19 @@ int read_next_batch(FileNames &image_names, int batch_size,
     std::ifstream input(cur_iter->c_str(),
                         std::ios::in | std::ios::binary | std::ios::ate);
     if (!(input.is_open())) {
-      std::cerr << "Cannot open image: " << *cur_iter
-                << ", removing it from image list" << std::endl;
-      image_names.erase(cur_iter);
-      continue;
+      throw sample_error(1, "Cannot open image: " + *cur_iter);
     }
 
     // Get the size
     std::streamsize file_size = input.tellg();
+    if (file_size <= 0) throw sample_error(1, "Empty or unreadable image: " + *cur_iter);
     input.seekg(0, std::ios::beg);
     // resize if buffer is too small
-    if (raw_data[counter].size() < file_size) {
+    if (raw_data[counter].size() < static_cast<size_t>(file_size)) {
       raw_data[counter].resize(file_size);
     }
     if (!input.read(raw_data[counter].data(), file_size)) {
-      std::cerr << "Cannot read from file: " << *cur_iter
-                << ", removing it from image list" << std::endl;
-      image_names.erase(cur_iter);
-      continue;
+      throw sample_error(1, "Cannot read image: " + *cur_iter);
     }
     raw_len[counter] = file_size;
 
@@ -157,10 +170,28 @@ int prepare_buffers(FileData &file_data, std::vector<size_t> &file_len,
   int channels;
   nvjpegChromaSubsampling_t subsampling;
 
-  for (int i = 0; i < file_data.size(); i++) {
+  for (int i = 0; i < params.batch_size; i++) {
     CHECK_NVJPEG(nvjpegGetImageInfo(
         params.nvjpeg_handle, (unsigned char *)file_data[i].data(), file_len[i],
         &channels, &subsampling, widths, heights));
+
+    if (params.require_hardware) {
+      CHECK_NVJPEG(nvjpegJpegStreamParse(params.nvjpeg_handle,
+          reinterpret_cast<const unsigned char *>(file_data[i].data()), file_len[i],
+          0, 0, params.jpeg_streams[0]));
+      int unsupported = -1;
+      CHECK_NVJPEG(nvjpegDecoderJpegSupported(params.nvjpeg_decoder, params.jpeg_streams[0],
+          params.nvjpeg_decode_params, &unsupported));
+      if (unsupported != 0)
+        throw sample_error(3, "Input/format/scale unsupported by hardware: " + current_names[i]);
+    }
+    if ((params.fmt == NVJPEG_OUTPUT_NV12 && subsampling != NVJPEG_CSS_420) ||
+        (params.fmt == NVJPEG_OUTPUT_YUY2 && subsampling != NVJPEG_CSS_422))
+      throw sample_error(3, "NV12 requires 4:2:0 input; YUY2 requires 4:2:2 input");
+    for (int c = 0; c < channels; ++c) {
+      widths[c] = (widths[c] + params.scale - 1) / params.scale;
+      heights[c] = (heights[c] + params.scale - 1) / params.scale;
+    }
 
     img_width[i] = widths[0];
     img_height[i] = heights[0];
@@ -197,6 +228,9 @@ int prepare_buffers(FileData &file_data, std::vector<size_t> &file_len,
       case NVJPEG_CSS_UNKNOWN:
         std::cout << "Unknown chroma subsampling" << std::endl;
         return EXIT_FAILURE;
+      default:
+        std::cout << "Chroma subsampling: " << subsampling << std::endl;
+        break;
     }
 
     int mul = 1;
@@ -212,19 +246,32 @@ int prepare_buffers(FileData &file_data, std::vector<size_t> &file_len,
       channels = 3;
       widths[1] = widths[2] = widths[0];
       heights[1] = heights[2] = heights[0];
+    } else if (params.fmt == NVJPEG_OUTPUT_Y) {
+      channels = 1;
+    } else if (params.fmt == NVJPEG_OUTPUT_NV12) {
+      channels = 2;
+      widths[1] = 2 * ((widths[0] + 1) / 2);
+      heights[1] = (heights[0] + 1) / 2;
+    } else if (params.fmt == NVJPEG_OUTPUT_YUY2) {
+      channels = 1;
+      widths[0] = 4 * ((widths[0] + 1) / 2);
     }
 
     // realloc output buffer if required
+    params.output_rows[i].fill(0);
     for (int c = 0; c < channels; c++) {
       int aw = mul * widths[c];
       int ah = heights[c];
-      int sz = aw * ah;
+      if (aw <= 0 || ah <= 0) throw sample_error(1, "Invalid output geometry");
+      size_t sz = static_cast<size_t>(aw) * ah;
       ibuf[i].pitch[c] = aw;
+      params.output_rows[i][c] = ah;
       if (sz > isz[i].pitch[c]) {
         if (ibuf[i].channel[c]) {
           CHECK_CUDA(cudaFree(ibuf[i].channel[c]));
+          ibuf[i].channel[c] = NULL;
         }
-        CHECK_CUDA(cudaMalloc(&ibuf[i].channel[c], sz));
+        CHECK_CUDA(cudaMalloc(reinterpret_cast<void **>(&ibuf[i].channel[c]), sz));
         isz[i].pitch[c] = sz;
       }
     }
@@ -234,7 +281,9 @@ int prepare_buffers(FileData &file_data, std::vector<size_t> &file_len,
 
 void create_decoupled_api_handles(decode_params_t& params){
 
-  CHECK_NVJPEG(nvjpegDecoderCreate(params.nvjpeg_handle, NVJPEG_BACKEND_DEFAULT, &params.nvjpeg_decoder));
+  CHECK_NVJPEG(nvjpegDecoderCreate(params.nvjpeg_handle,
+      params.require_hardware ? NVJPEG_BACKEND_HARDWARE : NVJPEG_BACKEND_DEFAULT,
+      &params.nvjpeg_decoder));
   CHECK_NVJPEG(nvjpegDecoderStateCreate(params.nvjpeg_handle, params.nvjpeg_decoder, &params.nvjpeg_decoupled_state));   
   
   CHECK_NVJPEG(nvjpegBufferPinnedCreate(params.nvjpeg_handle, NULL, &params.pinned_buffers[0]));
@@ -245,24 +294,30 @@ void create_decoupled_api_handles(decode_params_t& params){
   CHECK_NVJPEG(nvjpegJpegStreamCreate(params.nvjpeg_handle, &params.jpeg_streams[1]));
 
   CHECK_NVJPEG(nvjpegDecodeParamsCreate(params.nvjpeg_handle, &params.nvjpeg_decode_params));
+  CHECK_NVJPEG(nvjpegDecodeParamsSetOutputFormat(params.nvjpeg_decode_params, params.fmt));
+  nvjpegScaleFactor_t scale = NVJPEG_SCALE_NONE;
+  if (params.scale == 2) scale = NVJPEG_SCALE_1_BY_2;
+  else if (params.scale == 4) scale = NVJPEG_SCALE_1_BY_4;
+  else if (params.scale == 8) scale = NVJPEG_SCALE_1_BY_8;
+  CHECK_NVJPEG(nvjpegDecodeParamsSetScaleFactor(params.nvjpeg_decode_params, scale));
 }
 
 void destroy_decoupled_api_handles(decode_params_t& params){  
 
-  CHECK_NVJPEG(nvjpegDecodeParamsDestroy(params.nvjpeg_decode_params));
-  CHECK_NVJPEG(nvjpegJpegStreamDestroy(params.jpeg_streams[0]));
-  CHECK_NVJPEG(nvjpegJpegStreamDestroy(params.jpeg_streams[1]));
-  CHECK_NVJPEG(nvjpegBufferPinnedDestroy(params.pinned_buffers[0]));
-  CHECK_NVJPEG(nvjpegBufferPinnedDestroy(params.pinned_buffers[1]));
-  CHECK_NVJPEG(nvjpegBufferDeviceDestroy(params.device_buffer));
-  CHECK_NVJPEG(nvjpegJpegStateDestroy(params.nvjpeg_decoupled_state));  
-  CHECK_NVJPEG(nvjpegDecoderDestroy(params.nvjpeg_decoder));
+  if (params.nvjpeg_decode_params) nvjpegDecodeParamsDestroy(params.nvjpeg_decode_params);
+  for (int i = 0; i < 2; ++i) {
+    if (params.jpeg_streams[i]) nvjpegJpegStreamDestroy(params.jpeg_streams[i]);
+    if (params.pinned_buffers[i]) nvjpegBufferPinnedDestroy(params.pinned_buffers[i]);
+  }
+  if (params.device_buffer) nvjpegBufferDeviceDestroy(params.device_buffer);
+  if (params.nvjpeg_decoupled_state) nvjpegJpegStateDestroy(params.nvjpeg_decoupled_state);
+  if (params.nvjpeg_decoder) nvjpegDecoderDestroy(params.nvjpeg_decoder);
 }
 
 void release_buffers(std::vector<nvjpegImage_t> &ibuf) {
-  for (int i = 0; i < ibuf.size(); i++) {
+  for (size_t i = 0; i < ibuf.size(); i++) {
     for (int c = 0; c < NVJPEG_MAX_COMPONENT; c++)
-      if (ibuf[i].channel[c]) CHECK_CUDA(cudaFree(ibuf[i].channel[c]));
+      if (ibuf[i].channel[c]) cudaFree(ibuf[i].channel[c]);
   }
 }
 
@@ -271,62 +326,22 @@ void release_buffers(std::vector<nvjpegImage_t> &ibuf) {
 // -----------------------------------------------------------------------------
 int readInput(const std::string &sInputPath, std::vector<std::string> &filelist)
 {
-    int error_code = 1;
-    struct stat s;
-
-    if( stat(sInputPath.c_str(), &s) == 0 )
-    {
-        if( s.st_mode & S_IFREG )
-        {
-            filelist.push_back(sInputPath);
-        }
-        else if( s.st_mode & S_IFDIR )
-        {
-            // processing each file in directory
-            DIR *dir_handle;
-            struct dirent *dir;
-            dir_handle = opendir(sInputPath.c_str());
-            std::vector<std::string> filenames;
-            if (dir_handle)
-            {
-                error_code = 0;
-                while ((dir = readdir(dir_handle)) != NULL)
-                {
-                    if (dir->d_type == DT_REG)
-                    {
-                        std::string sFileName = sInputPath + dir->d_name;
-                        filelist.push_back(sFileName);
-                    }
-                    else if (dir->d_type == DT_DIR)
-                    {
-                        std::string sname = dir->d_name;
-                        if (sname != "." && sname != "..")
-                        {
-                            readInput(sInputPath + sname + "/", filelist);
-                        }
-                    }
-                }
-                closedir(dir_handle);
-            }
-            else
-            {
-                std::cout << "Cannot open input directory: " << sInputPath << std::endl;
-                return error_code;
-            }
-        }
-        else
-        {
-            std::cout << "Cannot open input: " << sInputPath << std::endl;
-            return error_code;
-        }
+  namespace fs = std::filesystem;
+  const fs::path path(sInputPath);
+  if (fs::is_regular_file(path)) {
+    filelist.push_back(path.string());
+  } else {
+    for (const auto &entry : fs::recursive_directory_iterator(path)) {
+      if (!entry.is_regular_file()) continue;
+      auto extension = entry.path().extension().string();
+      std::transform(extension.begin(), extension.end(), extension.begin(),
+          [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+      if (extension == ".jpg" || extension == ".jpeg" || extension == ".jpe")
+        filelist.push_back(entry.path().string());
     }
-    else
-    {
-        std::cout << "Cannot find input path " << sInputPath << std::endl;
-        return error_code;
-    }
-
-    return 0;
+  }
+  std::sort(filelist.begin(), filelist.end());
+  return 0;
 }
 
 // *****************************************************************************
@@ -414,9 +429,9 @@ int writeBMP(const char *filename, const unsigned char *d_chanR, int pitchR,
   unsigned char *chanB = vchanB.data();
   CHECK_CUDA(cudaMemcpy2D(chanR, (size_t)width, d_chanR, (size_t)pitchR,
                                width, height, cudaMemcpyDeviceToHost));
-  CHECK_CUDA(cudaMemcpy2D(chanG, (size_t)width, d_chanG, (size_t)pitchR,
+  CHECK_CUDA(cudaMemcpy2D(chanG, (size_t)width, d_chanG, (size_t)pitchG,
                                width, height, cudaMemcpyDeviceToHost));
-  CHECK_CUDA(cudaMemcpy2D(chanB, (size_t)width, d_chanB, (size_t)pitchR,
+  CHECK_CUDA(cudaMemcpy2D(chanB, (size_t)width, d_chanB, (size_t)pitchB,
                                width, height, cudaMemcpyDeviceToHost));
 
   extrabytes =
@@ -514,8 +529,8 @@ int writeBMP(const char *filename, const unsigned char *d_chanR, int pitchR,
     }
   }
 
-  fclose(outfile);
-  return 0;
+  const bool failed = ferror(outfile) != 0;
+  return fclose(outfile) != 0 || failed;
 }
 
 // write bmp, input - RGB, device
@@ -629,8 +644,8 @@ int writeBMPi(const char *filename, const unsigned char *d_RGB, int pitch,
     }
   }
 
-  fclose(outfile);
-  return 0;
+  const bool failed = ferror(outfile) != 0;
+  return fclose(outfile) != 0 || failed;
 }
 
 

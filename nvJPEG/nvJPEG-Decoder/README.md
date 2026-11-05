@@ -1,170 +1,103 @@
-# JPEG Image decoding Example using nvJPEG
+# JPEG decoding with nvJPEG
 
-## Description
+This sample decodes JPEG images using the public nvJPEG API. By default it uses
+batched hardware decoding for supported inputs and the decoupled decoder for
+other inputs. RGB/BGR output is written as BMP. Use `-backend hardware` to require
+hardware decoding and fail on unsupported inputs instead of falling back.
 
-This code demonstrates JPEG Image decoding utility using nvJPEG library.
+## Build
 
-## Key Concepts
+Requirements: CMake 3.17+, a C++17 compiler, CUDA Toolkit 13.0+, and a compatible
+NVIDIA driver. Linux x86_64/aarch64 and Windows x64 use the same source.
 
-Image Decoding from NVJPEG Library
-
-## Supported SM Architectures
-
-[SM 3.5 ](https://developer.nvidia.com/cuda-gpus)  [SM 3.7 ](https://developer.nvidia.com/cuda-gpus)  [SM 5.0 ](https://developer.nvidia.com/cuda-gpus)  [SM 5.2 ](https://developer.nvidia.com/cuda-gpus)  [SM 6.0 ](https://developer.nvidia.com/cuda-gpus)  [SM 6.1 ](https://developer.nvidia.com/cuda-gpus)  [SM 7.0 ](https://developer.nvidia.com/cuda-gpus)  [SM 7.2 ](https://developer.nvidia.com/cuda-gpus)  [SM 7.5 ](https://developer.nvidia.com/cuda-gpus)
-
-## Supported OSes
-
-Linux Windows
-
-## Supported CPU Architecture
-
-x86_64
-
-## CUDA APIs involved
-[NPP](https://docs.nvidia.com/cuda/npp/group__image__resize.html)
-[NVJPEG](https://docs.nvidia.com/cuda/nvjpeg/index.html)
-
-
-# Architecture
-- JPEG decoding is handled by nvJPEG.
-
-# Building (make)
-
-# Prerequisites
-- A Linux/Windows system with recent NVIDIA drivers.
-- Install the [CUDA 11.0 toolkit](https://developer.nvidia.com/cuda-downloads) 
-  [Hardware accelerated decode supported on NVIDIA A100]
-
-## Build command on Linux
-```
-$ mkdir build
-$ cd build
-$ cmake ..
-$ make
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release
 ```
 
-## Build command on Windows
+On Windows the executable is normally `build/Release/nvjpegDecoder.exe`. Ensure
+the CUDA runtime and nvJPEG shared libraries are on the library search path;
+CUDA 13.0 on Windows normally uses the toolkit's `bin/x64` directory in `PATH`.
+
+## Run
+
+```sh
+# Existing default: automatic backend selection and BMP output.
+./build/nvjpegDecoder -i input.jpg -o decoded
+
+# Require hardware; decode 100 images, looping over the input as needed.
+./build/nvjpegDecoder -i input.jpg -backend hardware -t 100
+
+# Hardware downscale by two and write planar YUV.
+./build/nvjpegDecoder -i input.jpg -backend hardware -fmt yuv -scale 2 -o decoded
+
+# NV12 requires 4:2:0 input; YUY2 requires 4:2:2 input.
+./build/nvjpegDecoder -i input_420.jpg -backend hardware -fmt nv12 -o decoded
+./build/nvjpegDecoder -i input_422.jpg -backend hardware -fmt yuy2 -o decoded
+
+# Compare every decoded output against approved raw goldens.
+./build/nvjpegDecoder -i input.jpg -backend hardware -fmt yuv -scale 2 -t 100 -reference goldens
 ```
-$ mkdir build
-$ cd build
-$ cmake -DCMAKE_GENERATOR_PLATFORM=x64 ..
-$ Open imageResize.sln project in Visual Studio 15 2017 and build
-```
 
+`-i` accepts a file or a directory. Directories are searched recursively for
+`.jpg`, `.jpeg`, and `.jpe` files, case-insensitively, in sorted order. Every
+selected file must succeed. `-t` is the total image count, not the count per file;
+by default each input is decoded once. `-b` sets the batch size (default 1),
+and a final partial batch preserves the exact requested count. `-w` sets the
+number of warmup batches excluded from performance reporting. `-device` selects
+the CUDA device (default 0). Use `-h` for the command syntax.
 
+`-backend hardware` uses the single-image API because the batched hardware path
+does not support scaling. It queries support for each input/format/scale
+combination before allocating output and synchronizes each decode before state
+reuse. This mode is for functional validation and repeated workloads, not
+maximum-throughput benchmarking. `-scale` accepts divisors `1`, `2`, `4`, and `8`;
+values other than 1 require hardware mode. Output dimensions round up.
 
+## Output and goldens
 
-# Usage
-./nvjpegDecoder -h
+`-fmt` accepts `rgb` (default), `bgr`, `rgbi`, `bgri`, `yuv`, `y`, `unchanged`,
+`nv12`, and `yuy2`. RGB/BGR formats use BMP output unless `-raw` is supplied.
+Other formats always use raw output. `-reference` also selects raw output.
 
-```
-Usage: ./nvjpegDecoder -i images_dir [-b batch_size] [-t total_images] [-w warmup_iterations] [-o output_dir] [-pipelined] [-batched] [-fmt output_format]
-Parameters: 
-	images_dir	:	Path to single image or directory of images
-	batch_size	:	Decode images from input by batches of specified size
-	total_images	:	Decode this much images, if there are less images 
-					in the input than total images, decoder will loop over the input
-	warmup_iterations	:	Run this amount of batches first without measuring performance
-	output_dir	:	Write decoded images as BMPs to this directory
-	pipelined	:	Use decoding in phases
-	batched		:	Use batched interface
-	output_format	:	nvJPEG output format for decoding. One of [rgb, rgbi, bgr, bgri, yuv, y, unchanged]
+Raw files have no headers or row padding; planes are concatenated in nvJPEG
+channel order. RGB/BGR planes are full resolution; interleaved RGB/BGR uses
+three bytes per pixel. YUV/unchanged preserves native component sizes, and
+grayscale/luma uses one plane. NV12 contains Y followed by UV, whose row size is
+`2 * ceil(width/2)` and height `ceil(height/2)`. YUY2 uses YUYV pairs with row size
+`4 * ceil(width/2)`; the unused second Y in an odd-width row's last pair is set
+to zero on readback for reproducible goldens.
 
-```
-Example:
+Raw output names append `.<format>.s<divisor>.raw` to the complete input name,
+for example `input.jpg.yuv.s2.raw`. Directory inputs preserve subdirectories.
+`-reference` reads files with the same names and compares every decoded result
+byte-for-byte. Comparison occurs before output writing. Missing, unreadable,
+or mismatched goldens fail the run. An `-o` run can capture candidate goldens;
+approve their correctness independently and qualify them for the intended
+backend/GPU/driver/library configuration.
 
-Sample example output on GV100, Ubuntu 16.04, CUDA 11.5
+The final log is `RESULT status=PASS code=0 decoded=N` on success. Failures report
+`RESULT status=FAIL code=C decoded=N message="..."` on stderr. Capture both output
+streams and use the exit code: 0 success, 1 execution/I/O failure, 2 invalid
+arguments, 3 unsupported hardware/input/options, 4 golden mismatch. A library
+invalid-parameter error can also report an unsupported combination as exit 1.
+The reported count excludes warmups. Without goldens, PASS establishes successful
+decoding and CUDA completion, not independent pixel correctness.
 
-```
-$  ./nvjpegDecoder -i ../input_images/ -o ~/tmp
-```
-```
-Hardware Decoder not supported. Falling back to default backend
-Decoding images in directory: ../input_images/, total 12, batchsize 1
-Processing: ../input_images/img3.jpg
-Image is 3 channels.
-Channel #0 size: 640 x 426
-Channel #1 size: 320 x 213
-Channel #2 size: 320 x 213
-YUV 4:2:0 chroma subsampling
-Done writing decoded image to file: /tmp/img3.bmp
-Processing: ../input_images/img2.jpg
-Image is 3 channels.
-Channel #0 size: 480 x 640
-Channel #1 size: 240 x 320
-Channel #2 size: 240 x 320
-YUV 4:2:0 chroma subsampling
-Done writing decoded image to file: /tmp/img2.bmp
-Processing: ../input_images/img4.jpg
-Image is 3 channels.
-Channel #0 size: 640 x 426
-Channel #1 size: 320 x 213
-Channel #2 size: 320 x 213
-YUV 4:2:0 chroma subsampling
-Done writing decoded image to file: /tmp/img4.bmp
-Processing: ../input_images/img5.jpg
-Image is 3 channels.
-Channel #0 size: 640 x 480
-Channel #1 size: 320 x 240
-Channel #2 size: 320 x 240
-YUV 4:2:0 chroma subsampling
-Done writing decoded image to file: /tmp/img5.bmp
-Processing: ../input_images/cat_grayscale.jpg
-Image is 1 channels.
-Channel #0 size: 64 x 64
-Grayscale JPEG 
-Done writing decoded image to file: /tmp/cat_grayscale.bmp
-Processing: ../input_images/cat.jpg
-Image is 3 channels.
-Channel #0 size: 64 x 64
-Channel #1 size: 64 x 64
-Channel #2 size: 64 x 64
-YUV 4:4:4 chroma subsampling
-Done writing decoded image to file: /tmp/cat.bmp
-Processing: ../input_images/img9.jpg
-Image is 3 channels.
-Channel #0 size: 640 x 480
-Channel #1 size: 320 x 240
-Channel #2 size: 320 x 240
-YUV 4:2:0 chroma subsampling
-Done writing decoded image to file: /tmp/img9.bmp
-Processing: ../input_images/img7.jpg
-Image is 3 channels.
-Channel #0 size: 480 x 640
-Channel #1 size: 240 x 320
-Channel #2 size: 240 x 320
-YUV 4:2:0 chroma subsampling
-Done writing decoded image to file: /tmp/img7.bmp
-Processing: ../input_images/img6.jpg
-Image is 3 channels.
-Channel #0 size: 640 x 480
-Channel #1 size: 320 x 240
-Channel #2 size: 320 x 240
-YUV 4:2:0 chroma subsampling
-Done writing decoded image to file: /tmp/img6.bmp
-Processing: ../input_images/img1.jpg
-Image is 3 channels.
-Channel #0 size: 480 x 640
-Channel #1 size: 240 x 320
-Channel #2 size: 240 x 320
-YUV 4:2:0 chroma subsampling
-Done writing decoded image to file: /tmp/img1.bmp
-Processing: ../input_images/cat_baseline.jpg
-Image is 3 channels.
-Channel #0 size: 64 x 64
-Channel #1 size: 64 x 64
-Channel #2 size: 64 x 64
-YUV 4:4:4 chroma subsampling
-Done writing decoded image to file: /tmp/cat_baseline.bmp
-Processing: ../input_images/img8.jpg
-Image is 3 channels.
-Channel #0 size: 480 x 640
-Channel #1 size: 240 x 320
-Channel #2 size: 240 x 320
-YUV 4:2:0 chroma subsampling
-Done writing decoded image to file: /tmp/img8.bmp
-Total decoding time: 0.0135301 (s)
-Avg decoding time per image: 0.00112751 (s)
-Avg images per sec: 886.911
-Avg decoding time per batch: 0.00112751 (s)
+The public API does not expose private engine controls or arbitrary scaling
+ratios. The sample does not demux MJPEG containers; testing extracted JPEG frames
+does not reproduce container/streaming tests. Check actual workload inputs,
+options, and approved goldens before claiming equivalent test coverage.
+
+## Tests
+
+Optional GPU integration tests require Python 3 with Pillow. They generate their
+own images and check hardware formats/scaling, raw packing, golden failures,
+invalid inputs, and default BMP output with mixed hardware/fallback batches.
+Hardware tests require a GPU with JPEG decoding support and do not skip it.
+
+```sh
+cmake -S . -B build -DNVJPEG_DECODER_BUILD_TESTS=ON
+cmake --build build --config Release
+ctest --test-dir build -C Release --output-on-failure
 ```

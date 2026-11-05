@@ -1,83 +1,22 @@
-# SPDX-FileCopyrightText: Copyright (c) 2019 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2019-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
-CMAKE_MINIMUM_REQUIRED(VERSION 3.10.0 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.17)
+project(nvjpegDecoder LANGUAGES CXX)
 
-
-INCLUDE(GNUInstallDirs)
-
-# ---[ Project specIFication.
-SET(PROJECT_NAME nvjpegDecoder)
-PROJECT(${PROJECT_NAME} LANGUAGES CUDA CXX)
-
-if(NOT DEFINED CMAKE_CUDA_STANDARD)
-    set(CMAKE_CUDA_STANDARD 11)
-    set(CMAKE_CUDA_STANDARD_REQUIRED ON)    
+find_package(CUDAToolkit 13.0 REQUIRED)
+add_executable(nvjpegDecoder nvjpegDecoder.cpp)
+target_compile_features(nvjpegDecoder PRIVATE cxx_std_17)
+target_link_libraries(nvjpegDecoder PRIVATE CUDA::nvjpeg CUDA::cudart)
+if(MSVC)
+    target_compile_definitions(nvjpegDecoder PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif()
+install(TARGETS nvjpegDecoder DESTINATION bin)
 
-include_directories(${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}) 
-link_directories(${CMAKE_CUDA_INCLUDE_DIRS})
-
-if (UNIX)
-    find_library(CUDART_LIBRARY cudart ${CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES})
-    find_library(NVJPEG_LIBRARY nvjpeg ${CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES})
-    find_library(NPPIG_LIBRARY nppig ${CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES})
-    find_library(NPPC_LIBRARY nppc ${CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES})
-    find_library(CULIBOS culibos ${CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES})
-endif (UNIX)
-
-if (MSVC OR WIN32 OR MSYS)
-    MESSAGE( STATUS "CMAKE_CUDA_COMPILER:         " ${CMAKE_CUDA_COMPILER} )
-    set(CUDA_LIBRARY_PATH "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v10.1/lib/x64")
-    set(CUDART_LIBRARY ${CUDA_LIBRARY_PATH}/cudart.lib)
-    set(NVJPEG_LIBRARY ${CUDA_LIBRARY_PATH}/nvjpeg.lib)
-    set(NPPIG_LIBRARY ${CUDA_LIBRARY_PATH}/nppig.lib)
-    set(NPPC_LIBRARY ${CUDA_LIBRARY_PATH}/nppc.lib)
+option(NVJPEG_DECODER_BUILD_TESTS "Enable GPU integration tests (requires Python and Pillow)" OFF)
+if(NVJPEG_DECODER_BUILD_TESTS)
+    enable_testing()
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    add_test(NAME decoder COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_decoder.py $<TARGET_FILE:nvjpegDecoder>)
 endif()
-
-# ---[ Use the default installation path if not set.
-IF(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
-    SET(CMAKE_INSTALL_PREFIX ${CMAKE_BINARY_DIR} CACHE PATH "" FORCE)
-ENDIF(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
-
-# ---[ Build type
-IF(NOT CMAKE_BUILD_TYPE) 
-    SET(CMAKE_BUILD_TYPE Develop)
-ENDIF(NOT CMAKE_BUILD_TYPE)
-
-SET(EXAMPLES_DESCRIPTOR_SOURCES "nvjpegDecoder.cpp")
-ADD_EXECUTABLE(${PROJECT_NAME} ${EXAMPLES_DESCRIPTOR_SOURCES})
-SET_SOURCE_FILES_PROPERTIES(${EXAMPLES_DESCRIPTOR_SOURCES} PROPERTIES LANGUAGE CUDA)
-TARGET_COMPILE_FEATURES(${PROJECT_NAME} PUBLIC cxx_std_11)
-SET_TARGET_PROPERTIES(${PROJECT_NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)
-SET_TARGET_PROPERTIES(${PROJECT_NAME} PROPERTIES CUDA_SEPERABLE_COMPILATION ON)
-TARGET_INCLUDE_DIRECTORIES(${PROJECT_NAME} PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
-if (UNIX)
-    TARGET_LINK_LIBRARIES(${PROJECT_NAME} PUBLIC ${CUDART_LIBRARY} ${NVJPEG_LIBRARY} ${NPPIG_LIBRARY} ${NPPC_LIBRARY} ${CULIBOS})
-endif (UNIX)
-
-if(MSVC OR WIN32 OR MSYS)
-    TARGET_LINK_LIBRARIES(${PROJECT_NAME} PUBLIC ${CUDART_LIBRARY} ${NVJPEG_LIBRARY} ${NPPIG_LIBRARY} ${NPPC_LIBRARY})
-endif(MSVC OR WIN32 OR MSYS)
-
-if(APPLE)
-  # We need to add the path to the driver (libcuda.dylib) as an rpath, 
-  # so that the static cuda runtime can find it at runtime.
-  set_property(TARGET ${PROJECT_NAME} 
-               PROPERTY
-               BUILD_RPATH ${CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES})
-endif(APPLE)
-
-INSTALL(TARGETS ${PROJECT_NAME} DESTINATION bin)
