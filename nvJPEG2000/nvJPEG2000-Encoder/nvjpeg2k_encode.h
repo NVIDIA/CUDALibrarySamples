@@ -19,10 +19,13 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <cstdlib>
 #include <vector>
 #include <algorithm>
 #include <cstring>
 #include <cctype>
+#include <cerrno>
+#include <climits>
 #include <limits>
 
 #if defined(WIN32) || defined(_WIN32) || defined(WIN64) || defined(_WIN64)
@@ -67,9 +70,17 @@ namespace fs = std::experimental::filesystem::v1;
         if (_e != NVJPEG2K_STATUS_SUCCESS)                                                                  \
         {                                                                                                   \
             std::cout << "NVJPEG failure: '#" << _e << "' at " << __FILE__ << ":" << __LINE__ << std::endl; \
-            return EXIT_FAILURE;                                                                            \
+            return EXIT_ENCODE_FAILURE;                                                                     \
         }                                                                                                   \
     }
+
+// Exit codes, in the order a run checks for them; EXIT_FAILURE (1) reports any other error, such as a
+// CUDA failure.
+#define EXIT_INVALID_ARGUMENTS 2 // the command line is invalid, or does not suit the input image
+#define EXIT_MISSING_INPUT 3     // the input path does not exist, or none of its files can be read
+#define EXIT_NO_IMAGES 4         // the input directory holds no files
+#define EXIT_UNSUPPORTED 5       // a valid input image that this sample or library version cannot handle
+#define EXIT_ENCODE_FAILURE 6    // an input image could not be read or encoded, or its output written
 
 typedef std::vector<std::vector<unsigned char>> BitStreamData;
 typedef std::vector<std::string> FileNames;
@@ -200,7 +211,7 @@ class Image
         }
         else
         {
-            return EXIT_FAILURE;
+            return EXIT_ENCODE_FAILURE;
         }
         return initialize(img_info, img_comp_info, color_space, pixel_type);
     }
@@ -244,7 +255,7 @@ class Image
             if(comp_info_[c].component_width == 0 || comp_info_[c].component_height == 0)
             {
                 std::cout << "Invalid image dimensions" << std::endl;
-                return EXIT_FAILURE;
+                return EXIT_ENCODE_FAILURE;
             }
 
             size_t pitch_in_bytes = 0;
@@ -252,14 +263,14 @@ class Image
                 static_cast<size_t>(bytes_per_element), pitch_in_bytes))
             {
                 std::cout << "Invalid image dimensions" << std::endl;
-                return EXIT_FAILURE;
+                return EXIT_ENCODE_FAILURE;
             }
 
             size_t comp_size = 0;
             if(!checkedMultiply(static_cast<size_t>(comp_info_[c].component_height), pitch_in_bytes, comp_size))
             {
                 std::cout << "Invalid image dimensions" << std::endl;
-                return EXIT_FAILURE;
+                return EXIT_ENCODE_FAILURE;
             }
 
             image_d_.pitch_in_bytes[c] = 
@@ -428,8 +439,49 @@ int findParamIndex(const char **argv, int argc, const char *parm)
         std::cout << "Error, parameter " << parm
                   << " has been specified more than once, exiting\n"
                   << std::endl;
-        return -1;
+        std::exit(EXIT_INVALID_ARGUMENTS);
     }
 
     return -1;
+}
+
+// Returns the value that follows the option at argv[pidx], and exits when there is none: the command line
+// ends there, or the next token is another option.
+inline const char *paramValue(const char **argv, int argc, int pidx)
+{
+    if (pidx + 1 >= argc || (argv[pidx + 1][0] == '-' && std::isalpha(static_cast<unsigned char>(argv[pidx + 1][1]))))
+    {
+        std::cout << "Error, parameter " << argv[pidx] << " needs a value, exiting" << std::endl;
+        std::exit(EXIT_INVALID_ARGUMENTS);
+    }
+    return argv[pidx + 1];
+}
+
+// Like paramValue, for an integer value; anything else exits.
+inline int paramInt(const char **argv, int argc, int pidx)
+{
+    const char *value = paramValue(argv, argc, pidx);
+    char *end = nullptr;
+    errno = 0;
+    const long number = std::strtol(value, &end, 10);
+    if (end == value || *end != '\0' || errno == ERANGE || number < INT_MIN || number > INT_MAX)
+    {
+        std::cout << "Error, parameter " << argv[pidx] << " needs an integer, not '" << value << "', exiting" << std::endl;
+        std::exit(EXIT_INVALID_ARGUMENTS);
+    }
+    return static_cast<int>(number);
+}
+
+// Like paramValue, for a number; anything else exits.
+inline double paramDouble(const char **argv, int argc, int pidx)
+{
+    const char *value = paramValue(argv, argc, pidx);
+    char *end = nullptr;
+    const double number = std::strtod(value, &end);
+    if (end == value || *end != '\0')
+    {
+        std::cout << "Error, parameter " << argv[pidx] << " needs a number, not '" << value << "', exiting" << std::endl;
+        std::exit(EXIT_INVALID_ARGUMENTS);
+    }
+    return number;
 }

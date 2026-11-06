@@ -24,14 +24,8 @@ int write_image(std::string output_path, std::string filename, const T &imgdesc,
 {
     // Get the file name, without extension.
     // This will be used to rename the output file.
-    size_t position = filename.rfind(separator);
-    std::string sFileName =
-        (std::string::npos == position)
-            ? filename
-            : filename.substr(position + 1, filename.size());
-    position = sFileName.rfind(".");
-    sFileName = (std::string::npos == position) ? sFileName
-                                                : sFileName.substr(0, position);
+    // fs::path accepts both / and \ as separators on Windows.
+    std::string sFileName = fs::path(filename).stem().string();
 
     int err = EXIT_SUCCESS;
     if (is_nlt3)
@@ -71,6 +65,11 @@ int write_image(std::string output_path, std::string filename, const T &imgdesc,
     }
     else if (num_components == 3 || num_components == 4)
     {
+        if (imgdesc.pixel_type != NVJPEG2K_UINT8 && imgdesc.pixel_type != NVJPEG2K_UINT16)
+        {
+            std::cout << "Signed 3- and 4-component images cannot be written by this sample" << std::endl;
+            return EXIT_UNSUPPORTED;
+        }
         if(num_components == 4 && verbose)
         {
             std::cout<<"Discarding the alpha channel when writing to file"<<std::endl;
@@ -132,7 +131,7 @@ int write_image(std::string output_path, std::string filename, const T &imgdesc,
     else
     {
         std::cout << "num channels not supported"<<std::endl;
-        return EXIT_FAILURE;
+        return EXIT_UNSUPPORTED;
     }
     
     return err;
@@ -160,7 +159,14 @@ int prepare_buffers(FileData &file_data, std::vector<size_t> &file_len,
         if( image_info.num_components > NUM_COMPONENTS) 
         {
             std::cout<<"Num Components > "<< NUM_COMPONENTS<<"not supported by this sample"<<std::endl;
-            return EXIT_FAILURE;
+            return EXIT_UNSUPPORTED;
+        }
+        if (params.partial_decode && (params.win_x1 > image_info.image_width || params.win_y1 > image_info.image_height))
+        {
+            std::cout << "Decode area " << params.win_x0 << "," << params.win_y0 << "," << params.win_x1 << ","
+                      << params.win_y1 << " is outside the " << image_info.image_width << "x"
+                      << image_info.image_height << " image " << current_names[i] << std::endl;
+            return EXIT_INVALID_ARGUMENTS;
         }
         for (uint32_t c = 0; c < image_info.num_components; c++)
         {
@@ -193,11 +199,11 @@ int prepare_buffers(FileData &file_data, std::vector<size_t> &file_len,
             else
             {
                 std::cout<<"NLT bit depth "<< static_cast<int>(nlt_bit_depth) <<" not supported by this sample"<<std::endl;
-                return EXIT_FAILURE;
+                return EXIT_UNSUPPORTED;
             }
 #else
             std::cout<<"NLT type 3 decode requires nvJPEG2000 0.11 or newer"<<std::endl;
-            return EXIT_FAILURE;
+            return EXIT_UNSUPPORTED;
 #endif
         }
         else if( image_comp_info[0].precision <= 8)
@@ -211,7 +217,7 @@ int prepare_buffers(FileData &file_data, std::vector<size_t> &file_len,
         else
         {
             std::cout<<"Precision > "<< MAX_PRECISION<<" not supported by this sample"<<std::endl;
-            return EXIT_FAILURE;
+            return EXIT_UNSUPPORTED;
         }
 
         uint32_t bytes_per_element = bytes_per_sample(ibuf[i].pixel_type);
@@ -394,11 +400,12 @@ int decode_images_partial(FileNames &current_names, std::vector<nvjpeg2kImageSam
             CHECK_NVJPEG2K(nvjpeg2kStreamGetImageInfo(params.jpeg2k_streams[i], &image_info));
             // assume all components have the same precision
             CHECK_NVJPEG2K(nvjpeg2kStreamGetImageComponentInfo(params.jpeg2k_streams[i], &comp_info, 0));
-            if(write_image(params.output_dir, current_names[i], out[i], params.win_x1 - params.win_x0,
+            int status = write_image(params.output_dir, current_names[i], out[i], params.win_x1 - params.win_x0,
                 params.win_y1 - params.win_y0, image_info.num_components, comp_info.precision,
-                comp_info.sgn, params.verbose, out[i].is_nlt3))
+                comp_info.sgn, params.verbose, out[i].is_nlt3);
+            if(status)
             {
-                result = EXIT_FAILURE;
+                result = status;
             }
         }
     }
@@ -505,11 +512,12 @@ int decode_images(FileNames &current_names, std::vector<nvjpeg2kImageSample> &ou
             // assume all components have the same precision
             CHECK_NVJPEG2K(nvjpeg2kStreamGetImageComponentInfo(params.jpeg2k_streams[i], &comp_info, 0));
             
-            if(write_image(params.output_dir, current_names[i], out[i], image_info.image_width,
+            int status = write_image(params.output_dir, current_names[i], out[i], image_info.image_width,
                 image_info.image_height, image_info.num_components, comp_info.precision,
-                comp_info.sgn, params.verbose, out[i].is_nlt3))
+                comp_info.sgn, params.verbose, out[i].is_nlt3);
+            if(status)
             {
-                result = EXIT_FAILURE;
+                result = status;
             }
         }
     }
@@ -525,8 +533,8 @@ int decode_images(FileNames &current_names, std::vector<nvjpeg2kImageSample> &ou
     return result;
 }
 
-double process_images(FileNames &image_names, decode_params_t &params,
-                      double &total)
+int process_images(FileNames &image_names, decode_params_t &params,
+                   double &total)
 {
     // vector for storing raw files and file lengths
     FileData file_data(params.batch_size);
@@ -553,14 +561,16 @@ double process_images(FileNames &image_names, decode_params_t &params,
         if (read_next_batch(image_names, params.batch_size, file_iter, file_data,
                             file_len, current_names, params.verbose))
         {
-            result = EXIT_FAILURE;
+            result = EXIT_MISSING_INPUT;
             break;
         }
         double parsetime = 0;
-        if (prepare_buffers(file_data, file_len, iout,
-                        current_names, params, parsetime))
+        // prepare_buffers and the decode functions return EXIT_DECODE_FAILURE when decoding or writing fails, EXIT_FAILURE for CUDA errors
+        int status = prepare_buffers(file_data, file_len, iout,
+                        current_names, params, parsetime);
+        if (status)
         {
-            result = EXIT_FAILURE;
+            result = status;
             break;
         }
 
@@ -576,7 +586,7 @@ double process_images(FileNames &image_names, decode_params_t &params,
         }
         if(ret_val)
         {
-            result = EXIT_FAILURE;
+            result = ret_val;
             break;
         }
         if (warmup < params.warmup)
@@ -606,32 +616,40 @@ int parseDecodeCoordinates(const char* argv, decode_params_t& params)
     std::istringstream decode_area(argv);
     std::string temp;
     int idx = 0;
-    while(getline(decode_area, temp,','))
+    try
     {
-        if( idx == 0)
+        while(getline(decode_area, temp,','))
         {
-            params.win_x0 = std::stoi(temp);
+            if( idx == 0)
+            {
+                params.win_x0 = std::stoi(temp);
+            }
+            else if (idx == 1)
+            {
+                params.win_y0 = std::stoi(temp);
+            }
+            else if( idx == 2)
+            {
+                params.win_x1 = std::stoi(temp);
+            }
+            else if (idx == 3)
+            {
+                params.win_y1 = std::stoi(temp);
+            }
+            else
+            {
+                std::cout<<"invalid decode area here"<<std::endl;
+                return EXIT_FAILURE;
+            }
+            idx++;
         }
-        else if (idx == 1)
-        {
-            params.win_y0 = std::stoi(temp);
-        }
-        else if( idx == 2)
-        {
-            params.win_x1 = std::stoi(temp);
-        }
-        else if (idx == 3)
-        {
-            params.win_y1 = std::stoi(temp);
-        }
-        else
-        {
-            std::cout<<"invalid decode area here"<<std::endl;
-            return EXIT_FAILURE;
-        }
-        idx++;
     }
-    if (params.win_x0 >= params.win_x1 || params.win_y0 >= params.win_y1)
+    catch (const std::exception &) // a coordinate that is not a number, or out of range
+    {
+        std::cout<<"invalid decode area here"<<std::endl;
+        return EXIT_FAILURE;
+    }
+    if (idx != 4 || params.win_x0 >= params.win_x1 || params.win_y0 >= params.win_y1)
     {
         std::cout<<"invalid decode area here"<<std::endl;
         return EXIT_FAILURE;
@@ -648,30 +666,37 @@ int main(int argc, const char *argv[])
     {
         std::cout << "Usage: " << argv[0]
                   << " -i images_dir [-b batch_size] [-t total_images] "
-                     "[-w warmup_iterations] [-o output_dir] [-da decode_area_of_interest] [-v verbose]\n";
+                     "[-w warmup_iterations] [-o output_dir] [-da x0,y0,x1,y1] [-v]"
+                  << std::endl;
         std::cout << "Parameters: " << std::endl;
-        std::cout << "\timages_dir\t:\tPath to single image or directory of images"
+        std::cout << "\timages_dir\t:\tPath to a single image or a directory of images (searched recursively),\n"
+                     "\t\t\t\tas .jp2 files or JPEG 2000 codestreams, Part 1 or HTJ2K"
                   << std::endl;
         std::cout << "\tbatch_size\t:\tDecode images from input by batches of "
                      "specified size"
                   << std::endl;
         std::cout << "\ttotal_images\t:\tDecode these many images, if there are "
-                     "fewer images \n"
+                     "fewer images\n"
                   << "\t\t\t\tin the input than total images, decoder will loop "
                      "over the input"
                   << std::endl;
         std::cout << "\twarmup_iterations:\tRun these many batches first "
                      "without measuring performance"
                   << std::endl;
-        std::cout << "\tdecode_area_of_interest: Image coordinates specifying an area "
-                  << "to be decoded"
+        std::cout << "\tx0,y0,x1,y1\t:\tDecode only the area from x0,y0 (included) to x1,y1 (excluded),\n"
+                     "\t\t\t\tin image coordinates, from the tiles it overlaps. Without -da,\n"
+                     "\t\t\t\tthe whole image is decoded tile by tile"
                   << std::endl;
-        std::cout
-            << "\toutput_dir\t:\tWrite decoded images in BMP/PGM/PFM format to this directory"
-            << std::endl;
-        std::cout
-            << "\tverbose\t\t:\tLog verbose messages to console"
-            << std::endl;
+        std::cout << "\toutput_dir\t:\tWrite decoded images to this directory: 1-component images as .pgm,\n"
+                     "\t\t\t\t3- and 4-component images as .bmp (alpha is dropped; .ppm above 4 GB),\n"
+                     "\t\t\t\tand NLT type 3 images as .pfm;\n"
+                     "\t\t\t\t4:2:0 and 4:2:2 images are converted to RGB"
+                  << std::endl;
+        std::cout << "\t-v\t\t:\tLog verbose messages to console"
+                  << std::endl;
+        std::cout << "Exit codes: 0 success, 2 invalid arguments, 3 missing input, 4 empty input directory,\n"
+                     "\t5 image not supported by this sample, 6 decode or write failure, 1 any other error"
+                  << std::endl;
         return EXIT_SUCCESS;
     }
 
@@ -680,7 +705,7 @@ int main(int argc, const char *argv[])
     params.input_dir = "./";
     if ((pidx = findParamIndex(argv, argc, "-i")) != -1)
     {
-        params.input_dir = argv[pidx + 1];
+        params.input_dir = paramValue(argv, argc, pidx);
     }
     else
     {
@@ -689,32 +714,47 @@ int main(int argc, const char *argv[])
         if (!found)
         {
             std::cout << "Please specify input directory with encoded images" << std::endl;
-            return EXIT_FAILURE;
+            return EXIT_INVALID_ARGUMENTS;
         }
     }
 
     params.batch_size = 1;
     if ((pidx = findParamIndex(argv, argc, "-b")) != -1)
     {
-        params.batch_size = std::atoi(argv[pidx + 1]);
+        params.batch_size = paramInt(argv, argc, pidx);
+        if (params.batch_size <= 0)
+        {
+            std::cout << "Batch size must be a positive integer" << std::endl;
+            return EXIT_INVALID_ARGUMENTS;
+        }
     }
 
     params.total_images = -1;
     if ((pidx = findParamIndex(argv, argc, "-t")) != -1)
     {
-        params.total_images = std::atoi(argv[pidx + 1]);
+        params.total_images = paramInt(argv, argc, pidx);
+        if (params.total_images <= 0)
+        {
+            std::cout << "Total images must be a positive integer" << std::endl;
+            return EXIT_INVALID_ARGUMENTS;
+        }
     }
 
     params.warmup = 0;
     if ((pidx = findParamIndex(argv, argc, "-w")) != -1)
     {
-        params.warmup = std::atoi(argv[pidx + 1]);
+        params.warmup = paramInt(argv, argc, pidx);
+        if (params.warmup < 0)
+        {
+            std::cout << "Warmup iterations cannot be negative" << std::endl;
+            return EXIT_INVALID_ARGUMENTS;
+        }
     }
 
     params.write_decoded = false;
     if ((pidx = findParamIndex(argv, argc, "-o")) != -1)
     {
-        params.output_dir = argv[pidx + 1];
+        params.output_dir = paramValue(argv, argc, pidx);
         params.write_decoded = true;
     }
     params.verbose = false;
@@ -730,9 +770,9 @@ int main(int argc, const char *argv[])
     params.partial_decode = false;
     if ((pidx = findParamIndex(argv, argc, "-da")) != -1)
     {
-        if(parseDecodeCoordinates(argv[pidx + 1], params))
+        if(parseDecodeCoordinates(paramValue(argv, argc, pidx), params))
         {
-            return EXIT_SUCCESS;
+            return EXIT_INVALID_ARGUMENTS;
         }
     }
 
@@ -740,7 +780,8 @@ int main(int argc, const char *argv[])
     {
         if(params.write_decoded) 
         {
-            std::cout << "3/4 channel images are written out as bmp files and 1 channels images are written out as .pgm files"
+            std::cout << "1-component images are written as .pgm, 3- and 4-component images as .bmp (.ppm above 4 GB), "
+                         "and NLT type 3 images as .pfm"
                       << std::endl;
         }
         cudaDeviceProp props;
@@ -771,7 +812,15 @@ int main(int argc, const char *argv[])
 
     // read source images
     FileNames image_names;
-    readInput(params.input_dir, image_names);
+    if (readInput(params.input_dir, image_names))
+    {
+        return EXIT_MISSING_INPUT;
+    }
+    if (image_names.empty())
+    {
+        std::cerr << "No images found in: " << params.input_dir << std::endl;
+        return EXIT_NO_IMAGES;
+    }
 
     if (params.total_images == -1)
     {
@@ -791,8 +840,9 @@ int main(int argc, const char *argv[])
               << params.batch_size << std::endl;
 
     double total;
-    if (process_images(image_names, params, total))
-        return EXIT_FAILURE;
+    int result = process_images(image_names, params, total);
+    if (result)
+        return result;
     std::cout << "Total decoding time: " << total << std::endl;
     std::cout << "Avg decoding time per image: " << total / params.total_images
               << std::endl;

@@ -51,7 +51,7 @@ int read_bmp_info_header(std::ifstream& file_input, bmpInfoHeader& info_header)
     if( info_header.Size != 40 )
     {
         std::cout<<"bmp file not supported"<<std::endl;
-        return EXIT_FAILURE;
+        return EXIT_UNSUPPORTED;
     }
     file_input.read(reinterpret_cast<char*>(&info_header.Width), 4);
     file_input.read(reinterpret_cast<char*>(&info_header.Height), 4);
@@ -62,7 +62,12 @@ int read_bmp_info_header(std::ifstream& file_input, bmpInfoHeader& info_header)
     if( info_header.Compression != 0 )
     {
         std::cout<<"only raw bmp files are supported"<<std::endl;
-        return EXIT_FAILURE;
+        return EXIT_UNSUPPORTED;
+    }
+    if( info_header.BitsPerPixel != 24 )
+    {
+        std::cout<<"only 24-bit bmp files are supported"<<std::endl;
+        return EXIT_UNSUPPORTED;
     }
     file_input.read(reinterpret_cast<char*>(&info_header.ImageSize), 4);
     file_input.read(reinterpret_cast<char*>(&info_header.XPixelsPerM), 4);
@@ -84,14 +89,15 @@ int read_bmp(std::ifstream& file_input, Image& image)
     if(bmp_header.signature[0] != 'B'|| bmp_header.signature[1]!= 'M')
     {
         std::cout<<"not a bmp file"<<std::endl;
-        return EXIT_FAILURE;
+        return EXIT_ENCODE_FAILURE;
     }
     file_input.read(reinterpret_cast<char*>(&bmp_header.file_size), 4);
     file_input.read(reinterpret_cast<char*>(&bmp_header.reserved), 4);
     file_input.read(reinterpret_cast<char*>(&bmp_header.dataOffset), 4);
-    if(read_bmp_info_header(file_input, bmp_info_header))
+    int status = read_bmp_info_header(file_input, bmp_info_header);
+    if(status)
     {
-        return EXIT_FAILURE;
+        return status;
     }
     // bmp file data is 32 bit aligned
     size_t stride = (bmp_info_header.Width * bmp_info_header.BitsPerPixel + 31)/32  * 4;
@@ -110,7 +116,11 @@ int read_bmp(std::ifstream& file_input, Image& image)
         comp.sgn              = 0;
     } 
     
-    image.initialize(nvjpeg2k_info, nvjpeg2k_comp_info.data(), color_space);
+    status = image.initialize(nvjpeg2k_info, nvjpeg2k_comp_info.data(), color_space);
+    if(status)
+    {
+        return status;
+    }
     std::vector<uint8_t> raw_bmp;
     raw_bmp.resize(stride * bmp_info_header.Height);
     file_input.read(reinterpret_cast<char*>(raw_bmp.data()), stride * bmp_info_header.Height);
@@ -136,7 +146,11 @@ int read_bmp(std::ifstream& file_input, Image& image)
 
 int read_yuv(std::ifstream& file_input, Image& image, encode_params_t& params)
 {
-    image.initialize(params.img_info, params.comp_info, NVJPEG2K_COLORSPACE_SYCC);
+    int status = image.initialize(params.img_info, params.comp_info, NVJPEG2K_COLORSPACE_SYCC);
+    if(status)
+    {
+        return status;
+    }
 
     auto& nvjpeg2k_img = image.getImageHost();
     size_t total_bytes = 0;
@@ -154,7 +168,7 @@ int read_yuv(std::ifstream& file_input, Image& image, encode_params_t& params)
             if( !file_input.read(buff, bytes_to_read))
             {
                 std::cout<<"failed to read image from file"<<std::endl;
-                return EXIT_FAILURE;
+                return EXIT_ENCODE_FAILURE;
             }
             buff += nvjpeg2k_img.pitch_in_bytes[c];
         }
@@ -188,7 +202,7 @@ int read_pnm(std::ifstream&  file_input, Image& image)
     else 
     {
         std::cout<<"pgm/ppm format not supported"<<std::endl;
-        return EXIT_FAILURE;
+        return EXIT_UNSUPPORTED;
     }
     
     std::vector<nvjpeg2kImageComponentInfo_t> comp_info(info.num_components);
@@ -211,7 +225,7 @@ int read_pnm(std::ifstream&  file_input, Image& image)
             else
             {
                 std::cout<<"\nInvalid pnm file"<<std::endl;
-                return EXIT_FAILURE;
+                return EXIT_ENCODE_FAILURE;
             }
             idx++;
         }
@@ -221,14 +235,14 @@ int read_pnm(std::ifstream&  file_input, Image& image)
             if(max_val > ((1<<16) - 1))
             {
                 std::cout<<"\nInvalid pgm prec value in pgm file"<<std::endl;
-                return EXIT_FAILURE;
+                return EXIT_ENCODE_FAILURE;
             }
             break;
         }
         else
         {
             std::cout<<"failed to read pgm file"<<std::endl;
-            return EXIT_FAILURE;
+            return EXIT_ENCODE_FAILURE;
         }
     }
     for(auto& comp : comp_info)
@@ -239,7 +253,11 @@ int read_pnm(std::ifstream&  file_input, Image& image)
         comp.sgn = 0;
     }
     
-    image.initialize(info, comp_info.data(), color_space);
+    int status = image.initialize(info, comp_info.data(), color_space);
+    if(status)
+    {
+        return status;
+    }
     auto& img = image.getImageHost();
     {
         if(img.pixel_type == NVJPEG2K_UINT16)
@@ -492,7 +510,7 @@ int read_pfm_rows(std::ifstream& file_input, nvjpeg2kImage_t& img,
     if(row_sample_count > row_samples.max_size())
     {
         std::cout << "Invalid pfm image dimensions" << std::endl;
-        return EXIT_FAILURE;
+        return EXIT_ENCODE_FAILURE;
     }
     row_samples.resize(row_sample_count);
     std::streamsize row_bytes_to_read = static_cast<std::streamsize>(row_bytes);
@@ -502,7 +520,7 @@ int read_pfm_rows(std::ifstream& file_input, nvjpeg2kImage_t& img,
         if(!file_input.read(reinterpret_cast<char*>(row_samples.data()), row_bytes_to_read))
         {
             std::cout << "failed to read pfm image from file" << std::endl;
-            return EXIT_FAILURE;
+            return EXIT_ENCODE_FAILURE;
         }
 
         uint32_t dst_y = info.image_height - 1 - pfm_y;
@@ -520,7 +538,7 @@ int read_pfm(std::ifstream& file_input, Image& image, encode_params_t& params)
     if(!read_pfm_token(file_input, token))
     {
         std::cout << "Invalid pfm file" << std::endl;
-        return EXIT_FAILURE;
+        return EXIT_ENCODE_FAILURE;
     }
 
     nvjpeg2kImageInfo_t info = {};
@@ -538,53 +556,53 @@ int read_pfm(std::ifstream& file_input, Image& image, encode_params_t& params)
     else
     {
         std::cout << "pfm format not supported" << std::endl;
-        return EXIT_FAILURE;
+        return EXIT_UNSUPPORTED;
     }
 
     if(!read_pfm_token(file_input, token))
     {
         std::cout << "Invalid pfm width" << std::endl;
-        return EXIT_FAILURE;
+        return EXIT_ENCODE_FAILURE;
     }
     if(!parse_pfm_dimension(token, info.image_width))
     {
         std::cout << "Invalid pfm width" << std::endl;
-        return EXIT_FAILURE;
+        return EXIT_ENCODE_FAILURE;
     }
 
     if(!read_pfm_token(file_input, token))
     {
         std::cout << "Invalid pfm height" << std::endl;
-        return EXIT_FAILURE;
+        return EXIT_ENCODE_FAILURE;
     }
     if(!parse_pfm_dimension(token, info.image_height))
     {
         std::cout << "Invalid pfm height" << std::endl;
-        return EXIT_FAILURE;
+        return EXIT_ENCODE_FAILURE;
     }
 
     if(!read_pfm_token(file_input, token))
     {
         std::cout << "Invalid pfm scale" << std::endl;
-        return EXIT_FAILURE;
+        return EXIT_ENCODE_FAILURE;
     }
     float scale = 0.0f;
     if(!parse_pfm_scale(token, scale))
     {
         std::cout << "Invalid pfm scale" << std::endl;
-        return EXIT_FAILURE;
+        return EXIT_ENCODE_FAILURE;
     }
 
     if(!consume_pfm_header_separator(file_input))
     {
         std::cout << "Invalid pfm scale" << std::endl;
-        return EXIT_FAILURE;
+        return EXIT_ENCODE_FAILURE;
     }
 
     if(params.pfm_precision != 16 && params.pfm_precision != 32)
     {
         std::cout << "Invalid pfm precision. Supported values are 16 and 32" << std::endl;
-        return EXIT_FAILURE;
+        return EXIT_INVALID_ARGUMENTS;
     }
 
     size_t row_sample_count = 0;
@@ -592,7 +610,7 @@ int read_pfm(std::ifstream& file_input, Image& image, encode_params_t& params)
     if(!validate_pfm_sizes(info, params.pfm_precision, row_sample_count, row_bytes))
     {
         std::cout << "Invalid pfm image dimensions" << std::endl;
-        return EXIT_FAILURE;
+        return EXIT_ENCODE_FAILURE;
     }
 
     std::vector<nvjpeg2kImageComponentInfo_t> comp_info(info.num_components);
@@ -605,9 +623,10 @@ int read_pfm(std::ifstream& file_input, Image& image, encode_params_t& params)
     }
 
     nvjpeg2kImageType_t pixel_type = params.pfm_precision == 16 ? NVJPEG2K_FP16 : NVJPEG2K_FP32;
-    if(image.initialize(info, comp_info.data(), color_space, pixel_type))
+    int init_status = image.initialize(info, comp_info.data(), color_space, pixel_type);
+    if(init_status)
     {
-        return EXIT_FAILURE;
+        return init_status;
     }
     image.setNltType3(params.pfm_precision);
 
@@ -621,14 +640,14 @@ int read_pfm(std::ifstream& file_input, Image& image, encode_params_t& params)
     {
         if(read_pfm_rows<__half>(file_input, img, info, row_sample_count, row_bytes, swap_endian))
         {
-            return EXIT_FAILURE;
+            return EXIT_ENCODE_FAILURE;
         }
     }
     else
     {
         if(read_pfm_rows<float>(file_input, img, info, row_sample_count, row_bytes, swap_endian))
         {
-            return EXIT_FAILURE;
+            return EXIT_ENCODE_FAILURE;
         }
     }
 
@@ -643,7 +662,7 @@ int read_pfm(std::ifstream& file_input, Image& image, encode_params_t& params)
     (void)image;
     (void)params;
     std::cout << "PFM input requires nvJPEG2000 0.11 or newer" << std::endl;
-    return EXIT_FAILURE;
+    return EXIT_UNSUPPORTED;
 #endif
 }
 
@@ -667,7 +686,7 @@ int read_next_batch(FileNames &image_names, int batch_size,
         if (image_names.size() == 0)
         {
             std::cerr << "No valid images left in the input list, exit" << std::endl;
-            return EXIT_FAILURE;
+            return EXIT_MISSING_INPUT;
         }
         std::string ext = get_file_extension(*cur_iter);
         std::ifstream image_file(cur_iter->c_str(), std::ios::in | std::ios::binary);
@@ -680,25 +699,29 @@ int read_next_batch(FileNames &image_names, int batch_size,
             continue;
         }
 
+        // the image readers return EXIT_ENCODE_FAILURE for an invalid image, EXIT_FAILURE for CUDA errors
         if(ext == "pgm" || ext == "ppm")
         {
-            if(read_pnm(image_file, input_images[counter]))
+            int status = read_pnm(image_file, input_images[counter]);
+            if(status)
             {
-                return EXIT_FAILURE;
+                return status;
             }
         }
         else if(ext == "pfm")
         {
-            if(read_pfm(image_file, input_images[counter], params))
+            int status = read_pfm(image_file, input_images[counter], params);
+            if(status)
             {
-                return EXIT_FAILURE;
+                return status;
             }
         }
         else if(ext == "bmp")
         {
-            if(read_bmp(image_file, input_images[counter]))
+            int status = read_bmp(image_file, input_images[counter]);
+            if(status)
             {
-                return EXIT_FAILURE;
+                return status;
             }
         }
         else if( ext == "yuv")
@@ -706,9 +729,13 @@ int read_next_batch(FileNames &image_names, int batch_size,
             if(!params.img_fmt_init)
             {
                 std::cout << "For yuv files, pease provide -img_fmt width,height,num_comp,precision,chroma subsampling"<<std::endl;
-                return EXIT_FAILURE;
+                return EXIT_INVALID_ARGUMENTS;
             }
-            read_yuv(image_file, input_images[counter], params);
+            int status = read_yuv(image_file, input_images[counter], params);
+            if(status)
+            {
+                return status;
+            }
         }
         else
         {
@@ -720,7 +747,11 @@ int read_next_batch(FileNames &image_names, int batch_size,
         }
         current_names[counter] = *cur_iter;
 
-        input_images[counter].copyToDevice();
+        int copy_status = input_images[counter].copyToDevice();
+        if(copy_status)
+        {
+            return copy_status;
+        }
 
         counter++;
         cur_iter++;
@@ -763,18 +794,18 @@ int validate_encoderconfig(Image& input_image, encode_params_t& params)
         if(params.is_irreversible)
         {
             std::cout << "PFM input uses NLT type 3 and requires the reversible wavelet" << std::endl;
-            return EXIT_FAILURE;
+            return EXIT_INVALID_ARGUMENTS;
         }
         if(params.quality_value != 0)
         {
             std::cout << "Quality options are not supported with PFM input" << std::endl;
-            return EXIT_FAILURE;
+            return EXIT_INVALID_ARGUMENTS;
         }
     }
     else if(is_128x32_code_block(params))
     {
         std::cout << "128x32 code block size is only supported with PFM input" << std::endl;
-        return EXIT_FAILURE;
+        return EXIT_INVALID_ARGUMENTS;
     }
 
     return EXIT_SUCCESS;
@@ -787,9 +818,10 @@ int encode_images(Image* input_images, encode_params_t &params, BitStreamData &b
 
     for(int batch_id = 0; batch_id < params.batch_size; batch_id++)
     {
-        if(validate_encoderconfig(input_images[batch_id], params))
+        int status = validate_encoderconfig(input_images[batch_id], params);
+        if(status)
         {
-            return EXIT_FAILURE;
+            return status;
         }
     }
     
@@ -823,7 +855,7 @@ int encode_images(Image* input_images, encode_params_t &params, BitStreamData &b
         if(input_images[batch_id].isNltType3())
         {
             std::cout << "NLT type 3 encoding requires nvJPEG2000 0.11 or newer" << std::endl;
-            return EXIT_FAILURE;
+            return EXIT_UNSUPPORTED;
         }
 #endif
         if (params.quality_value != 0) {
@@ -858,15 +890,8 @@ int write_output(BitStreamData &bitstreams, FileNames &filenames, Image* input_i
     {
         // Get the file name, without extension.
         // This will be used to rename the output file.
-        size_t position = filenames[batch_id].rfind("/");
-        std::string sFileName =
-            (std::string::npos == position)
-                ? filenames[batch_id]
-                : filenames[batch_id].substr(position + 1, filenames[batch_id].size());
-
-        position = sFileName.rfind(".");
-        sFileName = (std::string::npos == position) ? sFileName
-                                                    : sFileName.substr(0, position);
+        // fs::path accepts both / and \ as separators on Windows.
+        std::string sFileName = fs::path(filenames[batch_id]).stem().string();
         const char* wavelet_type []= {"revWavelet","irrevWavelet"};
         const char* ht_type []= {"legacy", "HT"};
         int actual_irreversible = input_images[batch_id].isNltType3() ? 0 : params.is_irreversible;
@@ -884,7 +909,7 @@ int write_output(BitStreamData &bitstreams, FileNames &filenames, Image* input_i
         if (!(bitstream_file.is_open()))
         {
             std::cout << "Cannot open image: " <<fname<<std::endl;
-            return EXIT_FAILURE;
+            return EXIT_ENCODE_FAILURE;
             
         }
         bitstream_file.write((char*)bitstreams[batch_id].data(),bitstreams[batch_id].size());
@@ -894,7 +919,7 @@ int write_output(BitStreamData &bitstreams, FileNames &filenames, Image* input_i
     return EXIT_SUCCESS;
 }
 
-double process_images(FileNames &image_names, encode_params_t &params,
+int process_images(FileNames &image_names, encode_params_t &params,
     double &total)
 {
     std::vector<Image> input_images(params.batch_size);
@@ -911,20 +936,23 @@ double process_images(FileNames &image_names, encode_params_t &params,
 
     while(total_processed < params.total_images)
     {
-        if(read_next_batch(image_names, params.batch_size, file_iter, input_images.data(),current_names, params))
+        int status = read_next_batch(image_names, params.batch_size, file_iter, input_images.data(),current_names, params);
+        if(status)
         {
-            return EXIT_FAILURE;
+            return status;
         }
         double time = 0;
-        if(encode_images(input_images.data(), params, bitsteam_output, time))
+        status = encode_images(input_images.data(), params, bitsteam_output, time);
+        if(status)
         {
-            return EXIT_FAILURE;
+            // encode_images returns EXIT_ENCODE_FAILURE when encoding fails, EXIT_FAILURE for CUDA errors
+            return status;
         }   
         if(params.write_bitstream) 
         {
             if( write_output(bitsteam_output, current_names, input_images.data(), params))
             {
-                return EXIT_FAILURE;
+                return EXIT_ENCODE_FAILURE;
             }
         }
         if (warmup < params.warmup)
@@ -966,21 +994,29 @@ int parse_blk_size(const char* blk_size, encode_params_t& params)
     int idx = 0;
     while(getline(img, temp,','))
     {
-        if( idx == 0)
+        try
         {
-            params.cblk_w = std::stoi(temp);
+            if( idx == 0)
+            {
+                params.cblk_w = std::stoi(temp);
+            }
+            else if (idx == 1)
+            {
+                params.cblk_h = std::stoi(temp);
+            }
         }
-        else if (idx == 1)
+        catch(const std::exception&)
         {
-            params.cblk_h = std::stoi(temp);
+            // not a number: report the size as invalid below
+            idx = 0;
+            break;
         }
         idx++;
     }
-    if(idx != 2 || !((params.cblk_w == 32 && params.cblk_h == 32) ||
-                     (params.cblk_w == 64 && params.cblk_h == 64) ||
+    if(idx != 2 || !(((params.cblk_w == 32 || params.cblk_w == 64) && (params.cblk_h == 32 || params.cblk_h == 64)) ||
                      (params.cblk_w == 128 && params.cblk_h == 32)))
     {
-        std::cout<<"Supported code block sizes are 32x32, 64x64 and 128x32"<<std::endl;
+        std::cout<<"Supported code block sizes are 32x32, 32x64, 64x32, 64x64 and 128x32"<<std::endl;
         return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;
@@ -993,38 +1029,49 @@ int parse_dimensions(const char* dims, encode_params_t& params)
     int idx = 0;
     uint32_t  precision = 0;
     std:: string sub_sampling = "unknown";
-    while(getline(img, temp,','))
+    try
     {
-        if( idx == 0)
+        while(getline(img, temp,','))
         {
-            params.img_info.image_width = std::stoi(temp);
-        }
-        else if (idx == 1)
-        {
-            params.img_info.image_height = std::stoi(temp);
-        }
-        else if( idx == 2)
-        {
-            params.img_info.num_components = std::stoi(temp);
-            if( params.img_info.num_components > 4)
+            if( idx == 0)
             {
-                std::cout<<"Max components cannot exceed 4"<<std::endl;
+                params.img_info.image_width = std::stoi(temp);
             }
+            else if (idx == 1)
+            {
+                params.img_info.image_height = std::stoi(temp);
+            }
+            else if( idx == 2)
+            {
+                int num_components = std::stoi(temp);
+                if( num_components < 1 || num_components > 4)
+                {
+                    std::cout<<"The number of components must be between 1 and 4"<<std::endl;
+                    return EXIT_FAILURE;
+                }
+                params.img_info.num_components = num_components;
+            }
+            else if (idx == 3)
+            {
+                precision = std::stoi(temp);
+            }
+            else if (idx == 4)
+            {
+                sub_sampling = temp;
+            }
+            else
+            {
+                std::cout<<"invalid image dims"<<std::endl;
+                return EXIT_FAILURE;
+            }
+            idx++;
         }
-        else if (idx == 3)
-        {
-            precision = std::stoi(temp);
-        }
-        else if (idx == 4)
-        {
-            sub_sampling = temp;
-        }
-        else
-        {
-            std::cout<<"invalid image dims"<<std::endl;
-            return EXIT_FAILURE;
-        }
-        idx++;
+    
+    }
+    catch(const std::exception&)
+    {
+        std::cout<<"invalid image dims"<<std::endl;
+        return EXIT_FAILURE;
     }
     
     if( precision== 0 || precision > 16)
@@ -1079,35 +1126,36 @@ int main(int argc, const char *argv[])
         (pidx = findParamIndex(argv, argc, "--help")) != -1)
     {
         std::cout << "Usage: " << argv[0]
-                  << " -i images_dir [-b batch_size] [-t total_images] "
-                  << "[-I] [-cblk cblk_w,cblk_h]"<<std::endl
-                  << "\t[-w warmup_iterations] [-o output_dir] [-ht] "<<std::endl
-                  << "\t[-q_factor value] [-quantization value] [-psnr value]"<<std::endl
-                  << "\t[-pfm_precision 16|32]"<<std::endl
-                  << "\t[-img_fmt img_w,img_h,num_comp,precision,chromaformat]"
-                  << " (-img_fmt is mandatory for raw yuv files)"<<std::endl
-                  << "\teg: for an 8 bit image of size 1920x1080 with 420 subsampling: "
-                  << "-img-dims 1920,1080,3,8,chroma420"<<std::endl;
-                  
+                  << " -i images_dir [-b batch_size] [-t total_images] [-w warmup_iterations] [-o output_dir]"<<std::endl
+                  << "\t[-ht] [-I] [-q_factor value | -quantization value | -psnr value] [-cblk cblk_w,cblk_h]"<<std::endl
+                  << "\t[-pfm_precision 16|32] [-img_fmt img_w,img_h,num_comp,precision,chromaformat]"<<std::endl;
         std::cout << "Parameters: " << std::endl;
-        std::cout << "\timages_dir\t:\tPath to single image or directory of images" << std::endl;
+        std::cout << "\timages_dir\t:\tPath to a single image or a directory of images (searched recursively):\n"
+                  << "\t\t\t\t.bmp (24-bit, uncompressed), .pgm/.ppm (binary, 1 to 16 bits),\n"
+                  << "\t\t\t\t.pfm (floating point), or raw .yuv (requires -img_fmt)" << std::endl;
         std::cout << "\tbatch_size\t:\tEncode images from input by batches of specified size" << std::endl;
-        std::cout << "\ttotal_images\t:\tEncode these many images, if there are fewer images \n"
+        std::cout << "\ttotal_images\t:\tEncode these many images, if there are fewer images\n"
                   << "\t\t\t\tin the input than total images, encoder will loop over the input" << std::endl;
-        std::cout << "\t-ht\t\t:\tEnable High Throughput encoding"<<std::endl;
+        std::cout << "\twarmup_iterations:\tRun these many batches first without measuring performance" << std::endl;
+        std::cout << "\toutput_dir\t:\tWrite the encoded .jp2 files to this directory" << std::endl;
+        std::cout << "\t-ht\t\t:\tEnable High Throughput (HTJ2K) encoding"<<std::endl;
         std::cout << "\t-I\t\t:\tEnable irreversible wavelet transform. Must be set to use any quality option"<<std::endl;
         std::cout << "\t-q_factor\t:\tSet `value` as Q-Factor (jpeg-like) quality:\n"
                   << "\t\t\t\tfloating point from 1.0 (worst) to 100.0 (best)"<<std::endl;
         std::cout << "\t-quantization\t:\tSet `value` as quantization step (by how much pixel data will be divided):\n"
                   << "\t\t\t\tfloating point, bigger the value, the lower the result quality."<<std::endl;
         std::cout << "\t-psnr\t\t:\tSet `value` as target PSNR value: positive floating point.\n"
-                  << "\t\t\t\tCannot be used with -ht option "<<std::endl;
-        std::cout << "\t-pfm_precision\t:\tSet NLT bit depth for PFM input. Supported values are 16 and 32."
-                  << "\n\t\t\t\tDefault is 32"<<std::endl;
-        std::cout << "\tcblk_w,cblk_h\t:\tCode block width and code block height"<<std::endl
-                  << "\t\t\t\tvalid values are 32x32 and 64x64. PFM input also supports 128x32"<<std::endl;
-        std::cout << "\twarmup_iterations:\tRun these many batches first without measuring performance" << std::endl;
-        std::cout << "\toutput_dir\t:\tWrite compressed jpeg 2000 files  to this directory" << std::endl;
+                  << "\t\t\t\tCannot be used with -ht option"<<std::endl;
+        std::cout << "\tcblk_w,cblk_h\t:\tCode block width and height: 32x32, 32x64, 64x32 or 64x64 (default),\n"
+                  << "\t\t\t\tor 128x32 for PFM input"<<std::endl;
+        std::cout << "\t-pfm_precision\t:\tNLT bit depth for PFM input, 16 or 32 (default). PFM input is always\n"
+                  << "\t\t\t\tencoded as HTJ2K with NLT type 3 and the reversible wavelet"<<std::endl;
+        std::cout << "\t-img_fmt\t:\tLayout of raw .yuv input: width, height, number of components (1 to 4),\n"
+                  << "\t\t\t\tprecision (1 to 16 bits) and chroma format (chroma444, chroma422 or chroma420),\n"
+                  << "\t\t\t\te.g. -img_fmt 1920,1080,3,8,chroma420"<<std::endl;
+        std::cout << "Exit codes: 0 success, 2 invalid arguments, 3 missing input, 4 empty input directory,\n"
+                     "\t5 image not supported by this sample, 6 read, encode or write failure, 1 any other error"
+                  << std::endl;
         return EXIT_SUCCESS;
     }
 
@@ -1116,47 +1164,62 @@ int main(int argc, const char *argv[])
     params.input_dir = "./";
     if ((pidx = findParamIndex(argv, argc, "-i")) != -1)
     {
-        params.input_dir = argv[pidx + 1];
+        params.input_dir = paramValue(argv, argc, pidx);
         
     }
     else
     {
         std::cout << "Please specify input directory/file with encoded images" << std::endl;
-        return EXIT_FAILURE;
+        return EXIT_INVALID_ARGUMENTS;
     }
 
     params.batch_size = 1;
     if ((pidx = findParamIndex(argv, argc, "-b")) != -1)
     {
-        params.batch_size = std::atoi(argv[pidx + 1]);
+        params.batch_size = paramInt(argv, argc, pidx);
+        if (params.batch_size <= 0)
+        {
+            std::cout << "Batch size must be a positive integer" << std::endl;
+            return EXIT_INVALID_ARGUMENTS;
+        }
     }
 
     params.total_images = -1;
     if ((pidx = findParamIndex(argv, argc, "-t")) != -1)
     {
-        params.total_images = std::atoi(argv[pidx + 1]);
+        params.total_images = paramInt(argv, argc, pidx);
+        if (params.total_images <= 0)
+        {
+            std::cout << "Total images must be a positive integer" << std::endl;
+            return EXIT_INVALID_ARGUMENTS;
+        }
     }
 
     params.warmup = 0;
     if ((pidx = findParamIndex(argv, argc, "-w")) != -1)
     {
-        params.warmup = std::atoi(argv[pidx + 1]);
+        params.warmup = paramInt(argv, argc, pidx);
+        if (params.warmup < 0)
+        {
+            std::cout << "Warmup iterations cannot be negative" << std::endl;
+            return EXIT_INVALID_ARGUMENTS;
+        }
     }
 
     params.write_bitstream = false;
     if ((pidx = findParamIndex(argv, argc, "-o")) != -1)
     {
-        params.output_dir = argv[pidx + 1];
+        params.output_dir = paramValue(argv, argc, pidx);
         params.write_bitstream = true;
     }
 
     params.img_fmt_init = false;
     if ((pidx = findParamIndex(argv, argc, "-img_fmt")) != -1)
     {
-        if (parse_dimensions(argv[pidx + 1], params))
+        if (parse_dimensions(paramValue(argv, argc, pidx), params))
         {
             std::cout<<"\n -img_fmt is incorrectly set";
-            return EXIT_FAILURE;
+            return EXIT_INVALID_ARGUMENTS;
         }
         params.img_fmt_init = true;
     }
@@ -1164,11 +1227,11 @@ int main(int argc, const char *argv[])
     params.pfm_precision = 32;
     if ((pidx = findParamIndex(argv, argc, "-pfm_precision")) != -1)
     {
-        int pfm_precision = std::atoi(argv[pidx + 1]);
+        int pfm_precision = paramInt(argv, argc, pidx);
         if(pfm_precision != 16 && pfm_precision != 32)
         {
             std::cout << "-pfm_precision must be 16 or 32" << std::endl;
-            return EXIT_FAILURE;
+            return EXIT_INVALID_ARGUMENTS;
         }
         params.pfm_precision = static_cast<uint8_t>(pfm_precision);
     }
@@ -1190,7 +1253,7 @@ int main(int argc, const char *argv[])
     params.quality_type = NVJPEG2K_QUALITY_TYPE_TARGET_PSNR;
     if ((pidx = findParamIndex(argv, argc, "-q_factor")) != -1)
     {
-        params.quality_value = atof(argv[pidx + 1]);
+        params.quality_value = paramDouble(argv, argc, pidx);
         params.quality_type = NVJPEG2K_QUALITY_TYPE_Q_FACTOR;
     }
 
@@ -1199,10 +1262,10 @@ int main(int argc, const char *argv[])
         if (params.quality_value != 0)
         {
             std::cout << "At most one quality type can be set" << std::endl;
-            return EXIT_FAILURE;
+            return EXIT_INVALID_ARGUMENTS;
         }
 
-        params.quality_value = atof(argv[pidx + 1]);
+        params.quality_value = paramDouble(argv, argc, pidx);
         params.quality_type = NVJPEG2K_QUALITY_TYPE_QUANTIZATION_STEP;
     }
 
@@ -1211,16 +1274,16 @@ int main(int argc, const char *argv[])
         if (params.quality_value != 0)
         {
             std::cout << "At most one quality type can be set" << std::endl;
-            return EXIT_FAILURE;
+            return EXIT_INVALID_ARGUMENTS;
         }
 
         if (params.use_ht)
         {
             std::cout << "-psnr option cannot be used with -ht option" << std::endl;
-            return EXIT_FAILURE;
+            return EXIT_INVALID_ARGUMENTS;
         }
 
-        params.quality_value = atof(argv[pidx + 1]);
+        params.quality_value = paramDouble(argv, argc, pidx);
         params.quality_type = NVJPEG2K_QUALITY_TYPE_TARGET_PSNR;
     }
 
@@ -1228,17 +1291,17 @@ int main(int argc, const char *argv[])
     if (params.quality_value != 0 && !params.is_irreversible)
     {
         std::cout << "Quality can only be used if irreversible transform is enabled" << std::endl;
-        return EXIT_FAILURE;
+        return EXIT_INVALID_ARGUMENTS;
     }
 
     params.cblk_w = 64;
     params.cblk_h = 64;
     if ((pidx = findParamIndex(argv, argc, "-cblk")) != -1)
     {
-        if (parse_blk_size(argv[pidx + 1], params))
+        if (parse_blk_size(paramValue(argv, argc, pidx), params))
         {
             std::cout<<"Invalid block size"<<std::endl;
-            return EXIT_FAILURE;
+            return EXIT_INVALID_ARGUMENTS;
         }
     }
 
@@ -1246,7 +1309,12 @@ int main(int argc, const char *argv[])
     FileNames image_names;
     if(readInput(params.input_dir, image_names))
     {
-        return EXIT_FAILURE;
+        return EXIT_MISSING_INPUT;
+    }
+    if (image_names.empty())
+    {
+        std::cerr << "No images found in: " << params.input_dir << std::endl;
+        return EXIT_NO_IMAGES;
     }
 
     CHECK_NVJPEG2K(nvjpeg2kEncoderCreateSimple(&params.enc_handle));
@@ -1271,8 +1339,9 @@ int main(int argc, const char *argv[])
               << params.batch_size << std::endl;
 
     double total;
-    if (process_images(image_names, params, total))
-        return EXIT_FAILURE;
+    int result = process_images(image_names, params, total);
+    if (result)
+        return result;
     
     std::cout << "Total encode time: " << total << std::endl;
     std::cout << "Avg encode time per image: " << total / params.total_images

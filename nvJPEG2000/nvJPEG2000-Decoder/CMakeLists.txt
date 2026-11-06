@@ -27,7 +27,7 @@ find_library(NVJPEG2K_LIB
            ${NVJPEG2K_PATH}/lib)
 
 if(NOT NVJPEG2K_LIB)
-  message(FATAL_ERROR, " nvJPEG2000 library not found. Make sure the library is installed. If using the tar.xz/zip packages set -DNVJPEG2K_PATH")
+  message(FATAL_ERROR "nvJPEG2000 library not found. Make sure the library is installed. If using the tar.xz/zip packages set -DNVJPEG2K_PATH")
 else()
   message(INFO, " nvJPEG2000 library found here: ${NVJPEG2K_LIB}")
 endif()

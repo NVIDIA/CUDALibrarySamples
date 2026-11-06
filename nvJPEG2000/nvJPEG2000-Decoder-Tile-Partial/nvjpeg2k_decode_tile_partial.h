@@ -20,13 +20,20 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <cstdlib>
 #include <vector>
 #include <algorithm>
+#include <cctype>
+#include <cerrno>
 #include <chrono>
+#include <climits>
 
 #include <string.h> // strcmpi
 
 #if defined(WIN32) || defined(_WIN32) || defined(WIN64) || defined(_WIN64)
+#ifndef NOMINMAX
+#define NOMINMAX // keep windows.h from defining min and max macros
+#endif
 #include <windows.h>
 #include <filesystem>
 const std::string separator = "\\";
@@ -66,9 +73,17 @@ namespace fs = std::experimental::filesystem::v1;
         if (_e != NVJPEG2K_STATUS_SUCCESS)                                                                  \
         {                                                                                                   \
             std::cout << "NVJPEG failure: '#" << _e << "' at " << __FILE__ << ":" << __LINE__ << std::endl; \
-            return EXIT_FAILURE;                                                                            \
+            return EXIT_DECODE_FAILURE;                                                                     \
         }                                                                                                   \
     }
+
+// Exit codes, in the order a run checks for them; EXIT_FAILURE (1) reports any other error, such as a
+// CUDA failure.
+#define EXIT_INVALID_ARGUMENTS 2 // the command line is invalid
+#define EXIT_MISSING_INPUT 3     // the input path does not exist, or none of its files can be read
+#define EXIT_NO_IMAGES 4         // the input directory holds no files
+#define EXIT_UNSUPPORTED 5       // a valid input image that this sample or library version cannot handle
+#define EXIT_DECODE_FAILURE 6    // an input file could not be decoded, or its output written
 
 typedef std::chrono::high_resolution_clock perfclock;
 
@@ -176,7 +191,7 @@ int read_next_batch(FileNames &image_names, int batch_size,
         if (image_names.size() == 0)
         {
             std::cerr << "No valid images left in the input list, exit" << std::endl;
-            return EXIT_FAILURE;
+            return EXIT_MISSING_INPUT;
         }
 
         // Read an image from disk.
@@ -238,7 +253,7 @@ int readInput(const std::string &sInputPath, std::vector<std::string> &filelist)
     else
     {
         std::cout<<"unable to open input"<<std::endl;
-        return EXIT_FAILURE;
+        return EXIT_DECODE_FAILURE;
     }
 
     return EXIT_SUCCESS;
@@ -328,13 +343,13 @@ int writePFM(const char *filename, const T &imgdesc, int nWidth, int nHeight, ui
     if (!is_fp16 && imgdesc.pixel_type != NVJPEG2K_FP32)
     {
         std::cerr << "writePFM expects FP16 or FP32 pixel_type" << std::endl;
-        return EXIT_FAILURE;
+        return EXIT_DECODE_FAILURE;
     }
 
     if(num_components != 1 && num_components != 3 && num_components != 4)
     {
         std::cerr << "writePFM expects 1, 3, or 4 components" << std::endl;
-        return EXIT_FAILURE;
+        return EXIT_UNSUPPORTED;
     }
 
     const size_t num_pixels = static_cast<size_t>(nWidth) * static_cast<size_t>(nHeight);
@@ -367,7 +382,7 @@ int writePFM(const char *filename, const T &imgdesc, int nWidth, int nHeight, ui
     if (!fp)
     {
         std::cerr << "Cannot open output file: " << filename << std::endl;
-        return EXIT_FAILURE;
+        return EXIT_DECODE_FAILURE;
     }
 
     fprintf(fp, "%s\n%d %d\n-1.000000\n", num_components == 1 ? "Pf" : "PF", nWidth, nHeight);
@@ -387,7 +402,7 @@ int writePFM(const char *filename, const T &imgdesc, int nWidth, int nHeight, ui
         {
             std::cerr << "Cannot write output file: " << filename << std::endl;
             fclose(fp);
-            return EXIT_FAILURE;
+            return EXIT_DECODE_FAILURE;
         }
     }
     fclose(fp);
@@ -399,7 +414,7 @@ int writePFM(const char *filename, const T &imgdesc, int nWidth, int nHeight, ui
     (void)nHeight;
     (void)num_components;
     std::cerr << "PFM output requires nvJPEG2000 0.11 or newer" << std::endl;
-    return EXIT_FAILURE;
+    return EXIT_UNSUPPORTED;
 #endif
 }
 
@@ -432,7 +447,7 @@ int writePPM(const char *filename,
     if (!(outfile = fopen(filename, "wb")))
     {
         std::cerr << "Cannot open file: " << filename << std::endl;
-        return 1;
+        return EXIT_DECODE_FAILURE;
     }
 
     fprintf(outfile,"P6\n#nvJPEG2000\n");
@@ -477,7 +492,7 @@ int writePPM(const char *filename,
         {
             std::cerr << "Cannot write output file: " << filename << std::endl;
             fclose(outfile);
-            return EXIT_FAILURE;
+            return EXIT_DECODE_FAILURE;
         }
     }
     fclose(outfile);
@@ -492,7 +507,7 @@ int writePGM(const char *filename, const D *pSrc, size_t nSrcStep, int nWidth, i
     if (!rOutputStream)
     {
         std::cerr << "Cannot open output file: " << filename << std::endl;
-        return EXIT_FAILURE;
+        return EXIT_DECODE_FAILURE;
     }
     std::vector<D> img(nHeight * (nSrcStep / sizeof(D)));
     D *hpSrc = img.data();
@@ -591,7 +606,7 @@ int writeBMP(const char *filename,
     if (!(outfile = fopen(filename, "wb")))
     {
         std::cerr << "Cannot open file: " << filename << std::endl;
-        return 1;
+        return EXIT_DECODE_FAILURE;
     }
 
     fprintf(outfile, "BM");
@@ -656,7 +671,7 @@ int writeBMP(const char *filename,
         {
             std::cerr << "Cannot write output file: " << filename << std::endl;
             fclose(outfile);
-            return EXIT_FAILURE;
+            return EXIT_DECODE_FAILURE;
         }
         if (extrabytes) // See above - BMP lines must be of lengths divisible by 4.
         {
@@ -697,8 +712,35 @@ int findParamIndex(const char **argv, int argc, const char *parm)
         std::cout << "Error, parameter " << parm
                   << " has been specified more than once, exiting\n"
                   << std::endl;
-        return -1;
+        std::exit(EXIT_INVALID_ARGUMENTS);
     }
 
     return -1;
+}
+
+// Returns the value that follows the option at argv[pidx], and exits when there is none: the command line
+// ends there, or the next token is another option.
+inline const char *paramValue(const char **argv, int argc, int pidx)
+{
+    if (pidx + 1 >= argc || (argv[pidx + 1][0] == '-' && std::isalpha(static_cast<unsigned char>(argv[pidx + 1][1]))))
+    {
+        std::cout << "Error, parameter " << argv[pidx] << " needs a value, exiting" << std::endl;
+        std::exit(EXIT_INVALID_ARGUMENTS);
+    }
+    return argv[pidx + 1];
+}
+
+// Like paramValue, for an integer value; anything else exits.
+inline int paramInt(const char **argv, int argc, int pidx)
+{
+    const char *value = paramValue(argv, argc, pidx);
+    char *end = nullptr;
+    errno = 0;
+    const long number = std::strtol(value, &end, 10);
+    if (end == value || *end != '\0' || errno == ERANGE || number < INT_MIN || number > INT_MAX)
+    {
+        std::cout << "Error, parameter " << argv[pidx] << " needs an integer, not '" << value << "', exiting" << std::endl;
+        std::exit(EXIT_INVALID_ARGUMENTS);
+    }
+    return static_cast<int>(number);
 }
