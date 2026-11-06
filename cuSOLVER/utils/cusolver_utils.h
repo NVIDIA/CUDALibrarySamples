@@ -218,9 +218,9 @@ void generate_random_matrix(cusolver_int_t m, cusolver_int_t n, T **A, int *lda)
     std::uniform_real_distribution<typename traits<T>::S> dis(-1.0, 1.0);
     auto rand_gen = std::bind(dis, gen);
 
-    *lda = n;
+    *lda = m;
 
-    size_t matrix_mem_size = static_cast<size_t>(*lda * m * sizeof(T));
+    size_t matrix_mem_size = static_cast<size_t>(*lda * n * sizeof(T));
     // suppress gcc 7 size warning
     if (matrix_mem_size <= PTRDIFF_MAX)
         *A = (T *)malloc(matrix_mem_size);
