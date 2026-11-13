@@ -17,7 +17,13 @@ import cuda.bindings.runtime as cuda
 
 class Timer(object):
 
-    def __init__(self):
+    def __init__(
+        self,
+        *,
+        detailed=False,
+    ):
+        self._detailed = detailed
+
         self._start_events = {}
         self._stop_events = {}
 
@@ -42,8 +48,8 @@ class Timer(object):
         s = ''
         k = 'key'
         c = 'count'
-        t = 'time [ms]'
-        s += f'{k:30s} {c:5s} {t:11s}\n'
+        t = 'time [s]'
+        s += f'{k:30s} {c:5s} {t:>11s}\n'
         for ok in self._ordered_keys:
             s += f'{str(ok):30s} {self._counts[ok]:5d} {self._times[ok]:11.3E}\n'
         return s
@@ -58,7 +64,12 @@ class Timer(object):
         *,
         key,
         stream_handle=0,
+        always=False,
     ):
+
+        # Detailed timers no-op unless enabled; always=True overrides
+        if not (always or self._detailed):
+            return
 
         if key in self._start_events:
             raise RuntimeError('Key already started: ', key)
@@ -87,8 +98,12 @@ class Timer(object):
         *,
         key,
         stream_handle=0,
+        always=False,
     ):
-    
+
+        if not (always or self._detailed):
+            return
+
         if key not in self._start_events:
             raise RuntimeError('Unknown key: ', key)
 

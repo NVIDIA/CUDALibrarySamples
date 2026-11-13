@@ -140,14 +140,17 @@ class CPHFKernelHelper:
         nvrtc.nvrtcGetProgramLog(prog, buf)
         return bytes(buf).rstrip(b"\x00").decode(errors="replace")
 
-    @staticmethod
-    def _get_nvrtc_ptx(prog):
-        _, ptx_size = nvrtc.nvrtcGetPTXSize(prog)
+    def _get_nvrtc_ptx(self, prog):
+        # compute_* targets only yield PTX; sm_* targets yield a cubin
+        is_ptx = self.gpu_arch.startswith(b"compute_")
+        get_size = nvrtc.nvrtcGetPTXSize if is_ptx else nvrtc.nvrtcGetCUBINSize
+        get_code = nvrtc.nvrtcGetPTX if is_ptx else nvrtc.nvrtcGetCUBIN
+        _, ptx_size = get_size(prog)
         ptx_size = int(ptx_size)
         if ptx_size <= 0:
             raise RuntimeError("NVRTC returned empty PTX size")
         buf = bytearray(ptx_size)
-        err = nvrtc.nvrtcGetPTX(prog, buf)
+        err = get_code(prog, buf)
         if err[0] != nvrtc.nvrtcResult.NVRTC_SUCCESS:
             raise RuntimeError(f"NVRTC error: {err[0]}")
         return bytes(buf)
@@ -157,6 +160,12 @@ class CPHFKernelHelper:
         self._dev = self._check_driver(driver.cuDeviceGet(self.device_id))
         self._ctx = self._check_driver(driver.cuDevicePrimaryCtxRetain(self._dev))
         self._check_driver(driver.cuCtxSetCurrent(self._ctx))
+
+    def _max_supported_arch(self):
+        """Highest virtual architecture (as an integer, e.g. 90 for compute_90)
+        that this toolkit's NVRTC can compile for."""
+        archs = self._check_nvrtc(nvrtc.nvrtcGetSupportedArchs())
+        return max(int(a) for a in archs)
 
     def _detect_gpu_arch(self):
         major = self._check_driver(
@@ -171,7 +180,15 @@ class CPHFKernelHelper:
                 self._dev,
             )
         )
-        return f"compute_{major}{minor}".encode()
+        device_arch = major * 10 + minor
+
+        # Emit PTX for the highest arch supported by the current NVRTC
+        max_arch = self._max_supported_arch()
+        # Cubin (sm_*) needs no PTX ISA support from the driver but only runs on its
+        # own arch; if NVRTC is older than the device, emit PTX for the driver to JIT.
+        if max_arch < device_arch:
+            return f"compute_{max_arch}".encode()
+        return f"sm_{device_arch}".encode()
 
     def _compile_and_load(self):
         prog = self._check_nvrtc(

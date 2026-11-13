@@ -45,7 +45,7 @@ class CuestHandle(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuest_create failed')
+            raise RuntimeError('cuest_create failed: %s' % status)
 
         stream_handle = ce.data_cudaStream_t()
         status = ce.cuestParametersQuery(
@@ -55,7 +55,7 @@ class CuestHandle(object):
             attributeValue=stream_handle,
         )
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestParametersQuery failed')
+            raise RuntimeError('cuestParametersQuery failed: %s' % status)
 
         self.stream_handle = stream_handle.value
 
@@ -70,7 +70,7 @@ class CuestHandle(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuest_destroy failed')
+            raise RuntimeError('cuest_destroy failed: %s' % status)
 
     def set_math_mode(
         self,
@@ -86,4 +86,4 @@ class CuestHandle(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuest_set_math_mode failed')
+            raise RuntimeError('cuest_set_math_mode failed: %s' % status)

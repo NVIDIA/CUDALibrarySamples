@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 add_subdirectory(core_df_jk)
+add_subdirectory(direct_df_j)
 add_subdirectory(core_df_jk_gradients)
 add_subdirectory(nonsymmetric_core_df_k)
 add_subdirectory(df_mo_integrals)
+add_subdirectory(df_mo_integrals_derivative)

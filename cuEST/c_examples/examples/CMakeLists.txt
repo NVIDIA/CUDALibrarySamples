@@ -14,6 +14,13 @@
 # limitations under the License.
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
+# The per-example CMakeLists.txt files also pass INPUTS <tag>... and
+# MIN_GPUS <N> as a hint of what the example needs: the input files
+# it takes as arguments, in order (xyz: geometry, xyz_heavy: geometry
+# with heavy elements, gbs: basis set, aux: auxiliary basis set,
+# ecp: ECP basis set), and the number of GPUs. They arrive here as
+# surplus arguments (ARGN) and are ignored; run_all.sh supplies the
+# inputs.
 function(
     ADD_EXAMPLE
     EXAMPLE_NAME
@@ -64,3 +71,9 @@ add_subdirectory(5_effective_core_potentials)
 
 set(CMAKE_FOLDER "6_pcm")
 add_subdirectory(6_pcm)
+
+set(CMAKE_FOLDER "7_direct_jk")
+add_subdirectory(7_direct_jk)
+
+set(CMAKE_FOLDER "8_grid_k")
+add_subdirectory(8_grid_k)

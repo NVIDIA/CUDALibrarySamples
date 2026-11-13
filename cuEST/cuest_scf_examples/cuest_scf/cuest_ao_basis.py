@@ -71,7 +71,7 @@ class CuestAOBasis(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestAOBasisCreateWorkspaceQuery failed')
+            raise RuntimeError('cuestAOBasisCreateWorkspaceQuery failed: %s' % status)
             
         persistent_workspace = CuestWorkspace(workspaceDescriptor=persistent_workspace_descriptor)
         temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
@@ -90,7 +90,7 @@ class CuestAOBasis(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestAOBasisCreate failed')
+            raise RuntimeError('cuestAOBasisCreate failed: %s' % status)
 
         # Bind the lifetime of persistent_workspace to this object
         self.persistent_workspace = persistent_workspace
@@ -106,7 +106,7 @@ class CuestAOBasis(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestAOBasisDestroy failed')
+            raise RuntimeError('cuestAOBasisDestroy failed: %s' % status)
 
     @property
     def is_pure(self):
@@ -121,7 +121,7 @@ class CuestAOBasis(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuest query failed')
+            raise RuntimeError('cuest query failed: %s' % status)
 
         return bool(query.value)
 
@@ -138,7 +138,7 @@ class CuestAOBasis(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuest query failed')
+            raise RuntimeError('cuest query failed: %s' % status)
 
         return bool(query.value)
 
@@ -155,7 +155,7 @@ class CuestAOBasis(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuest query failed')
+            raise RuntimeError('cuest query failed: %s' % status)
 
         return bool(query.value)
 
@@ -172,7 +172,7 @@ class CuestAOBasis(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuest query failed')
+            raise RuntimeError('cuest query failed: %s' % status)
 
         return int(query.value)
 
@@ -189,7 +189,7 @@ class CuestAOBasis(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuest query failed')
+            raise RuntimeError('cuest query failed: %s' % status)
 
         return int(query.value)
 
@@ -206,7 +206,7 @@ class CuestAOBasis(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuest query failed')
+            raise RuntimeError('cuest query failed: %s' % status)
 
         return int(query.value)
 
@@ -223,7 +223,7 @@ class CuestAOBasis(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuest query failed')
+            raise RuntimeError('cuest query failed: %s' % status)
 
         return int(query.value)
 
@@ -240,7 +240,7 @@ class CuestAOBasis(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuest query failed')
+            raise RuntimeError('cuest query failed: %s' % status)
 
         return int(query.value)
 
@@ -257,20 +257,20 @@ class CuestAOBasis(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuest query failed')
+            raise RuntimeError('cuest query failed: %s' % status)
 
         return int(query.value)
 
     def __str__(self):
         s = ''
-        s += 'CuestAOBasis:\n'
-        s += '%-10s = %6d\n' % ('natom', self.natom)
-        s += '%-10s = %6d\n' % ('nshell', self.nshell)
-        s += '%-10s = %6d\n' % ('nao', self.nao)
-        s += '%-10s = %6d\n' % ('ncart', self.ncart)
-        s += '%-10s = %6d\n' % ('nprimitive', self.nprimitive)
-        s += '%-10s = %6d\n' % ('max_L', self.max_L)
-        s += '%-10s = %6s\n' % ('is_pure', self.is_pure)
-        s += '%-10s = %6s\n' % ('is_cart', self.is_cart)
-        s += '%-10s = %6s\n' % ('is_mixed', self.is_mixed)
+        s += 'CuestAOBasis:\n\n'
+        s += '%-19s = %11d\n' % ('natom', self.natom)
+        s += '%-19s = %11d\n' % ('nshell', self.nshell)
+        s += '%-19s = %11d\n' % ('nao', self.nao)
+        s += '%-19s = %11d\n' % ('ncart', self.ncart)
+        s += '%-19s = %11d\n' % ('nprimitive', self.nprimitive)
+        s += '%-19s = %11d\n' % ('max_L', self.max_L)
+        s += '%-19s = %11s\n' % ('is_pure', self.is_pure)
+        s += '%-19s = %11s\n' % ('is_cart', self.is_cart)
+        s += '%-19s = %11s\n' % ('is_mixed', self.is_mixed)
         return s

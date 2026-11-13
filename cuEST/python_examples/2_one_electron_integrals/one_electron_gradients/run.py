@@ -450,6 +450,133 @@ def run(
         array=kineticgrad_device_pointer
         )
 
+    # => Potential Gradients <= #
+
+    # The potential integral derivative additionally takes a set of point
+    # charges as input (here, the nuclei) and produces two gradients: one
+    # with respect to the AO basis centers and one with respect to the
+    # point-charge coordinates.
+
+    # Move the position and (negated) charges of the atoms to the GPU
+    xyzs_device_handle = ce.Pointer()
+    xyzs = np.array(xyzs)
+    xyzs_device_pointer = cuda_malloc(
+        size_in_bytes=sizeof_double * len(xyzs)
+        )
+    xyzs_device_handle.value = np.intp(xyzs_device_pointer)
+    cuda_memcpy_htod(
+        device_pointer=xyzs_device_pointer,
+        host_pointer=xyzs.ctypes.data,
+        size_in_bytes=sizeof_double * len(xyzs),
+        )
+
+    # The integral compute in cuEST are electron repulsion integrals but we're interested
+    # in a nucleus in the ket here, so the Z values have been scaled by -1 in the parser
+    Zs_device_handle = ce.Pointer()
+    Zs = np.array(Zs)
+    Zs_device_pointer = cuda_malloc(
+        size_in_bytes=sizeof_double * len(Zs)
+        )
+    Zs_device_handle.value = np.intp(Zs_device_pointer)
+    cuda_memcpy_htod(
+        device_pointer=Zs_device_pointer,
+        host_pointer=Zs.ctypes.data,
+        size_in_bytes=sizeof_double * len(Zs),
+        )
+
+    potentialgrad_basis_device_handle = ce.Pointer()
+    potentialgrad_charge_device_handle = ce.Pointer()
+
+    compute_potential_gradient_parameters = ce.cuestPotentialDerivativeComputeParameters()
+    cuest_check('Create Potential Grad Params',
+        ce.cuestParametersCreate(
+            parametersType=ce.CuestParametersType.CUEST_POTENTIALDERIVATIVECOMPUTE_PARAMETERS,
+            outParameters=compute_potential_gradient_parameters,
+            )
+        )
+
+    cuest_check('Compute Potential Derivative Workspace Query',
+        ce.cuestPotentialDerivativeComputeWorkspaceQuery(
+            handle=cuest_handle,
+            plan=oeintplan_handle,
+            parameters=compute_potential_gradient_parameters,
+            temporaryWorkspaceDescriptor=temporary_workspace_descriptor.pointer,
+            numCharges=len(symbols),
+            xyz=xyzs_device_handle,
+            q=Zs_device_handle,
+            densityMatrix=densitymatrix_device_handle,
+            outBasisGradient=potentialgrad_basis_device_handle,
+            outChargeGradient=potentialgrad_charge_device_handle,
+            )
+        )
+
+    potentialgrad_temporary_workspace = Workspace(workspaceDescriptor=temporary_workspace_descriptor)
+
+    potentialgrad_basis_device_pointer = cuda_malloc(
+        size_in_bytes=sizeof_double * 3 * len(symbols)
+        )
+    potentialgrad_basis_device_handle.value = np.intp(potentialgrad_basis_device_pointer)
+    potentialgrad_charge_device_pointer = cuda_malloc(
+        size_in_bytes=sizeof_double * 3 * len(symbols)
+        )
+    potentialgrad_charge_device_handle.value = np.intp(potentialgrad_charge_device_pointer)
+
+    cuest_check('Compute Potential Derivative',
+        ce.cuestPotentialDerivativeCompute(
+            handle=cuest_handle,
+            plan=oeintplan_handle,
+            parameters=compute_potential_gradient_parameters,
+            temporaryWorkspace=potentialgrad_temporary_workspace.pointer,
+            numCharges=len(symbols),
+            xyz=xyzs_device_handle,
+            q=Zs_device_handle,
+            densityMatrix=densitymatrix_device_handle,
+            outBasisGradient=potentialgrad_basis_device_handle,
+            outChargeGradient=potentialgrad_charge_device_handle,
+            )
+        )
+
+    del potentialgrad_temporary_workspace
+    cuest_check('Destroy Potential Grad Params',
+        ce.cuestParametersDestroy(
+            parametersType=ce.CuestParametersType.CUEST_POTENTIALDERIVATIVECOMPUTE_PARAMETERS,
+            parameters=compute_potential_gradient_parameters,
+            )
+        )
+
+    potentialgrad_basis_host_array = np.empty(
+        (3 * len(symbols),),
+        dtype=np.double
+        )
+    cuda_memcpy_dtoh(
+        host_pointer=potentialgrad_basis_host_array.ctypes.data,
+        device_pointer=potentialgrad_basis_device_pointer,
+        size_in_bytes=sizeof_double * 3 * len(symbols),
+        )
+
+    potentialgrad_charge_host_array = np.empty(
+        (3 * len(symbols),),
+        dtype=np.double
+        )
+    cuda_memcpy_dtoh(
+        host_pointer=potentialgrad_charge_host_array.ctypes.data,
+        device_pointer=potentialgrad_charge_device_pointer,
+        size_in_bytes=sizeof_double * 3 * len(symbols),
+        )
+
+    cuda_free(
+        array=potentialgrad_basis_device_pointer
+        )
+    cuda_free(
+        array=potentialgrad_charge_device_pointer
+        )
+    cuda_free(
+        array=xyzs_device_pointer,
+        )
+    cuda_free(
+        array=Zs_device_pointer,
+        )
+
     # => Cleanup <= #
 
     cuda_free(

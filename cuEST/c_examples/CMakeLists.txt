@@ -44,10 +44,6 @@ else()
     message(FATAL_ERROR "cuest library not found under ${CUEST_LIB_DIR}")
 endif()
 
-if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-    set(CMAKE_CUDA_ARCHITECTURES 80 90)
-endif()
-
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--allow-shlib-undefined")
 
 add_subdirectory(examples)

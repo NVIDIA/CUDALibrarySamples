@@ -12,7 +12,7 @@ For full API documentation, see https://docs.nvidia.com/cuda/cuest/.
 
 ## Installation
 
-From the `cuda_samples/` directory:
+From this directory (the `pyproject.toml` is one level up):
 
 ```bash
 pip install "..[cu12]"  # or "..[cu13]" for CUDA 13
@@ -52,9 +52,14 @@ python_examples/
     pcm_utils.py                  # PCM utility helpers
   0_context/                      # Handle creation and multi-stream usage
   1_basic_data_structures/        # AO basis and shell setup
-  2_one_electron_integrals/       # Overlap, kinetic, potential integrals and gradients
-  3_density_fitting/              # DF-J and DF-K integrals and gradients
+  2_one_electron_integrals/       # Overlap, kinetic, potential integrals, gradients and Hessians
+  3_density_fitting/              # DF-J and DF-K integrals and gradients, direct DF-J, DF MO integrals
   4_exchange_correlation/         # Local and nonlocal XC potential and gradients
   5_effective_core_potentials/    # ECP integrals and gradients
   6_pcm/                          # PCM potential and gradients
+  7_direct_jk/                    # Direct four-center J and K matrices and gradients
+  8_grid_k/                       # Grid-based exchange (Grid-K) matrices and gradients
 ```
+
+The direct J/K (`7_direct_jk`) and Grid-K (`8_grid_k`) examples are intended
+for datacenter GPUs with full-rate FP64 compute.

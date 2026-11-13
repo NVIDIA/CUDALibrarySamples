@@ -24,7 +24,7 @@ from .cuest_workspace import CuestWorkspace
 from .cuest_handle import CuestHandle
 from .cuest_ao_basis import CuestAOBasis
 
-from .cuest_parameters import CuestParameters
+from .cuest_utility import CuestUtility
 
 from .periodic_table import PeriodicTable
 from .unit_conversions import UnitConversions
@@ -81,13 +81,12 @@ class CuestECPIntPlan(object):
                 'activeIndices contains an out-of-range atom index (natom=%d)' % natom
             )
 
-        ecp_int_plan_parameters = CuestParameters(
-            parametersType=ce.CuestParametersType.CUEST_ECPINTPLAN_PARAMETERS,
+        ecp_int_plan_parameters = CuestUtility.make_compute_parameters(
+            ce.CuestParametersType.CUEST_ECPINTPLAN_PARAMETERS,
+            [],
             )
 
-
         self.ecp_int_plan_handle = ce.cuestECPIntPlanHandle()
-
         # => Workspace Query <= #
 
         persistent_workspace_descriptor = CuestWorkspaceDescriptor()
@@ -107,7 +106,7 @@ class CuestECPIntPlan(object):
             outPlan=self.ecp_int_plan_handle,
             )
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestECPIntPlanCreateWorkspaceQuery failed')
+            raise RuntimeError('cuestECPIntPlanCreateWorkspaceQuery failed: %s' % status)
 
         ecp_int_plan_persistent_workspace = CuestWorkspace(workspaceDescriptor=persistent_workspace_descriptor)
         ecp_int_plan_temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
@@ -127,7 +126,7 @@ class CuestECPIntPlan(object):
             outPlan=self.ecp_int_plan_handle,
             )
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestECPIntPlanCreate failed')
+            raise RuntimeError('cuestECPIntPlanCreate failed: %s' % status)
 
         # Bind the lifetime of persistent_workspace to this object
         self.persistent_workspace = ecp_int_plan_persistent_workspace
@@ -142,4 +141,4 @@ class CuestECPIntPlan(object):
             handle=self.ecp_int_plan_handle,
             )
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestECPIntPlanDestroy failed')
+            raise RuntimeError('cuestECPIntPlanDestroy failed: %s' % status)

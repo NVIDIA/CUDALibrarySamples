@@ -296,22 +296,24 @@ def test_uhf_dft_functionals():
     }
 
     # Per-functional tolerances (cuEST vs PySCF >= 2.13, on matched grids -- same
-    # quadrature, same SSF partitioning, consistent grid response). Both the
-    # ENERGIES and the GRADIENTS agree to ~1e-8 or better for every non-range-
-    # separated functional (cross-checked against a finite-difference of cuEST's
-    # own energy, which reproduces cuEST's analytic gradient to ~1e-9). Pure HF
+    # quadrature, same SSF partitioning, consistent grid response). Energies and
+    # gradients agree to ~1e-8 or better for every non-range-separated
+    # functional (cross-checked against a finite-difference of cuEST's own
+    # energy, which reproduces cuEST's analytic gradient to ~1e-9). Pure HF
     # (no XC grid) agrees to ~2e-9 in the gradient.
     #
-    # The outliers are the range-separated hybrids (LC-wPBE, wB97X, wB97X-V,
-    # wB97M-V, LC-wPBEh, CAM-B3LYP, HSE06): their residual (~1e-6 in E, up to
-    # ~3e-5 in G) lives in the density-fitted long-range erf(omega*r)/r exchange
-    # -- it shows up in BOTH the energy and the gradient and is unrelated to the
-    # grid (cuEST's DF of the attenuated exchange is ~1e-5 less accurate than the
-    # exact/PySCF attenuated-metric RI; see the investigation notes for CAM-B3LYP).
-    # NOTE: cuEST's LC-wPBE is the Weintraub-Henderson-Scuseria variant
-    # (HYB_GGA_XC_LC_WPBE_WHS), NOT the Vydrov-Scuseria HYB_GGA_XC_LC_WPBE.
-    # Tolerances carry several-x margin over the observed deviation while staying
-    # inside GPU run-to-run noise.
+    # The range-separated hybrids (LC-wPBE, wB97X, wB97X-V, wB97M-V, LC-wPBEh,
+    # CAM-B3LYP, HSE06) show a larger residual (~1e-6 in the energy, up to
+    # ~3e-5 in the gradient) coming from the density-fitted long-range
+    # erf(omega*r)/r exchange rather than the grid: cuEST and PySCF use
+    # different flavors of density fitting for the attenuated exchange (cuEST
+    # fits with the standard Coulomb metric, PySCF's RI uses the attenuated
+    # metric), so the two differ by ~1e-5 here. See the investigation notes
+    # for CAM-B3LYP.
+    # Note: cuEST's LC-wPBE is the Weintraub-Henderson-Scuseria variant
+    # (HYB_GGA_XC_LC_WPBE_WHS), not the Vydrov-Scuseria HYB_GGA_XC_LC_WPBE.
+    # Tolerances carry several-x margin over the observed deviation while
+    # staying inside GPU run-to-run noise.
     energy_tolerances = {
         'HF'       : 1.0E-8,   # observed ~1e-10 (no XC grid)
         'B3LYP1'   : 1.0E-8,   # observed ~2e-12

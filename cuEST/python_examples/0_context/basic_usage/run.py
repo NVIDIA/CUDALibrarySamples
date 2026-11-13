@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+
 import cuest.bindings as ce
 
 def cuest_check(
@@ -66,8 +68,13 @@ print('Handle Max L', maxl_handle.value)
 # ~/.cuest_cache/cuest-cuda<N>-v<version>/; must be a trusted, per-user,
 # non-world-writable path) and the number of parallel JIT-compile worker
 # threads (>= 1; default 16). Both take effect at cuestCreate.
+home = os.path.expanduser('~')
+if not os.path.isabs(home):
+    # expanduser returns '~' unchanged when HOME is unset and the UID has no
+    # user database entry; a relative cache path would not be per-user.
+    raise RuntimeError('Cannot resolve the home directory for the JIT cache; set HOME')
 jit_cache_dir = ce.data_string()
-jit_cache_dir.value = '/tmp/cuest-jit-cache'
+jit_cache_dir.value = os.path.join(home, '.cuest_cache', 'examples')
 cuest_check('Configure JIT cache dir',
     ce.cuestParametersConfigure(
         parametersType=ce.CuestParametersType.CUEST_HANDLE_PARAMETERS,

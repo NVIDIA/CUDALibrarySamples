@@ -33,13 +33,13 @@ def run(
     ):
     """
     This sample shows how to use cuEST to compute the PCM potential
-    matrix and the PCM dislectric energy. The PCM potential matrix
+    matrix and the PCM dielectric energy. The PCM potential matrix
     is obtained by solving for the induced surface charges on the
     cavity via a preconditioned conjugate gradient (PCG) solver.
 
     In this sample, a random symmetric matrix stands in for a real
     density matrix. Molecular cavity parameters are looked up
-    per-element from a helper_pcm.h utility file.
+    per-element with the helpers.pcm_utils.pcm_cavity_parameters utility.
     """
 
     # => Parse User Input <= #
@@ -466,7 +466,7 @@ def run(
             )
         )
 
-    # At this point d_outQ contains the (hopefully) converged surface charges.
+    # At this point outq_device_handle points to the (hopefully) converged surface charges.
     # The inQ and outQ pointers can be swapped here to provide a good guess for the
     # PCM potential matrix solve in the next SCF cycle.
 

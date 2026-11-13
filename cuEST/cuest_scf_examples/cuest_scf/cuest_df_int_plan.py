@@ -22,7 +22,7 @@ from .cuest_handle import CuestHandle
 from .cuest_ao_basis import CuestAOBasis
 from .cuest_ao_pair_list import CuestAOPairList
 
-from .cuest_parameters import CuestParameters
+from .cuest_utility import CuestUtility
 
 class CuestDFIntPlan(object):
 
@@ -33,11 +33,11 @@ class CuestDFIntPlan(object):
         primary : CuestAOBasis,
         auxiliary : CuestAOBasis,
         ao_pair_list : CuestAOPairList,
-        exchange_scale : float = 1.0,
-        lrc_exchange_scale : float = 0.0,
-        lrc_omega : float = 0.0,
-        df_fitting_eigenvalue_cutoff : float = 1.0e-12,
-        integral_direct : bool = False,
+        exchange_scale : float,
+        lrc_exchange_scale : float,
+        lrc_omega : float,
+        df_fitting_eigenvalue_cutoff : float,
+        integral_direct : bool,
         ):
 
         self.initialized = False
@@ -47,67 +47,27 @@ class CuestDFIntPlan(object):
         self.lrc_exchange_scale = lrc_exchange_scale
         self.lrc_omega = lrc_omega
         self.df_fitting_eigenvalue_cutoff = df_fitting_eigenvalue_cutoff
+        self.integral_direct = integral_direct
 
         # NOTE: The CuestDFIntPlan has several defaultable parameters that
         # production codes may wish to override and expose as user-accessible
         # parameters.
 
-        df_int_plan_parameters = CuestParameters(
-            parametersType=ce.CuestParametersType.CUEST_DFINTPLAN_PARAMETERS,
+        df_int_plan_parameters = CuestUtility.make_compute_parameters(
+            ce.CuestParametersType.CUEST_DFINTPLAN_PARAMETERS,
+            [(ce.CuestDFIntPlanParametersAttributes.CUEST_DFINTPLAN_PARAMETERS_EXCHANGE_FRACTION,
+              ce.data_double(self.exchange_scale)),
+             (ce.CuestDFIntPlanParametersAttributes.CUEST_DFINTPLAN_PARAMETERS_LRC_EXCHANGE_FRACTION,
+              ce.data_double(self.lrc_exchange_scale)),
+             (ce.CuestDFIntPlanParametersAttributes.CUEST_DFINTPLAN_PARAMETERS_LRC_EXCHANGE_OMEGA,
+              ce.data_double(self.lrc_omega)),
+             (ce.CuestDFIntPlanParametersAttributes.CUEST_DFINTPLAN_PARAMETERS_FITTING_CUTOFF,
+              ce.data_double(self.df_fitting_eigenvalue_cutoff)),
+             (ce.CuestDFIntPlanParametersAttributes.CUEST_DFINTPLAN_PARAMETERS_THREE_INDEX_INTEGRAL_DIRECT,
+              ce.data_int32_t(integral_direct))],
             )
-
-        exchange_scale_data = ce.data_double(self.exchange_scale)
-        lrc_exchange_scale_data = ce.data_double(self.lrc_exchange_scale)
-        lrc_omega_data = ce.data_double(self.lrc_omega)
-        df_fitting_eigenvalue_cutoff_data = ce.data_double(self.df_fitting_eigenvalue_cutoff)
-        integral_direct_data = ce.data_int32_t(integral_direct)
 
         self.df_int_plan_handle = ce.cuestDFIntPlanHandle()
-        status = ce.cuestParametersConfigure(
-            parametersType=ce.CuestParametersType.CUEST_DFINTPLAN_PARAMETERS,
-            parameters=df_int_plan_parameters.parameters,
-            attribute=ce.CuestDFIntPlanParametersAttributes.CUEST_DFINTPLAN_PARAMETERS_EXCHANGE_FRACTION,
-            attributeValue=exchange_scale_data,
-            )
-        if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestParametersConfigure failed')
-
-        status = ce.cuestParametersConfigure(
-            parametersType=ce.CuestParametersType.CUEST_DFINTPLAN_PARAMETERS,
-            parameters=df_int_plan_parameters.parameters,
-            attribute=ce.CuestDFIntPlanParametersAttributes.CUEST_DFINTPLAN_PARAMETERS_LRC_EXCHANGE_FRACTION,
-            attributeValue=lrc_exchange_scale_data,
-            )
-        if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestParametersConfigure failed')
-
-        status = ce.cuestParametersConfigure(
-            parametersType=ce.CuestParametersType.CUEST_DFINTPLAN_PARAMETERS,
-            parameters=df_int_plan_parameters.parameters,
-            attribute=ce.CuestDFIntPlanParametersAttributes.CUEST_DFINTPLAN_PARAMETERS_LRC_EXCHANGE_OMEGA,
-            attributeValue=lrc_omega_data,
-            )
-        if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestParametersConfigure failed')
-
-        status = ce.cuestParametersConfigure(
-            parametersType=ce.CuestParametersType.CUEST_DFINTPLAN_PARAMETERS,
-            parameters=df_int_plan_parameters.parameters,
-            attribute=ce.CuestDFIntPlanParametersAttributes.CUEST_DFINTPLAN_PARAMETERS_FITTING_CUTOFF,
-            attributeValue=df_fitting_eigenvalue_cutoff_data,
-            )
-        if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestParametersConfigure failed')
-
-        status = ce.cuestParametersConfigure(
-            parametersType=ce.CuestParametersType.CUEST_DFINTPLAN_PARAMETERS,
-            parameters=df_int_plan_parameters.parameters,
-            attribute=ce.CuestDFIntPlanParametersAttributes.CUEST_DFINTPLAN_PARAMETERS_THREE_INDEX_INTEGRAL_DIRECT,
-            attributeValue=integral_direct_data,
-            )
-        if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestParametersConfigure failed')
-
         # => Workspace Query <= #
 
         persistent_workspace_descriptor = CuestWorkspaceDescriptor()
@@ -125,7 +85,7 @@ class CuestDFIntPlan(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestDFIntPlanCreateWorkspaceQuery failed')
+            raise RuntimeError('cuestDFIntPlanCreateWorkspaceQuery failed: %s' % status)
 
         # Most likely place to run out of device memory, so we will add a custom RuntimeError
         try:
@@ -148,7 +108,7 @@ class CuestDFIntPlan(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestDFIntPlanCreate failed')
+            raise RuntimeError('cuestDFIntPlanCreate failed: %s' % status)
 
         # Bind the lifetime of persistent_workspace to this object
         self.persistent_workspace = persistent_workspace
@@ -161,6 +121,19 @@ class CuestDFIntPlan(object):
 
         self.initialized = True
 
+    # => String Details <= #
+
+    def __str__(self):
+        return self.string
+
+    @property
+    def string(self):
+        s = ''
+        s += 'DFIntPlan:\n\n'
+        s += '%-19s = %11.3E\n' % ('fitting cutoff', self.df_fitting_eigenvalue_cutoff)
+        s += '%-19s = %11s\n'   % ('integral direct', self.integral_direct)
+        return s
+
     def __del__(self):
 
         if not self.initialized: return
@@ -170,4 +143,4 @@ class CuestDFIntPlan(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestDFIntPlanDestroy failed')
+            raise RuntimeError('cuestDFIntPlanDestroy failed: %s' % status)

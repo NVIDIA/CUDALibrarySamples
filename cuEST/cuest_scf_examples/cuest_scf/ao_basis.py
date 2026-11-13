@@ -142,16 +142,16 @@ class AOBasis(object):
     @property
     def string(self):
         s = ''
-        s += 'AOBasis:\n';
-        s += '%-10s = %6d\n' % ('natom', self.natom)
-        s += '%-10s = %6d\n' % ('nshell', self.nshell)
-        s += '%-10s = %6d\n' % ('nao', self.nao)
-        s += '%-10s = %6d\n' % ('ncart', self.ncart)
-        s += '%-10s = %6d\n' % ('nprimitive', self.nprimitive)
-        s += '%-10s = %6d\n' % ('max_L', self.max_L)
-        s += '%-10s = %6s\n' % ('is_pure', self.is_pure)
-        s += '%-10s = %6s\n' % ('is_cart', self.is_cart)
-        s += '%-10s = %6s\n' % ('is_mixed', self.is_mixed)
+        s += 'AOBasis:\n\n';
+        s += '%-19s = %11d\n' % ('natom', self.natom)
+        s += '%-19s = %11d\n' % ('nshell', self.nshell)
+        s += '%-19s = %11d\n' % ('nao', self.nao)
+        s += '%-19s = %11d\n' % ('ncart', self.ncart)
+        s += '%-19s = %11d\n' % ('nprimitive', self.nprimitive)
+        s += '%-19s = %11d\n' % ('max_L', self.max_L)
+        s += '%-19s = %11s\n' % ('is_pure', self.is_pure)
+        s += '%-19s = %11s\n' % ('is_cart', self.is_cart)
+        s += '%-19s = %11s\n' % ('is_mixed', self.is_mixed)
         return s;
 
     @property

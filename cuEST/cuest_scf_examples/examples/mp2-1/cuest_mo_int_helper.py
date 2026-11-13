@@ -85,6 +85,9 @@ class CuestMOIntegralHelper(object):
             primary=self.cuest_primary,
             auxiliary=self.cuest_ri_auxiliary,
             ao_pair_list=self.cuest_ao_pair_list,
+            exchange_scale=1.0,
+            lrc_exchange_scale=0.0,
+            lrc_omega=0.0,
             df_fitting_eigenvalue_cutoff=self.df_fitting_eigenvalue_cutoff,
             integral_direct=self.integral_direct,
             )

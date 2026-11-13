@@ -219,10 +219,8 @@ int main(int argc, char **argv)
     /* Compute the total number of active ECP atoms */
     uint64_t numActiveECP = 0;
     for (uint64_t i = 0; i < xyzData->numAtoms; i++) {
-        uint64_t basisIndex = 0;
         for (uint64_t j = 0; j < numUnique; j++) {
             if (strcmp(xyzData->symbols[i], uniqueSymbols[j]) == 0) {
-                basisIndex = j;
                 if (shellList[j]) numActiveECP++;
                 break;
             }
@@ -236,10 +234,8 @@ int main(int argc, char **argv)
     uint64_t *ecpMap = (uint64_t *) malloc(numActiveECP * sizeof(uint64_t));
 
     for (uint64_t i = 0, ecp = 0; i < xyzData->numAtoms; i++) {
-        uint64_t basisIndex = 0;
         for (uint64_t j = 0; j < numUnique; j++) {
             if (strcmp(xyzData->symbols[i], uniqueSymbols[j]) == 0) {
-                basisIndex = j;
                 if (shellList[j]) {
                     ecpIndices[ecp] = i;
                     ecpMap[ecp] = j;
@@ -289,11 +285,11 @@ int main(int argc, char **argv)
         /* Create the ECP top shell. */
         checkCuestErrors(cuestECPShellCreate(
             handle,                          ///< cuEST handle 
-            shellList[i]->shell_types[0],    ///< L=3 for an f shell
-            shellList[i]->num_primitives[0], ///< The shell has 4 primitives
-            shellList[i]->Ns,                ///< size_t* containing the atomic numbers
-            shellList[i]->coefficients,      ///< double* containing the 
-            shellList[i]->exponents,         ///< double* containing the 
+            shellList[i]->shell_types[0],    ///< Angular momentum
+            shellList[i]->num_primitives[0], ///< Number of primitives
+            shellList[i]->Ns,                ///< uint64_t* containing the radial powers
+            shellList[i]->coefficients,      ///< double* containing the coefficients
+            shellList[i]->exponents,         ///< double* containing the exponents
             ecpshell_parameters,             ///< cuestECPShellParameters_t with default parameters
             &top_shell[0]));                 ///< The output cuestECPShell_t
 
@@ -302,11 +298,11 @@ int main(int argc, char **argv)
             uint64_t offset = shellList[i]->primitive_offsets[k + 1];
             checkCuestErrors(cuestECPShellCreate(
                 handle,                                ///< cuEST handle 
-                shellList[i]->shell_types[k+1],        ///< L=3 for an f shell
-                shellList[i]->num_primitives[k+1],     ///< The shell has 4 primitives
-                &(shellList[i]->Ns)[offset],           ///< size_t* containing the atomic numbers
-                &(shellList[i]->coefficients)[offset], ///< double* containing the 
-                &(shellList[i]->exponents)[offset],    ///< double* containing the 
+                shellList[i]->shell_types[k+1],        ///< Angular momentum
+                shellList[i]->num_primitives[k+1],     ///< Number of primitives
+                &(shellList[i]->Ns)[offset],           ///< uint64_t* containing the radial powers
+                &(shellList[i]->coefficients)[offset], ///< double* containing the coefficients
+                &(shellList[i]->exponents)[offset],    ///< double* containing the exponents
                 ecpshell_parameters,                   ///< cuestECPShellParameters_t with default parameters
                 &ecp_shells[k]));                      ///< The output cuestECPShell_t
         }
@@ -464,7 +460,7 @@ int main(int argc, char **argv)
         exit(EXIT_FAILURE);
     }
 
-    /* Read in density from file */
+    /* Fill the density matrix with synthetic symmetric data (a real application would use the SCF density). */
     fill_symmetric_matrix(d_D, nao);
 
     /* Declare the ECP compute parameter handle. */

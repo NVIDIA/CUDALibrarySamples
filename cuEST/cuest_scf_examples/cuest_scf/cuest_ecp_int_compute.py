@@ -20,14 +20,14 @@ from .cuest_ecp_int_plan import CuestECPIntPlan
 
 from .cuest_workspace_descriptor import CuestWorkspaceDescriptor
 from .cuest_workspace import CuestWorkspace
-from .cuest_parameters import CuestParameters
+from .cuest_utility import CuestUtility
 
 import numpy as np
 
 class CuestECPIntCompute(object):
 
     @staticmethod
-    def compute_ecp_potential(
+    def potential(
         *,
         handle : CuestHandle,
         ecp_int_plan : CuestECPIntPlan,
@@ -40,8 +40,10 @@ class CuestECPIntCompute(object):
         # => Workspace query <= #
 
         # ecp parameters
-        ecp_compute_parameters = CuestParameters(parametersType=ce.CuestParametersType.CUEST_ECPCOMPUTE_PARAMETERS)
-
+        ecp_compute_parameters = CuestUtility.make_compute_parameters(
+            ce.CuestParametersType.CUEST_ECPCOMPUTE_PARAMETERS,
+            [],
+            )
         temporary_workspace_descriptor = CuestWorkspaceDescriptor()
         # Allow the algorithm to use up to 2GB of DRAM
         ecpint_maximum_workspace_descriptor = CuestWorkspaceDescriptor(
@@ -57,7 +59,7 @@ class CuestECPIntCompute(object):
             outECPMatrix=Vptr2,
             )
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestECPComputeWorkspaceQuery failed: %d' % status)
+            raise RuntimeError('cuestECPComputeWorkspaceQuery failed: %s' % status)
 
         temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
 
@@ -70,11 +72,10 @@ class CuestECPIntCompute(object):
             outECPMatrix=Vptr2,
             )
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestECPCompute failed: %d' % status)
-        del ecp_compute_parameters
+            raise RuntimeError('cuestECPCompute failed: %s' % status)
 
     @staticmethod
-    def compute_ecp_gradient(
+    def potential_gradient(
         *,
         handle : CuestHandle,
         ecp_int_plan : CuestECPIntPlan,
@@ -89,8 +90,10 @@ class CuestECPIntCompute(object):
         Gptr2.value = np.intp(Gptr)
 
         # ecp parameters
-        ecp_derivative_compute_parameters = CuestParameters(parametersType=ce.CuestParametersType.CUEST_ECPDERIVATIVECOMPUTE_PARAMETERS)
-
+        ecp_derivative_compute_parameters = CuestUtility.make_compute_parameters(
+            ce.CuestParametersType.CUEST_ECPDERIVATIVECOMPUTE_PARAMETERS,
+            [],
+            )
         ecpint_maximum_workspace_descriptor = CuestWorkspaceDescriptor(
             deviceBufferSizeInBytes=2000000000
             )
@@ -107,7 +110,7 @@ class CuestECPIntCompute(object):
             outGradient=Gptr2,
             )
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestECPDerivativeComputeWorkspaceQuery failed: %d' % status)
+            raise RuntimeError('cuestECPDerivativeComputeWorkspaceQuery failed: %s' % status)
 
         temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
 
@@ -121,5 +124,4 @@ class CuestECPIntCompute(object):
             outGradient=Gptr2,
             )
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestECPDerivativeCompute failed: %d' % status)
-        del ecp_derivative_compute_parameters
+            raise RuntimeError('cuestECPDerivativeCompute failed: %s' % status)

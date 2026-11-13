@@ -32,7 +32,7 @@ from .sad_overlap import SADOverlap
 from .sad_guess_atom import SADGuessAtom
 from .sad_guess import SADGuess
 
-from .diis import DIIS
+from .diis import DIIS, DIISCPU
 
 from .cuda_utility import CudaUtility
 
@@ -43,6 +43,7 @@ from .cuest_workspace_descriptor import CuestWorkspaceDescriptor
 from .cuest_workspace import CuestWorkspace
 
 from .cuest_parameters import CuestParameters
+from .cuest_utility import CuestUtility
 from .cuest_handle import CuestHandle
 from .cuest_ao_shell import CuestAOShell
 from .cuest_ao_basis import CuestAOBasis
@@ -51,6 +52,10 @@ from .cuest_oe_int_plan import CuestOEIntPlan
 from .cuest_oe_int_compute import CuestOEIntCompute
 from .cuest_df_int_plan import CuestDFIntPlan
 from .cuest_df_int_compute import CuestDFIntCompute
+from .cuest_gridk_int_plan import CuestGridKIntPlan
+from .cuest_gridk_int_compute import CuestGridKIntCompute
+from .cuest_direct_int_plan import CuestDirectIntPlan
+from .cuest_direct_int_compute import CuestDirectIntCompute
 from .cuest_xc_int_plan import CuestXCIntPlan
 from .cuest_xc_int_compute import CuestXCIntCompute
 
@@ -61,6 +66,8 @@ from .cuest_ecp_int_compute import CuestECPIntCompute
 from .cuest_ecp_int_plan import CuestECPIntPlan
 
 from .cuest_molecular_grid import CuestMolecularGrid
+
+from .timer import Timer
 
 from .rhf import RHF
 from .uhf import UHF

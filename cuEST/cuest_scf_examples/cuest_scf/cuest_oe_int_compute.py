@@ -20,7 +20,7 @@ from .cuest_oe_int_plan import CuestOEIntPlan
 
 from .cuest_workspace_descriptor import CuestWorkspaceDescriptor
 from .cuest_workspace import CuestWorkspace
-from .cuest_parameters import CuestParameters
+from .cuest_utility import CuestUtility
 
 import numpy as np
 
@@ -39,8 +39,10 @@ class CuestOEIntCompute(object):
 
         # => Workspace query <= #
 
-        overlap_compute_parameters = CuestParameters(parametersType=ce.CuestParametersType.CUEST_OVERLAPCOMPUTE_PARAMETERS)
-
+        overlap_compute_parameters = CuestUtility.make_compute_parameters(
+            ce.CuestParametersType.CUEST_OVERLAPCOMPUTE_PARAMETERS,
+            [],
+            )
         temporary_workspace_descriptor = CuestWorkspaceDescriptor()
 
         status = ce.cuestOverlapComputeWorkspaceQuery(
@@ -52,7 +54,7 @@ class CuestOEIntCompute(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestOverlapComputeWorkspaceQuery failed')
+            raise RuntimeError('cuestOverlapComputeWorkspaceQuery failed: %s' % status)
 
         temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
 
@@ -65,8 +67,7 @@ class CuestOEIntCompute(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestOverlapCompute failed')
-        del overlap_compute_parameters
+            raise RuntimeError('cuestOverlapCompute failed: %s' % status)
 
 
     @staticmethod
@@ -82,8 +83,10 @@ class CuestOEIntCompute(object):
 
         # => Workspace query <= #
 
-        kinetic_compute_parameters = CuestParameters(parametersType=ce.CuestParametersType.CUEST_KINETICCOMPUTE_PARAMETERS)
-
+        kinetic_compute_parameters = CuestUtility.make_compute_parameters(
+            ce.CuestParametersType.CUEST_KINETICCOMPUTE_PARAMETERS,
+            [],
+            )
         temporary_workspace_descriptor = CuestWorkspaceDescriptor()
 
         status = ce.cuestKineticComputeWorkspaceQuery(
@@ -95,7 +98,7 @@ class CuestOEIntCompute(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestKineticComputeWorkspaceQuery failed')
+            raise RuntimeError('cuestKineticComputeWorkspaceQuery failed: %s' % status)
 
         temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
 
@@ -108,8 +111,7 @@ class CuestOEIntCompute(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestKineticCompute failed')
-        del kinetic_compute_parameters
+            raise RuntimeError('cuestKineticCompute failed: %s' % status)
 
 
     @staticmethod
@@ -134,8 +136,10 @@ class CuestOEIntCompute(object):
 
         # => Workspace query <= #
 
-        potential_compute_parameters = CuestParameters(parametersType=ce.CuestParametersType.CUEST_POTENTIALCOMPUTE_PARAMETERS)
-
+        potential_compute_parameters = CuestUtility.make_compute_parameters(
+            ce.CuestParametersType.CUEST_POTENTIALCOMPUTE_PARAMETERS,
+            [],
+            )
         temporary_workspace_descriptor = CuestWorkspaceDescriptor()
 
         status = ce.cuestPotentialComputeWorkspaceQuery(
@@ -150,7 +154,7 @@ class CuestOEIntCompute(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestPotentialComputeWorkspaceQuery failed')
+            raise RuntimeError('cuestPotentialComputeWorkspaceQuery failed: %s' % status)
 
         temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
 
@@ -166,8 +170,7 @@ class CuestOEIntCompute(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestPotentialCompute failed')
-        del potential_compute_parameters
+            raise RuntimeError('cuestPotentialCompute failed: %s' % status)
 
 
     @staticmethod
@@ -185,8 +188,10 @@ class CuestOEIntCompute(object):
 
         # => Workspace query <= #
 
-        multipole_compute_parameters = CuestParameters(parametersType=ce.CuestParametersType.CUEST_MULTIPOLECOMPUTE_PARAMETERS)
-
+        multipole_compute_parameters = CuestUtility.make_compute_parameters(
+            ce.CuestParametersType.CUEST_MULTIPOLECOMPUTE_PARAMETERS,
+            [],
+            )
         temporary_workspace_descriptor = CuestWorkspaceDescriptor()
 
         status = ce.cuestMultipoleComputeWorkspaceQuery(
@@ -200,7 +205,7 @@ class CuestOEIntCompute(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestMultipoleComputeWorkspaceQuery failed')
+            raise RuntimeError('cuestMultipoleComputeWorkspaceQuery failed: %s' % status)
 
         temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
 
@@ -215,8 +220,7 @@ class CuestOEIntCompute(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestMultipoleCompute failed')
-        del multipole_compute_parameters
+            raise RuntimeError('cuestMultipoleCompute failed: %s' % status)
 
 
     @staticmethod
@@ -236,8 +240,10 @@ class CuestOEIntCompute(object):
 
         # => Workspace query <= #
 
-        overlap_compute_parameters = CuestParameters(parametersType=ce.CuestParametersType.CUEST_OVERLAPDERIVATIVECOMPUTE_PARAMETERS)
-
+        overlap_compute_parameters = CuestUtility.make_compute_parameters(
+            ce.CuestParametersType.CUEST_OVERLAPDERIVATIVECOMPUTE_PARAMETERS,
+            [],
+            )
         temporary_workspace_descriptor = CuestWorkspaceDescriptor()
 
         status = ce.cuestOverlapDerivativeComputeWorkspaceQuery(
@@ -250,7 +256,7 @@ class CuestOEIntCompute(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestOverlapDerivativeComputeWorkspaceQuery failed')
+            raise RuntimeError('cuestOverlapDerivativeComputeWorkspaceQuery failed: %s' % status)
 
         temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
 
@@ -264,8 +270,7 @@ class CuestOEIntCompute(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestOverlapDerivativeCompute failed')
-        del overlap_compute_parameters
+            raise RuntimeError('cuestOverlapDerivativeCompute failed: %s' % status)
 
 
     @staticmethod
@@ -285,8 +290,10 @@ class CuestOEIntCompute(object):
 
         # => Workspace query <= #
 
-        kinetic_compute_parameters = CuestParameters(parametersType=ce.CuestParametersType.CUEST_KINETICDERIVATIVECOMPUTE_PARAMETERS)
-
+        kinetic_compute_parameters = CuestUtility.make_compute_parameters(
+            ce.CuestParametersType.CUEST_KINETICDERIVATIVECOMPUTE_PARAMETERS,
+            [],
+            )
         temporary_workspace_descriptor = CuestWorkspaceDescriptor()
 
         status = ce.cuestKineticDerivativeComputeWorkspaceQuery(
@@ -299,7 +306,7 @@ class CuestOEIntCompute(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestKineticDerivativeComputeWorkspaceQuery failed')
+            raise RuntimeError('cuestKineticDerivativeComputeWorkspaceQuery failed: %s' % status)
 
         temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
 
@@ -313,8 +320,7 @@ class CuestOEIntCompute(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestKineticDerivativeCompute failed')
-        del kinetic_compute_parameters
+            raise RuntimeError('cuestKineticDerivativeCompute failed: %s' % status)
 
 
     @staticmethod
@@ -347,8 +353,10 @@ class CuestOEIntCompute(object):
 
         # => Workspace query <= #
 
-        potential_compute_parameters = CuestParameters(parametersType=ce.CuestParametersType.CUEST_POTENTIALDERIVATIVECOMPUTE_PARAMETERS)
-
+        potential_compute_parameters = CuestUtility.make_compute_parameters(
+            ce.CuestParametersType.CUEST_POTENTIALDERIVATIVECOMPUTE_PARAMETERS,
+            [],
+            )
         temporary_workspace_descriptor = CuestWorkspaceDescriptor()
 
         status = ce.cuestPotentialDerivativeComputeWorkspaceQuery(
@@ -365,7 +373,7 @@ class CuestOEIntCompute(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestPotentialDerivativeComputeWorkspaceQuery failed')
+            raise RuntimeError('cuestPotentialDerivativeComputeWorkspaceQuery failed: %s' % status)
 
         temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
 
@@ -383,7 +391,6 @@ class CuestOEIntCompute(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestPotentialDerivativeCompute failed')
-        del potential_compute_parameters
+            raise RuntimeError('cuestPotentialDerivativeCompute failed: %s' % status)
             
 

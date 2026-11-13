@@ -14,5 +14,6 @@
 # limitations under the License.
 add_subdirectory(one_electron_integrals)
 add_subdirectory(one_electron_gradients)
+add_subdirectory(one_electron_hessians)
 add_subdirectory(property_integrals)
 add_subdirectory(property_gradients)

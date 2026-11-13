@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <string.h>
 
 #include <cuest.h>
 
@@ -94,14 +95,34 @@ int main(int argc, char **argv)
      * the number of parallel JIT-compile worker threads (>= 1; default 16).
      * Both are passed as their respective types and take effect at cuestCreate.
      */
-    const char *jit_cache_dir = "/tmp/cuest-jit-cache";
+    const char *home = getenv("HOME");
+    if (home == NULL || home[0] == '\0') {
+        fprintf(stderr, "HOME is not set; cannot derive a per-user JIT cache directory\n");
+        checkCuestErrors(cuestParametersDestroy(
+            CUEST_HANDLE_PARAMETERS,
+            handle_parameters));
+        return EXIT_FAILURE;
+    }
+    const char *jit_cache_dir_suffix = "/.cuest_cache/examples";
+    size_t jit_cache_dir_length = strlen(home) + strlen(jit_cache_dir_suffix) + 1;
+    char *jit_cache_dir = malloc(jit_cache_dir_length);
+    if (jit_cache_dir == NULL) {
+        fprintf(stderr, "Failed to allocate the JIT cache directory string\n");
+        checkCuestErrors(cuestParametersDestroy(
+            CUEST_HANDLE_PARAMETERS,
+            handle_parameters));
+        return EXIT_FAILURE;
+    }
+    snprintf(jit_cache_dir, jit_cache_dir_length, "%s%s", home, jit_cache_dir_suffix);
     int32_t jit_compile_threads = 8;
+    /* cuEST copies the string, so the buffer may be freed once configured. */
     checkCuestErrors(cuestParametersConfigure(
         CUEST_HANDLE_PARAMETERS,
         handle_parameters,
         CUEST_HANDLE_PARAMETERS_JIT_CACHE_DIR,
         &jit_cache_dir,
         sizeof(char *)));
+    free(jit_cache_dir);
     checkCuestErrors(cuestParametersConfigure(
         CUEST_HANDLE_PARAMETERS,
         handle_parameters,

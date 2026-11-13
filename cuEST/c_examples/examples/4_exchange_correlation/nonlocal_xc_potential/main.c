@@ -38,9 +38,10 @@
  * Examples of both RKS and UKS usage are provided. In the UKS case, both
  * alpha and beta coefficients must be provided. 
  *
- * While the local portion of the XC potential inherits its parameters 
- * from the XC integral plan, the nonlocal portion must be explictly
- * specified through the cuestNonlocalXCComputeParameters_t.
+ * While the local portion of the XC potential inherits its parameters
+ * from the XC integral plan, the nonlocal portion must be explicitly
+ * specified through cuestNonlocalXCPotentialRKSComputeParameters_t (RKS)
+ * or cuestNonlocalXCPotentialUKSComputeParameters_t (UKS).
  */
 
 /* 

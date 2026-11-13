@@ -33,14 +33,6 @@ libcuest.so              # e.g. /path/to/cuest/lib/libcuest.so
 |----------|---------|-------------|
 | `CUEST_INCLUDE_DIR` | *(required)* | Path to cuEST headers |
 | `CUEST_LIB_DIR` | *(required)* | Path to directory containing `libcuest.so` |
-| `CMAKE_CUDA_ARCHITECTURES` | `80 90` | Target GPU architectures |
-
-Example with custom GPU architectures:
-
-```bash
-cmake .. -DCUEST_INCLUDE_DIR=/opt/cuest/include -DCUEST_LIB_DIR=/opt/cuest/lib \
-         -DCMAKE_CUDA_ARCHITECTURES="80;90;100"
-```
 
 ## Directory Structure
 
@@ -50,19 +42,32 @@ c_examples/
   examples/
     0_context/                   # Handle creation and multi-GPU/stream usage
     1_basic_data_structures/     # AO basis, shells, XC grid setup
-    2_one_electron_integrals/    # Overlap, kinetic, potential integrals
-    3_density_fitting/           # DF-J and DF-K integrals and gradients
+    2_one_electron_integrals/    # Overlap, kinetic, potential integrals, gradients and Hessians
+    3_density_fitting/           # DF-J and DF-K integrals and gradients, direct DF-J, DF MO integrals
     4_exchange_correlation/      # Local and nonlocal XC potential and gradients
     5_effective_core_potentials/ # ECP integrals and gradients
     6_pcm/                       # PCM potential and gradients
+    7_direct_jk/                 # Direct four-center J and K matrices and gradients
+    8_grid_k/                    # Grid-based exchange (Grid-K) matrices and gradients
 ```
+
+The direct J/K (`7_direct_jk`) and Grid-K (`8_grid_k`) examples are intended
+for datacenter GPUs with full-rate FP64 compute.
 
 ## Running an Example
 
-After building, executables are placed in the `build/` directory tree mirroring
-the source layout. For example:
+After building, executables are placed in the `build/examples/` directory tree
+mirroring the source layout. Examples that read input files take the geometry
+and basis set paths as arguments; the shared inputs are in `../data/`. For example:
 
 ```bash
-./build/basic_usage
-./build/one_electron_integrals
+./build/examples/0_context/basic_usage/basic_usage
+./build/examples/2_one_electron_integrals/one_electron_integrals/one_electron_integrals \
+    ../data/geometry/h2o.xyz ../data/basis_set/def2-svp.gbs
+```
+
+Or run every example with the inputs it needs:
+
+```bash
+./run_all.sh
 ```

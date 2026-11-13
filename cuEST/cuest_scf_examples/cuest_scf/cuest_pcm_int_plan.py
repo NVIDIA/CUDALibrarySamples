@@ -25,7 +25,7 @@ from .cuest_handle import CuestHandle
 from .cuest_ao_basis import CuestAOBasis
 from .cuest_molecular_grid import CuestMolecularGrid
 
-from .cuest_parameters import CuestParameters
+from .cuest_utility import CuestUtility
 
 from .cuest_oe_int_plan import CuestOEIntPlan
 from .periodic_table import PeriodicTable
@@ -178,7 +178,7 @@ class CuestPCMIntPlan(object):
         effective_nuclear_charges : np.ndarray,
         cutoff : float,
         convergence_tol : float,
-        atomic_radii_scale=1.2
+        atomic_radii_scale,
         ):
 
         bohr_per_ang=UnitConversions.conversions['bohr_per_ang']
@@ -197,6 +197,7 @@ class CuestPCMIntPlan(object):
         self.x_prefactor=x_prefactor
         self.cutoff = cutoff
         self.convergence_tol = convergence_tol
+        self.atomic_radii_scale = atomic_radii_scale
 
         symbols_upper = [PeriodicTable.N_to_symbol_upper_table[N] for N in Ns]
         for sym in symbols_upper:
@@ -207,32 +208,15 @@ class CuestPCMIntPlan(object):
         atomic_radii = [atomic_radii_scale * _bondi_radii_ang[symbol_upper] * bohr_per_ang for symbol_upper in symbols_upper]
         effective_nuclear_charges = np.asarray(effective_nuclear_charges).flatten().tolist()
 
-        pcm_int_plan_parameters = CuestParameters(
-            parametersType=ce.CuestParametersType.CUEST_PCMINTPLAN_PARAMETERS,
+        pcm_int_plan_parameters = CuestUtility.make_compute_parameters(
+            ce.CuestParametersType.CUEST_PCMINTPLAN_PARAMETERS,
+            [(ce.CuestPCMIntPlanParametersAttributes.CUEST_PCMINTPLAN_PARAMETERS_CUTOFF,
+              ce.data_double(self.cutoff)),
+             (ce.CuestPCMIntPlanParametersAttributes.CUEST_PCMINTPLAN_PARAMETERS_X_PREFACTOR,
+              ce.data_double(self.x_prefactor))],
             )
-
-        pcm_cutoff = ce.data_double(self.cutoff)
-        status = ce.cuestParametersConfigure(
-            parametersType=ce.CuestParametersType.CUEST_PCMINTPLAN_PARAMETERS,
-            parameters=pcm_int_plan_parameters.parameters,
-            attribute=ce.CuestPCMIntPlanParametersAttributes.CUEST_PCMINTPLAN_PARAMETERS_CUTOFF,
-            attributeValue=pcm_cutoff,
-            )
-        if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestParametersConfigure failed')
-
-        pcm_x_prefactor = ce.data_double(self.x_prefactor)
-        status = ce.cuestParametersConfigure(
-            parametersType=ce.CuestParametersType.CUEST_PCMINTPLAN_PARAMETERS,
-            parameters=pcm_int_plan_parameters.parameters,
-            attribute=ce.CuestPCMIntPlanParametersAttributes.CUEST_PCMINTPLAN_PARAMETERS_X_PREFACTOR,
-            attributeValue=pcm_x_prefactor,
-            )
-        if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestParametersConfigure failed')
 
         self.pcm_int_plan_handle = ce.cuestPCMIntPlanHandle()
-
         # => Workspace Query <= #
 
         persistent_workspace_descriptor = CuestWorkspaceDescriptor()
@@ -252,7 +236,7 @@ class CuestPCMIntPlan(object):
             outPlan=self.pcm_int_plan_handle,
             )
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestPCMIntPlanCreateWorkspaceQuery failed')
+            raise RuntimeError('cuestPCMIntPlanCreateWorkspaceQuery failed: %s' % status)
 
         persistent_workspace = CuestWorkspace(workspaceDescriptor=persistent_workspace_descriptor)
         temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
@@ -273,7 +257,7 @@ class CuestPCMIntPlan(object):
             outPlan=self.pcm_int_plan_handle,
             )
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestPCMIntPlanCreate failed')
+            raise RuntimeError('cuestPCMIntPlanCreate failed: %s' % status)
 
         # Bind the lifetime of persistent_workspace to this object
         self.persistent_workspace = persistent_workspace
@@ -292,7 +276,7 @@ class CuestPCMIntPlan(object):
             handle=self.pcm_int_plan_handle,
             )
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestPCMIntPlanDestroy failed')
+            raise RuntimeError('cuestPCMIntPlanDestroy failed: %s' % status)
 
     @memoized_property
     def npoint(self):
@@ -305,7 +289,7 @@ class CuestPCMIntPlan(object):
             attributeValue=npoint,
             )
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestQuery failed')
+            raise RuntimeError('cuestQuery failed: %s' % status)
         return npoint.value
 
     @memoized_property
@@ -319,7 +303,7 @@ class CuestPCMIntPlan(object):
             attributeValue=npoint,
             )
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestQuery failed')
+            raise RuntimeError('cuestQuery failed: %s' % status)
         return npoint.value
 
     # => String Details <= #
@@ -330,11 +314,15 @@ class CuestPCMIntPlan(object):
     @property
     def string(self):
         s = ''
-        s += 'PCMIntPlan:\n'
-        s += '%-10s = %10.4f\n' % ('dielectric', self.epsilon)
-        s += '%-10s = %10.1e\n' % ('tolerance', self.convergence_tol)
-        s += '%-10s = %10.1e\n' % ('cutoff', self.cutoff)
-        s += '%-10s = %10d\n'   % ('npoint', self.npoint)
-        s += '%-10s = %10d\n'   % ('nactive', self.n_active_point)
+        s += 'PCMIntPlan:\n\n'
+        s += '%-19s = %11.4f\n' % ('dielectric', self.epsilon)
+        s += '%-19s = %11.4f\n' % ('x prefactor', self.x_prefactor)
+        s += '%-19s = %11.3E\n' % ('tolerance', self.convergence_tol)
+        s += '%-19s = %11.3E\n' % ('cutoff', self.cutoff)
+        s += '%-19s = %11.4f\n' % ('atomic radii scale', self.atomic_radii_scale)
+        s += '%-19s = %11d\n'   % ('angular hydrogen', self.num_angular_points_per_hydrogen_atom)
+        s += '%-19s = %11d\n'   % ('angular heavy', self.num_angular_points_per_heavy_atom)
+        s += '%-19s = %11d\n'   % ('npoint', self.npoint)
+        s += '%-19s = %11d\n'   % ('nactive', self.n_active_point)
         return s
 

@@ -22,7 +22,7 @@ from .cuest_workspace import CuestWorkspace
 
 from .cuest_handle import CuestHandle
 
-from .cuest_parameters import CuestParameters
+from .cuest_utility import CuestUtility
 
 from .periodic_table import PeriodicTable
 
@@ -122,6 +122,240 @@ _multiexp_grids[26] = [
     9.5471297844715652E-01,   5.2504259615682031E-05,
     9.7606029628496505E-01,   1.0687185195322842E-05,
     9.9104255389177465E-01,   9.5039183893269103E-07
+    ]
+
+_multiexp_grids[9] = [
+    7.3288801957155482E-03,   5.6503079040179094E-01,
+    5.1547764155867308E-02,   5.7240245782175192E-01,
+    1.3639019828337173E-01,   4.1094257180482319E-01,
+    2.5576968579315251E-01,   2.4811336861302910E-01,
+    3.9926222180576343E-01,   1.2752664349421974E-01,
+    5.5356040320394007E-01,   5.4151818128134001E-02,
+    7.0395266935488199E-01,   1.7683406345980632E-02,
+    8.3588910785769366E-01,   3.7986640220042129E-03,
+    9.3655721704675354E-01,   3.5027936826657934E-04,
+    ]
+
+_multiexp_grids[10] = [
+    6.1869146983283751E-03,   5.0751006323977876E-01,
+    4.3184964523230389E-02,   5.3773708831275169E-01,
+    1.1439329784701142E-01,   4.1015814985727655E-01,
+    2.1574432625123305E-01,   2.6868215708332344E-01,
+    3.4001637581752514E-01,   1.5445361523428935E-01,
+    4.7775306682645691E-01,   7.6896476225320851E-02,
+    6.1815400458402614E-01,   3.1926984063151510E-02,
+    7.5002775055459436E-01,   1.0257845595189354E-02,
+    8.6276551560303161E-01,   2.1782819955781618E-03,
+    9.4729751156591246E-01,   1.9933839333804467E-04,
+    ]
+
+_multiexp_grids[11] = [
+    5.2971683663144697E-03,   4.5914773491914079E-01,
+    3.6723005222903504E-02,   5.0490300850340120E-01,
+    9.7323041240280878E-02,   4.0421830831385308E-01,
+    1.8430171940015050E-01,   2.8205286688314840E-01,
+    2.9251819616065311E-01,   1.7627663902574256E-01,
+    4.1510257745684187E-01,   9.8298114709766335E-02,
+    5.4401750657593784E-01,   4.7892730337592289E-02,
+    6.7065937482487648E-01,   1.9569787229519357E-02,
+    7.8648565940947568E-01,   6.2135301259858321E-03,
+    8.8363626797658257E-01,   1.3082400478220246E-03,
+    9.5553635577347218E-01,   1.1903990402829985E-04,
+    ]
+
+_multiexp_grids[12] = [
+    4.5896931952549673E-03,   4.1801782411341171E-01,
+    3.1623539733633570E-02,   4.7430181681848682E-01,
+    8.3813985252296719E-02,   3.9507464357529598E-01,
+    1.5919470422647874E-01,   2.8990902937566021E-01,
+    2.5401912109135610E-01,   1.9331069080147187E-01,
+    3.6319455379179322E-01,   1.1734096989867146E-01,
+    4.8065124710880514E-01,   6.4088547272519947E-02,
+    5.9973421985178388E-01,   3.0743793563541403E-02,
+    7.1361787683958389E-01,   1.2414739799575556E-02,
+    8.1572643777018305E-01,   3.9067017044374401E-03,
+    9.0014060693605180E-01,   8.1720743117906080E-04,
+    9.6199119118062704E-01,   7.4035645747634420E-05,
+    ]
+
+_multiexp_grids[13] = [
+    4.0173868104430724E-03,   3.8268577556493077E-01,
+    2.7526777614526515E-02,   4.4602557683493066E-01,
+    7.2941331899235518E-02,   3.8402397227400625E-01,
+    1.3885114924613937E-01,   2.9362241245864834E-01,
+    2.2246942647085186E-01,   2.0616260399914099E-01,
+    3.1995151254272786E-01,   1.3365515047053136E-01,
+    4.2664661127346121E-01,   7.9522892306238005E-02,
+    5.3736094724687966E-01,   4.2784206315023381E-02,
+    6.4663829415888219E-01,   2.0286445898623211E-02,
+    7.4904971693611622E-01,   8.1182170476787902E-03,
+    8.3948044185674631E-01,   2.5370586679026061E-03,
+    9.1340254301212476E-01,   5.2801565111668190E-04,
+    9.6714049591229323E-01,   4.7672511228609264E-05,
+    ]
+
+_multiexp_grids[14] = [
+    3.5475419930386114E-03,   3.5206380425783451E-01,
+    2.4184699391198872E-02,   4.2001162237176887E-01,
+    6.4061380204105622E-02,   3.7192663892453082E-01,
+    1.2215040501876988E-01,   2.9426422453584877E-01,
+    1.9634151220355658E-01,   2.1550204934298742E-01,
+    2.8368433794714126E-01,   1.4724193701553284E-01,
+    3.8056595954319677E-01,   9.3629955712507443E-02,
+    4.8289258312110883E-01,   5.4901932538533954E-02,
+    5.8628362945567414E-01,   2.9203758845265566E-02,
+    6.8627480831325594E-01,   1.3723262912333571E-02,
+    7.7852323229384723E-01,   5.4530160878030944E-03,
+    8.5900667895864369E-01,   1.6948532073555716E-03,
+    9.2421063922384439E-01,   3.5131226333955898E-04,
+    9.7131296926596966E-01,   3.1631984358046127E-05,
+    ]
+
+_multiexp_grids[15] = [
+    3.1568453927734576E-03,   3.2531375651761291E-01,
+    2.1421742847486856E-02,   3.9612435620792846E-01,
+    5.6715214649110134E-02,   3.5935222287013746E-01,
+    1.0827900243482265E-01,   2.9265369886766096E-01,
+    1.7448983687946582E-01,   2.2195885082770192E-01,
+    2.5305010597538302E-01,   1.5829268572650323E-01,
+    3.4111694676143400E-01,   1.0614662609678628E-01,
+    4.3543090557057901E-01,   6.6550172994834497E-02,
+    5.3245307024454414E-01,   3.8592931968204749E-02,
+    6.2850978793839585E-01,   2.0347552748833656E-02,
+    7.1994107679743280E-01,   9.4938596497104663E-03,
+    8.0324776728352876E-01,   3.7511449250810245E-03,
+    8.7523232159410091E-01,   1.1607732018650238E-03,
+    9.3312987919703394E-01,   2.3982184371687797E-04,
+    9.7474029754772562E-01,   2.1545553422184742E-05,
+    ]
+
+_multiexp_grids[16] = [
+    2.8283001597983609E-03,   3.0178047689107301E-01,
+    1.9110751099867946E-02,   3.7419871297955098E-01,
+    5.0568668659265500E-02,   3.4667589839273066E-01,
+    9.6636285322501653E-02,   2.8941087622039224E-01,
+    1.5604746213095469E-01,   2.2608438732575753E-01,
+    2.2698911416582798E-01,   1.6708060085454060E-01,
+    3.0719767962155831E-01,   1.1700466776487187E-01,
+    3.9405238347737109E-01,   7.7390026028989936E-02,
+    4.8467405543923120E-01,   4.7999891808212077E-02,
+    5.7602994295175858E-01,   2.7594767061093147E-02,
+    6.6504242067443808E-01,   1.4446574428493720E-02,
+    7.4869852698968931E-01,   6.7020115525645374E-03,
+    8.2415692854424405E-01,   2.6358922636716972E-03,
+    8.8884908554588005E-01,   8.1273370903682301E-04,
+    9.4057287699477810E-01,   1.6746513696227870E-04,
+    9.7758950193000627E-01,   1.5017582058777104E-05,
+    ]
+
+_multiexp_grids[17] = [
+    2.5492681814834545E-03,   2.8094518921117811E-01,
+    1.7157760439065646E-02,   3.5406307975638657E-01,
+    4.5373808776699283E-02,   3.3414221300251257E-01,
+    8.6771672296614866E-02,   2.8500265688003090E-01,
+    1.4035148968745489E-01,   2.2834352863544760E-01,
+    2.0466536906438557E-01,   1.7390028419125220E-01,
+    2.7789128102355121E-01,   1.2625180062562411E-01,
+    3.5790213673152116E-01,   8.7238920904914946E-02,
+    4.4233831755579300E-01,   5.7098628131991160E-02,
+    5.2868477298515959E-01,   3.5114826064380378E-02,
+    6.1435164344997217E-01,   2.0047111752486781E-02,
+    6.9675652383716191E-01,   1.0435166524717866E-02,
+    7.7340613554142146E-01,   4.8183554814269867E-03,
+    8.4197510046448854E-01,   1.8878746610471785E-03,
+    9.0037975048007701E-01,   5.8036218737134713E-04,
+    9.4684624132066886E-01,   1.1931828134065453E-04,
+    9.7998339843520943E-01,   1.0683707890963079E-05,
+    ]
+
+_multiexp_grids[18] = [
+    2.3101880326126031E-03,   2.6239228329975245E-01,
+    1.5492096309324082E-02,   3.3555104933824753E-01,
+    4.0943580985918833E-02,   3.2190752503300984E-01,
+    7.8342213590741103E-02,   2.7977977493475825E-01,
+    1.2688964327762767E-01,   2.2911994903492899E-01,
+    1.8541707925086323E-01,   1.7903625233002918E-01,
+    2.5244316343678375E-01,   1.3399873937753692E-01,
+    3.2622616363537543E-01,   9.6023028179668735E-02,
+    4.0481812897381392E-01,   6.5674237156782667E-02,
+    4.8612244249471787E-01,   4.2628774106851570E-02,
+    5.6795435078409062E-01,   2.6037168698314416E-02,
+    6.4810332805183668E-01,   1.4780307510249269E-02,
+    7.2439581327213787E-01,   7.6573129370604122E-03,
+    7.9475673416520665E-01,   3.5219279202795390E-03,
+    8.5726824920709721E-01,   1.3755573449091584E-03,
+    9.1022438288433771E-01,   4.2181282537605855E-04,
+    9.5218141942583823E-01,   8.6559395913502689E-05,
+    9.8201390130622168E-01,   7.7405763309798057E-06,
+    ]
+
+_multiexp_grids[19] = [
+    2.1037138616966469E-03,   2.4578525633460988E-01,
+    1.4059758822519891E-02,   3.1850705715383121E-01,
+    3.7134731295323374E-02,   3.1006844354030066E-01,
+    7.1083378999791280E-02,   2.7400536671184783E-01,
+    1.1526190198044127E-01,   2.2872638323205402E-01,
+    1.6871753207091678E-01,   1.8274819977475401E-01,
+    2.3023477268709994E-01,   1.4038555370461522E-01,
+    2.9837556708728064E-01,   1.0373977666472851E-01,
+    3.7152038674963289E-01,   7.3598876921954118E-02,
+    4.4791179547192406E-01,   4.9930263605687676E-02,
+    5.2570043662387211E-01,   3.2192414617894960E-02,
+    6.0299276834132676E-01,   1.9552542607783083E-02,
+    6.7789959028070468E-01,   1.1046958150578316E-02,
+    7.4858427692076068E-01,   5.7005695681466295E-03,
+    8.1330959494704047E-01,   2.6133484327194017E-03,
+    8.7048203106479616E-01,   1.0179681531445946E-03,
+    9.1869278360559248E-01,   3.1149920001609989E-04,
+    9.5675563290491505E-01,   6.3820663926890254E-05,
+    9.8375088818443035E-01,   5.7009614076541513E-06,
+    ]
+
+_multiexp_grids[20] = [
+    1.9241238965479579E-03,   2.3084901893412335E-01,
+    1.2818904308203009E-02,   3.0278867247594637E-01,
+    3.3836058479441926E-02,   2.9868103293771220E-01,
+    6.4788617704555920E-02,   2.6787663567688585E-01,
+    1.0515275939418575E-01,   2.2741586657345081E-01,
+    1.5414486025552046E-01,   1.8526556467021110E-01,
+    2.1075910884312227E-01,   1.4556125050040003E-01,
+    2.7379895081543187E-01,   1.1043057531835426E-01,
+    3.4190873280228379E-01,   8.0808744909873775E-02,
+    4.1360711322968924E-01,   5.6876627612353785E-02,
+    4.8732240172060359E-01,   3.8332342971330355E-02,
+    5.6142944857005572E-01,   2.4578224251546391E-02,
+    6.3428746037506700E-01,   1.4858188164592960E-02,
+    7.0427799845603156E-01,   8.3614715306321551E-03,
+    7.6984236527961369E-01,   4.3003770146310422E-03,
+    8.2951758206223369E-01,   1.9659640309762322E-03,
+    8.8197021747792259E-01,   7.6405204123909502E-04,
+    9.2602753220840051E-01,   2.3337873721564225E-04,
+    9.6070635543347194E-01,   4.7750199250052223E-05,
+    9.8524823897523883E-01,   4.2614492735393964E-06,
+    ]
+
+_multiexp_grids[21] = [
+    1.7669059554177898E-03,   2.1735669999869919E-01,
+    1.1736695821765678E-02,   2.8826708442169058E-01,
+    3.0960181001045407E-02,   2.8777387627550904E-01,
+    5.9294831367867035E-02,   2.6154113961874098E-01,
+    9.6310990839680019E-02,   2.2539224224765236E-01,
+    1.4135888559199697E-01,   1.8678702752489762E-01,
+    1.9359971305955134E-01,   1.4967198561971781E-01,
+    2.5203065018298648E-01,   1.1616190883549349E-01,
+    3.1550956702628830E-01,   8.7284943082145072E-02,
+    3.8278096911527232E-01,   6.3376691720770040E-02,
+    4.5250345141598086E-01,   4.4320019451469600E-02,
+    5.2327847476646039E-01,   2.9707537861142653E-02,
+    5.9368006141834351E-01,   1.8960092226938150E-02,
+    6.6228489925668022E-01,   1.1416660413418789E-02,
+    7.2770229159845179E-01,   6.4031359626112788E-03,
+    7.8860337144231640E-01,   3.2838046120079512E-03,
+    8.4374901098928379E-01,   1.4976473497354155E-03,
+    8.9201591285195914E-01,   5.8090713292839353E-04,
+    9.3242055242134525E-01,   1.7716161722343863E-04,
+    9.6414149819109385E-01,   3.6205480238326140E-05,
+    9.8654803152889869E-01,   3.2285469694855135E-06,
     ]
 
 
@@ -294,6 +528,113 @@ def _get_sg_pruning_pattern(grid_level):
                 }
         case _:
             raise RuntimeError("Unexpected SG grid level")
+
+
+def _get_sg0trimmed_pruning_pattern(grid_level):
+    # The SG0trimmed family: SG-0 with every radial shell's Lebedev angular grid
+    # stepped down k = -grid_level rungs on the SG-0 Lebedev ladder
+    #
+    #     [0, 6, 18, 26, 38, 50, 74, 86, 110, 146, 170]
+    #
+    # walked from the back (170 -> 146 -> ... -> 26 -> 18 -> 6 -> 0 = removed).
+    # A shell that reaches the 6 -> 0 transition is removed and its radial node
+    # dropped, so the radial grid is re-tightened to a proper MULTIEXP rule of
+    # the surviving size (hence the odd npoints below, backed by the MULTIEXP
+    # tables above).  Only the genuine SG-0 (MULTIEXP) atoms are
+    # decremented; the SG-1 fallbacks (He/Ne/Ar HANDY, and the unpruned
+    # heavy-atom default) are identical to SG-0.  grid_level is negative so that
+    # a strictly coarser grid than SG-0 is always requested (0 would be SG-0).
+    #
+    # These tables are precomputed (SG-0 under the decrement above); see
+    # test/sg0trimmed_1 for the regeneration/validation.
+    match grid_level:
+        case -1:
+            return 194, 50, {
+                'H'  : ("MULTIEXP", 17, 1.3000, None, None, [(6,3), (18,1), (26,1), (50,1), (86,1), (110,6), (74,1), (38,1), (26,1), (6,1)]),
+                'LI' : ("MULTIEXP", 17, 1.9500, None, None, [(6,3), (18,1), (26,1), (50,1), (86,1), (110,6), (74,1), (38,1), (26,1), (6,1)]),
+                'BE' : ("MULTIEXP", 17, 2.2000, None, None, [(6,2), (18,1), (26,2), (50,1), (74,1), (86,2), (110,5), (38,1), (26,1), (6,1)]),
+                'B'  : ("MULTIEXP", 17, 1.4500, None, None, [(18,4), (26,3), (74,3), (110,6), (26,1)]),
+                'C'  : ("MULTIEXP", 17, 1.2000, None, None, [(6,2), (18,1), (26,2), (38,2), (74,1), (86,1), (110,1), (146,2), (110,2), (74,1), (26,1), (6,1)]),
+                'N'  : ("MULTIEXP", 17, 1.1000, None, None, [(6,3), (18,1), (26,2), (50,2), (86,1), (146,2), (110,3), (74,1), (38,2)]),
+                'O'  : ("MULTIEXP", 17, 1.1000, None, None, [(6,1), (18,2), (26,1), (38,4), (74,1), (86,5), (74,1), (38,1), (26,1)]),
+                'F'  : ("MULTIEXP", 18, 1.2000, None, None, [(26,2), (38,4), (50,2), (86,2), (110,2), (86,2), (74,3), (38,1)]),
+                'NA' : ("MULTIEXP", 18, 2.3000, None, None, [(6,2), (18,3), (26,1), (38,2), (86,8), (50,2)]),
+                'MG' : ("MULTIEXP", 20, 2.2000, None, None, [(6,2), (18,2), (26,2), (38,2), (50,1), (86,2), (110,4), (86,1), (74,1), (26,2), (6,1)]),
+                'AL' : ("MULTIEXP", 19, 2.1000, None, None, [(6,2), (18,1), (26,2), (38,2), (50,1), (74,1), (110,2), (146,2), (86,2), (74,1), (50,1), (18,1), (6,1)]),
+                'SI' : ("MULTIEXP", 20, 1.3000, None, None, [(6,4), (26,4), (38,3), (50,1), (86,2), (110,1), (146,3), (74,1), (38,1)]),
+                'P'  : ("MULTIEXP", 20, 1.3000, None, None, [(6,4), (26,4), (38,3), (50,1), (86,2), (110,1), (146,3), (74,1), (38,1)]),
+                'S'  : ("MULTIEXP", 21, 1.1000, None, None, [(6,1), (18,8), (26,2), (38,1), (50,2), (86,1), (146,3), (110,1), (86,1), (38,1)]),
+                'CL' : ("MULTIEXP", 21, 1.4500, None, None, [(6,7), (18,2), (26,2), (38,1), (50,1), (86,2), (146,3), (110,1), (86,1), (74,1)]),
+                'HE' : ("HANDY",    50, 0.5882, None, None, [(6,16), (38,5), (86,4), (194,9), (86,16)]),
+                'NE' : ("HANDY",    50, 0.6838, None, None, [(6,14), (38,7), (86,3), (194,9), (86,17)]),
+                'AR' : ("HANDY",    50, 1.3333, None, None, [(6,12), (38,7), (86,5), (194,7), (86,19)]),
+                }
+        case -2:
+            return 194, 50, {
+                'H'  : ("MULTIEXP", 13, 1.3000, None, None, [(6,1), (18,1), (38,1), (74,1), (86,6), (50,1), (26,1), (18,1)]),
+                'LI' : ("MULTIEXP", 13, 1.9500, None, None, [(6,1), (18,1), (38,1), (74,1), (86,6), (50,1), (26,1), (18,1)]),
+                'BE' : ("MULTIEXP", 14, 2.2000, None, None, [(6,1), (18,2), (38,1), (50,1), (74,2), (86,5), (26,1), (18,1)]),
+                'B'  : ("MULTIEXP", 17, 1.4500, None, None, [(6,4), (18,3), (50,3), (86,6), (18,1)]),
+                'C'  : ("MULTIEXP", 14, 1.2000, None, None, [(6,1), (18,2), (26,2), (50,1), (74,1), (86,1), (110,2), (86,2), (50,1), (18,1)]),
+                'N'  : ("MULTIEXP", 14, 1.1000, None, None, [(6,1), (18,2), (38,2), (74,1), (110,2), (86,3), (50,1), (26,2)]),
+                'O'  : ("MULTIEXP", 16, 1.1000, None, None, [(6,2), (18,1), (26,4), (50,1), (74,5), (50,1), (26,1), (18,1)]),
+                'F'  : ("MULTIEXP", 18, 1.2000, None, None, [(18,2), (26,4), (38,2), (74,2), (86,2), (74,2), (50,3), (26,1)]),
+                'NA' : ("MULTIEXP", 16, 2.3000, None, None, [(6,3), (18,1), (26,2), (74,8), (38,2)]),
+                'MG' : ("MULTIEXP", 17, 2.2000, None, None, [(6,2), (18,2), (26,2), (38,1), (74,2), (86,4), (74,1), (50,1), (18,2)]),
+                'AL' : ("MULTIEXP", 16, 2.1000, None, None, [(6,1), (18,2), (26,2), (38,1), (50,1), (86,2), (110,2), (74,2), (50,1), (38,1), (6,1)]),
+                'SI' : ("MULTIEXP", 16, 1.3000, None, None, [(18,4), (26,3), (38,1), (74,2), (86,1), (110,3), (50,1), (26,1)]),
+                'P'  : ("MULTIEXP", 16, 1.3000, None, None, [(18,4), (26,3), (38,1), (74,2), (86,1), (110,3), (50,1), (26,1)]),
+                'S'  : ("MULTIEXP", 20, 1.1000, None, None, [(6,8), (18,2), (26,1), (38,2), (74,1), (110,3), (86,1), (74,1), (26,1)]),
+                'CL' : ("MULTIEXP", 14, 1.4500, None, None, [(6,2), (18,2), (26,1), (38,1), (74,2), (110,3), (86,1), (74,1), (50,1)]),
+                'HE' : ("HANDY",    50, 0.5882, None, None, [(6,16), (38,5), (86,4), (194,9), (86,16)]),
+                'NE' : ("HANDY",    50, 0.6838, None, None, [(6,14), (38,7), (86,3), (194,9), (86,17)]),
+                'AR' : ("HANDY",    50, 1.3333, None, None, [(6,12), (38,7), (86,5), (194,7), (86,19)]),
+                }
+        case -3:
+            return 194, 50, {
+                'H'  : ("MULTIEXP", 12, 1.3000, None, None, [(6,1), (26,1), (50,1), (74,6), (38,1), (18,1), (6,1)]),
+                'LI' : ("MULTIEXP", 12, 1.9500, None, None, [(6,1), (26,1), (50,1), (74,6), (38,1), (18,1), (6,1)]),
+                'BE' : ("MULTIEXP", 13, 2.2000, None, None, [(6,2), (26,1), (38,1), (50,2), (74,5), (18,1), (6,1)]),
+                'B'  : ("MULTIEXP", 13, 1.4500, None, None, [(6,3), (38,3), (74,6), (6,1)]),
+                'C'  : ("MULTIEXP", 13, 1.2000, None, None, [(6,2), (18,2), (38,1), (50,1), (74,1), (86,2), (74,2), (38,1), (6,1)]),
+                'N'  : ("MULTIEXP", 13, 1.1000, None, None, [(6,2), (26,2), (50,1), (86,2), (74,3), (38,1), (18,2)]),
+                'O'  : ("MULTIEXP", 14, 1.1000, None, None, [(6,1), (18,4), (38,1), (50,5), (38,1), (18,1), (6,1)]),
+                'F'  : ("MULTIEXP", 18, 1.2000, None, None, [(6,2), (18,4), (26,2), (50,2), (74,2), (50,2), (38,3), (18,1)]),
+                'NA' : ("MULTIEXP", 13, 2.3000, None, None, [(6,1), (18,2), (50,8), (26,2)]),
+                'MG' : ("MULTIEXP", 15, 2.2000, None, None, [(6,2), (18,2), (26,1), (50,2), (74,4), (50,1), (38,1), (6,2)]),
+                'AL' : ("MULTIEXP", 14, 2.1000, None, None, [(6,2), (18,2), (26,1), (38,1), (74,2), (86,2), (50,2), (38,1), (26,1)]),
+                'SI' : ("MULTIEXP", 16, 1.3000, None, None, [(6,4), (18,3), (26,1), (50,2), (74,1), (86,3), (38,1), (18,1)]),
+                'P'  : ("MULTIEXP", 16, 1.3000, None, None, [(6,4), (18,3), (26,1), (50,2), (74,1), (86,3), (38,1), (18,1)]),
+                'S'  : ("MULTIEXP", 12, 1.1000, None, None, [(6,2), (18,1), (26,2), (50,1), (86,3), (74,1), (50,1), (18,1)]),
+                'CL' : ("MULTIEXP", 12, 1.4500, None, None, [(6,2), (18,1), (26,1), (50,2), (86,3), (74,1), (50,1), (38,1)]),
+                'HE' : ("HANDY",    50, 0.5882, None, None, [(6,16), (38,5), (86,4), (194,9), (86,16)]),
+                'NE' : ("HANDY",    50, 0.6838, None, None, [(6,14), (38,7), (86,3), (194,9), (86,17)]),
+                'AR' : ("HANDY",    50, 1.3333, None, None, [(6,12), (38,7), (86,5), (194,7), (86,19)]),
+                }
+        case -4:
+            return 194, 50, {
+                'H'  : ("MULTIEXP", 10, 1.3000, None, None, [(18,1), (38,1), (50,6), (26,1), (6,1)]),
+                'LI' : ("MULTIEXP", 10, 1.9500, None, None, [(18,1), (38,1), (50,6), (26,1), (6,1)]),
+                'BE' : ("MULTIEXP", 10, 2.2000, None, None, [(18,1), (26,1), (38,2), (50,5), (6,1)]),
+                'B'  : ("MULTIEXP",  9, 1.4500, None, None, [(26,3), (50,6)]),
+                'C'  : ("MULTIEXP", 10, 1.2000, None, None, [(6,2), (26,1), (38,1), (50,1), (74,2), (50,2), (26,1)]),
+                'N'  : ("MULTIEXP", 11, 1.1000, None, None, [(18,2), (38,1), (74,2), (50,3), (26,1), (6,2)]),
+                'O'  : ("MULTIEXP", 12, 1.1000, None, None, [(6,4), (26,1), (38,5), (26,1), (6,1)]),
+                'F'  : ("MULTIEXP", 16, 1.2000, None, None, [(6,4), (18,2), (38,2), (50,2), (38,2), (26,3), (6,1)]),
+                'NA' : ("MULTIEXP", 12, 2.3000, None, None, [(6,2), (38,8), (18,2)]),
+                'MG' : ("MULTIEXP", 11, 2.2000, None, None, [(6,2), (18,1), (38,2), (50,4), (38,1), (26,1)]),
+                'AL' : ("MULTIEXP", 12, 2.1000, None, None, [(6,2), (18,1), (26,1), (50,2), (74,2), (38,2), (26,1), (18,1)]),
+                'SI' : ("MULTIEXP", 12, 1.3000, None, None, [(6,3), (18,1), (38,2), (50,1), (74,3), (26,1), (6,1)]),
+                'P'  : ("MULTIEXP", 12, 1.3000, None, None, [(6,3), (18,1), (38,2), (50,1), (74,3), (26,1), (6,1)]),
+                'S'  : ("MULTIEXP", 10, 1.1000, None, None, [(6,1), (18,2), (38,1), (74,3), (50,1), (38,1), (6,1)]),
+                'CL' : ("MULTIEXP", 10, 1.4500, None, None, [(6,1), (18,1), (38,2), (74,3), (50,1), (38,1), (26,1)]),
+                'HE' : ("HANDY",    50, 0.5882, None, None, [(6,16), (38,5), (86,4), (194,9), (86,16)]),
+                'NE' : ("HANDY",    50, 0.6838, None, None, [(6,14), (38,7), (86,3), (194,9), (86,17)]),
+                'AR' : ("HANDY",    50, 1.3333, None, None, [(6,12), (38,7), (86,5), (194,7), (86,19)]),
+                }
+        case _:
+            raise RuntimeError("Unexpected SG0trimmed grid level")
+
 
 # => Helpers to generate the GRIDn family of grids <= #
 
@@ -580,7 +921,7 @@ class CuestAtomGridList(object):
         for handle in self.handles:
             status = ce.cuestAtomGridDestroy(atomGrid=handle)
             if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                raise RuntimeError('cuestAtomGridDestroy failed')
+                raise RuntimeError('cuestAtomGridDestroy failed: %s' % status)
 
 
 class CuestMolecularGrid(object):
@@ -597,6 +938,17 @@ class CuestMolecularGrid(object):
     * S. Dasgupta and J. M. HerbertJ. Comput. Chem., 38, 869 (2017)
     where valid values are 0 <= n <= 3, where larger numbers yield larger grids.
 
+    family = SG0trimmed: A family of progressively coarser grids derived from
+    SG-0 by stepping every radial shell's Lebedev angular grid down k rungs on
+    the SG-0 Lebedev ladder [6, 18, 26, 38, 50, 74, 86, 110, 146, 170] (so
+    26 -> 18 -> 6, with the special SG-0 18-point rule a real rung).  A shell
+    that reaches the 6-point floor and would step to 0 is removed, and the
+    radial grid is re-tightened to a proper MULTIEXP rule of the surviving size.
+    Only the genuine SG-0 (MULTIEXP) atoms are decremented; the SG-1 fallbacks
+    (He/Ne/Ar and atoms beyond Ar) are identical to SG-0.  grid_level is
+    negative to signify a strictly coarser grid than SG-0 itself; valid values
+    are -1, -2, -3, -4 (k = -grid_level).
+
     family = UNPRUNED: A flat, unpruned grid with the same number of angular
     (Lebedev) points at every radial node.  No pruning is applied to any atom.
     The radial quadrature is the Treutler-Ahlrichs rule used by the GRID family.
@@ -611,13 +963,13 @@ class CuestMolecularGrid(object):
         grid_level,
         xyz : np.ndarray,
         Ns : list[int],
-        family="GRID",
+        family,
         ):
 
         self.initialized = False
         family = family.upper()
 
-        supported_families = ["GRID", "SG", "UNPRUNED"]
+        supported_families = ["GRID", "SG", "SG0TRIMMED", "UNPRUNED"]
         if family not in supported_families:
             raise RuntimeError(f"Unrecognized grid family '{family}'.  Supported values are {', '.join(supported_families)}")
 
@@ -631,6 +983,11 @@ class CuestMolecularGrid(object):
                 raise RuntimeError("Only grid_level 0 to 3 (inclusive) is supported for the SG family")
             default_n_angular, default_n_radial, pruning_map = _get_sg_pruning_pattern(grid_level)
             self.grid_name = f'SG{grid_level}'
+        elif family == "SG0TRIMMED":
+            if grid_level not in (-1, -2, -3, -4):
+                raise RuntimeError("Only grid_level -1, -2, -3, -4 (negative = progressively coarser than SG-0) is supported for the SG0trimmed family")
+            default_n_angular, default_n_radial, pruning_map = _get_sg0trimmed_pruning_pattern(grid_level)
+            self.grid_name = f'SG0trimmed{grid_level}'
         else:
             # UNPRUNED: grid_level is the (n_radial, n_angular) pair.
             try:
@@ -648,8 +1005,10 @@ class CuestMolecularGrid(object):
 
         self.handle = handle
 
-        atomgrid_parameters = CuestParameters(parametersType=ce.CuestParametersType.CUEST_ATOMGRID_PARAMETERS)
-
+        atomgrid_parameters = CuestUtility.make_compute_parameters(
+            ce.CuestParametersType.CUEST_ATOMGRID_PARAMETERS,
+            [],
+            )
         atomgrids = CuestAtomGridList()
         for atom,N in enumerate(Ns):
             symbol_upper = PeriodicTable.N_to_symbol_upper_table[N]
@@ -718,13 +1077,15 @@ class CuestMolecularGrid(object):
                 outAtomGrid=atomgrid_handle,
                 )
             if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                raise RuntimeError('cuestAtomGridCreate failed')
+                raise RuntimeError('cuestAtomGridCreate failed: %s' % status)
             atomgrids.append(atomgrid_handle)
 
         del atomgrid_parameters
 
-        moleculargrid_parameters = CuestParameters(parametersType=ce.CuestParametersType.CUEST_MOLECULARGRID_PARAMETERS)
-
+        moleculargrid_parameters = CuestUtility.make_compute_parameters(
+            ce.CuestParametersType.CUEST_MOLECULARGRID_PARAMETERS,
+            [],
+            )
         persistent_workspace_descriptor = CuestWorkspaceDescriptor()
         temporary_workspace_descriptor = CuestWorkspaceDescriptor()
 
@@ -739,7 +1100,7 @@ class CuestMolecularGrid(object):
             outGrid=ce.cuestMolecularGridHandle(),
             )
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestMolecularGridCreateWorkspaceQuery failed')
+            raise RuntimeError('cuestMolecularGridCreateWorkspaceQuery failed: %s' % status)
 
         grid_persistent_workspace = CuestWorkspace(workspaceDescriptor=persistent_workspace_descriptor)
         grid_temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
@@ -757,7 +1118,7 @@ class CuestMolecularGrid(object):
             outGrid=self.moleculargrid_handle,
             )
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestMolecularGridCreate failed')
+            raise RuntimeError('cuestMolecularGridCreate failed: %s' % status)
 
         del moleculargrid_parameters
         del grid_temporary_workspace
@@ -777,7 +1138,7 @@ class CuestMolecularGrid(object):
             grid=self.moleculargrid_handle,
             )
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestMolecularDestroy failed')
+            raise RuntimeError('cuestMolecularGridDestroy failed: %s' % status)
 
     @memoized_property
     def natom(self):
@@ -790,7 +1151,7 @@ class CuestMolecularGrid(object):
             attributeValue=natom,
             )
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestQuery failed')
+            raise RuntimeError('cuestQuery failed: %s' % status)
         return natom.value
 
     @memoized_property
@@ -804,7 +1165,7 @@ class CuestMolecularGrid(object):
             attributeValue=npoint,
             )
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestQuery failed')
+            raise RuntimeError('cuestQuery failed: %s' % status)
         return npoint.value
 
     @memoized_property
@@ -818,7 +1179,7 @@ class CuestMolecularGrid(object):
             attributeValue=max_point,
             )
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestQuery failed')
+            raise RuntimeError('cuestQuery failed: %s' % status)
         return max_point.value
 
     @memoized_property
@@ -832,7 +1193,7 @@ class CuestMolecularGrid(object):
             attributeValue=max_radial_point,
             )
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestQuery failed')
+            raise RuntimeError('cuestQuery failed: %s' % status)
         return max_radial_point.value
 
     @memoized_property
@@ -846,7 +1207,7 @@ class CuestMolecularGrid(object):
             attributeValue=max_angular_point,
             )
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestQuery failed')
+            raise RuntimeError('cuestQuery failed: %s' % status)
         return max_angular_point.value
 
     # => String Details <= #
@@ -857,12 +1218,12 @@ class CuestMolecularGrid(object):
     @property
     def string(self):
         s = ''
-        s += 'MolecularGrid:\n'
-        s += '%-18s = %10s\n' % ('scheme name',        self.grid_name)
-        s += '%-18s = %10d\n' % ('natom',              self.natom)
-        s += '%-18s = %10d\n' % ('atomic max npoint',  self.max_point)
-        s += '%-18s = %10d\n' % ('radial max npoint',  self.max_radial_point)
-        s += '%-18s = %10d\n' % ('angular max npoint', self.max_angular_point)
-        s += '%-18s = %10d\n' % ('total npoint',       self.npoint)
+        s += 'MolecularGrid:\n\n'
+        s += '%-19s = %11s\n' % ('scheme name',        self.grid_name)
+        s += '%-19s = %11d\n' % ('natom',              self.natom)
+        s += '%-19s = %11d\n' % ('atomic max npoint',  self.max_point)
+        s += '%-19s = %11d\n' % ('radial max npoint',  self.max_radial_point)
+        s += '%-19s = %11d\n' % ('angular max npoint', self.max_angular_point)
+        s += '%-19s = %11d\n' % ('total npoint',       self.npoint)
         return s
 

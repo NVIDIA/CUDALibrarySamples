@@ -67,7 +67,7 @@ class CuestAOPairList(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestAOPairListCreateWorkspaceQuery failed')
+            raise RuntimeError('cuestAOPairListCreateWorkspaceQuery failed: %s' % status)
 
         persistent_workspace = CuestWorkspace(workspaceDescriptor=persistent_workspace_descriptor)
         temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
@@ -87,7 +87,7 @@ class CuestAOPairList(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestAOPairListCreate failed')
+            raise RuntimeError('cuestAOPairListCreate failed: %s' % status)
 
         # Bind the lifetime of persistent_workspace to this object
         self.persistent_workspace = persistent_workspace
@@ -107,4 +107,4 @@ class CuestAOPairList(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestAOPairListDestroy failed')
+            raise RuntimeError('cuestAOPairListDestroy failed: %s' % status)

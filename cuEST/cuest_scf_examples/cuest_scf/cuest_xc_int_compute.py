@@ -20,28 +20,24 @@ from .cuest_xc_int_plan import CuestXCIntPlan
 
 from .cuest_workspace_descriptor import CuestWorkspaceDescriptor
 from .cuest_workspace import CuestWorkspace
-from .cuest_parameters import CuestParameters
+from .cuest_utility import CuestUtility
 
 import numpy as np
+
 
 class CuestXCIntCompute(object):
 
     @staticmethod
-    def local_exchange_correlation(
+    def local_exchange_correlation_rks(
         *,
         handle : CuestHandle,
         xc_int_plan : CuestXCIntPlan,
         Vxcptr,
         nocc,
         Coccptr,
-        Vxcbptr=None,
-        noccb=None,
-        Coccbptr=None,
         ):
 
         Exc = ce.data_double()
-
-        is_uhf = (noccb is not None) and (Coccbptr is not None) and (Vxcbptr is not None)
 
         Coccptr2 = ce.Pointer()
         Coccptr2.value = np.intp(Coccptr)
@@ -49,128 +45,70 @@ class CuestXCIntCompute(object):
         Vxcptr2 = ce.Pointer()
         Vxcptr2.value = np.intp(Vxcptr)
 
-        if is_uhf:
-            Coccbptr2 = ce.Pointer()
-            Coccbptr2.value = np.intp(Coccbptr)
+        xc_compute_parameters = CuestUtility.make_compute_parameters(
+            ce.CuestParametersType.CUEST_XCPOTENTIALRKSCOMPUTE_PARAMETERS,
+            [],
+            )
 
-            Vxcbptr2 = ce.Pointer()
-            Vxcbptr2.value = np.intp(Vxcbptr)
+        # Allow the algorithm to use up to 2GB of DRAM
+        # NOTE: Production codes may wish to configure the maximum temporary
+        # workspace memory as a user parameter or heuristic
+        xcint_variable_buffer_descriptor = CuestWorkspaceDescriptor(
+            deviceBufferSizeInBytes=2000000000,
+            )
 
-            # => Workspace query <= #
-            xc_compute_parameters = CuestParameters(parametersType=ce.CuestParametersType.CUEST_XCPOTENTIALUKSCOMPUTE_PARAMETERS)
+        # => Workspace query <= #
 
-            # Allow the algorithm to use up to 2GB of DRAM
-            # NOTE: Production codes may wish to configure the maximum temporary
-            # workspace memory as a user parameter or heuristic
-            xcint_variable_buffer_descriptor = CuestWorkspaceDescriptor(
-                deviceBufferSizeInBytes=2000000000,
-                )
+        temporary_workspace_descriptor = CuestWorkspaceDescriptor()
 
-            temporary_workspace_descriptor = CuestWorkspaceDescriptor()
+        status = ce.cuestXCPotentialRKSComputeWorkspaceQuery(
+            handle=handle.handle,
+            plan=xc_int_plan.xc_int_plan_handle,
+            parameters=xc_compute_parameters.parameters,
+            variableBufferSize=xcint_variable_buffer_descriptor.pointer,
+            temporaryWorkspaceDescriptor=temporary_workspace_descriptor.pointer,
+            numOccupied=nocc,
+            coefficientMatrix=Coccptr2,
+            outXCEnergy=Exc,
+            outXCPotentialMatrix=Vxcptr2,
+            )
 
-            status = ce.cuestXCPotentialUKSComputeWorkspaceQuery(
-                handle=handle.handle,
-                plan=xc_int_plan.xc_int_plan_handle,
-                parameters=xc_compute_parameters.parameters,
-                variableBufferSize=xcint_variable_buffer_descriptor.pointer,
-                temporaryWorkspaceDescriptor=temporary_workspace_descriptor.pointer,
-                numOccupiedAlpha=nocc,
-                numOccupiedBeta=noccb,
-                coefficientMatrixAlpha=Coccptr2,
-                coefficientMatrixBeta=Coccbptr2,
-                outXCEnergy=Exc,
-                outXCPotentialMatrixAlpha=Vxcptr2,
-                outXCPotentialMatrixBeta=Vxcbptr2,
-                )
+        if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
+            raise RuntimeError('cuestXCPotentialRKSComputeWorkspaceQuery failed: %s' % status)
 
-            if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                raise RuntimeError('cuestXCPotentialUKSComputeWorkspaceQuery failed: %d' % status)
+        temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
 
-            temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
+        status = ce.cuestXCPotentialRKSCompute(
+            handle=handle.handle,
+            plan=xc_int_plan.xc_int_plan_handle,
+            parameters=xc_compute_parameters.parameters,
+            variableBufferSize=xcint_variable_buffer_descriptor.pointer,
+            temporaryWorkspace=temporary_workspace.pointer,
+            numOccupied=nocc,
+            coefficientMatrix=Coccptr2,
+            outXCEnergy=Exc,
+            outXCPotentialMatrix=Vxcptr2,
+            )
 
-            status = ce.cuestXCPotentialUKSCompute(
-                handle=handle.handle,
-                plan=xc_int_plan.xc_int_plan_handle,
-                parameters=xc_compute_parameters.parameters,
-                variableBufferSize=xcint_variable_buffer_descriptor.pointer,
-                temporaryWorkspace=temporary_workspace.pointer,
-                numOccupiedAlpha=nocc,
-                numOccupiedBeta=noccb,
-                coefficientMatrixAlpha=Coccptr2,
-                coefficientMatrixBeta=Coccbptr2,
-                outXCEnergy=Exc,
-                outXCPotentialMatrixAlpha=Vxcptr2,
-                outXCPotentialMatrixBeta=Vxcbptr2,
-                )
-
-            if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                raise RuntimeError('cuestXCPotentialUKSCompute failed: %d' % status)
-            del xc_compute_parameters
-
-        else:
-
-            # => Workspace query <= #
-            xc_compute_parameters = CuestParameters(parametersType=ce.CuestParametersType.CUEST_XCPOTENTIALRKSCOMPUTE_PARAMETERS)
-
-            # Allow the algorithm to use up to 2GB of DRAM
-            # NOTE: Production codes may wish to configure the maximum temporary
-            # workspace memory as a user parameter or heuristic
-            xcint_variable_buffer_descriptor = CuestWorkspaceDescriptor(
-                deviceBufferSizeInBytes=2000000000,
-                )
-
-            temporary_workspace_descriptor = CuestWorkspaceDescriptor()
-
-            status = ce.cuestXCPotentialRKSComputeWorkspaceQuery(
-                handle=handle.handle,
-                plan=xc_int_plan.xc_int_plan_handle,
-                parameters=xc_compute_parameters.parameters,
-                variableBufferSize=xcint_variable_buffer_descriptor.pointer,
-                temporaryWorkspaceDescriptor=temporary_workspace_descriptor.pointer,
-                numOccupied=nocc,
-                coefficientMatrix=Coccptr2,
-                outXCEnergy=Exc,
-                outXCPotentialMatrix=Vxcptr2,
-                )
-
-            if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                raise RuntimeError('cuestXCPotentialRKSComputeWorkspaceQuery failed: %d' % status)
-
-            temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
-
-            status = ce.cuestXCPotentialRKSCompute(
-                handle=handle.handle,
-                plan=xc_int_plan.xc_int_plan_handle,
-                parameters=xc_compute_parameters.parameters,
-                variableBufferSize=xcint_variable_buffer_descriptor.pointer,
-                temporaryWorkspace=temporary_workspace.pointer,
-                numOccupied=nocc,
-                coefficientMatrix=Coccptr2,
-                outXCEnergy=Exc,
-                outXCPotentialMatrix=Vxcptr2,
-                )
-
-            if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                raise RuntimeError('cuestXCPotentialRKSCompute failed: %d' % status)
-            del xc_compute_parameters
+        if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
+            raise RuntimeError('cuestXCPotentialRKSCompute failed: %s' % status)
 
         return Exc.value
 
     @staticmethod
-    def nonlocal_exchange_correlation(
+    def local_exchange_correlation_uks(
         *,
         handle : CuestHandle,
         xc_int_plan : CuestXCIntPlan,
         Vxcptr,
         nocc,
         Coccptr,
-        noccb=None,
-        Coccbptr=None,
+        Vxcbptr,
+        noccb,
+        Coccbptr,
         ):
 
         Exc = ce.data_double()
-
-        is_uhf = (noccb is not None) and (Coccbptr is not None)
 
         Coccptr2 = ce.Pointer()
         Coccptr2.value = np.intp(Coccptr)
@@ -178,306 +116,232 @@ class CuestXCIntCompute(object):
         Vxcptr2 = ce.Pointer()
         Vxcptr2.value = np.intp(Vxcptr)
 
-        if is_uhf:
-            Coccbptr2 = ce.Pointer()
-            Coccbptr2.value = np.intp(Coccbptr)
+        Coccbptr2 = ce.Pointer()
+        Coccbptr2.value = np.intp(Coccbptr)
 
-            # => VV10 parameters <= #
-            nonlocal_xc_compute_parameters = CuestParameters(parametersType=ce.CuestParametersType.CUEST_NONLOCALXCPOTENTIALUKSCOMPUTE_PARAMETERS)
+        Vxcbptr2 = ce.Pointer()
+        Vxcbptr2.value = np.intp(Vxcbptr)
 
-            vv10_b = ce.data_double(xc_int_plan.vv10_b)
-            status = ce.cuestParametersConfigure(
-                parametersType=ce.CuestParametersType.CUEST_NONLOCALXCPOTENTIALUKSCOMPUTE_PARAMETERS,
-                parameters=nonlocal_xc_compute_parameters.parameters,
-                attribute=ce.CuestNonlocalXCPotentialUKSComputeParametersAttributes.CUEST_NONLOCALXCPOTENTIALUKSCOMPUTE_PARAMETERS_VV10_B,
-                attributeValue=vv10_b,
-                )
+        xc_compute_parameters = CuestUtility.make_compute_parameters(
+            ce.CuestParametersType.CUEST_XCPOTENTIALUKSCOMPUTE_PARAMETERS,
+            [],
+            )
 
-            if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                raise RuntimeError('cuestParametersConfigure failed: %d' % status)
+        # Allow the algorithm to use up to 2GB of DRAM
+        # NOTE: Production codes may wish to configure the maximum temporary
+        # workspace memory as a user parameter or heuristic
+        xcint_variable_buffer_descriptor = CuestWorkspaceDescriptor(
+            deviceBufferSizeInBytes=2000000000,
+            )
 
-            vv10_C = ce.data_double(xc_int_plan.vv10_c)
-            status = ce.cuestParametersConfigure(
-                parametersType=ce.CuestParametersType.CUEST_NONLOCALXCPOTENTIALUKSCOMPUTE_PARAMETERS,
-                parameters=nonlocal_xc_compute_parameters.parameters,
-                attribute=ce.CuestNonlocalXCPotentialUKSComputeParametersAttributes.CUEST_NONLOCALXCPOTENTIALUKSCOMPUTE_PARAMETERS_VV10_C,
-                attributeValue=vv10_C,
-                )
+        # => Workspace query <= #
 
-            if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                raise RuntimeError('cuestParametersConfigure failed: %d' % status)
+        temporary_workspace_descriptor = CuestWorkspaceDescriptor()
 
-            vv10_scale = ce.data_double(xc_int_plan.vv10_scale)
-            status = ce.cuestParametersConfigure(
-                parametersType=ce.CuestParametersType.CUEST_NONLOCALXCPOTENTIALUKSCOMPUTE_PARAMETERS,
-                parameters=nonlocal_xc_compute_parameters.parameters,
-                attribute=ce.CuestNonlocalXCPotentialUKSComputeParametersAttributes.CUEST_NONLOCALXCPOTENTIALUKSCOMPUTE_PARAMETERS_VV10_SCALE,
-                attributeValue=vv10_scale,
-                )
+        status = ce.cuestXCPotentialUKSComputeWorkspaceQuery(
+            handle=handle.handle,
+            plan=xc_int_plan.xc_int_plan_handle,
+            parameters=xc_compute_parameters.parameters,
+            variableBufferSize=xcint_variable_buffer_descriptor.pointer,
+            temporaryWorkspaceDescriptor=temporary_workspace_descriptor.pointer,
+            numOccupiedAlpha=nocc,
+            numOccupiedBeta=noccb,
+            coefficientMatrixAlpha=Coccptr2,
+            coefficientMatrixBeta=Coccbptr2,
+            outXCEnergy=Exc,
+            outXCPotentialMatrixAlpha=Vxcptr2,
+            outXCPotentialMatrixBeta=Vxcbptr2,
+            )
 
-            if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                raise RuntimeError('cuestParametersConfigure failed: %d' % status)
+        if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
+            raise RuntimeError('cuestXCPotentialUKSComputeWorkspaceQuery failed: %s' % status)
 
-            # => Workspace query <= #
+        temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
 
-            # Allow the algorithm to use up to 2GB of DRAM
-            # NOTE: Production codes may wish to configure the maximum temporary
-            # workspace memory as a user parameter or heuristic
-            xcint_variable_buffer_descriptor = CuestWorkspaceDescriptor(
-                deviceBufferSizeInBytes=2000000000,
-                )
+        status = ce.cuestXCPotentialUKSCompute(
+            handle=handle.handle,
+            plan=xc_int_plan.xc_int_plan_handle,
+            parameters=xc_compute_parameters.parameters,
+            variableBufferSize=xcint_variable_buffer_descriptor.pointer,
+            temporaryWorkspace=temporary_workspace.pointer,
+            numOccupiedAlpha=nocc,
+            numOccupiedBeta=noccb,
+            coefficientMatrixAlpha=Coccptr2,
+            coefficientMatrixBeta=Coccbptr2,
+            outXCEnergy=Exc,
+            outXCPotentialMatrixAlpha=Vxcptr2,
+            outXCPotentialMatrixBeta=Vxcbptr2,
+            )
 
-            temporary_workspace_descriptor = CuestWorkspaceDescriptor()
-
-            status = ce.cuestNonlocalXCPotentialUKSComputeWorkspaceQuery(
-                handle=handle.handle,
-                plan=xc_int_plan.xc_int_plan_handle,
-                parameters=nonlocal_xc_compute_parameters.parameters,
-                variableBufferSize=xcint_variable_buffer_descriptor.pointer,
-                temporaryWorkspaceDescriptor=temporary_workspace_descriptor.pointer,
-                numOccupiedAlpha=nocc,
-                numOccupiedBeta=noccb,
-                coefficientMatrixAlpha=Coccptr2,
-                coefficientMatrixBeta=Coccbptr2,
-                outXCEnergy=Exc,
-                outXCPotentialMatrix=Vxcptr2
-                )
-
-            if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                raise RuntimeError('cuestNonlocalXCPotentialUKSComputeWorkspaceQuery failed: %d' % status)
-
-            temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
-
-            status = ce.cuestNonlocalXCPotentialUKSCompute(
-                handle=handle.handle,
-                plan=xc_int_plan.xc_int_plan_handle,
-                parameters=nonlocal_xc_compute_parameters.parameters,
-                variableBufferSize=xcint_variable_buffer_descriptor.pointer,
-                temporaryWorkspace=temporary_workspace.pointer,
-                numOccupiedAlpha=nocc,
-                numOccupiedBeta=noccb,
-                coefficientMatrixAlpha=Coccptr2,
-                coefficientMatrixBeta=Coccbptr2,
-                outXCEnergy=Exc,
-                outXCPotentialMatrix=Vxcptr2,
-                )
-
-            if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                raise RuntimeError('cuestNonlocalXCPotentialUKSCompute failed: %d' % status)
-            del nonlocal_xc_compute_parameters
-
-        else:
-            # => VV10 parameters <= #
-            nonlocal_xc_compute_parameters = CuestParameters(parametersType=ce.CuestParametersType.CUEST_NONLOCALXCPOTENTIALRKSCOMPUTE_PARAMETERS)
-
-            vv10_b = ce.data_double(xc_int_plan.vv10_b)
-            status = ce.cuestParametersConfigure(
-                parametersType=ce.CuestParametersType.CUEST_NONLOCALXCPOTENTIALRKSCOMPUTE_PARAMETERS,
-                parameters=nonlocal_xc_compute_parameters.parameters,
-                attribute=ce.CuestNonlocalXCPotentialRKSComputeParametersAttributes.CUEST_NONLOCALXCPOTENTIALRKSCOMPUTE_PARAMETERS_VV10_B,
-                attributeValue=vv10_b,
-                )
-
-            if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                raise RuntimeError('cuestParametersConfigure failed: %d' % status)
-
-            vv10_C = ce.data_double(xc_int_plan.vv10_c)
-            status = ce.cuestParametersConfigure(
-                parametersType=ce.CuestParametersType.CUEST_NONLOCALXCPOTENTIALRKSCOMPUTE_PARAMETERS,
-                parameters=nonlocal_xc_compute_parameters.parameters,
-                attribute=ce.CuestNonlocalXCPotentialRKSComputeParametersAttributes.CUEST_NONLOCALXCPOTENTIALRKSCOMPUTE_PARAMETERS_VV10_C,
-                attributeValue=vv10_C,
-                )
-
-            if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                raise RuntimeError('cuestParametersConfigure failed: %d' % status)
-
-            vv10_scale = ce.data_double(xc_int_plan.vv10_scale)
-            status = ce.cuestParametersConfigure(
-                parametersType=ce.CuestParametersType.CUEST_NONLOCALXCPOTENTIALRKSCOMPUTE_PARAMETERS,
-                parameters=nonlocal_xc_compute_parameters.parameters,
-                attribute=ce.CuestNonlocalXCPotentialRKSComputeParametersAttributes.CUEST_NONLOCALXCPOTENTIALRKSCOMPUTE_PARAMETERS_VV10_SCALE,
-                attributeValue=vv10_scale,
-                )
-
-            if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                raise RuntimeError('cuestParametersConfigure failed: %d' % status)
-
-            # => Workspace query <= #
-
-            # Allow the algorithm to use up to 2GB of DRAM
-            # NOTE: Production codes may wish to configure the maximum temporary
-            # workspace memory as a user parameter or heuristic
-            xcint_variable_buffer_descriptor = CuestWorkspaceDescriptor(
-                deviceBufferSizeInBytes=2000000000,
-                )
-
-            temporary_workspace_descriptor = CuestWorkspaceDescriptor()
-
-            status = ce.cuestNonlocalXCPotentialRKSComputeWorkspaceQuery(
-                handle=handle.handle,
-                plan=xc_int_plan.xc_int_plan_handle,
-                parameters=nonlocal_xc_compute_parameters.parameters,
-                variableBufferSize=xcint_variable_buffer_descriptor.pointer,
-                temporaryWorkspaceDescriptor=temporary_workspace_descriptor.pointer,
-                numOccupied=nocc,
-                coefficientMatrix=Coccptr2,
-                outXCEnergy=Exc,
-                outXCPotentialMatrix=Vxcptr2,
-                )
-
-            if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                raise RuntimeError('cuestNonlocalXCPotentialRKSComputeWorkspaceQuery failed: %d' % status)
-
-            temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
-
-            status = ce.cuestNonlocalXCPotentialRKSCompute(
-                handle=handle.handle,
-                plan=xc_int_plan.xc_int_plan_handle,
-                parameters=nonlocal_xc_compute_parameters.parameters,
-                variableBufferSize=xcint_variable_buffer_descriptor.pointer,
-                temporaryWorkspace=temporary_workspace.pointer,
-                numOccupied=nocc,
-                coefficientMatrix=Coccptr2,
-                outXCEnergy=Exc,
-                outXCPotentialMatrix=Vxcptr2,
-                )
-
-            if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                raise RuntimeError('cuestNonlocalXCPotentialRKSCompute failed: %d' % status)
-            del nonlocal_xc_compute_parameters
+        if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
+            raise RuntimeError('cuestXCPotentialUKSCompute failed: %s' % status)
 
         return Exc.value
 
     @staticmethod
-    def local_exchange_correlation_gradient(
+    def nonlocal_exchange_correlation_rks(
         *,
         handle : CuestHandle,
         xc_int_plan : CuestXCIntPlan,
-        Gptr,
+        Vxcptr,
         nocc,
         Coccptr,
-        noccb=None,
-        Coccbptr=None,
         ):
 
-        is_uhf = (noccb is not None) and (Coccbptr is not None)
+        Exc = ce.data_double()
 
         Coccptr2 = ce.Pointer()
         Coccptr2.value = np.intp(Coccptr)
 
-        Gptr2 = ce.Pointer()
-        Gptr2.value = np.intp(Gptr)
+        Vxcptr2 = ce.Pointer()
+        Vxcptr2.value = np.intp(Vxcptr)
 
-        if is_uhf:
-            Coccbptr2 = ce.Pointer()
-            Coccbptr2.value = np.intp(Coccbptr)
+        nonlocal_xc_compute_parameters = CuestUtility.make_compute_parameters(
+            ce.CuestParametersType.CUEST_NONLOCALXCPOTENTIALRKSCOMPUTE_PARAMETERS,
+            [(ce.CuestNonlocalXCPotentialRKSComputeParametersAttributes.CUEST_NONLOCALXCPOTENTIALRKSCOMPUTE_PARAMETERS_VV10_B,
+              ce.data_double(xc_int_plan.vv10_b)),
+             (ce.CuestNonlocalXCPotentialRKSComputeParametersAttributes.CUEST_NONLOCALXCPOTENTIALRKSCOMPUTE_PARAMETERS_VV10_C,
+              ce.data_double(xc_int_plan.vv10_c)),
+             (ce.CuestNonlocalXCPotentialRKSComputeParametersAttributes.CUEST_NONLOCALXCPOTENTIALRKSCOMPUTE_PARAMETERS_VV10_SCALE,
+              ce.data_double(xc_int_plan.vv10_scale))],
+            )
 
-            # => Workspace query <= #
-            xc_compute_parameters = CuestParameters(parametersType=ce.CuestParametersType.CUEST_XCDERIVATIVEUKSCOMPUTE_PARAMETERS)
+        # Allow the algorithm to use up to 2GB of DRAM
+        # NOTE: Production codes may wish to configure the maximum temporary
+        # workspace memory as a user parameter or heuristic
+        xcint_variable_buffer_descriptor = CuestWorkspaceDescriptor(
+            deviceBufferSizeInBytes=2000000000,
+            )
 
-            # Allow the algorithm to use up to 2GB of DRAM
-            # NOTE: Production codes may wish to configure the maximum temporary
-            # workspace memory as a user parameter or heuristic
-            xcint_variable_buffer_descriptor = CuestWorkspaceDescriptor(
-                deviceBufferSizeInBytes=2000000000,
-                )
+        # => Workspace query <= #
 
-            temporary_workspace_descriptor = CuestWorkspaceDescriptor()
+        temporary_workspace_descriptor = CuestWorkspaceDescriptor()
 
-            status = ce.cuestXCDerivativeUKSComputeWorkspaceQuery(
-                handle=handle.handle,
-                plan=xc_int_plan.xc_int_plan_handle,
-                parameters=xc_compute_parameters.parameters,
-                variableBufferSize=xcint_variable_buffer_descriptor.pointer,
-                temporaryWorkspaceDescriptor=temporary_workspace_descriptor.pointer,
-                numOccupiedAlpha=nocc,
-                numOccupiedBeta=noccb,
-                coefficientMatrixAlpha=Coccptr2,
-                coefficientMatrixBeta=Coccbptr2,
-                outGradient=Gptr2,
-                )
+        status = ce.cuestNonlocalXCPotentialRKSComputeWorkspaceQuery(
+            handle=handle.handle,
+            plan=xc_int_plan.xc_int_plan_handle,
+            parameters=nonlocal_xc_compute_parameters.parameters,
+            variableBufferSize=xcint_variable_buffer_descriptor.pointer,
+            temporaryWorkspaceDescriptor=temporary_workspace_descriptor.pointer,
+            numOccupied=nocc,
+            coefficientMatrix=Coccptr2,
+            outXCEnergy=Exc,
+            outXCPotentialMatrix=Vxcptr2,
+            )
 
-            if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                raise RuntimeError('cuestXCDerivativeUKSComputeWorkspaceQuery failed: %d' % status)
+        if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
+            raise RuntimeError('cuestNonlocalXCPotentialRKSComputeWorkspaceQuery failed: %s' % status)
 
-            temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
+        temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
 
-            status = ce.cuestXCDerivativeUKSCompute(
-                handle=handle.handle,
-                plan=xc_int_plan.xc_int_plan_handle,
-                parameters=xc_compute_parameters.parameters,
-                variableBufferSize=xcint_variable_buffer_descriptor.pointer,
-                temporaryWorkspace=temporary_workspace.pointer,
-                numOccupiedAlpha=nocc,
-                numOccupiedBeta=noccb,
-                coefficientMatrixAlpha=Coccptr2,
-                coefficientMatrixBeta=Coccbptr2,
-                outGradient=Gptr2,
-                )
+        status = ce.cuestNonlocalXCPotentialRKSCompute(
+            handle=handle.handle,
+            plan=xc_int_plan.xc_int_plan_handle,
+            parameters=nonlocal_xc_compute_parameters.parameters,
+            variableBufferSize=xcint_variable_buffer_descriptor.pointer,
+            temporaryWorkspace=temporary_workspace.pointer,
+            numOccupied=nocc,
+            coefficientMatrix=Coccptr2,
+            outXCEnergy=Exc,
+            outXCPotentialMatrix=Vxcptr2,
+            )
 
-            if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                raise RuntimeError('cuestXCDerivativeUKSCompute failed: %d' % status)
-            del xc_compute_parameters
+        if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
+            raise RuntimeError('cuestNonlocalXCPotentialRKSCompute failed: %s' % status)
 
-        else:
-
-            # => Workspace query <= #
-            xc_compute_parameters = CuestParameters(parametersType=ce.CuestParametersType.CUEST_XCDERIVATIVERKSCOMPUTE_PARAMETERS)
-
-            # Allow the algorithm to use up to 2GB of DRAM
-            # NOTE: Production codes may wish to configure the maximum temporary
-            # workspace memory as a user parameter or heuristic
-            xcint_variable_buffer_descriptor = CuestWorkspaceDescriptor(
-                deviceBufferSizeInBytes=2000000000,
-                )
-
-            temporary_workspace_descriptor = CuestWorkspaceDescriptor()
-
-            status = ce.cuestXCDerivativeRKSComputeWorkspaceQuery(
-                handle=handle.handle,
-                plan=xc_int_plan.xc_int_plan_handle,
-                parameters=xc_compute_parameters.parameters,
-                variableBufferSize=xcint_variable_buffer_descriptor.pointer,
-                temporaryWorkspaceDescriptor=temporary_workspace_descriptor.pointer,
-                numOccupied=nocc,
-                coefficientMatrix=Coccptr2,
-                outGradient=Gptr2,
-                )
-
-            if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                raise RuntimeError('cuestXCDerivativeRKSComputeWorkspaceQuery failed: %d' % status)
-
-            temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
-
-            status = ce.cuestXCDerivativeRKSCompute(
-                handle=handle.handle,
-                plan=xc_int_plan.xc_int_plan_handle,
-                parameters=xc_compute_parameters.parameters,
-                variableBufferSize=xcint_variable_buffer_descriptor.pointer,
-                temporaryWorkspace=temporary_workspace.pointer,
-                numOccupied=nocc,
-                coefficientMatrix=Coccptr2,
-                outGradient=Gptr2,
-                )
-
-            if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                raise RuntimeError('cuestXCDerivativeRKSCompute failed: %d' % status)
-            del xc_compute_parameters
+        return Exc.value
 
     @staticmethod
-    def nonlocal_exchange_correlation_gradient(
+    def nonlocal_exchange_correlation_uks(
+        *,
+        handle : CuestHandle,
+        xc_int_plan : CuestXCIntPlan,
+        Vxcptr,
+        nocc,
+        Coccptr,
+        noccb,
+        Coccbptr,
+        ):
+
+        Exc = ce.data_double()
+
+        Coccptr2 = ce.Pointer()
+        Coccptr2.value = np.intp(Coccptr)
+
+        Vxcptr2 = ce.Pointer()
+        Vxcptr2.value = np.intp(Vxcptr)
+
+        Coccbptr2 = ce.Pointer()
+        Coccbptr2.value = np.intp(Coccbptr)
+
+        nonlocal_xc_compute_parameters = CuestUtility.make_compute_parameters(
+            ce.CuestParametersType.CUEST_NONLOCALXCPOTENTIALUKSCOMPUTE_PARAMETERS,
+            [(ce.CuestNonlocalXCPotentialUKSComputeParametersAttributes.CUEST_NONLOCALXCPOTENTIALUKSCOMPUTE_PARAMETERS_VV10_B,
+              ce.data_double(xc_int_plan.vv10_b)),
+             (ce.CuestNonlocalXCPotentialUKSComputeParametersAttributes.CUEST_NONLOCALXCPOTENTIALUKSCOMPUTE_PARAMETERS_VV10_C,
+              ce.data_double(xc_int_plan.vv10_c)),
+             (ce.CuestNonlocalXCPotentialUKSComputeParametersAttributes.CUEST_NONLOCALXCPOTENTIALUKSCOMPUTE_PARAMETERS_VV10_SCALE,
+              ce.data_double(xc_int_plan.vv10_scale))],
+            )
+
+        # Allow the algorithm to use up to 2GB of DRAM
+        # NOTE: Production codes may wish to configure the maximum temporary
+        # workspace memory as a user parameter or heuristic
+        xcint_variable_buffer_descriptor = CuestWorkspaceDescriptor(
+            deviceBufferSizeInBytes=2000000000,
+            )
+
+        # => Workspace query <= #
+
+        temporary_workspace_descriptor = CuestWorkspaceDescriptor()
+
+        status = ce.cuestNonlocalXCPotentialUKSComputeWorkspaceQuery(
+            handle=handle.handle,
+            plan=xc_int_plan.xc_int_plan_handle,
+            parameters=nonlocal_xc_compute_parameters.parameters,
+            variableBufferSize=xcint_variable_buffer_descriptor.pointer,
+            temporaryWorkspaceDescriptor=temporary_workspace_descriptor.pointer,
+            numOccupiedAlpha=nocc,
+            numOccupiedBeta=noccb,
+            coefficientMatrixAlpha=Coccptr2,
+            coefficientMatrixBeta=Coccbptr2,
+            outXCEnergy=Exc,
+            outXCPotentialMatrix=Vxcptr2,
+            )
+
+        if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
+            raise RuntimeError('cuestNonlocalXCPotentialUKSComputeWorkspaceQuery failed: %s' % status)
+
+        temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
+
+        status = ce.cuestNonlocalXCPotentialUKSCompute(
+            handle=handle.handle,
+            plan=xc_int_plan.xc_int_plan_handle,
+            parameters=nonlocal_xc_compute_parameters.parameters,
+            variableBufferSize=xcint_variable_buffer_descriptor.pointer,
+            temporaryWorkspace=temporary_workspace.pointer,
+            numOccupiedAlpha=nocc,
+            numOccupiedBeta=noccb,
+            coefficientMatrixAlpha=Coccptr2,
+            coefficientMatrixBeta=Coccbptr2,
+            outXCEnergy=Exc,
+            outXCPotentialMatrix=Vxcptr2,
+            )
+
+        if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
+            raise RuntimeError('cuestNonlocalXCPotentialUKSCompute failed: %s' % status)
+
+        return Exc.value
+
+    @staticmethod
+    def local_exchange_correlation_rks_gradient(
         *,
         handle : CuestHandle,
         xc_int_plan : CuestXCIntPlan,
         Gptr,
         nocc,
         Coccptr,
-        noccb=None,
-        Coccbptr=None,
         ):
-
-        is_uhf = (noccb is not None) and (Coccbptr is not None)
 
         Coccptr2 = ce.Pointer()
         Coccptr2.value = np.intp(Coccptr)
@@ -485,167 +349,262 @@ class CuestXCIntCompute(object):
         Gptr2 = ce.Pointer()
         Gptr2.value = np.intp(Gptr)
 
-        if is_uhf:
-            Coccbptr2 = ce.Pointer()
-            Coccbptr2.value = np.intp(Coccbptr)
+        xc_compute_parameters = CuestUtility.make_compute_parameters(
+            ce.CuestParametersType.CUEST_XCDERIVATIVERKSCOMPUTE_PARAMETERS,
+            [],
+            )
 
-            # => VV10 parameters <= #
-            nonlocal_xc_compute_parameters = CuestParameters(parametersType=ce.CuestParametersType.CUEST_NONLOCALXCDERIVATIVEUKSCOMPUTE_PARAMETERS)
+        # Allow the algorithm to use up to 2GB of DRAM
+        # NOTE: Production codes may wish to configure the maximum temporary
+        # workspace memory as a user parameter or heuristic
+        xcint_variable_buffer_descriptor = CuestWorkspaceDescriptor(
+            deviceBufferSizeInBytes=2000000000,
+            )
 
-            vv10_b = ce.data_double(xc_int_plan.vv10_b)
-            status = ce.cuestParametersConfigure(
-                parametersType=ce.CuestParametersType.CUEST_NONLOCALXCDERIVATIVEUKSCOMPUTE_PARAMETERS,
-                parameters=nonlocal_xc_compute_parameters.parameters,
-                attribute=ce.CuestNonlocalXCDerivativeUKSComputeParametersAttributes.CUEST_NONLOCALXCDERIVATIVEUKSCOMPUTE_PARAMETERS_VV10_B,
-                attributeValue=vv10_b,
-                )
+        # => Workspace query <= #
 
-            if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                raise RuntimeError('cuestParametersConfigure failed: %d' % status)
+        temporary_workspace_descriptor = CuestWorkspaceDescriptor()
 
-            vv10_C = ce.data_double(xc_int_plan.vv10_c)
-            status = ce.cuestParametersConfigure(
-                parametersType=ce.CuestParametersType.CUEST_NONLOCALXCDERIVATIVEUKSCOMPUTE_PARAMETERS,
-                parameters=nonlocal_xc_compute_parameters.parameters,
-                attribute=ce.CuestNonlocalXCDerivativeUKSComputeParametersAttributes.CUEST_NONLOCALXCDERIVATIVEUKSCOMPUTE_PARAMETERS_VV10_C,
-                attributeValue=vv10_C,
-                )
+        status = ce.cuestXCDerivativeRKSComputeWorkspaceQuery(
+            handle=handle.handle,
+            plan=xc_int_plan.xc_int_plan_handle,
+            parameters=xc_compute_parameters.parameters,
+            variableBufferSize=xcint_variable_buffer_descriptor.pointer,
+            temporaryWorkspaceDescriptor=temporary_workspace_descriptor.pointer,
+            numOccupied=nocc,
+            coefficientMatrix=Coccptr2,
+            outGradient=Gptr2,
+            )
 
-            if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                raise RuntimeError('cuestParametersConfigure failed: %d' % status)
+        if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
+            raise RuntimeError('cuestXCDerivativeRKSComputeWorkspaceQuery failed: %s' % status)
 
-            vv10_scale = ce.data_double(xc_int_plan.vv10_scale)
-            status = ce.cuestParametersConfigure(
-                parametersType=ce.CuestParametersType.CUEST_NONLOCALXCDERIVATIVEUKSCOMPUTE_PARAMETERS,
-                parameters=nonlocal_xc_compute_parameters.parameters,
-                attribute=ce.CuestNonlocalXCDerivativeUKSComputeParametersAttributes.CUEST_NONLOCALXCDERIVATIVEUKSCOMPUTE_PARAMETERS_VV10_SCALE,
-                attributeValue=vv10_scale,
-                )
+        temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
 
-            if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                raise RuntimeError('cuestParametersConfigure failed: %d' % status)
+        status = ce.cuestXCDerivativeRKSCompute(
+            handle=handle.handle,
+            plan=xc_int_plan.xc_int_plan_handle,
+            parameters=xc_compute_parameters.parameters,
+            variableBufferSize=xcint_variable_buffer_descriptor.pointer,
+            temporaryWorkspace=temporary_workspace.pointer,
+            numOccupied=nocc,
+            coefficientMatrix=Coccptr2,
+            outGradient=Gptr2,
+            )
 
-            # => Workspace query <= #
+        if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
+            raise RuntimeError('cuestXCDerivativeRKSCompute failed: %s' % status)
 
-            # Allow the algorithm to use up to 2GB of DRAM
-            # NOTE: Production codes may wish to configure the maximum temporary
-            # workspace memory as a user parameter or heuristic
-            xcint_variable_buffer_descriptor = CuestWorkspaceDescriptor(
-                deviceBufferSizeInBytes=2000000000,
-                )
+    @staticmethod
+    def local_exchange_correlation_uks_gradient(
+        *,
+        handle : CuestHandle,
+        xc_int_plan : CuestXCIntPlan,
+        Gptr,
+        nocc,
+        Coccptr,
+        noccb,
+        Coccbptr,
+        ):
 
-            temporary_workspace_descriptor = CuestWorkspaceDescriptor()
+        Coccptr2 = ce.Pointer()
+        Coccptr2.value = np.intp(Coccptr)
 
-            status = ce.cuestNonlocalXCDerivativeUKSComputeWorkspaceQuery(
-                handle=handle.handle,
-                plan=xc_int_plan.xc_int_plan_handle,
-                parameters=nonlocal_xc_compute_parameters.parameters,
-                variableBufferSize=xcint_variable_buffer_descriptor.pointer,
-                temporaryWorkspaceDescriptor=temporary_workspace_descriptor.pointer,
-                numOccupiedAlpha=nocc,
-                numOccupiedBeta=noccb,
-                coefficientMatrixAlpha=Coccptr2,
-                coefficientMatrixBeta=Coccbptr2,
-                outGradient=Gptr2,
-                )
+        Gptr2 = ce.Pointer()
+        Gptr2.value = np.intp(Gptr)
 
-            if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                raise RuntimeError('cuestNonlocalXCDerivativeUKSComputeWorkspaceQuery failed: %d' % status)
+        Coccbptr2 = ce.Pointer()
+        Coccbptr2.value = np.intp(Coccbptr)
 
-            temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
+        xc_compute_parameters = CuestUtility.make_compute_parameters(
+            ce.CuestParametersType.CUEST_XCDERIVATIVEUKSCOMPUTE_PARAMETERS,
+            [],
+            )
 
-            status = ce.cuestNonlocalXCDerivativeUKSCompute(
-                handle=handle.handle,
-                plan=xc_int_plan.xc_int_plan_handle,
-                parameters=nonlocal_xc_compute_parameters.parameters,
-                variableBufferSize=xcint_variable_buffer_descriptor.pointer,
-                temporaryWorkspace=temporary_workspace.pointer,
-                numOccupiedAlpha=nocc,
-                numOccupiedBeta=noccb,
-                coefficientMatrixAlpha=Coccptr2,
-                coefficientMatrixBeta=Coccbptr2,
-                outGradient=Gptr2,
-                )
+        # Allow the algorithm to use up to 2GB of DRAM
+        # NOTE: Production codes may wish to configure the maximum temporary
+        # workspace memory as a user parameter or heuristic
+        xcint_variable_buffer_descriptor = CuestWorkspaceDescriptor(
+            deviceBufferSizeInBytes=2000000000,
+            )
 
-            if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                raise RuntimeError('cuestNonlocalXCDerivativeUKSCompute failed: %d' % status)
-            del nonlocal_xc_compute_parameters
+        # => Workspace query <= #
 
-        else:
-            # => VV10 parameters <= #
-            nonlocal_xc_compute_parameters = CuestParameters(parametersType=ce.CuestParametersType.CUEST_NONLOCALXCDERIVATIVERKSCOMPUTE_PARAMETERS)
+        temporary_workspace_descriptor = CuestWorkspaceDescriptor()
 
-            vv10_b = ce.data_double(xc_int_plan.vv10_b)
-            status = ce.cuestParametersConfigure(
-                parametersType=ce.CuestParametersType.CUEST_NONLOCALXCDERIVATIVERKSCOMPUTE_PARAMETERS,
-                parameters=nonlocal_xc_compute_parameters.parameters,
-                attribute=ce.CuestNonlocalXCDerivativeRKSComputeParametersAttributes.CUEST_NONLOCALXCDERIVATIVERKSCOMPUTE_PARAMETERS_VV10_B,
-                attributeValue=vv10_b,
-                )
+        status = ce.cuestXCDerivativeUKSComputeWorkspaceQuery(
+            handle=handle.handle,
+            plan=xc_int_plan.xc_int_plan_handle,
+            parameters=xc_compute_parameters.parameters,
+            variableBufferSize=xcint_variable_buffer_descriptor.pointer,
+            temporaryWorkspaceDescriptor=temporary_workspace_descriptor.pointer,
+            numOccupiedAlpha=nocc,
+            numOccupiedBeta=noccb,
+            coefficientMatrixAlpha=Coccptr2,
+            coefficientMatrixBeta=Coccbptr2,
+            outGradient=Gptr2,
+            )
 
-            if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                raise RuntimeError('cuestParametersConfigure failed: %d' % status)
+        if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
+            raise RuntimeError('cuestXCDerivativeUKSComputeWorkspaceQuery failed: %s' % status)
 
-            vv10_C = ce.data_double(xc_int_plan.vv10_c)
-            status = ce.cuestParametersConfigure(
-                parametersType=ce.CuestParametersType.CUEST_NONLOCALXCDERIVATIVERKSCOMPUTE_PARAMETERS,
-                parameters=nonlocal_xc_compute_parameters.parameters,
-                attribute=ce.CuestNonlocalXCDerivativeRKSComputeParametersAttributes.CUEST_NONLOCALXCDERIVATIVERKSCOMPUTE_PARAMETERS_VV10_C,
-                attributeValue=vv10_C,
-                )
+        temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
 
-            if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                raise RuntimeError('cuestParametersConfigure failed: %d' % status)
+        status = ce.cuestXCDerivativeUKSCompute(
+            handle=handle.handle,
+            plan=xc_int_plan.xc_int_plan_handle,
+            parameters=xc_compute_parameters.parameters,
+            variableBufferSize=xcint_variable_buffer_descriptor.pointer,
+            temporaryWorkspace=temporary_workspace.pointer,
+            numOccupiedAlpha=nocc,
+            numOccupiedBeta=noccb,
+            coefficientMatrixAlpha=Coccptr2,
+            coefficientMatrixBeta=Coccbptr2,
+            outGradient=Gptr2,
+            )
 
-            vv10_scale = ce.data_double(xc_int_plan.vv10_scale)
-            status = ce.cuestParametersConfigure(
-                parametersType=ce.CuestParametersType.CUEST_NONLOCALXCDERIVATIVERKSCOMPUTE_PARAMETERS,
-                parameters=nonlocal_xc_compute_parameters.parameters,
-                attribute=ce.CuestNonlocalXCDerivativeRKSComputeParametersAttributes.CUEST_NONLOCALXCDERIVATIVERKSCOMPUTE_PARAMETERS_VV10_SCALE,
-                attributeValue=vv10_scale,
-                )
+        if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
+            raise RuntimeError('cuestXCDerivativeUKSCompute failed: %s' % status)
 
-            if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                raise RuntimeError('cuestParametersConfigure failed: %d' % status)
+    @staticmethod
+    def nonlocal_exchange_correlation_rks_gradient(
+        *,
+        handle : CuestHandle,
+        xc_int_plan : CuestXCIntPlan,
+        Gptr,
+        nocc,
+        Coccptr,
+        ):
 
-            # => Workspace query <= #
+        Coccptr2 = ce.Pointer()
+        Coccptr2.value = np.intp(Coccptr)
 
-            # Allow the algorithm to use up to 2GB of DRAM
-            # NOTE: Production codes may wish to configure the maximum temporary
-            # workspace memory as a user parameter or heuristic
-            xcint_variable_buffer_descriptor = CuestWorkspaceDescriptor(
-                deviceBufferSizeInBytes=2000000000,
-                )
+        Gptr2 = ce.Pointer()
+        Gptr2.value = np.intp(Gptr)
 
-            temporary_workspace_descriptor = CuestWorkspaceDescriptor()
+        nonlocal_xc_compute_parameters = CuestUtility.make_compute_parameters(
+            ce.CuestParametersType.CUEST_NONLOCALXCDERIVATIVERKSCOMPUTE_PARAMETERS,
+            [(ce.CuestNonlocalXCDerivativeRKSComputeParametersAttributes.CUEST_NONLOCALXCDERIVATIVERKSCOMPUTE_PARAMETERS_VV10_B,
+              ce.data_double(xc_int_plan.vv10_b)),
+             (ce.CuestNonlocalXCDerivativeRKSComputeParametersAttributes.CUEST_NONLOCALXCDERIVATIVERKSCOMPUTE_PARAMETERS_VV10_C,
+              ce.data_double(xc_int_plan.vv10_c)),
+             (ce.CuestNonlocalXCDerivativeRKSComputeParametersAttributes.CUEST_NONLOCALXCDERIVATIVERKSCOMPUTE_PARAMETERS_VV10_SCALE,
+              ce.data_double(xc_int_plan.vv10_scale))],
+            )
 
-            status = ce.cuestNonlocalXCDerivativeRKSComputeWorkspaceQuery(
-                handle=handle.handle,
-                plan=xc_int_plan.xc_int_plan_handle,
-                parameters=nonlocal_xc_compute_parameters.parameters,
-                variableBufferSize=xcint_variable_buffer_descriptor.pointer,
-                temporaryWorkspaceDescriptor=temporary_workspace_descriptor.pointer,
-                numOccupied=nocc,
-                coefficientMatrix=Coccptr2,
-                outGradient=Gptr2,
-                )
+        # Allow the algorithm to use up to 2GB of DRAM
+        # NOTE: Production codes may wish to configure the maximum temporary
+        # workspace memory as a user parameter or heuristic
+        xcint_variable_buffer_descriptor = CuestWorkspaceDescriptor(
+            deviceBufferSizeInBytes=2000000000,
+            )
 
-            if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                raise RuntimeError('cuestNonlocalXCDerivativeRKSComputeWorkspaceQuery failed: %d' % status)
+        # => Workspace query <= #
 
-            temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
+        temporary_workspace_descriptor = CuestWorkspaceDescriptor()
 
-            status = ce.cuestNonlocalXCDerivativeRKSCompute(
-                handle=handle.handle,
-                plan=xc_int_plan.xc_int_plan_handle,
-                parameters=nonlocal_xc_compute_parameters.parameters,
-                variableBufferSize=xcint_variable_buffer_descriptor.pointer,
-                temporaryWorkspace=temporary_workspace.pointer,
-                numOccupied=nocc,
-                coefficientMatrix=Coccptr2,
-                outGradient=Gptr2,
-                )
+        status = ce.cuestNonlocalXCDerivativeRKSComputeWorkspaceQuery(
+            handle=handle.handle,
+            plan=xc_int_plan.xc_int_plan_handle,
+            parameters=nonlocal_xc_compute_parameters.parameters,
+            variableBufferSize=xcint_variable_buffer_descriptor.pointer,
+            temporaryWorkspaceDescriptor=temporary_workspace_descriptor.pointer,
+            numOccupied=nocc,
+            coefficientMatrix=Coccptr2,
+            outGradient=Gptr2,
+            )
 
-            if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                raise RuntimeError('cuestNonlocalXCDerivativeRKSCompute failed: %d' % status)
-            del nonlocal_xc_compute_parameters
+        if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
+            raise RuntimeError('cuestNonlocalXCDerivativeRKSComputeWorkspaceQuery failed: %s' % status)
+
+        temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
+
+        status = ce.cuestNonlocalXCDerivativeRKSCompute(
+            handle=handle.handle,
+            plan=xc_int_plan.xc_int_plan_handle,
+            parameters=nonlocal_xc_compute_parameters.parameters,
+            variableBufferSize=xcint_variable_buffer_descriptor.pointer,
+            temporaryWorkspace=temporary_workspace.pointer,
+            numOccupied=nocc,
+            coefficientMatrix=Coccptr2,
+            outGradient=Gptr2,
+            )
+
+        if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
+            raise RuntimeError('cuestNonlocalXCDerivativeRKSCompute failed: %s' % status)
+
+    @staticmethod
+    def nonlocal_exchange_correlation_uks_gradient(
+        *,
+        handle : CuestHandle,
+        xc_int_plan : CuestXCIntPlan,
+        Gptr,
+        nocc,
+        Coccptr,
+        noccb,
+        Coccbptr,
+        ):
+
+        Coccptr2 = ce.Pointer()
+        Coccptr2.value = np.intp(Coccptr)
+
+        Gptr2 = ce.Pointer()
+        Gptr2.value = np.intp(Gptr)
+
+        Coccbptr2 = ce.Pointer()
+        Coccbptr2.value = np.intp(Coccbptr)
+
+        nonlocal_xc_compute_parameters = CuestUtility.make_compute_parameters(
+            ce.CuestParametersType.CUEST_NONLOCALXCDERIVATIVEUKSCOMPUTE_PARAMETERS,
+            [(ce.CuestNonlocalXCDerivativeUKSComputeParametersAttributes.CUEST_NONLOCALXCDERIVATIVEUKSCOMPUTE_PARAMETERS_VV10_B,
+              ce.data_double(xc_int_plan.vv10_b)),
+             (ce.CuestNonlocalXCDerivativeUKSComputeParametersAttributes.CUEST_NONLOCALXCDERIVATIVEUKSCOMPUTE_PARAMETERS_VV10_C,
+              ce.data_double(xc_int_plan.vv10_c)),
+             (ce.CuestNonlocalXCDerivativeUKSComputeParametersAttributes.CUEST_NONLOCALXCDERIVATIVEUKSCOMPUTE_PARAMETERS_VV10_SCALE,
+              ce.data_double(xc_int_plan.vv10_scale))],
+            )
+
+        # Allow the algorithm to use up to 2GB of DRAM
+        # NOTE: Production codes may wish to configure the maximum temporary
+        # workspace memory as a user parameter or heuristic
+        xcint_variable_buffer_descriptor = CuestWorkspaceDescriptor(
+            deviceBufferSizeInBytes=2000000000,
+            )
+
+        # => Workspace query <= #
+
+        temporary_workspace_descriptor = CuestWorkspaceDescriptor()
+
+        status = ce.cuestNonlocalXCDerivativeUKSComputeWorkspaceQuery(
+            handle=handle.handle,
+            plan=xc_int_plan.xc_int_plan_handle,
+            parameters=nonlocal_xc_compute_parameters.parameters,
+            variableBufferSize=xcint_variable_buffer_descriptor.pointer,
+            temporaryWorkspaceDescriptor=temporary_workspace_descriptor.pointer,
+            numOccupiedAlpha=nocc,
+            numOccupiedBeta=noccb,
+            coefficientMatrixAlpha=Coccptr2,
+            coefficientMatrixBeta=Coccbptr2,
+            outGradient=Gptr2,
+            )
+
+        if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
+            raise RuntimeError('cuestNonlocalXCDerivativeUKSComputeWorkspaceQuery failed: %s' % status)
+
+        temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
+
+        status = ce.cuestNonlocalXCDerivativeUKSCompute(
+            handle=handle.handle,
+            plan=xc_int_plan.xc_int_plan_handle,
+            parameters=nonlocal_xc_compute_parameters.parameters,
+            variableBufferSize=xcint_variable_buffer_descriptor.pointer,
+            temporaryWorkspace=temporary_workspace.pointer,
+            numOccupiedAlpha=nocc,
+            numOccupiedBeta=noccb,
+            coefficientMatrixAlpha=Coccptr2,
+            coefficientMatrixBeta=Coccbptr2,
+            outGradient=Gptr2,
+            )
+
+        if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
+            raise RuntimeError('cuestNonlocalXCDerivativeUKSCompute failed: %s' % status)

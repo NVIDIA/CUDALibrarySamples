@@ -79,12 +79,21 @@ run_pytest "blyp_grad_grids_1"    test/blyp_grad_grids_1
 run_pytest "dft_energies"         test/dft_energies
 run_pytest "ecp_1"                test/ecp_1
 run_pytest "mp2_1"                test/mp2_1
+run_pytest "mp2_grad_1"           test/mp2_grad_1
+run_pytest "rhf_directjk_1"       test/rhf_directjk_1
+run_pytest "uhf_directjk_1"       test/uhf_directjk_1
+run_pytest "rhf_directjgridk_1"   test/rhf_directjgridk_1
+run_pytest "uhf_directjgridk_1"   test/uhf_directjgridk_1
+run_pytest "directj_bilinear_grad_1" test/directj_bilinear_grad_1
+run_pytest "directk_bilinear_grad_1" test/directk_bilinear_grad_1
 
 # Standalone examples
-run_script "rhf-1 example"   examples/rhf-1/test.py
-run_script "uhf-1 example"   examples/uhf-1/test.py
-run_script "mp2-1 example"   examples/mp2-1/test.py
-run_script "cphf-1 example"  examples/cphf-1/test.py
+run_script "rhf-1 example"      examples/rhf-1/test.py
+run_script "uhf-1 example"      examples/uhf-1/test.py
+run_script "mp2-1 example"      examples/mp2-1/test.py
+run_script "mp2-grad-1 example" examples/mp2-grad-1/test.py
+run_script "cphf-1 example"     examples/cphf-1/test.py
+run_script "rhf-hessian-1 example" examples/rhf-hessian-1/test.py
 
 echo "============================================================"
 echo " Results: $PASS passed, $FAIL failed"

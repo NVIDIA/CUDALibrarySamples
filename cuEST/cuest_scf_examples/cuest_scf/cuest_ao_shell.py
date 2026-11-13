@@ -52,7 +52,7 @@ class CuestAOShell(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestAOShellCreate failed')
+            raise RuntimeError('cuestAOShellCreate failed: %s' % status)
 
         self.initialized = True
         
@@ -65,7 +65,7 @@ class CuestAOShell(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestAOShellDestroy failed')
+            raise RuntimeError('cuestAOShellDestroy failed: %s' % status)
 
     # NOTE: Production codes may want to provide parameter queries here to
     # inspect the contents of the AOShell object

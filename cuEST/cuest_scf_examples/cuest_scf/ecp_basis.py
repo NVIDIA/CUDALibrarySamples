@@ -46,10 +46,10 @@ class ECPBasis(object):
     @property
     def string(self):
         s = ''
-        s += 'ECPBasis:\n'
-        s += '%-10s = %6d\n' % ('natom', self.natom)
-        s += '%-10s = %6d\n' % ('ecp_natom', sum(atom.is_active for atom in self.atoms))
-        s += '%-10s = %6d\n' % ('nelectron', self.nelectron)
+        s += 'ECPBasis:\n\n'
+        s += '%-19s = %11d\n' % ('natom', self.natom)
+        s += '%-19s = %11d\n' % ('ecp_natom', sum(atom.is_active for atom in self.atoms))
+        s += '%-19s = %11d\n' % ('nelectron', self.nelectron)
         return s
 
     # => GBS File ECPBasis Parsing <= #

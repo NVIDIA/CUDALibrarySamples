@@ -21,31 +21,33 @@ from .molecule import Molecule
 from .ao_basis import AOBasis
 from .ecp_basis import ECPBasis
 from .sad_guess import SADGuess
-from .diis import DIIS
+from .diis import DIIS, DIISCPU
 from .xc_functionals import XCFunctionalInfo
-
-from .cuda_utility import CudaUtility
 
 from .cuest_handle import CuestHandle
 from .cuest_ao_basis import CuestAOBasis
+from .cuest_ecp_basis import CuestECPBasis
 from .cuest_molecular_grid import CuestMolecularGrid
 from .cuest_ao_pair_list import CuestAOPairList
 from .cuest_oe_int_plan import CuestOEIntPlan
 from .cuest_oe_int_compute import CuestOEIntCompute
 from .cuest_df_int_plan import CuestDFIntPlan
 from .cuest_df_int_compute import CuestDFIntCompute
+from .cuest_gridk_int_plan import CuestGridKIntPlan
+from .cuest_gridk_int_compute import CuestGridKIntCompute
+from .cuest_direct_int_plan import CuestDirectIntPlan
+from .cuest_direct_int_compute import CuestDirectIntCompute
 from .cuest_xc_int_plan import CuestXCIntPlan
 from .cuest_xc_int_compute import CuestXCIntCompute
 from .cuest_pcm_int_plan import CuestPCMIntPlan
 from .cuest_pcm_int_compute import CuestPCMIntCompute
-from .cuest_ecp_basis import CuestECPBasis
 from .cuest_ecp_int_plan import CuestECPIntPlan
 from .cuest_ecp_int_compute import CuestECPIntCompute
 
-from .timer import Timer
-
 from .gpu_matrix import GPUMatrix
 from .gpu_matrix_utility import GPUMatrixUtility
+
+from .timer import Timer
 
 import time
 
@@ -57,7 +59,7 @@ class UHF(object):
         cuest_handle : CuestHandle,
         molecule : Molecule,
         charge : int,
-        multiplicity: int,
+        multiplicity : int,
         xc_functional_name : str = None,
         primary : AOBasis,
         auxiliary : AOBasis,
@@ -66,13 +68,26 @@ class UHF(object):
         primary_name : str = None,
         auxiliary_name : str = None,
         minao_name : str = None,
+        ecp_basis_name : str = None,
         print_level : int = 2,
         print_timings : bool = True,
         threshold_pq : float = 1.0E-12,
         threshold_canonical : float = 1.0E-6,
         df_fitting_eigenvalue_cutoff : float = 1.0e-12,
+        df_integral_direct : bool = False,
+        fock_method : str = "dfjk",
+        directjk_schwarz_threshold : float = 1.0e-13,
+        incremental_fock : bool = False,
+        incremental_fock_rebuild : int = 8,
+        gridk_threshold_collocation : float = 1.0e-18,
+        gridk_grid_level : int | tuple[int, int] = 2,
+        gridk_grid_family : str = "GRID",
+        gridk_fitting_algorithm : str = "none",
+        gridk_fitting_orthogonalization_cutoff : float = 1.0e-6,
+        gridk_fitting_cutoff : float = 1.0e-2,
+        gridk_sad_reference : bool = False,
         diis_max_nvector : int = 6,
-        diis_flush_niter : int = 40,
+        cpu_diis : bool = False,
         maxiter : int = 100,
         g_convergence : float = 1.0E-6,
         xc_threshold_collocation : float = 1.0e-18,
@@ -85,19 +100,20 @@ class UHF(object):
         dfk_int8_modulus_count_start : int = 5,
         dfk_int8_slice_count_end : int = 6,
         dfk_int8_modulus_count_end : int = 9,
-        pcm_epsilon: float = 1.0, # 1.0 for gas phase, >1.0 for solvated calc.
-        pcm_x_prefactor: float = 0.0, # 0.0 for CPCM, 0.5 for COSMO
-        pcm_cutoff: float = 1.0e-10,
-        pcm_convergence_tol: float = 1e-10,
-        pcm_num_angular_points_per_hydrogen_atom: int = 110,
-        pcm_num_angular_points_per_heavy_atom: int = 194,
-        benchmark: bool = False,
-        ): 
+        pcm_epsilon : float = 1.0, # 1.0 for gas phase, >1.0 for solvated calc.
+        pcm_x_prefactor : float = 0.0, # 0.0 for CPCM, 0.5 for COSMO
+        pcm_cutoff : float = 1.0e-10,
+        pcm_convergence_tol : float = 1e-10,
+        pcm_num_angular_points_per_hydrogen_atom : int = 110,
+        pcm_num_angular_points_per_heavy_atom : int = 194,
+        pcm_atomic_radii_scale : float = 1.2,
+        benchmark : bool = False,
+        level_shift_a : float = 0.0,
+        level_shift_b : float = 0.0,
+        ):
 
-        self.uhf = True 
-        self.benchmark=benchmark
-
-        self.timer = Timer()
+        self.uhf = True
+        self.rhf = False
 
         self.cuest_handle = cuest_handle
 
@@ -115,6 +131,7 @@ class UHF(object):
         self.primary_name = primary_name
         self.auxiliary_name = auxiliary_name
         self.minao_name = minao_name
+        self.ecp_basis_name = ecp_basis_name
 
         self.xc_threshold_collocation = xc_threshold_collocation
         self.xc_grid_level = xc_grid_level
@@ -129,11 +146,70 @@ class UHF(object):
 
         self.threshold_pq = threshold_pq
         self.threshold_canonical = threshold_canonical
+        self.df_fitting_eigenvalue_cutoff = df_fitting_eigenvalue_cutoff
+        self.df_integral_direct = df_integral_direct
+
+        # Fock build method: "dfjk" (DF-J/DF-K), "dfjgridk" (DF-J/Grid-K),
+        # "directjk" (direct 4-center J/K), "directjgridk" (direct-J/Grid-K)
+        self.fock_method = fock_method.lower()
+        supported_fock_methods = ["dfjk", "dfjgridk", "directjk", "directjgridk"]
+        if self.fock_method not in supported_fock_methods:
+            raise RuntimeError(
+                f"Unrecognized fock_method '{fock_method}'. "
+                f"Supported values are {', '.join(supported_fock_methods)}"
+                )
+        # Orthogonal J-side / K-side selectors
+        self.do_gridk = self.fock_method in ("dfjgridk", "directjgridk")
+        self.do_directjk = self.fock_method == "directjk"
+        self.do_directj = self.fock_method in ("directjk", "directjgridk")
+
+        self.directjk_schwarz_threshold = directjk_schwarz_threshold
+
+        # Incremental (delta-density) Fock: after the first full J/K build,
+        # later iterations contract only the spin-density deltas and
+        # accumulate into the previous J/Ka/Kb (exact by linearity, up to
+        # Schwarz screening -- which then acts on the shrinking deltas).
+        # directjk only (the DF-K and grid-K engines contract Cocc, which
+        # cannot be differenced), OFF by default (opt in with
+        # incremental_fock=True).  Screening error accumulates across delta
+        # builds, so every incremental_fock_rebuild-th build is a FULL
+        # rebuild from the densities: one full build followed by
+        # incremental_fock_rebuild - 1 delta builds (1 = rebuild every
+        # iteration, 0 = never rebuild; negative values are rejected, they
+        # would read as never-rebuild), which bounds the accumulated error.
+        if incremental_fock and not self.do_directjk:
+            raise ValueError(
+                'incremental_fock requires fock_method="directjk" (the '
+                'DF/grid exchange engines contract Cocc, not a density '
+                'that can be differenced)')
+        self.do_incremental_fock = incremental_fock
+        self.incremental_fock_rebuild = int(incremental_fock_rebuild)
+        if self.incremental_fock_rebuild < 0:
+            raise ValueError(
+                'incremental_fock_rebuild must be >= 0 (0 = never rebuild, '
+                'n = a full rebuild every n-th build), got %d'
+                % self.incremental_fock_rebuild)
+
+        self.gridk_threshold_collocation = gridk_threshold_collocation
+        self.gridk_grid_level = gridk_grid_level
+        self.gridk_grid_family = gridk_grid_family
+        self.gridk_fitting_algorithm = gridk_fitting_algorithm
+        self.gridk_fitting_orthogonalization_cutoff = gridk_fitting_orthogonalization_cutoff
+        self.gridk_fitting_cutoff = gridk_fitting_cutoff
+
+        # SAD-reference exchange split: per spin K(D) = K_direct(D_sad) +
+        # K_gridk(D - D_sad) with the expansion-consistent energy (see
+        # compute_gridk_sad_reference); only active for the grid-K fock methods
+        self.do_gridk_sad_reference = self.do_gridk and gridk_sad_reference
+        # Per-spin reference data (D_ref = D_sad, K_ref = K_direct(D_ref),
+        # K_ref . D_ref), populated by compute_gridk_sad_reference before the
+        # SCF iterations
+        self.gridk_sad_reference_data = None
+
         self.diis_max_nvector = diis_max_nvector
-        self.diis_flush_niter = diis_flush_niter
+        self.cpu_diis = cpu_diis
         self.maxiter = maxiter
         self.g_convergence = g_convergence
-        self.df_fitting_eigenvalue_cutoff = df_fitting_eigenvalue_cutoff
 
         self.pcm_num_angular_points_per_heavy_atom = pcm_num_angular_points_per_heavy_atom
         self.pcm_num_angular_points_per_hydrogen_atom = pcm_num_angular_points_per_hydrogen_atom
@@ -141,18 +217,23 @@ class UHF(object):
         self.pcm_x_prefactor = pcm_x_prefactor
         self.pcm_cutoff = pcm_cutoff
         self.pcm_convergence_tol = pcm_convergence_tol
+        self.pcm_atomic_radii_scale = pcm_atomic_radii_scale
         self.pcm_q = None
-
-        # pcm_epsilon == 1.0 is the gas-phase default (PCM off); only sub-vacuum
-        # dielectrics are unphysical and rejected.
-        if self.pcm_epsilon < 1.0:
-            raise RuntimeError('pcm_epsilon < 1.0')
+        self.benchmark = benchmark
+        self.level_shift_a = level_shift_a
+        self.level_shift_b = level_shift_b
 
         self.dfk_int8_slice_count_start = dfk_int8_slice_count_start
         self.dfk_int8_modulus_count_start = dfk_int8_modulus_count_start
         self.dfk_int8_slice_count_end = dfk_int8_slice_count_end
         self.dfk_int8_modulus_count_end = dfk_int8_modulus_count_end
 
+        # See if we're activating PCM
+        self.do_pcm = self.pcm_epsilon != 1.0
+        if self.pcm_epsilon < 1.0:
+            raise RuntimeError('pcm_epsilon < 1.0')
+
+        # See if we have ECPs
         self.do_ecp = False
         if self.ecp_basis is not None:
             self.do_ecp = self.ecp_basis.is_active
@@ -167,25 +248,37 @@ class UHF(object):
         self.scalars = {}
         self.tensors = {}
 
+        self.timer = Timer(detailed=self.print_timings or self.benchmark)
+
         self.is_solved = False
         self.is_converged = False
 
         self.gpu_xyz = GPUMatrix.from_numpy(self.molecule.xyz)
-        self.Zeff = -1.0 * np.array(self.molecule.Z.reshape(-1,1))
+
+        # Store the effective Z if ECPs are present real Z otherwise
+        self.gpu_Z = GPUMatrix.from_numpy(self.molecule.Z.reshape(-1, 1).astype(np.float64))
+        GPUMatrixUtility.dscal(
+            alpha=-1.0,
+            x=self.gpu_Z,
+            )
         if self.do_ecp:
-            for idx, atom in enumerate(self.ecp_basis.atoms):
-                self.Zeff[idx] = self.Zeff[idx] + atom.nelectron
-        self.gpu_Z = GPUMatrix.from_numpy(self.Zeff)
+            nelectron = np.array([atom.nelectron for atom in self.ecp_basis.atoms], dtype=np.float64).reshape(-1, 1)
+            GPUMatrixUtility.daxpy(
+                alpha=1.0,
+                x=GPUMatrix.from_numpy(nelectron),
+                y=self.gpu_Z,
+                )
+        self.Zeff = self.gpu_Z.to_numpy()
 
     # => Cuest Objects <= #
 
     @memoized_property
     def cuest_primary(self):
         return CuestAOBasis(
-            handle=self.cuest_handle, 
+            handle=self.cuest_handle,
             basis=self.primary,
             )
-    
+
     @memoized_property
     def cuest_auxiliary(self):
         return CuestAOBasis(
@@ -204,39 +297,25 @@ class UHF(object):
             return None
 
     @memoized_property
-    def cuest_ecp_int_plan(self):
-        if self.do_ecp:
-            return CuestECPIntPlan(
-                handle=self.cuest_handle,
-                basis=self.cuest_primary,
-                xyzs=self.molecule.xyz,
-                numECPAtoms=self.cuest_ecp_basis.num_active_ecp,
-                activeIndices=self.cuest_ecp_basis.ecp_indices,
-                activeAtoms=self.cuest_ecp_basis.ecp_atoms,
-                )
-        else:
-            return None
-
-    @memoized_property
     def cuest_xc_grid(self):
         return CuestMolecularGrid(
-            handle=self.cuest_handle, 
+            handle=self.cuest_handle,
             grid_level=self.xc_grid_level,
             xyz=self.molecule.xyz,
             Ns=self.molecule.N,
             family=self.xc_grid_family,
             )
-    
+
     @memoized_property
     def cuest_nlc_grid(self):
         return CuestMolecularGrid(
-            handle=self.cuest_handle, 
+            handle=self.cuest_handle,
             grid_level=self.nlc_grid_level,
             xyz=self.molecule.xyz,
             Ns=self.molecule.N,
             family=self.nlc_grid_family,
             )
-    
+
     @memoized_property
     def cuest_ao_pair_list(self):
         return CuestAOPairList(
@@ -252,10 +331,13 @@ class UHF(object):
             handle=self.cuest_handle,
             basis=self.cuest_primary,
             ao_pair_list=self.cuest_ao_pair_list,
-            ) 
+            )
 
     @memoized_property
     def cuest_df_int_plan(self):
+        # No DF plan is needed in the direct-J modes
+        if self.do_directj:
+            return None
         return CuestDFIntPlan(
             handle=self.cuest_handle,
             primary=self.cuest_primary,
@@ -265,6 +347,53 @@ class UHF(object):
             lrc_exchange_scale=self.cuest_xc_int_plan.lrc_exchange_scale,
             lrc_omega=self.cuest_xc_int_plan.lrc_omega,
             df_fitting_eigenvalue_cutoff=self.df_fitting_eigenvalue_cutoff,
+            # Grid-K uses the DF plan only for J, which requires integral direct
+            integral_direct=self.df_integral_direct or self.do_gridk,
+            )
+
+    @memoized_property
+    def cuest_gridk_grid(self):
+        if not self.do_gridk:
+            return None
+        return CuestMolecularGrid(
+            handle=self.cuest_handle,
+            grid_level=self.gridk_grid_level,
+            xyz=self.molecule.xyz,
+            Ns=self.molecule.N,
+            family=self.gridk_grid_family,
+            )
+
+    @memoized_property
+    def cuest_gridk_int_plan(self):
+        if not self.do_gridk:
+            return None
+        return CuestGridKIntPlan(
+            handle=self.cuest_handle,
+            grid=self.cuest_gridk_grid,
+            exchange_scale=self.cuest_xc_int_plan.exchange_scale,
+            lrc_exchange_scale=self.cuest_xc_int_plan.lrc_exchange_scale,
+            lrc_omega=self.cuest_xc_int_plan.lrc_omega,
+            threshold_collocation=self.gridk_threshold_collocation,
+            fitting_algorithm=self.gridk_fitting_algorithm,
+            fitting_orthogonalization_cutoff=self.gridk_fitting_orthogonalization_cutoff,
+            fitting_cutoff=self.gridk_fitting_cutoff,
+            oe_int_plan=self.cuest_oe_int_plan,
+            )
+
+    @memoized_property
+    def cuest_direct_int_plan(self):
+        # Built for both direct-J modes ("directjk" J and K, "directjgridk" J
+        # only) and for the SAD-reference exchange
+        if not (self.do_directj or (self.do_gridk_sad_reference and self.do_exchange)):
+            return None
+        return CuestDirectIntPlan(
+            handle=self.cuest_handle,
+            primary=self.cuest_primary,
+            ao_pair_list=self.cuest_ao_pair_list,
+            exchange_scale=self.cuest_xc_int_plan.exchange_scale,
+            lrc_exchange_scale=self.cuest_xc_int_plan.lrc_exchange_scale,
+            lrc_omega=self.cuest_xc_int_plan.lrc_omega,
+            schwarz_threshold=self.directjk_schwarz_threshold,
             )
 
     @memoized_property
@@ -275,7 +404,7 @@ class UHF(object):
             grid=self.cuest_xc_grid,
             functional=self.xc_functional,
             xc_threshold_collocation=self.xc_threshold_collocation,
-            ) 
+            )
 
     @memoized_property
     def cuest_nlc_int_plan(self):
@@ -285,13 +414,13 @@ class UHF(object):
             grid=self.cuest_nlc_grid,
             functional=self.xc_functional,
             xc_threshold_collocation=self.nlc_threshold_collocation,
-            ) 
+            name='Nonlocal XCIntPlan',
+            print_functional=False,
+            )
 
     @memoized_property
     def cuest_pcm_int_plan(self):
-        if self.pcm_epsilon<=1.0:
-            return None
-        else:
+        if self.do_pcm:
             return CuestPCMIntPlan(
                 handle=self.cuest_handle,
                 intPlan=self.cuest_oe_int_plan,
@@ -303,12 +432,29 @@ class UHF(object):
                 effective_nuclear_charges=-1.0 * self.Zeff,
                 cutoff=self.pcm_cutoff,
                 convergence_tol=self.pcm_convergence_tol,
-                ) 
+                atomic_radii_scale=self.pcm_atomic_radii_scale,
+                )
+        else:
+            return None
+
+
+    @memoized_property
+    def cuest_ecp_int_plan(self):
+        if self.do_ecp:
+            return CuestECPIntPlan(
+                handle=self.cuest_handle,
+                basis=self.cuest_primary,
+                xyzs=self.molecule.xyz,
+                numECPAtoms=self.cuest_ecp_basis.num_active_ecp,
+                activeIndices=self.cuest_ecp_basis.ecp_indices,
+                activeAtoms=self.cuest_ecp_basis.ecp_atoms,
+                )
+        else:
+            return None
 
     @property
-    def do_pcm(self):
-        return self.cuest_pcm_int_plan is not None
-
+    def do_exchange(self):
+        return self.cuest_xc_int_plan.exchange_scale != 0.0 or self.cuest_xc_int_plan.lrc_exchange_scale != 0.0
 
     # => Integrals <= #
 
@@ -327,7 +473,7 @@ class UHF(object):
             )
 
         return S
-    
+
     def compute_kinetic(self):
 
         T = GPUMatrix(
@@ -342,7 +488,7 @@ class UHF(object):
             )
 
         return T
-    
+
     def compute_potential(self):
 
         xyz = self.gpu_xyz
@@ -365,6 +511,32 @@ class UHF(object):
 
         return V
 
+    def compute_dipole(self):
+
+        origin = [0.0,0.0,0.0]
+        orders = [0,0,0]
+
+        M = []
+        for n in range(3):
+            Mtemp = GPUMatrix(
+                nrows=self.primary.nao,
+                ncols=self.primary.nao,
+                )
+
+            orders[n] = 1
+            CuestOEIntCompute.multipole(
+                handle=self.cuest_handle,
+                oe_int_plan=self.cuest_oe_int_plan,
+                multipoleOrder=orders,
+                origin=origin,
+                Mptr=Mtemp.pointer,
+                )
+            orders[n] = 0
+
+            M.append(Mtemp)
+
+        return M
+
     def compute_ecp_potential(self):
 
         Vecp = GPUMatrix(
@@ -373,33 +545,13 @@ class UHF(object):
             dtype=np.double,
             )
 
-        CuestECPIntCompute.compute_ecp_potential(
+        CuestECPIntCompute.potential(
             handle=self.cuest_handle,
             ecp_int_plan=self.cuest_ecp_int_plan,
             Vptr=Vecp.pointer,
             )
 
         return Vecp
-
-    def compute_ecp_gradient(
-        self,
-        D,
-        ):
-
-        Gecp = GPUMatrix(
-            nrows=self.primary.natom,
-            ncols=3,
-            dtype=np.double,
-            )
-
-        CuestECPIntCompute.compute_ecp_gradient(
-            handle=self.cuest_handle,
-            ecp_int_plan=self.cuest_ecp_int_plan,
-            Dptr=D.pointer,
-            Gptr=Gecp.pointer,
-            )
-
-        return Gecp
 
     def compute_coulomb(
         self,
@@ -408,43 +560,309 @@ class UHF(object):
 
         J = D.clone()
 
-        CuestDFIntCompute.coulomb(
-            handle=self.cuest_handle,
-            df_int_plan=self.cuest_df_int_plan,
-            Jptr=J.pointer,
-            Dptr=D.pointer,
-            )
+        if self.do_directj:
+            CuestDirectIntCompute.coulomb(
+                handle=self.cuest_handle,
+                direct_int_plan=self.cuest_direct_int_plan,
+                Dptr=D.pointer,
+                Jptr=J.pointer,
+                schwarz_threshold=self.directjk_schwarz_threshold,
+                num_density_matrices=1,
+                )
+        else:
+            CuestDFIntCompute.coulomb(
+                handle=self.cuest_handle,
+                df_int_plan=self.cuest_df_int_plan,
+                Jptr=J.pointer,
+                Dptr=D.pointer,
+                )
 
         return J
-    
+
     def compute_exchange(
-        self,   
-        Cocc,
-        dfk_int8_slice_count,
-        dfk_int8_modulus_count,
+        self,
+        Coccs,
+        dfk_int8_slice_count=None,
+        dfk_int8_modulus_count=None,
         ):
 
-        K = GPUMatrix(
-            nrows=self.primary.nao,
-            ncols=self.primary.nao,
-            dtype=np.double,
-            )
+        nao = self.primary.nao
 
-        if self.cuest_df_int_plan.exchange_scale == 0.0 and self.cuest_df_int_plan.lrc_exchange_scale == 0.0:
-            K.zero()
-            return K
+        Ks = []
+        for _ in Coccs:
+            K = GPUMatrix(
+                nrows=nao,
+                ncols=nao,
+                dtype=np.double,
+                )
+            Ks.append(K)
 
-        CuestDFIntCompute.symmetric_exchange(
+        # Return zeros if no exchange to calculate
+        if not self.do_exchange:
+            return Ks
+
+        noccs = [_.shape[0] for _ in Coccs]
+        Coccptrs = [_.pointer for _ in Coccs]
+        Kptrs = [_.pointer for _ in Ks]
+
+        if self.do_directjk:
+            CuestDirectIntCompute.symmetric_exchange(
+                handle=self.cuest_handle,
+                direct_int_plan=self.cuest_direct_int_plan,
+                noccs=noccs,
+                Coccptrs=Coccptrs,
+                Kptrs=Kptrs,
+                schwarz_threshold=self.directjk_schwarz_threshold,
+                )
+        elif self.do_gridk:
+            CuestGridKIntCompute.symmetric_exchange(
+                handle=self.cuest_handle,
+                gridk_int_plan=self.cuest_gridk_int_plan,
+                noccs=noccs,
+                Coccptrs=Coccptrs,
+                Kptrs=Kptrs,
+                )
+        else:
+            CuestDFIntCompute.symmetric_exchange(
+                handle=self.cuest_handle,
+                df_int_plan=self.cuest_df_int_plan,
+                noccs=noccs,
+                Coccptrs=Coccptrs,
+                Kptrs=Kptrs,
+                dfk_int8_slice_count=dfk_int8_slice_count,
+                dfk_int8_modulus_count=dfk_int8_modulus_count,
+                )
+
+        return Ks
+
+    def compute_exchange_density(
+        self,
+        Ds,
+        ):
+
+        # Density-matrix twin of compute_exchange. Each density must be
+        # symmetric but need not be positive semidefinite (a difference
+        # density is valid input). The DF-K engine is coefficient matrix
+        # based, so this entry point supports only the direct and grid-K
+        # engines.
+
+        nao = self.primary.nao
+
+        Ks = []
+        for _ in Ds:
+            K = GPUMatrix(
+                nrows=nao,
+                ncols=nao,
+                dtype=np.double,
+                )
+            Ks.append(K)
+
+        # Return zeros if no exchange to calculate
+        if not self.do_exchange:
+            return Ks
+
+        Dptrs = [_.pointer for _ in Ds]
+        Kptrs = [_.pointer for _ in Ks]
+
+        if self.do_directjk:
+            CuestDirectIntCompute.symmetric_exchange_density(
+                handle=self.cuest_handle,
+                direct_int_plan=self.cuest_direct_int_plan,
+                Dptrs=Dptrs,
+                Kptrs=Kptrs,
+                schwarz_threshold=self.directjk_schwarz_threshold,
+                )
+        elif self.do_gridk:
+            CuestGridKIntCompute.symmetric_exchange_density(
+                handle=self.cuest_handle,
+                gridk_int_plan=self.cuest_gridk_int_plan,
+                Dptrs=Dptrs,
+                Kptrs=Kptrs,
+                )
+        else:
+            raise NotImplementedError(
+                'Density-based exchange is not wired for fock_method="dfjk" '
+                '(the DF-K engine is coefficient matrix based); use '
+                'compute_exchange')
+
+        return Ks
+
+    def compute_nonsymmetric_exchange(
+        self,
+        Cocc_left : GPUMatrix,
+        Coccs_right : list,
+        ):
+
+        nao = self.primary.nao
+        nRight = len(Coccs_right)
+
+        Kout = []
+        for i in range(nRight):
+            Ktemp = GPUMatrix(
+                nrows=nao,
+                ncols=nao,
+                dtype=np.double,
+                )
+            Kout.append(Ktemp)
+
+        # Return zeros if no exchange to calculate (valid for every
+        # fock_method, so this precedes the directjk capability guard)
+        if not self.do_exchange:
+            return Kout
+
+        if self.do_directjk:
+            raise NotImplementedError(
+                'Nonsymmetric exchange is not wired for fock_method="directjk" '
+                '(the direct C API is symmetric-only); use "dfjk"/"dfjgridk"')
+
+        nocc = Cocc_left.shape[0]
+
+        for i, C in enumerate(Coccs_right):
+            if C.shape != (nocc, nao):
+                raise ValueError(
+                    f'Coccs_right[{i}] has shape {C.shape}, expected ({nocc}, {nao})'
+                    )
+
+        if self.do_gridk:
+            CuestGridKIntCompute.nonsymmetric_exchange(
+                handle=self.cuest_handle,
+                gridk_int_plan=self.cuest_gridk_int_plan,
+                nocc=nocc,
+                Cocc_left_ptr=Cocc_left.pointer,
+                Cocc_right_ptrs=[_.pointer for _ in Coccs_right],
+                Kptrs=[_.pointer for _ in Kout],
+                )
+        else:
+            CuestDFIntCompute.nonsymmetric_exchange(
+                handle=self.cuest_handle,
+                df_int_plan=self.cuest_df_int_plan,
+                nocc=nocc,
+                Cocc_left_ptr=Cocc_left.pointer,
+                Cocc_right_ptrs=[_.pointer for _ in Coccs_right],
+                Kptrs=[_.pointer for _ in Kout],
+                )
+
+        return Kout
+
+    def compute_gridk_sad_reference(self):
+
+        # SAD-reference exchange: the exchange energy of each spin channel is
+        # expanded exactly about the SAD guess spin density, with only the
+        # quadratic remainder on the grid,
+        # E_K = -1/2 sum_s [D_ref . K_ref + 2 dD . K_ref + dD . K_gridk(dD)],
+        # K_ref = K_direct(D_ref), dD = D_s - D_ref,s.
+        # The variational Fock matrices are K(D) = K_ref + K_gridk(dD) and
+        # the energy error is second order in the difference densities. Alpha
+        # and beta references are kept separate (the SAD guess need not be
+        # spin-restricted). The per-spin K_ref and K_ref . D_ref are computed
+        # once here.
+
+        self.scalars['E_gridk_sad_reference'] = 0.0
+
+        if not (self.do_gridk_sad_reference and self.do_exchange):
+            return
+
+        nao = self.primary.nao
+
+        # Clone the guess spin densities: the SCF loop rebinds tensors['Da']
+        # and tensors['Db'] each iteration. The occupation-weighted SAD factors
+        # are kept with them (the guess sets D_ref,s = Cocc_ref,s^T Cocc_ref,s);
+        # the gradient's bilinear direct builds take the factors as input
+        D_refs = [self.tensors['Da'].clone(), self.tensors['Db'].clone()]
+        Cocc_refs = [self.tensors['Cocca'].clone(), self.tensors['Coccb'].clone()]
+
+        Kdir_refs = []
+        for _ in D_refs:
+            Kdir_refs.append(GPUMatrix(
+                nrows=nao,
+                ncols=nao,
+                dtype=np.double,
+                ))
+
+        CuestDirectIntCompute.symmetric_exchange_density(
             handle=self.cuest_handle,
-            df_int_plan=self.cuest_df_int_plan,
-            Kptr=K.pointer,
-            nocc=Cocc.shape[0],
-            Coccptr=Cocc.pointer,
-            dfk_int8_slice_count=dfk_int8_slice_count,
-            dfk_int8_modulus_count=dfk_int8_modulus_count,
+            direct_int_plan=self.cuest_direct_int_plan,
+            Dptrs=[_.pointer for _ in D_refs],
+            Kptrs=[_.pointer for _ in Kdir_refs],
+            schwarz_threshold=self.directjk_schwarz_threshold,
             )
 
-        return K
+        self.gridk_sad_reference_data = []
+        for D_ref, Cocc_ref, Kdir_ref in zip(D_refs, Cocc_refs, Kdir_refs):
+            self.gridk_sad_reference_data.append({
+                'Dref': D_ref,
+                'Coccref': Cocc_ref,
+                'Kref': Kdir_ref,
+                'Kref_dot_Dref': GPUMatrixUtility.ddot(
+                    x=D_ref,
+                    y=Kdir_ref,
+                    ),
+                })
+
+    def compute_gridk_sad_reference_exchange(
+        self,
+        Ds,
+        ):
+
+        # SAD-reference exchange build, per spin
+        # K(D) = K_ref + K_gridk(dD),  dD = D_s - D_ref,s,
+        # with the difference densities formed explicitly and grid-K applied
+        # to them (Ds ordered as the references, [Da, Db]). Returns
+        # (Ks, dDs, Kgrid_dDs); dDs and Kgrid_dDs are reused by the energy
+        # expression.
+
+        dDs = []
+        for D, ref in zip(Ds, self.gridk_sad_reference_data):
+            dD = D.clone()
+            GPUMatrixUtility.daxpy(
+                alpha=-1.0,
+                x=ref['Dref'],
+                y=dD,
+                )
+            dDs.append(dD)
+
+        Kgrid_dDs = self.compute_exchange_density(Ds=dDs)
+
+        Ks = []
+        for Kgrid_dD, ref in zip(Kgrid_dDs, self.gridk_sad_reference_data):
+            K = Kgrid_dD.clone()
+            GPUMatrixUtility.daxpy(
+                alpha=1.0,
+                x=ref['Kref'],
+                y=K,
+                )
+            Ks.append(K)
+
+        return Ks, dDs, Kgrid_dDs
+
+    def compute_gridk_sad_reference_energy(
+        self,
+        dDs,
+        Kgrid_dDs,
+        ):
+
+        # The SAD-reference exchange energy, evaluated directly from the
+        # per-spin expansion
+        # E_K = -1/2 sum_s [D_ref . K_ref + 2 dD . K_ref + dD . K_gridk(dD)]:
+        # the reference and cross terms are exact, only the quadratic
+        # remainder is on the grid (lists ordered as the references,
+        # [alpha, beta]). Returns 0.0 unless the reference is active.
+
+        if self.gridk_sad_reference_data is None:
+            return 0.0
+
+        E_gridk_sad_reference = 0.0
+        for dD, Kgrid_dD, ref in zip(dDs, Kgrid_dDs, self.gridk_sad_reference_data):
+            E_gridk_sad_reference -= 0.5 * ref['Kref_dot_Dref']
+            E_gridk_sad_reference -= 1.0 * GPUMatrixUtility.ddot(
+                x=dD,
+                y=ref['Kref'],
+                )
+            E_gridk_sad_reference -= 0.5 * GPUMatrixUtility.ddot(
+                x=dD,
+                y=Kgrid_dD,
+                )
+        return E_gridk_sad_reference
 
     def compute_local_exchange_correlation(
         self,
@@ -467,7 +885,7 @@ class UHF(object):
             dtype=np.double,
             )
 
-        Exc = CuestXCIntCompute.local_exchange_correlation(
+        Exc = CuestXCIntCompute.local_exchange_correlation_uks(
             handle=self.cuest_handle,
             xc_int_plan=self.cuest_xc_int_plan,
             Vxcptr=Vxca.pointer,
@@ -495,7 +913,7 @@ class UHF(object):
             dtype=np.double,
             )
 
-        Exc = CuestXCIntCompute.nonlocal_exchange_correlation(
+        Exc = CuestXCIntCompute.nonlocal_exchange_correlation_uks(
             handle=self.cuest_handle,
             xc_int_plan=self.cuest_nlc_int_plan,
             Vxcptr=Vxc.pointer,
@@ -505,13 +923,13 @@ class UHF(object):
             Coccbptr=Coccb.pointer,
             )
         return Exc, Vxc
-    
+
     def compute_pcm_energy_and_potential(
-        self,   
+        self,
         q,
         D,
         ):
-                
+
         outQ = GPUMatrix(
             nrows=self.cuest_pcm_int_plan.npoint,
             ncols=1,
@@ -524,27 +942,27 @@ class UHF(object):
             dtype=np.double,
             )
 
-        Epcm, converged, residual = CuestPCMIntCompute.compute_pcm_energy_and_potential(
+        Epcm, converged, residual = CuestPCMIntCompute.potential(
             handle=self.cuest_handle,
             pcm_int_plan=self.cuest_pcm_int_plan,
-            Dptr=D.pointer, 
+            Dptr=D.pointer,
             inQptr=q.pointer,
             outQptr=outQ.pointer,
             Vptr=V.pointer,
             )
 
-        return Epcm, V, outQ
+        return Epcm, V, outQ, converged
 
     # => Integral Derivatives (Gradients) <= #
 
     def compute_pcm_gradient(
-        self,   
+        self,
         q,
         D,
         ):
-        
+
         npoint = self.cuest_pcm_int_plan.npoint
-        
+
         outQ = GPUMatrix(
             nrows=self.cuest_pcm_int_plan.npoint,
             ncols=1,
@@ -557,21 +975,23 @@ class UHF(object):
             dtype=np.double,
             )
 
-        CuestPCMIntCompute.compute_pcm_gradient(
+        converged, residual = CuestPCMIntCompute.potential_gradient(
             handle=self.cuest_handle,
             pcm_int_plan=self.cuest_pcm_int_plan,
-            Dptr=D.pointer, 
+            Dptr=D.pointer,
             inQptr=q.pointer,
             outQptr=outQ.pointer,
             Gptr=G.pointer,
             )
+        if not converged:
+            raise RuntimeError('PCM not converged')
 
         return G
 
     def compute_overlap_gradient(
         self,
         W, # Energy-weighted density matrix
-        ): 
+        ):
 
         G = GPUMatrix(
             nrows=self.primary.natom,
@@ -591,7 +1011,7 @@ class UHF(object):
     def compute_kinetic_gradient(
         self,
         D, # Density matrix
-        ): 
+        ):
 
         G = GPUMatrix(
             nrows=self.primary.natom,
@@ -611,7 +1031,7 @@ class UHF(object):
     def compute_potential_gradient(
         self,
         D, # Density matrix
-        ): 
+        ):
 
         Gbasis = GPUMatrix(
             nrows=self.primary.natom,
@@ -643,8 +1063,258 @@ class UHF(object):
 
         return Gbasis
 
+    def compute_ecp_gradient(
+        self,
+        D,
+        ):
+
+        Gecp = GPUMatrix(
+            nrows=self.primary.natom,
+            ncols=3,
+            dtype=np.double,
+            )
+
+        CuestECPIntCompute.potential_gradient(
+            handle=self.cuest_handle,
+            ecp_int_plan=self.cuest_ecp_int_plan,
+            Dptr=D.pointer,
+            Gptr=Gecp.pointer,
+            )
+
+        return Gecp
+
+    def compute_coulomb_gradient_direct(
+        self,
+        *,
+        scaleJ,
+        DJ,
+        G,
+        ):
+
+        self.timer.start(key='dJ', stream_handle=self.cuest_handle.stream_handle)
+        GJ = GPUMatrix(
+            nrows=self.primary.natom,
+            ncols=3,
+            dtype=np.double,
+            )
+        CuestDirectIntCompute.coulomb_gradient(
+            handle=self.cuest_handle,
+            direct_int_plan=self.cuest_direct_int_plan,
+            Dptr=DJ.pointer,
+            Gptr=GJ.pointer,
+            schwarz_threshold=self.directjk_schwarz_threshold,
+            num_density_matrices=1,
+            )
+        GPUMatrixUtility.daxpy(
+            alpha=scaleJ,
+            x=GJ,
+            y=G,
+            )
+        self.timer.stop(key='dJ', stream_handle=self.cuest_handle.stream_handle)
+
+    def compute_exchange_gradient_direct(
+        self,
+        *,
+        scaleK,
+        CoccsK,
+        G,
+        ):
+
+        self.timer.start(key='dK', stream_handle=self.cuest_handle.stream_handle)
+        if scaleK != 0.0 and self.do_exchange:
+            GKs = []
+            for _ in CoccsK:
+                GK = GPUMatrix(
+                    nrows=self.primary.natom,
+                    ncols=3,
+                    dtype=np.double,
+                    )
+                GKs.append(GK)
+            CuestDirectIntCompute.symmetric_exchange_gradient(
+                handle=self.cuest_handle,
+                direct_int_plan=self.cuest_direct_int_plan,
+                noccs=[_.shape[0] for _ in CoccsK],
+                Coccptrs=[_.pointer for _ in CoccsK],
+                Gptrs=[_.pointer for _ in GKs],
+                schwarz_threshold=self.directjk_schwarz_threshold,
+                )
+            for GK in GKs:
+                GPUMatrixUtility.daxpy(
+                    alpha=scaleK,
+                    x=GK,
+                    y=G,
+                    )
+        self.timer.stop(key='dK', stream_handle=self.cuest_handle.stream_handle)
+
+    def compute_exchange_gradient_gridk(
+        self,
+        *,
+        scaleK,
+        CoccsK,
+        G,
+        ):
+
+        self.timer.start(key='dK', stream_handle=self.cuest_handle.stream_handle)
+        if scaleK != 0.0 and self.do_exchange:
+            GKs = []
+            for _ in CoccsK:
+                GK = GPUMatrix(
+                    nrows=self.primary.natom,
+                    ncols=3,
+                    dtype=np.double,
+                    )
+                GKs.append(GK)
+            CuestGridKIntCompute.symmetric_exchange_gradient(
+                handle=self.cuest_handle,
+                gridk_int_plan=self.cuest_gridk_int_plan,
+                noccs=[_.shape[0] for _ in CoccsK],
+                Coccptrs=[_.pointer for _ in CoccsK],
+                Gptrs=[_.pointer for _ in GKs],
+                )
+            for GK in GKs:
+                GPUMatrixUtility.daxpy(
+                    alpha=scaleK,
+                    x=GK,
+                    y=G,
+                    )
+        self.timer.stop(key='dK', stream_handle=self.cuest_handle.stream_handle)
+
+    def compute_gridk_sad_reference_gradient(
+        self,
+        *,
+        scaleK,
+        CoccsK,
+        G,
+        ):
+
+        # Exchange gradient for the SAD-reference split (replaces the plain
+        # grid-K exchange gradient):
+        # E_K^x = scaleK * sum_s [Tr(K_direct^x(D_ref) D_ref)
+        #                         + 2 Tr(K_direct^x(D_ref) dD)
+        #                         + Tr(K_gridk^x(dD) dD)],  dD = D_s - D_ref,s,
+        # with scaleK (-0.5) carrying the spin factor and the spin densities
+        # formed from CoccsK (ordered as the references, [Cocca, Coccb]). The
+        # exact direct terms are evaluated with bilinear builds via
+        # Tr(K^x(D_ref) D_ref) + 2 Tr(K^x(D_ref) dD)
+        #     = 2 Tr(K^x(D_ref) D) - Tr(K^x(D_ref) D_ref),
+        # pairing the atom-block-diagonal D_ref (as its SAD factor Cocc_ref)
+        # against D and against itself, so every direct term screens on
+        # D_ref instead of a full symmetric build on D. The scheme is
+        # variational and D_ref is geometry-independent, so there are no
+        # response terms.
+
+        self.timer.start(key='dK', stream_handle=self.cuest_handle.stream_handle)
+        if scaleK != 0.0 and self.do_exchange:
+
+            if self.gridk_sad_reference_data is None:
+                raise RuntimeError('compute_gridk_sad_reference must be called first')
+
+            natom = self.primary.natom
+
+            Ds = []
+            for Cocc in CoccsK:
+                Ds.append(GPUMatrixUtility.matrix_multiply(
+                    mat1=Cocc,
+                    mat2=Cocc,
+                    transpose1=True,
+                    transpose2=False,
+                    ))
+
+            dDs = []
+            for D, ref in zip(Ds, self.gridk_sad_reference_data):
+                dD = D.clone()
+                GPUMatrixUtility.daxpy(
+                    alpha=-1.0,
+                    x=ref['Dref'],
+                    y=dD,
+                    )
+                dDs.append(dD)
+            del Ds, D
+
+            # Direct derivative as bilinear builds pairing the reference
+            # factors with the full spin densities and with themselves, in one
+            # batched call; grid derivative on the difference densities
+            Coccrefs = [ref['Coccref'] for ref in self.gridk_sad_reference_data]
+            direct_Coccs = Coccrefs + Coccrefs
+            direct_Coccs2 = list(CoccsK) + Coccrefs
+            Gdirs = []
+            for _ in direct_Coccs:
+                Gdirs.append(GPUMatrix(
+                    nrows=natom,
+                    ncols=3,
+                    dtype=np.double,
+                    ))
+            Ggrids = []
+            for _ in dDs:
+                Ggrids.append(GPUMatrix(
+                    nrows=natom,
+                    ncols=3,
+                    dtype=np.double,
+                    ))
+
+            self.timer.start(key='dK_direct', stream_handle=self.cuest_handle.stream_handle)
+            CuestDirectIntCompute.symmetric_exchange_bilinear_gradient(
+                handle=self.cuest_handle,
+                direct_int_plan=self.cuest_direct_int_plan,
+                noccs1=[_.shape[0] for _ in direct_Coccs],
+                Coccptrs1=[_.pointer for _ in direct_Coccs],
+                noccs2=[_.shape[0] for _ in direct_Coccs2],
+                Coccptrs2=[_.pointer for _ in direct_Coccs2],
+                Gptrs=[_.pointer for _ in Gdirs],
+                schwarz_threshold=self.directjk_schwarz_threshold,
+                )
+            self.timer.stop(key='dK_direct', stream_handle=self.cuest_handle.stream_handle)
+            self.timer.start(key='dK_gridk', stream_handle=self.cuest_handle.stream_handle)
+            CuestGridKIntCompute.symmetric_exchange_gradient_density(
+                handle=self.cuest_handle,
+                gridk_int_plan=self.cuest_gridk_int_plan,
+                Dptrs=[_.pointer for _ in dDs],
+                Gptrs=[_.pointer for _ in Ggrids],
+                )
+            self.timer.stop(key='dK_gridk', stream_handle=self.cuest_handle.stream_handle)
+
+            nmat = len(dDs)
+            for i in range(nmat):
+                GPUMatrixUtility.daxpy(
+                    alpha=2.0 * scaleK,
+                    x=Gdirs[i],
+                    y=G,
+                    )
+                GPUMatrixUtility.daxpy(
+                    alpha=-scaleK,
+                    x=Gdirs[nmat + i],
+                    y=G,
+                    )
+                GPUMatrixUtility.daxpy(
+                    alpha=scaleK,
+                    x=Ggrids[i],
+                    y=G,
+                    )
+        self.timer.stop(key='dK', stream_handle=self.cuest_handle.stream_handle)
+
+    def compute_coulomb_and_exchange_gradient_df(
+        self,
+        *,
+        scaleJ,
+        DJ,
+        scaleK,
+        CoccsK,
+        G,
+        ):
+
+        CuestDFIntCompute.coulomb_and_exchange_gradient(
+            handle=self.cuest_handle,
+            df_int_plan=self.cuest_df_int_plan,
+            scaleJ=scaleJ,
+            DJptr=DJ.pointer,
+            scaleK=scaleK,
+            noccsK=[_.shape[0] for _ in CoccsK],
+            CoccsKptrs=[_.pointer for _ in CoccsK],
+            Gptr=G.pointer,
+            )
+
     def compute_coulomb_and_exchange_gradient(
-        self,   
+        self,
         *,
         scaleJ,
         DJ,
@@ -652,30 +1322,77 @@ class UHF(object):
         CoccsK,
         ):
 
-        noccsK = [_.shape[0] for _ in CoccsK]
-
-        Cocca_np = CoccsK[0].to_numpy()
-        Coccb_np = CoccsK[1].to_numpy()
- 
-        Cocc_ab_np = np.vstack([Cocca_np, Coccb_np]) 
-        Cocc_ab = GPUMatrix.from_numpy(Cocc_ab_np)
-
+        # Every engine returns d/dR Tr(J/K(D) D), so the same scaleJ/scaleK
+        # apply on all paths
         G = GPUMatrix(
             nrows=self.primary.natom,
             ncols=3,
             dtype=np.double,
             )
 
-        CuestDFIntCompute.coulomb_and_exchange_gradient(
-            handle=self.cuest_handle,
-            df_int_plan=self.cuest_df_int_plan,
-            scaleJ=scaleJ,
-            DJptr=DJ.pointer,
-            scaleK=scaleK, 
-            noccsK=noccsK,
-            CoccsKptr=Cocc_ab.pointer,
-            Gptr=G.pointer,
-            )
+        if self.do_directjk:
+            self.compute_coulomb_gradient_direct(
+                scaleJ=scaleJ,
+                DJ=DJ,
+                G=G,
+                )
+            self.compute_exchange_gradient_direct(
+                scaleK=scaleK,
+                CoccsK=CoccsK,
+                G=G,
+                )
+        elif self.do_directj:
+            self.compute_coulomb_gradient_direct(
+                scaleJ=scaleJ,
+                DJ=DJ,
+                G=G,
+                )
+            if self.do_gridk_sad_reference:
+                self.compute_gridk_sad_reference_gradient(
+                    scaleK=scaleK,
+                    CoccsK=CoccsK,
+                    G=G,
+                    )
+            else:
+                self.compute_exchange_gradient_gridk(
+                    scaleK=scaleK,
+                    CoccsK=CoccsK,
+                    G=G,
+                    )
+        elif self.do_gridk:
+            # The integral-direct DF plan provides only the Coulomb gradient
+            # here (scaleK = 0); Grid-K provides the exchange gradient
+            self.timer.start(key='dJ', stream_handle=self.cuest_handle.stream_handle)
+            self.compute_coulomb_and_exchange_gradient_df(
+                scaleJ=scaleJ,
+                DJ=DJ,
+                scaleK=0.0,
+                CoccsK=CoccsK,
+                G=G,
+                )
+            self.timer.stop(key='dJ', stream_handle=self.cuest_handle.stream_handle)
+            if self.do_gridk_sad_reference:
+                self.compute_gridk_sad_reference_gradient(
+                    scaleK=scaleK,
+                    CoccsK=CoccsK,
+                    G=G,
+                    )
+            else:
+                self.compute_exchange_gradient_gridk(
+                    scaleK=scaleK,
+                    CoccsK=CoccsK,
+                    G=G,
+                    )
+        else:
+            if not self.do_exchange:
+                scaleK = 0.0
+            self.compute_coulomb_and_exchange_gradient_df(
+                scaleJ=scaleJ,
+                DJ=DJ,
+                scaleK=scaleK,
+                CoccsK=CoccsK,
+                G=G,
+                )
 
         return G
 
@@ -694,7 +1411,7 @@ class UHF(object):
             G.zero()
             return G
 
-        CuestXCIntCompute.local_exchange_correlation_gradient(
+        CuestXCIntCompute.local_exchange_correlation_uks_gradient(
             handle=self.cuest_handle,
             xc_int_plan=self.cuest_xc_int_plan,
             Gptr=G.pointer,
@@ -722,7 +1439,7 @@ class UHF(object):
             G.zero()
             return G
 
-        CuestXCIntCompute.nonlocal_exchange_correlation_gradient(
+        CuestXCIntCompute.nonlocal_exchange_correlation_uks_gradient(
             handle=self.cuest_handle,
             xc_int_plan=self.cuest_nlc_int_plan,
             Gptr=G.pointer,
@@ -735,10 +1452,10 @@ class UHF(object):
         return G
 
     # => Main Solve Routines <= #
-    
+
     def solve(self):
 
-        self.timer.start(key='solve', stream_handle=self.cuest_handle.stream_handle)
+        self.timer.start(key='solve', stream_handle=self.cuest_handle.stream_handle, always=True)
 
         self.is_solved = False
         self.is_converged = False
@@ -779,10 +1496,29 @@ class UHF(object):
         _ = self.cuest_xc_int_plan
         self.timer.stop(key='xc_int_plan', stream_handle=self.cuest_handle.stream_handle)
 
-        # Depends on cuest_primary, cuest_auxiliary, cuest_ao_pair_list, and cuest_xc_int_plan
+        # Depends on cuest_primary, cuest_auxiliary, cuest_ao_pair_list, and
+        # cuest_xc_int_plan (None in the direct-J modes, where the DF plan
+        # is disabled).
         self.timer.start(key='df_int_plan', stream_handle=self.cuest_handle.stream_handle)
         _ = self.cuest_df_int_plan
         self.timer.stop(key='df_int_plan', stream_handle=self.cuest_handle.stream_handle)
+
+        # Grid-K exchange (built for fock_method "dfjgridk" and "directjgridk")
+        # Depends on cuest_primary, cuest_ao_pair_list, cuest_gridk_grid, and cuest_xc_int_plan
+        self.timer.start(key='gridk_grid', stream_handle=self.cuest_handle.stream_handle)
+        _ = self.cuest_gridk_grid
+        self.timer.stop(key='gridk_grid', stream_handle=self.cuest_handle.stream_handle)
+
+        self.timer.start(key='gridk_int_plan', stream_handle=self.cuest_handle.stream_handle)
+        _ = self.cuest_gridk_int_plan
+        self.timer.stop(key='gridk_int_plan', stream_handle=self.cuest_handle.stream_handle)
+
+        # Direct 4-center J/K (built for fock_method "directjk", J-only for
+        # "directjgridk", and for the SAD-reference exchange)
+        # Depends on cuest_primary and cuest_ao_pair_list
+        self.timer.start(key='direct_int_plan', stream_handle=self.cuest_handle.stream_handle)
+        _ = self.cuest_direct_int_plan
+        self.timer.stop(key='direct_int_plan', stream_handle=self.cuest_handle.stream_handle)
 
         # Depends on cuest_primary and cuest_nlc_grid
         self.timer.start(key='nlc_int_plan', stream_handle=self.cuest_handle.stream_handle)
@@ -794,82 +1530,114 @@ class UHF(object):
         _ = self.cuest_pcm_int_plan
         self.timer.stop(key='pcm_int_plan', stream_handle=self.cuest_handle.stream_handle)
 
+        self.timer.start(key='ecp_int_plan', stream_handle=self.cuest_handle.stream_handle)
+        _ = self.cuest_ecp_int_plan
+        self.timer.stop(key='ecp_int_plan', stream_handle=self.cuest_handle.stream_handle)
+
         self.header()
 
-        if self.benchmark:
-            self.timer.start(key="init cuest_ecp_int_plan", stream_handle=self.cuest_handle.stream_handle)
-        _ = self.cuest_ecp_int_plan
-        if self.benchmark:
-            self.timer.stop(key="init cuest_ecp_int_plan", stream_handle=self.cuest_handle.stream_handle)
-
-        if self.benchmark:
-            self.timer.start(key="compute_guess", stream_handle=self.cuest_handle.stream_handle)
+        self.timer.start(key='guess', stream_handle=self.cuest_handle.stream_handle)
         self.compute_guess()
-        if self.benchmark:
-            self.timer.stop(key="compute_guess", stream_handle=self.cuest_handle.stream_handle)
+        self.timer.stop(key='guess', stream_handle=self.cuest_handle.stream_handle)
+
+        # SAD-reference exchange data, computed once from the guess densities
+        # before the SCF iterations start
+        if self.do_gridk_sad_reference:
+            self.timer.start(key='Kref', stream_handle=self.cuest_handle.stream_handle)
+            self.compute_gridk_sad_reference()
+            self.timer.stop(key='Kref', stream_handle=self.cuest_handle.stream_handle)
 
         self.timer.start(key='orthogonalize', stream_handle=self.cuest_handle.stream_handle)
         self.compute_orthogonalization()
         self.timer.stop(key='orthogonalize', stream_handle=self.cuest_handle.stream_handle)
 
-        if self.benchmark:
-            self.timer.start(key="occupations", stream_handle=self.cuest_handle.stream_handle)
+        self.timer.start(key='occupations', stream_handle=self.cuest_handle.stream_handle)
         self.compute_occupations()
-        if self.benchmark:
-            self.timer.stop(key="occupations", stream_handle=self.cuest_handle.stream_handle)
+        self.timer.stop(key='occupations', stream_handle=self.cuest_handle.stream_handle)
 
-        if self.print_level > 0:
-            print('DFIntPlan Initialize Time: %11.3E [s]' % (self.timer._times['df_int_plan']))
-            print('')
+        if self.print_level > 1 and self.print_timings and not self.do_directj:
+            print('DFIntPlan Initialize Time: %11.3E [s]\n' % (self.timer.times['df_int_plan']))
 
-        if self.benchmark:
-            self.timer.start(key="solve_diis", stream_handle=self.cuest_handle.stream_handle)
+        self.timer.start(key='solve_diis', stream_handle=self.cuest_handle.stream_handle)
         self.solve_diis()
+        self.timer.stop(key='solve_diis', stream_handle=self.cuest_handle.stream_handle)
 
-        self.timer.stop(key='solve', stream_handle=self.cuest_handle.stream_handle)
+        self.timer.stop(key='solve', stream_handle=self.cuest_handle.stream_handle, always=True)
 
         self.trailer()
 
         self.is_solved = True
 
-        
+
     def header(self):
-    
+
         if self.print_level:
-            print('==> cuEST RHF (Python) <==\n')
-    
+            print('==> cuEST UHF (Python) <==\n')
+
         if self.print_level > 1:
 
-            print('natom  = %4d' % (self.molecule.natom))
-            print('charge = %4d' % (self.charge))
+            print('%-19s = %11d' % ('natom', self.molecule.natom))
+            print('%-19s = %11d' % ('charge', self.charge))
             print('')
 
-            print('Primary Basis: %s' % (self.primary_name if self.primary_name is not None else ''))
-            print('')
+            print('Primary Basis: %s\n' % (self.primary_name if self.primary_name is not None else ''))
             print(self.primary)
 
-            print('Auxiliary Basis: %s' % (self.auxiliary_name if self.auxiliary_name is not None else ''))
-            print('')
+            print('Auxiliary Basis: %s\n' % (self.auxiliary_name if self.auxiliary_name is not None else ''))
             print(self.auxiliary)
 
-            print('MinAO Basis: %s' % (self.minao_name if self.minao_name is not None else ''))
-            print('')
+            print('MinAO Basis: %s\n' % (self.minao_name if self.minao_name is not None else ''))
             print(self.minao)
 
             print(self.cuest_xc_int_plan)
-        
-            print('XC Grid:')
-            print('')
+
+            print('XC Grid:\n')
             print(self.cuest_xc_grid)
 
-            print('Nonlocal XC Grid:')
-            print('')
+            print(self.cuest_nlc_int_plan)
+
+            print('Nonlocal XC Grid:\n')
             print(self.cuest_nlc_grid)
 
+        # The Fock method and the pair screening it runs with are reported at
+        # every print level; the plans behind them stay level 2
+        if self.print_level > 0:
+
+            if self.do_directj and self.do_gridk:
+                print('Fock Method: Direct-J / Grid-K (grid-based exchange)\n')
+            elif self.do_gridk:
+                print('Fock Method: DF-J / Grid-K (grid-based exchange)\n')
+            elif self.do_directjk:
+                print('Fock Method: Direct-J / Direct-K (integral-direct 4-center%s)\n'
+                      % (', incremental' if self.do_incremental_fock else ''))
+            else:
+                print('Fock Method: DF-J / DF-K\n')
+
+            print('%-19s = %11.3E\n' % ('threshold_pq', self.threshold_pq))
+
+        if self.print_level > 1:
+
+            if self.do_gridk:
+                print(self.cuest_gridk_int_plan)
+                print('Grid-K Grid:\n')
+                print(self.cuest_gridk_grid)
+
+            if self.cuest_df_int_plan is not None:
+                print(self.cuest_df_int_plan)
+
+            if self.cuest_direct_int_plan is not None:
+                print(self.cuest_direct_int_plan)
+
+            if self.do_gridk_sad_reference:
+                print('Grid-K SAD-Reference Exchange: K_s = K_direct(D_sad,s) + K_gridk(D_s - D_sad,s)\n')
+
             if self.do_pcm:
-                print('PCM:')
-                print('')
+                print('PCM:\n')
                 print(self.cuest_pcm_int_plan)
+
+            if self.do_ecp:
+                print('ECP Basis: %s\n' % (self.ecp_basis_name if self.ecp_basis_name is not None else ''))
+                print(self.ecp_basis)
 
     def trailer(self):
 
@@ -877,16 +1645,13 @@ class UHF(object):
             print('cuEST UHF Time: %11.3E [s]\n' % (self.timer.times['solve']))
 
         if self.print_timings:
-            print('cuEST UHF Timing breakdown:')
+            print('cuEST UHF Timing breakdown:\n')
             print(self.timer.string())
 
         if self.print_level:
-            print('==> End cuEST RHF (Python) <==\n')
+            print('==> End cuEST UHF (Python) <==\n')
 
     def compute_guess(self):
-
-        if self.print_level > 0:
-            print('SAD Guess:\n')
 
         self.sad_guess = SADGuess.build(
             molecule=self.molecule,
@@ -912,7 +1677,45 @@ class UHF(object):
         if self.print_level > 0:
             print('Orthogonalization:\n')
 
+        gridk_int_plan = self.cuest_gridk_int_plan
+        do_gridk_fitting = (
+            gridk_int_plan is not None
+            and gridk_int_plan.fitting_algorithm != 'none'
+            )
+
+        self.timer.start(key='S', stream_handle=self.cuest_handle.stream_handle)
         S = self.compute_overlap()
+        self.timer.stop(key='S', stream_handle=self.cuest_handle.stream_handle)
+
+        # For consistency, use the same X matrix for Grid-K fitting and SCF orthogonalization
+        if do_gridk_fitting:
+
+            nao = gridk_int_plan.primary.nao
+            nmo = gridk_int_plan.fitting_num_mo
+
+            X = GPUMatrix(
+                nrows=nmo,
+                ncols=nao,
+                dtype=np.double,
+                )
+
+            gridk_int_plan.query_canonical_orthogonalization_matrix(
+                Xptr=X.pointer,
+                num_mo=nmo,
+                nao=nao,
+                )
+
+            self.tensors['S'] = S
+            self.tensors['X'] = X
+
+            if self.print_level > 0:
+                print('%-19s = %11.3E' % ('threshold_canonical', gridk_int_plan.fitting_orthogonalization_cutoff))
+                print('%-19s = %11d' % ('nao', nao))
+                print('%-19s = %11d' % ('nmo', nmo))
+                print('%-19s = %11d' % ('ndiscard', nao - nmo))
+                print('')
+
+            return
 
         s, U = GPUMatrixUtility.eigh(matrix=S)
         s = s.to_numpy().reshape(-1)
@@ -920,7 +1723,7 @@ class UHF(object):
 
         # Canonical orthogonalization is traditionally done on an absolute eigenvalue threshold basis
         sind = s > self.threshold_canonical
-        
+
         s2 = s[sind]
         U2 = U[:, sind]
 
@@ -933,10 +1736,10 @@ class UHF(object):
         self.tensors['X'] = GPUMatrix.from_numpy(X)
 
         if self.print_level > 0:
-            print('threshold_canonical = %11.3E' % (self.threshold_canonical))
-            print('nao                 = %11d' % (X.shape[1]))
-            print('nmo                 = %11d' % (X.shape[0]))
-            print('ndiscard            = %11d' % (X.shape[1] - X.shape[0]))
+            print('%-19s = %11.3E' % ('threshold_canonical', self.threshold_canonical))
+            print('%-19s = %11d' % ('nao', X.shape[1]))
+            print('%-19s = %11d' % ('nmo', X.shape[0]))
+            print('%-19s = %11d' % ('ndiscard', X.shape[1] - X.shape[0]))
             print('')
 
     def compute_occupations(self):
@@ -961,13 +1764,13 @@ class UHF(object):
         self.sizes['nocca'] = nocc_a
         self.sizes['noccb'] = nocc_b
         self.sizes['nvira'] = nvir_a
-        self.sizes['nvirb'] = nvir_b                
+        self.sizes['nvirb'] = nvir_b
 
         if self.print_level > 0:
-            print('%-5s = %5d' % ('nocca', self.sizes['nocca']))
-            print('%-5s = %5d' % ('noccb', self.sizes['noccb']))
-            print('%-5s = %5d' % ('nvira', self.sizes['nvira']))
-            print('%-5s = %5d' % ('nvirb', self.sizes['nvirb']))
+            print('%-19s = %11d' % ('nocca', self.sizes['nocca']))
+            print('%-19s = %11d' % ('noccb', self.sizes['noccb']))
+            print('%-19s = %11d' % ('nvira', self.sizes['nvira']))
+            print('%-19s = %11d' % ('nvirb', self.sizes['nvirb']))
             print('')
 
     def compute_s2(self):
@@ -990,7 +1793,10 @@ class UHF(object):
             transpose2=True,
         )
 
-        Sab2 = np.sum(Sab.to_numpy()**2)
+        Sab2 = GPUMatrixUtility.ddot(
+            x=Sab,
+            y=Sab,
+            )
 
         nocca = self.sizes['nocca']
         noccb = self.sizes['noccb']
@@ -1020,6 +1826,18 @@ class UHF(object):
                 Enuc += 0.5 * ZA * ZB / rAB
         return Enuc
 
+    def compute_nuc_dipole(self):
+
+        xyz = self.molecule.xyz
+        Z = -1.0 * self.Zeff.reshape((self.molecule.natom,))
+
+        munuc = np.zeros(3)
+        for A in range(xyz.shape[0]):
+            xyzA = xyz[A, :]
+            ZA = Z[A]
+            munuc += ZA * xyzA
+        return munuc
+
     def compute_Enuc_gradient(self):
 
         xyz = self.molecule.xyz
@@ -1027,11 +1845,11 @@ class UHF(object):
 
         Gnuc = np.zeros((self.molecule.natom, 3))
         for A in range(xyz.shape[0]):
-            xyzA = xyz[A, :]    
+            xyzA = xyz[A, :]
             ZA = Z[A]
             for B in range(xyz.shape[0]):
                 if A == B: continue
-                xyzB = xyz[B, :]    
+                xyzB = xyz[B, :]
                 ZB = Z[B]
                 rAB = np.sqrt(np.sum((xyzA - xyzB)**2))
                 Gnuc[A, :] -= ZA * ZB / rAB**3 * (xyzA - xyzB)
@@ -1066,50 +1884,47 @@ class UHF(object):
         if self.print_level > 0:
             print('=> Solve DIIS <=\n')
 
-        # Threshold PQ (odd place to report this, but so be it)
-
-        if self.print_level > 0:
-            print('threshold_pq = %11.3E' % self.threshold_pq)
-            print('')
-
-
         # PCM Initialization
 
+        self.timer.start(key='PCM', stream_handle=self.cuest_handle.stream_handle)
         if self.do_pcm:
             self.pcm_q = GPUMatrix(
                 nrows=self.cuest_pcm_int_plan.npoint,
                 ncols=1,
                 dtype=np.double,
-                initialize=True,
                 )
+        self.timer.stop(key='PCM', stream_handle=self.cuest_handle.stream_handle)
+
         # External Nuclear-repulsion energy
 
+        self.timer.start(key='Enuc', stream_handle=self.cuest_handle.stream_handle)
         Enuc = self.compute_Enuc()
+        self.timer.stop(key='Enuc', stream_handle=self.cuest_handle.stream_handle)
         self.scalars['Enuc'] = Enuc
 
         if self.print_level > 0:
-            print('Enuc = %24.16E' % (Enuc))
+            print('%-19s = %24.16E' % ('Enuc', Enuc))
             print('')
-        
+
         S = self.tensors['S']
         X = self.tensors['X']
 
         # Core Hamiltonian
 
-        if self.benchmark:
-            self.timer.start(key="compute_kinetic", stream_handle=self.cuest_handle.stream_handle)
+        self.timer.start(key='T', stream_handle=self.cuest_handle.stream_handle)
         T = self.compute_kinetic()
-        if self.benchmark:
-            self.timer.stop(key="compute_kinetic", stream_handle=self.cuest_handle.stream_handle)
-        if self.benchmark:
-            self.timer.start(key="compute_potential", stream_handle=self.cuest_handle.stream_handle)
-        V = self.compute_potential()
-        if self.benchmark:
-            self.timer.stop(key="compute_potential", stream_handle=self.cuest_handle.stream_handle)
+        self.timer.stop(key='T', stream_handle=self.cuest_handle.stream_handle)
 
+        self.timer.start(key='V', stream_handle=self.cuest_handle.stream_handle)
+        V = self.compute_potential()
+        self.timer.stop(key='V', stream_handle=self.cuest_handle.stream_handle)
+
+        self.timer.start(key='Vecp', stream_handle=self.cuest_handle.stream_handle)
         if self.do_ecp:
             Vecp = self.compute_ecp_potential()
+        self.timer.stop(key='Vecp', stream_handle=self.cuest_handle.stream_handle)
 
+        self.timer.start(key='Hcore', stream_handle=self.cuest_handle.stream_handle)
         H = T.clone()
         GPUMatrixUtility.daxpy(
             alpha=1.0,
@@ -1123,30 +1938,53 @@ class UHF(object):
                 y=H,
                 )
 
-        diis = DIIS(max_nvector=self.diis_max_nvector)
+        self.timer.stop(key='Hcore', stream_handle=self.cuest_handle.stream_handle)
+
+        del T, V
+        if self.do_ecp:
+            del Vecp
+
+        diis_class = DIISCPU if self.cpu_diis else DIIS
+        diis = diis_class(max_nvector=self.diis_max_nvector)
 
         if self.print_level > 1:
-            print('DIIS:')
-            print('max nvector = %11d' % self.diis_max_nvector)
+            print('DIIS:\n')
+            print('%-19s = %11d' % ('max nvector', self.diis_max_nvector))
+            print('%-19s = %11s' % ('CPU', self.cpu_diis))
             print('')
 
         if self.print_level > 1:
-            print('Convergence Options:')
-            print('max iterations = %11d' % self.maxiter)
-            print('g convergence  = %11.3E' % self.g_convergence)
+            print('Convergence Options:\n')
+            print('%-19s = %11d' % ('max iterations', self.maxiter))
+            print('%-19s = %11.3E' % ('g convergence', self.g_convergence))
+            print('%-19s = %11.3f' % ('level shift a', self.level_shift_a))
+            print('%-19s = %11.3f' % ('level shift b', self.level_shift_b))
             print('')
 
-        # Main SCF Iterative Loop 
+        # Main SCF Iterative Loop
 
         start = time.time()
         self.is_converged = False
         Eold = 0.0
         E = 0.0
         dG = 1.0
-        if self.print_level > 1:
-            print('%-4s: %24s %11s %11s %8s' % ('Iter', 'Energy', 'dE', 'dG', 'Time[s]'))
-        if self.benchmark:
-            self.timer.start(key="iterations", stream_handle=self.cuest_handle.stream_handle)
+        U2a_prev = None
+        U2b_prev = None
+        if self.level_shift_a != 0.0 or self.level_shift_b != 0.0:
+            level_shift_ones = GPUMatrix.from_numpy(np.ones((X.shape[0], 1)))
+        dG_best = float('inf')
+        dG_no_improve = 0
+        skip_diis = False
+        # Incremental-Fock state: densities and J/K of the previous build
+        incr_D_prev = None
+        incr_n_delta = 0   # delta builds since the last full build
+        incr_Da_prev = None
+        incr_Db_prev = None
+        incr_J = None
+        incr_Ka = None
+        incr_Kb = None
+        if self.print_level:
+            print('%4s: %24s %11s %11s %8s' % ('Iter', 'Energy', 'dE', 'dG', 'Time[s]'))
         for iteration in range(self.maxiter):
 
             Da = self.tensors['Da']
@@ -1154,76 +1992,140 @@ class UHF(object):
             Cocca = self.tensors['Cocca']
             Coccb = self.tensors['Coccb']
 
-            D = Da.clone() 
+            D = Da.clone()
             GPUMatrixUtility.daxpy(
-                alpha=1.0, 
-                x=Db, 
+                alpha=1.0,
+                x=Db,
                 y=D,
                 )
 
-            # Find slice count
-            if self.benchmark:
-                self.timer.start(key="find slice counts", stream_handle=self.cuest_handle.stream_handle)
-            dfk_int8_slice_count = self.find_slice_count(
-                slice_start=self.dfk_int8_slice_count_start,
-                slice_end=self.dfk_int8_slice_count_end,
-                dG_start=1.0,
-                dG_end=self.g_convergence,
-                dG=dG,
-                )
-            dfk_int8_modulus_count = self.find_slice_count(
-                slice_start=self.dfk_int8_modulus_count_start,
-                slice_end=self.dfk_int8_modulus_count_end,
-                dG_start=1.0,
-                dG_end=self.g_convergence,
-                dG=dG,
-                )
-            if self.benchmark:
-               self.timer.stop(key="find slice counts", stream_handle=self.cuest_handle.stream_handle)
+            # Find slice count (DF-K int8 tuning; only used for fock_method "dfjk")
+            dfk_int8_slice_count = None
+            dfk_int8_modulus_count = None
+            if self.fock_method == "dfjk":
+                dfk_int8_slice_count = self.find_slice_count(
+                    slice_start=self.dfk_int8_slice_count_start,
+                    slice_end=self.dfk_int8_slice_count_end,
+                    dG_start=1.0,
+                    dG_end=self.g_convergence,
+                    dG=dG,
+                    )
+                dfk_int8_modulus_count = self.find_slice_count(
+                    slice_start=self.dfk_int8_modulus_count_start,
+                    slice_end=self.dfk_int8_modulus_count_end,
+                    dG_start=1.0,
+                    dG_end=self.g_convergence,
+                    dG=dG,
+                    )
 
             # Fock Matrix
 
-            if self.benchmark:
-                self.timer.start(key="J", stream_handle=self.cuest_handle.stream_handle)
-            J = self.compute_coulomb(D=D)
-            if self.benchmark:
-                self.timer.stop(key="J", stream_handle=self.cuest_handle.stream_handle)
+            # Incremental directjk build: contract the delta densities and
+            # accumulate into the previous J/Ka/Kb.
+            D_contract = D
+            Da_contract = Da
+            Db_contract = Db
+            # This build is the (incr_n_delta + 1)-th since the last full one:
+            # a delta while that count stays below the rebuild period.
+            incr_delta = (incr_D_prev is not None
+                          and (self.incremental_fock_rebuild == 0
+                               or incr_n_delta + 1 < self.incremental_fock_rebuild))
+            if incr_delta:
+                D_contract = GPUMatrixUtility.dgeam(
+                    transpose1=False,
+                    alpha=1.0,
+                    mat1=D,
+                    transpose2=False,
+                    beta=-1.0,
+                    mat2=incr_D_prev,
+                    )
+                Da_contract = GPUMatrixUtility.dgeam(
+                    transpose1=False,
+                    alpha=1.0,
+                    mat1=Da,
+                    transpose2=False,
+                    beta=-1.0,
+                    mat2=incr_Da_prev,
+                    )
+                Db_contract = GPUMatrixUtility.dgeam(
+                    transpose1=False,
+                    alpha=1.0,
+                    mat1=Db,
+                    transpose2=False,
+                    beta=-1.0,
+                    mat2=incr_Db_prev,
+                    )
+            elif incr_D_prev is not None:
+                incr_D_prev = incr_Da_prev = incr_Db_prev = None
+                incr_J = incr_Ka = incr_Kb = None
 
-            if self.benchmark:
-                self.timer.start(key="Ka", stream_handle=self.cuest_handle.stream_handle)
-            Ka = self.compute_exchange(
-                Cocc=Cocca,
-                dfk_int8_slice_count=dfk_int8_slice_count,
-                dfk_int8_modulus_count=dfk_int8_modulus_count,
-                )
-            if self.benchmark:
-                self.timer.stop(key="Ka", stream_handle=self.cuest_handle.stream_handle)
+            self.timer.start(key='J', stream_handle=self.cuest_handle.stream_handle)
+            J = self.compute_coulomb(D=D_contract)
+            if incr_delta:
+                GPUMatrixUtility.daxpy(
+                    alpha=1.0,
+                    x=incr_J,
+                    y=J,
+                    )
+            self.timer.stop(key='J', stream_handle=self.cuest_handle.stream_handle)
 
-            if self.benchmark:
-                self.timer.start(key="Kb", stream_handle=self.cuest_handle.stream_handle)
-            Kb = self.compute_exchange(
-                Cocc=Coccb,
-                dfk_int8_slice_count=dfk_int8_slice_count,
-                dfk_int8_modulus_count=dfk_int8_modulus_count,
-                )
-            if self.benchmark:
-                self.timer.stop(key="Kb", stream_handle=self.cuest_handle.stream_handle)
+            self.timer.start(key='K', stream_handle=self.cuest_handle.stream_handle)
+            if self.gridk_sad_reference_data is not None:
+                (Ka, Kb), (dDa, dDb), (Kgrid_dDa, Kgrid_dDb) = self.compute_gridk_sad_reference_exchange(
+                    Ds=[Da, Db],
+                    )
+            elif self.do_incremental_fock:
+                # Both spin exchange builds in one batched multi-density call.
+                dDa = dDb = None
+                Kgrid_dDa = Kgrid_dDb = None
+                Ka, Kb = self.compute_exchange_density(Ds=[Da_contract, Db_contract])
+                if incr_delta:
+                    GPUMatrixUtility.daxpy(
+                        alpha=1.0,
+                        x=incr_Ka,
+                        y=Ka,
+                        )
+                    GPUMatrixUtility.daxpy(
+                        alpha=1.0,
+                        x=incr_Kb,
+                        y=Kb,
+                        )
+            else:
+                dDa = dDb = None
+                Kgrid_dDa = Kgrid_dDb = None
+                Ka, Kb = self.compute_exchange(
+                    Coccs=[Cocca, Coccb],
+                    dfk_int8_slice_count=dfk_int8_slice_count,
+                    dfk_int8_modulus_count=dfk_int8_modulus_count,
+                    )
+            self.timer.stop(key='K', stream_handle=self.cuest_handle.stream_handle)
 
-            if self.benchmark:
-                self.timer.start(key="Vxc", stream_handle=self.cuest_handle.stream_handle)
+            if self.do_incremental_fock:
+                incr_n_delta = incr_n_delta + 1 if incr_delta else 0
+                # Da/Db/D are not mutated later in the iteration and
+                # tensors['Da']/['Db'] are rebound, not overwritten, so
+                # these references stay the as-built quantities.
+                incr_D_prev = D
+                incr_Da_prev = Da
+                incr_Db_prev = Db
+                incr_J = J
+                incr_Ka = Ka
+                incr_Kb = Kb
+
+            del D_contract, Da_contract, Db_contract
+
+            self.timer.start(key='Vxc', stream_handle=self.cuest_handle.stream_handle)
             Exc, Vxca, Vxcb = self.compute_local_exchange_correlation(Cocca=Cocca,Coccb=Coccb)
-            if self.benchmark:
-                self.timer.stop(key="Vxc", stream_handle=self.cuest_handle.stream_handle)
+            self.timer.stop(key='Vxc', stream_handle=self.cuest_handle.stream_handle)
 
-            if self.benchmark:
-                self.timer.start(key="NLC", stream_handle=self.cuest_handle.stream_handle)
+            self.timer.start(key='VV10', stream_handle=self.cuest_handle.stream_handle)
             Enlc, Vnlc = self.compute_nonlocal_exchange_correlation(Cocca=Cocca,Coccb=Coccb)
-            if self.benchmark:
-                self.timer.stop(key="NLC", stream_handle=self.cuest_handle.stream_handle)
+            self.timer.stop(key='VV10', stream_handle=self.cuest_handle.stream_handle)
 
             # NOTE: This is typically where other electron-dependent Fock
             # matrix terms are added, e.g., PCM, wK.
 
+            self.timer.start(key='F', stream_handle=self.cuest_handle.stream_handle)
             Fa = H.clone()
             GPUMatrixUtility.daxpy(
                 alpha=1.0,
@@ -1248,32 +2150,49 @@ class UHF(object):
                 y=Fb,
                 )
 
+            self.timer.stop(key='F', stream_handle=self.cuest_handle.stream_handle)
+
             # SCF Energy
 
+            self.timer.start(key='E', stream_handle=self.cuest_handle.stream_handle)
             E = 0.0
             E += Enuc
             E += 1.0 * GPUMatrixUtility.ddot(
-                x=D, 
+                x=D,
                 y=H,
                 )
             E += 0.5 * GPUMatrixUtility.ddot(
-                x=D, 
+                x=D,
                 y=J,
                 )
-            E += -0.5 * GPUMatrixUtility.ddot(
-                x=Da,   
-                y=Ka,
-                )
-            E += -0.5 * GPUMatrixUtility.ddot(
-                x=Db,
-                y=Kb,
-                )
+            # Exchange energy: from the SAD-reference expansion,
+            # E_K = -1/2 sum_s [D_ref . K_ref + 2 dD . K_ref + dD . K_gridk(dD)],
+            # when active, otherwise E_K = -1/2 sum_s D_s . K_s
+            if self.gridk_sad_reference_data is not None:
+                self.scalars['E_gridk_sad_reference'] = self.compute_gridk_sad_reference_energy(
+                    dDs=[dDa, dDb],
+                    Kgrid_dDs=[Kgrid_dDa, Kgrid_dDb],
+                    )
+                E += self.scalars['E_gridk_sad_reference']
+            else:
+                self.scalars['E_gridk_sad_reference'] = 0.0
+                E += -0.5 * GPUMatrixUtility.ddot(
+                    x=Da,
+                    y=Ka,
+                    )
+                E += -0.5 * GPUMatrixUtility.ddot(
+                    x=Db,
+                    y=Kb,
+                    )
+            self.timer.stop(key='E', stream_handle=self.cuest_handle.stream_handle)
+
+            del J, Ka, Kb, dDa, dDb, Kgrid_dDa, Kgrid_dDb
 
             # Include PCM
-            if self.benchmark:
-                self.timer.start(key="PCM", stream_handle=self.cuest_handle.stream_handle)
+            pcm_converged = True
+            self.timer.start(key='PCM', stream_handle=self.cuest_handle.stream_handle)
             if self.do_pcm:
-                Epcm, Vpcm, q_out = self.compute_pcm_energy_and_potential(
+                Epcm, Vpcm, q_out, pcm_converged = self.compute_pcm_energy_and_potential(
                     q=self.pcm_q,
                     D=D)
 
@@ -1290,8 +2209,12 @@ class UHF(object):
                     x=Vpcm,
                     y=Fb,
                     )
-            if self.benchmark:
-                self.timer.stop(key="PCM", stream_handle=self.cuest_handle.stream_handle)
+                del Vpcm
+                if not pcm_converged and self.print_level:
+                    print('Warning: PCM solver did not converge')
+            self.timer.stop(key='PCM', stream_handle=self.cuest_handle.stream_handle)
+
+            del D
 
             E += Exc
             E += Enlc
@@ -1299,6 +2222,7 @@ class UHF(object):
 
             # Add Vxc to the Fock matrix after calculating the energy
 
+            self.timer.start(key='F', stream_handle=self.cuest_handle.stream_handle)
             if Vxca is not None:
                 GPUMatrixUtility.daxpy(
                     alpha=1.0,
@@ -1323,6 +2247,10 @@ class UHF(object):
                     y=Fb,
                     )
 
+            self.timer.stop(key='F', stream_handle=self.cuest_handle.stream_handle)
+
+            del Vxca, Vxcb, Vnlc
+
             dE = E - Eold
             Eold = E
 
@@ -1332,8 +2260,8 @@ class UHF(object):
             # G = np.dot(np.dot(np.dot(np.dot(X, S), D), F), X.T)
             # Faster in large basis sets
 
-            if self.benchmark:
-                self.timer.start(key="Orbital gradient", stream_handle=self.cuest_handle.stream_handle)
+            self.timer.start(key='orbital_gradient', stream_handle=self.cuest_handle.stream_handle)
+
             # alpha
             L1 = GPUMatrixUtility.matrix_multiply(
                 mat1=Cocca,
@@ -1347,6 +2275,7 @@ class UHF(object):
                 transpose1=False,
                 transpose2=True,
                 )
+            del L1
             R1 = GPUMatrixUtility.matrix_multiply(
                 mat1=Cocca,
                 mat2=Fa,
@@ -1359,6 +2288,7 @@ class UHF(object):
                 transpose1=False,
                 transpose2=True,
                 )
+            del R1
 
             Ga = GPUMatrixUtility.matrix_multiply(
                 mat1=L,
@@ -1366,6 +2296,7 @@ class UHF(object):
                 transpose1=True,
                 transpose2=False,
                 )
+            del L, R
             Ga = GPUMatrixUtility.dgeam(
                 mat1=Ga,
                 alpha=1.0,
@@ -1374,7 +2305,7 @@ class UHF(object):
                 beta=-1.0,
                 transpose2=True,
                 )
-                
+
             # beta
             L1 = GPUMatrixUtility.matrix_multiply(
                 mat1=Coccb,
@@ -1388,6 +2319,7 @@ class UHF(object):
                 transpose1=False,
                 transpose2=True,
                 )
+            del L1
             R1 = GPUMatrixUtility.matrix_multiply(
                 mat1=Coccb,
                 mat2=Fb,
@@ -1400,6 +2332,7 @@ class UHF(object):
                 transpose1=False,
                 transpose2=True,
                 )
+            del R1
 
             Gb = GPUMatrixUtility.matrix_multiply(
                 mat1=L,
@@ -1407,6 +2340,7 @@ class UHF(object):
                 transpose1=True,
                 transpose2=False,
                 )
+            del L, R
             Gb = GPUMatrixUtility.dgeam(
                 mat1=Gb,
                 alpha=1.0,
@@ -1415,26 +2349,26 @@ class UHF(object):
                 beta=-1.0,
                 transpose2=True,
                 )
-            if self.benchmark:
-                self.timer.stop(key="Orbital gradient", stream_handle=self.cuest_handle.stream_handle)
 
-            Ga_np = Ga.to_numpy()
-            Gb_np = Gb.to_numpy()
-
-            dGa = np.max(np.abs(Ga_np))
-            dGb = np.max(np.abs(Gb_np))
+            dGa = GPUMatrixUtility.damax(x=Ga)
+            dGb = GPUMatrixUtility.damax(x=Gb)
             dG = max(dGa, dGb)
+
+            self.timer.stop(key='orbital_gradient', stream_handle=self.cuest_handle.stream_handle)
 
             # Convergence Trace
 
             stop = time.time()
             if self.print_level:
-                print('%-4d: %24.16E %11.3E %11.3E %8.3f (%2d moduli, %2d slices)' % (iteration, E, dE, dG, stop-start, dfk_int8_modulus_count, dfk_int8_slice_count))
+                if self.fock_method == "dfjk":
+                    print('%4d: %24.16E %11.3E %11.3E %8.3f (%2d moduli, %2d slices)' % (iteration, E, dE, dG, stop-start, dfk_int8_modulus_count, dfk_int8_slice_count))
+                else:
+                    print('%4d: %24.16E %11.3E %11.3E %8.3f' % (iteration, E, dE, dG, stop-start))
             start = stop
 
             # Convergence Check
 
-            if iteration > 0 and dG < self.g_convergence:
+            if iteration > 0 and dG < self.g_convergence and pcm_converged:
                 self.is_converged = True
                 break
 
@@ -1442,25 +2376,36 @@ class UHF(object):
             if iteration >= self.maxiter - 1:
                 break
 
-            # Unconditional DIIS history flush every diis_flush_niter iterations
-            if self.diis_flush_niter > 0 and (iteration + 1) % self.diis_flush_niter == 0:
-                diis = DIIS(max_nvector=self.diis_max_nvector)
+            # reset history if dG hasn't improved for 10 iterations
+            if dG < dG_best * 0.95:
+                dG_best = dG
+                dG_no_improve = 0
+                skip_diis = False
+            else:
+                dG_no_improve += 1
+                if dG_no_improve >= 10:
+                    diis = diis_class(max_nvector=self.diis_max_nvector)
+                    dG_best = dG
+                    dG_no_improve = 0
+                    skip_diis = True
 
             # DIIS Extrapolation (also updates DIIS history)
 
-            if self.benchmark:
-                self.timer.start(key="DIIS extrapolate", stream_handle=self.cuest_handle.stream_handle)
-
-            if iteration > 0:
+            self.timer.start(key='DIIS', stream_handle=self.cuest_handle.stream_handle)
+            if iteration > 0 and not skip_diis:
                 Fa, Fb = diis.iterate(
                     state_vectors=[Fa, Fb],
                     error_vectors=[Ga, Gb],
                     )
+            skip_diis = False
 
-            if self.benchmark:
-                self.timer.stop(key="DIIS extrapolate", stream_handle=self.cuest_handle.stream_handle)
+            del Ga, Gb
+
+            self.timer.stop(key='DIIS', stream_handle=self.cuest_handle.stream_handle)
 
             # Fock Matrix Diagonalization
+
+            self.timer.start(key='orbital_update', stream_handle=self.cuest_handle.stream_handle)
 
             tmp = GPUMatrixUtility.matrix_multiply(
                 mat1=X,
@@ -1474,12 +2419,200 @@ class UHF(object):
                 transpose1=False,
                 transpose2=True,
                 )
+            del tmp, Fa
 
-            if self.benchmark:
-                self.timer.start(key="eigh alpha", stream_handle=self.cuest_handle.stream_handle)
+            if self.level_shift_a != 0.0 and U2a_prev is not None:
+                # F2a += level_shift_a * (1 - P_occ) with P_occ built from the
+                # previous occupied eigenvectors, without leaving the GPU
+                GPUMatrixUtility.daxpy(
+                    n=F2a.nrows,
+                    alpha=self.level_shift_a,
+                    x=level_shift_ones,
+                    offx=0,
+                    incx=1,
+                    y=F2a,
+                    offy=0,
+                    incy=F2a.nrows + 1,
+                    )
+                GPUMatrixUtility.c_dgemm(
+                    transa=False,
+                    transb=True,
+                    m=F2a.nrows,
+                    n=F2a.nrows,
+                    k=self.sizes['nocca'],
+                    alpha=-self.level_shift_a,
+                    a=U2a_prev,
+                    offa=0,
+                    lda=F2a.nrows,
+                    b=U2a_prev,
+                    offb=0,
+                    ldb=F2a.nrows,
+                    beta=1.0,
+                    c=F2a,
+                    offc=0,
+                    ldc=F2a.nrows,
+                    )
+
+            self.timer.start(key='diagonalize', stream_handle=self.cuest_handle.stream_handle)
             epsa, U2a = GPUMatrixUtility.eigh(matrix=F2a)
-            if self.benchmark:
-                self.timer.stop(key="eigh alpha", stream_handle=self.cuest_handle.stream_handle)
+            self.timer.stop(key='diagonalize', stream_handle=self.cuest_handle.stream_handle)
+            del F2a
+
+            if self.level_shift_a != 0.0:
+                U2a_prev = U2a
+
+            Ca = GPUMatrixUtility.matrix_multiply(
+                mat1=U2a,
+                mat2=X,
+                transpose1=True,
+                transpose2=False,
+                )
+            del U2a
+
+            # New Occupied Orbitals and Density Matrix
+
+            Cocca = GPUMatrix(
+                nrows=self.sizes['nocca'],
+                ncols=Ca.shape[1],
+                dtype=np.double,
+                )
+            GPUMatrixUtility.dcopy(
+                n=self.sizes['nocca'] * Ca.shape[1],
+                x=Ca,
+                offx=0,
+                incx=1,
+                y=Cocca,
+                offy=0,
+                incy=1,
+                )
+
+            Da = GPUMatrixUtility.matrix_multiply(
+                mat1=Cocca,
+                mat2=Cocca,
+                transpose1=True,
+                transpose2=False,
+                )
+
+            tmp = GPUMatrixUtility.matrix_multiply(
+                mat1=X,
+                mat2=Fb,
+                transpose1=False,
+                transpose2=False,
+                )
+            F2b = GPUMatrixUtility.matrix_multiply(
+                mat1=tmp,
+                mat2=X,
+                transpose1=False,
+                transpose2=True,
+                )
+            del tmp, Fb
+
+            if self.level_shift_b != 0.0 and U2b_prev is not None:
+                # F2b += level_shift_b * (1 - P_occ) with P_occ built from the
+                # previous occupied eigenvectors, without leaving the GPU
+                GPUMatrixUtility.daxpy(
+                    n=F2b.nrows,
+                    alpha=self.level_shift_b,
+                    x=level_shift_ones,
+                    offx=0,
+                    incx=1,
+                    y=F2b,
+                    offy=0,
+                    incy=F2b.nrows + 1,
+                    )
+                GPUMatrixUtility.c_dgemm(
+                    transa=False,
+                    transb=True,
+                    m=F2b.nrows,
+                    n=F2b.nrows,
+                    k=self.sizes['noccb'],
+                    alpha=-self.level_shift_b,
+                    a=U2b_prev,
+                    offa=0,
+                    lda=F2b.nrows,
+                    b=U2b_prev,
+                    offb=0,
+                    ldb=F2b.nrows,
+                    beta=1.0,
+                    c=F2b,
+                    offc=0,
+                    ldc=F2b.nrows,
+                    )
+
+            self.timer.start(key='diagonalize', stream_handle=self.cuest_handle.stream_handle)
+            epsb, U2b = GPUMatrixUtility.eigh(matrix=F2b)
+            self.timer.stop(key='diagonalize', stream_handle=self.cuest_handle.stream_handle)
+            del F2b
+
+            if self.level_shift_b != 0.0:
+                U2b_prev = U2b
+
+            Cb = GPUMatrixUtility.matrix_multiply(
+                mat1=U2b,
+                mat2=X,
+                transpose1=True,
+                transpose2=False,
+                )
+            del U2b
+
+            # New Occupied Orbitals and Density Matrix
+
+            Coccb = GPUMatrix(
+                nrows=self.sizes['noccb'],
+                ncols=Cb.shape[1],
+                dtype=np.double,
+                )
+            GPUMatrixUtility.dcopy(
+                n=self.sizes['noccb'] * Cb.shape[1],
+                x=Cb,
+                offx=0,
+                incx=1,
+                y=Coccb,
+                offy=0,
+                incy=1,
+                )
+
+            Db = GPUMatrixUtility.matrix_multiply(
+                mat1=Coccb,
+                mat2=Coccb,
+                transpose1=True,
+                transpose2=False,
+                )
+
+            self.tensors['Da'] = Da
+            self.tensors['Cocca'] = Cocca
+
+            self.tensors['Ca'] = Ca
+            self.tensors['epsa'] = epsa
+
+            self.tensors['Db'] = Db
+            self.tensors['Coccb'] = Coccb
+
+            self.tensors['Cb'] = Cb
+            self.tensors['epsb'] = epsb
+
+
+            self.timer.stop(key='orbital_update', stream_handle=self.cuest_handle.stream_handle)
+
+        # Remove the level shift from the converged orbitals and orbital
+        # energies with a final unshifted diagonalization
+        if self.is_converged and (self.level_shift_a != 0.0 or self.level_shift_b != 0.0):
+            tmp = GPUMatrixUtility.matrix_multiply(
+                mat1=X,
+                mat2=Fa,
+                transpose1=False,
+                transpose2=False,
+                )
+            F2a = GPUMatrixUtility.matrix_multiply(
+                mat1=tmp,
+                mat2=X,
+                transpose1=False,
+                transpose2=True,
+                )
+
+            self.timer.start(key='diagonalize', stream_handle=self.cuest_handle.stream_handle)
+            epsa, U2a = GPUMatrixUtility.eigh(matrix=F2a)
+            self.timer.stop(key='diagonalize', stream_handle=self.cuest_handle.stream_handle)
 
             Ca = GPUMatrixUtility.matrix_multiply(
                 mat1=U2a,
@@ -1488,22 +2621,27 @@ class UHF(object):
                 transpose2=False,
                 )
 
-            # New Occupied Orbitals and Density Matrix
+            Cocca = GPUMatrix(
+                nrows=self.sizes['nocca'],
+                ncols=Ca.shape[1],
+                dtype=np.double,
+                )
+            GPUMatrixUtility.dcopy(
+                n=self.sizes['nocca'] * Ca.shape[1],
+                x=Ca,
+                offx=0,
+                incx=1,
+                y=Cocca,
+                offy=0,
+                incy=1,
+                )
 
-            if self.benchmark:
-                self.timer.start(key="Form Da", stream_handle=self.cuest_handle.stream_handle)
-            Ca_np = Ca.to_numpy()
-            Cocca_np = Ca_np[:self.sizes['nocca'], :]
-            Cocca = GPUMatrix.from_numpy(Cocca_np)
-            
             Da = GPUMatrixUtility.matrix_multiply(
                 mat1=Cocca,
                 mat2=Cocca,
                 transpose1=True,
                 transpose2=False,
                 )
-            if self.benchmark:
-                self.timer.stop(key="Form Da", stream_handle=self.cuest_handle.stream_handle)
 
             tmp = GPUMatrixUtility.matrix_multiply(
                 mat1=X,
@@ -1518,11 +2656,9 @@ class UHF(object):
                 transpose2=True,
                 )
 
-            if self.benchmark:
-                self.timer.start(key="eigh beta", stream_handle=self.cuest_handle.stream_handle)
+            self.timer.start(key='diagonalize', stream_handle=self.cuest_handle.stream_handle)
             epsb, U2b = GPUMatrixUtility.eigh(matrix=F2b)
-            if self.benchmark:
-                self.timer.stop(key="eigh beta", stream_handle=self.cuest_handle.stream_handle)
+            self.timer.stop(key='diagonalize', stream_handle=self.cuest_handle.stream_handle)
 
             Cb = GPUMatrixUtility.matrix_multiply(
                 mat1=U2b,
@@ -1531,22 +2667,27 @@ class UHF(object):
                 transpose2=False,
                 )
 
-            # New Occupied Orbitals and Density Matrix
+            Coccb = GPUMatrix(
+                nrows=self.sizes['noccb'],
+                ncols=Cb.shape[1],
+                dtype=np.double,
+                )
+            GPUMatrixUtility.dcopy(
+                n=self.sizes['noccb'] * Cb.shape[1],
+                x=Cb,
+                offx=0,
+                incx=1,
+                y=Coccb,
+                offy=0,
+                incy=1,
+                )
 
-            if self.benchmark:
-                self.timer.start(key="Form Db", stream_handle=self.cuest_handle.stream_handle)
-            Cb_np = Cb.to_numpy()
-            Coccb_np = Cb_np[:self.sizes['noccb'], :]
-            Coccb = GPUMatrix.from_numpy(Coccb_np)
-            
             Db = GPUMatrixUtility.matrix_multiply(
                 mat1=Coccb,
                 mat2=Coccb,
                 transpose1=True,
                 transpose2=False,
                 )
-            if self.benchmark:
-                self.timer.stop(key="Form Db", stream_handle=self.cuest_handle.stream_handle)
 
             self.tensors['Da'] = Da
             self.tensors['Cocca'] = Cocca
@@ -1559,19 +2700,22 @@ class UHF(object):
 
             self.tensors['Cb'] = Cb
             self.tensors['epsb'] = epsb
-            
 
         # => Print Convergence <= #
 
         if self.print_level > 0:
+            print('')
             if self.is_converged:
+                self.timer.start(key='S2', stream_handle=self.cuest_handle.stream_handle)
                 self.compute_s2()
+                self.timer.stop(key='S2', stream_handle=self.cuest_handle.stream_handle)
                 print('SCF Converged\n')
                 S = 0.5 * (self.multiplicity - 1)
                 S2_exact = S * (S + 1.0)
-                print('<Sz>                = %11.3E' % (self.scalars['Sz']))
-                print('<S2>                = %11.3E' % (self.scalars['S2']))
-                print('Spin contamination  = %11.3E' % (self.scalars['S2'] - S2_exact))
+                print('%-19s = %11d' % ('multiplicity', self.multiplicity))
+                print('%-19s = %11.3E' % ('<Sz>', self.scalars['Sz']))
+                print('%-19s = %11.3E' % ('<S2>', self.scalars['S2']))
+                print('%-19s = %11.3E' % ('Spin contamination', self.scalars['S2'] - S2_exact))
                 print('')
             else:
                 print('SCF Failed\n')
@@ -1579,12 +2723,10 @@ class UHF(object):
         # => Print Final Energy <= #
 
         if self.print_level:
-            print('SCF Energy = %24.16E\n' % E)
+            print('%-19s = %24.16E\n' % ('SCF Energy', E))
 
         if self.print_level > 0:
             print('=> End Solve DIIS <=\n')
-        if self.benchmark:
-            self.timer.stop(key="iterations", stream_handle=self.cuest_handle.stream_handle)
 
     def compute_energy(self):
 
@@ -1593,8 +2735,52 @@ class UHF(object):
 
         if not self.is_converged:
             raise RuntimeError('Not converged')
-    
+
         return self.scalars['Escf']
+
+    def compute_properties(self):
+
+        if not self.is_solved:
+            self.solve()
+
+        if not self.is_converged:
+            raise RuntimeError('Not converged')
+
+        self.timer.start(key='properties', stream_handle=self.cuest_handle.stream_handle, always=True)
+
+        properties = {}
+
+        Da = self.tensors['Da']
+        Db = self.tensors['Db']
+
+        D = Da.clone()
+        GPUMatrixUtility.daxpy(
+            alpha=1.0,
+            x=Db,
+            y=D,
+            )
+
+        # Dipole moment
+        dipole = self.compute_nuc_dipole()
+        mu = self.compute_dipole()
+
+        for i in range(3):
+            dipole[i] -= 1.0 * GPUMatrixUtility.ddot(
+                x=D,
+                y=mu[i],
+                )
+
+        properties['mu_x'] = dipole[0]
+        properties['mu_y'] = dipole[1]
+        properties['mu_z'] = dipole[2]
+
+        self.timer.stop(key='properties', stream_handle=self.cuest_handle.stream_handle, always=True)
+
+        if self.print_level:
+            print('%-19s = %14.4E %14.4E %14.4E\n' % ('SCF Dipole', dipole[0], dipole[1], dipole[2],))
+            print('cuEST UHF Properties Time: %11.3E [s]\n' % (self.timer.times['properties']))
+
+        return properties
 
     def compute_gradient(self):
 
@@ -1603,9 +2789,11 @@ class UHF(object):
 
         if not self.is_converged:
             raise RuntimeError('Not converged')
-        
+
+        self.timer.start(key='gradient', stream_handle=self.cuest_handle.stream_handle, always=True)
+
         # Occupied orbitals / density matrix
-    
+
         Cocca = self.tensors['Cocca']
         Da = self.tensors['Da']
         Coccb = self.tensors['Coccb']
@@ -1613,69 +2801,107 @@ class UHF(object):
 
         D = Da.clone()
         GPUMatrixUtility.daxpy(
-            alpha=1.0, 
-            x=Db, 
+            alpha=1.0,
+            x=Db,
             y=D,
             )
 
         # Energy-weighted density matrix
-        # alpha
-        epsa_occ = self.tensors['epsa'].to_numpy()[:self.sizes['nocca']].reshape(-1)
-        Cocca_np = Cocca.to_numpy()
-        Va_np = Cocca_np * epsa_occ[:, None]
-        Wa_np = Va_np.T @ Cocca_np
-        Wa = GPUMatrix.from_numpy(Wa_np)
 
-        epsb_occ = self.tensors['epsb'].to_numpy()[:self.sizes['noccb']].reshape(-1)
-        Coccb_np = Coccb.to_numpy()
-        Vb_np = Coccb_np * epsb_occ[:, None]
-        Wb_np = Vb_np.T @ Coccb_np
-        Wb = GPUMatrix.from_numpy(Wb_np)
+        # W = Cocc^T diag(eps_occ) Cocc, formed on the GPU
+        self.timer.start(key='W', stream_handle=self.cuest_handle.stream_handle)
+        epsa_occ = GPUMatrix(
+            nrows=self.sizes['nocca'],
+            ncols=self.sizes['nocca'],
+            dtype=np.double,
+            )
+        GPUMatrixUtility.dcopy(
+            n=self.sizes['nocca'],
+            x=self.tensors['epsa'],
+            offx=0,
+            incx=1,
+            y=epsa_occ,
+            offy=0,
+            incy=self.sizes['nocca'] + 1,
+            )
+        Va = GPUMatrixUtility.matrix_multiply(
+            mat1=epsa_occ,
+            mat2=Cocca,
+            transpose1=False,
+            transpose2=False,
+            )
+        Wa = GPUMatrixUtility.matrix_multiply(
+            mat1=Va,
+            mat2=Cocca,
+            transpose1=True,
+            transpose2=False,
+            )
+
+        epsb_occ = GPUMatrix(
+            nrows=self.sizes['noccb'],
+            ncols=self.sizes['noccb'],
+            dtype=np.double,
+            )
+        GPUMatrixUtility.dcopy(
+            n=self.sizes['noccb'],
+            x=self.tensors['epsb'],
+            offx=0,
+            incx=1,
+            y=epsb_occ,
+            offy=0,
+            incy=self.sizes['noccb'] + 1,
+            )
+        Vb = GPUMatrixUtility.matrix_multiply(
+            mat1=epsb_occ,
+            mat2=Coccb,
+            transpose1=False,
+            transpose2=False,
+            )
+        Wb = GPUMatrixUtility.matrix_multiply(
+            mat1=Vb,
+            mat2=Coccb,
+            transpose1=True,
+            transpose2=False,
+            )
 
         # Total energy-weighted density
         W = Wa.clone()
         GPUMatrixUtility.daxpy(
-            alpha=1.0, 
-            x=Wb, 
+            alpha=1.0,
+            x=Wb,
             y=W,
             )
+        del epsa_occ, Va, Wa, epsb_occ, Vb, Wb
 
-        Dt = GPUMatrixUtility.dgeam(
-            mat1=D,
-            alpha=0.5,
-            transpose1=False,
-            mat2=D,
-            beta=0.5,
-            transpose2=True,
-        )
-        Wt = GPUMatrixUtility.dgeam(
-            mat1=W,
-            alpha=0.5,
-            transpose1=False,
-            mat2=W,
-            beta=0.5,
-            transpose2=True,
-        )
- 
+        self.timer.stop(key='W', stream_handle=self.cuest_handle.stream_handle)
+
         # Nuclear gradient (classical)
- 
+
+        self.timer.start(key='dEnuc', stream_handle=self.cuest_handle.stream_handle)
         Gnuc = self.compute_Enuc_gradient()
         GPUMatrixUtility.dscal(
             alpha=+1.0,
             x=Gnuc,
             )
 
+        self.timer.stop(key='dEnuc', stream_handle=self.cuest_handle.stream_handle)
+
         # Overlap gradient
 
-        GS = self.compute_overlap_gradient(Wt)
+        self.timer.start(key='dS', stream_handle=self.cuest_handle.stream_handle)
+        GS = self.compute_overlap_gradient(W)
+        self.timer.stop(key='dS', stream_handle=self.cuest_handle.stream_handle)
         GPUMatrixUtility.dscal(
             alpha=-1.0,
             x=GS,
             )
+        del W
 
         # Kinetic gradient
 
-        GT = self.compute_kinetic_gradient(Dt)
+        self.timer.start(key='dT', stream_handle=self.cuest_handle.stream_handle)
+        GT = self.compute_kinetic_gradient(D)
+        self.timer.stop(key='dT', stream_handle=self.cuest_handle.stream_handle)
         GPUMatrixUtility.dscal(
             alpha=+1.0,
             x=GT,
@@ -1683,7 +2909,9 @@ class UHF(object):
 
         # Potential gradient
 
-        GV = self.compute_potential_gradient(Dt)
+        self.timer.start(key='dV', stream_handle=self.cuest_handle.stream_handle)
+        GV = self.compute_potential_gradient(D)
+        self.timer.stop(key='dV', stream_handle=self.cuest_handle.stream_handle)
         GPUMatrixUtility.dscal(
             alpha=+1.0,
             x=GV,
@@ -1691,26 +2919,36 @@ class UHF(object):
 
         # ECP gradient
 
+        self.timer.start(key='dVecp', stream_handle=self.cuest_handle.stream_handle)
         Gecp = None
         if self.do_ecp:
-            Gecp = self.compute_ecp_gradient(Dt)
+            Gecp = self.compute_ecp_gradient(D)
             GPUMatrixUtility.dscal(
                 alpha=+1.0,
                 x=Gecp,
                 )
 
+        self.timer.stop(key='dVecp', stream_handle=self.cuest_handle.stream_handle)
+
         # United Coulomb + Exchange gradient
 
+        self.timer.start(key='dJK', stream_handle=self.cuest_handle.stream_handle)
         GJK = self.compute_coulomb_and_exchange_gradient(
             scaleJ=+0.5,
-            DJ=Dt,
+            DJ=D,
             scaleK=-0.5,
             CoccsK=[Cocca,Coccb],
             )
+        self.timer.stop(key='dJK', stream_handle=self.cuest_handle.stream_handle)
+
+        if not self.do_pcm:
+            del D
 
         # Local exchange-correlation gradient
 
+        self.timer.start(key='dVxc', stream_handle=self.cuest_handle.stream_handle)
         GVxc = self.compute_local_exchange_correlation_gradient(Cocca=Cocca,Coccb=Coccb)
+        self.timer.stop(key='dVxc', stream_handle=self.cuest_handle.stream_handle)
         GPUMatrixUtility.dscal(
             alpha=+1.0,
             x=GVxc,
@@ -1718,7 +2956,9 @@ class UHF(object):
 
         # Nonlocal exchange-correlation gradient
 
+        self.timer.start(key='dVV10', stream_handle=self.cuest_handle.stream_handle)
         GVnlc = self.compute_nonlocal_exchange_correlation_gradient(Cocca=Cocca,Coccb=Coccb)
+        self.timer.stop(key='dVV10', stream_handle=self.cuest_handle.stream_handle)
         GPUMatrixUtility.dscal(
             alpha=+1.0,
             x=GVnlc,
@@ -1727,10 +2967,12 @@ class UHF(object):
         # PCM gradient
 
         Gpcm = None
+        self.timer.start(key='dPCM', stream_handle=self.cuest_handle.stream_handle)
         if self.do_pcm:
             Gpcm = self.compute_pcm_gradient(
                 q=self.pcm_q,
-                D=Dt)
+                D=D)
+        self.timer.stop(key='dPCM', stream_handle=self.cuest_handle.stream_handle)
 
         G = GPUMatrix(
             nrows=self.primary.natom,
@@ -1785,6 +3027,11 @@ class UHF(object):
                 x=Gpcm,
                 y=G,
                 )
+
+        self.timer.stop(key='gradient', stream_handle=self.cuest_handle.stream_handle, always=True)
+
+        if self.print_level:
+            print('cuEST UHF Gradient Time: %11.3E [s]\n' % (self.timer.times['gradient']))
 
         return G
 

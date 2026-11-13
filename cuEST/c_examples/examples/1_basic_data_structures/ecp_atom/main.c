@@ -99,10 +99,8 @@ int main(int argc, char **argv)
     /* Compute the total number of active ECP atoms */
     uint64_t num_active_ecp = 0;
     for (uint64_t i = 0; i < xyzData->numAtoms; i++) {
-        uint64_t basisIndex = 0;
         for (uint64_t j = 0; j < numUnique; j++) {
             if (strcmp(xyzData->symbols[i], uniqueSymbols[j]) == 0) {
-                basisIndex = j;
                 if (shellList[j]) num_active_ecp++;
                 break;
             }
@@ -113,10 +111,8 @@ int main(int argc, char **argv)
     uint64_t *ecpMap = (uint64_t *) malloc(num_active_ecp * sizeof(uint64_t));
 
     for (uint64_t i = 0, ecp = 0; i < xyzData->numAtoms; i++) {
-        uint64_t basisIndex = 0;
         for (uint64_t j = 0; j < numUnique; j++) {
             if (strcmp(xyzData->symbols[i], uniqueSymbols[j]) == 0) {
-                basisIndex = j;
                 if (shellList[j]) {
                     ecpMap[ecp] = j;
                     ecp++;
@@ -170,7 +166,7 @@ int main(int argc, char **argv)
             handle,                                    ///< cuEST handle 
             shellList[i]->shell_types[0],              ///< Angular momentum
             shellList[i]->num_primitives[0],           ///< Number of primitives
-            shellList[i]->Ns,                          ///< size_t* containing the radial powers
+            shellList[i]->Ns,                          ///< uint64_t* containing the radial powers
             shellList[i]->coefficients,                ///< double* containing the coefficients
             shellList[i]->exponents,                   ///< double* containing the exponents
             ecpshell_parameters,                       ///< cuestECPShellParameters_t with default parameters
@@ -183,7 +179,7 @@ int main(int argc, char **argv)
                 handle,                                ///< cuEST handle 
                 shellList[i]->shell_types[k+1],        ///< Angular momentum
                 shellList[i]->num_primitives[k+1],     ///< Number of primitives
-                &(shellList[i]->Ns)[offset],           ///< size_t* containing the radial powers
+                &(shellList[i]->Ns)[offset],           ///< uint64_t* containing the radial powers
                 &(shellList[i]->coefficients)[offset], ///< double* containing the coefficients
                 &(shellList[i]->exponents)[offset],    ///< double* containing the exponents
                 ecpshell_parameters,                   ///< cuestECPShellParameters_t with default parameters

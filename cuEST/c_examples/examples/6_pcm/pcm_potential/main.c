@@ -33,7 +33,7 @@
 
 /*
  * This sample shows how to use cuEST to compute the PCM potential
- * matrix and the PCM dislectric energy. The PCM potential matrix
+ * matrix and the PCM dielectric energy. The PCM potential matrix
  * is obtained by solving for the induced surface charges on the
  * cavity via a preconditioned conjugate gradient (PCG) solver.
  *

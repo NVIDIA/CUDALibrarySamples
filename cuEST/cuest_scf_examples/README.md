@@ -13,7 +13,7 @@ For full API documentation, see https://docs.nvidia.com/cuda/cuest/.
 
 ## Installation
 
-From the `cuda_samples/` directory:
+From this directory (the `pyproject.toml` is one level up):
 
 ```bash
 pip install "..[cu12]"  # or "..[cu13]" for CUDA 13
@@ -50,7 +50,9 @@ cuest_scf_examples/
     rhf-1/            # Standalone RHF example
     uhf-1/            # Standalone UHF example
     mp2-1/            # Standalone MP2 example (uses nvmath-python)
+    mp2-grad-1/       # Standalone MP2 gradient example (uses nvmath-python)
     cphf-1/           # Standalone CPHF example (uses nvmath-python)
+    rhf-hessian-1/    # Standalone semi-analytic RHF Hessian example (overlap and kinetic Hessian terms)
   test/
     rhf_1/            # RHF integration test
     rhf_grad_1/       # RHF gradient integration test
@@ -63,5 +65,15 @@ cuest_scf_examples/
     dft_energies/     # DFT energy and gradient sweeps across functionals
     ecp_1/            # RHF/UHF with effective core potentials (+PCM)
     mp2_1/            # DF-MP2 test (uses nvmath-python)
+    mp2_grad_1/       # DF-MP2 gradient test (uses nvmath-python)
+    rhf_directjk_1/   # RHF with direct four-center J and K
+    uhf_directjk_1/   # UHF with direct four-center J and K
+    rhf_directjgridk_1/ # RHF with direct J and grid-based exchange (Grid-K)
+    uhf_directjgridk_1/ # UHF with direct J and grid-based exchange (Grid-K)
+    directj_bilinear_grad_1/ # Direct J bilinear-form gradient test
+    directk_bilinear_grad_1/ # Direct K bilinear-form gradient test
   run_all.sh          # Run all tests and examples
 ```
+
+The direct J/K and Grid-K tests are intended for datacenter GPUs with
+full-rate FP64 compute.

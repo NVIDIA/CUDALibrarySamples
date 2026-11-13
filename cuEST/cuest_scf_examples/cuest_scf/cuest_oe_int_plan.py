@@ -22,7 +22,7 @@ from .cuest_handle import CuestHandle
 from .cuest_ao_basis import CuestAOBasis
 from .cuest_ao_pair_list import CuestAOPairList
 
-from .cuest_parameters import CuestParameters
+from .cuest_utility import CuestUtility
 
 class CuestOEIntPlan(object):
 
@@ -38,12 +38,12 @@ class CuestOEIntPlan(object):
 
         self.handle = handle
 
-        oe_int_plan_parameters = CuestParameters(
-            parametersType=ce.CuestParametersType.CUEST_OEINTPLAN_PARAMETERS,
+        oe_int_plan_parameters = CuestUtility.make_compute_parameters(
+            ce.CuestParametersType.CUEST_OEINTPLAN_PARAMETERS,
+            [],
             )
 
         self.oe_int_plan_handle = ce.cuestOEIntPlanHandle()
-
         # => Workspace Query <= #
 
         persistent_workspace_descriptor = CuestWorkspaceDescriptor()
@@ -60,7 +60,7 @@ class CuestOEIntPlan(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestOEIntPlanCreateWorkspaceQuery failed')
+            raise RuntimeError('cuestOEIntPlanCreateWorkspaceQuery failed: %s' % status)
 
         persistent_workspace = CuestWorkspace(workspaceDescriptor=persistent_workspace_descriptor)
         temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
@@ -78,7 +78,7 @@ class CuestOEIntPlan(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestOEIntPlanCreate failed')
+            raise RuntimeError('cuestOEIntPlanCreate failed: %s' % status)
 
         # Bind the lifetime of persistent_workspace to this object
         self.persistent_workspace = persistent_workspace
@@ -99,4 +99,4 @@ class CuestOEIntPlan(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestOEIntPlanDestroy failed')
+            raise RuntimeError('cuestOEIntPlanDestroy failed: %s' % status)

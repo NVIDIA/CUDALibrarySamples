@@ -34,7 +34,7 @@ class CuestParameters(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuest_parameters_create failed')
+            raise RuntimeError('cuest_parameters_create failed: %s' % status)
 
         self.initialized = True
 
@@ -48,4 +48,4 @@ class CuestParameters(object):
             )
 
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuest_parameters_destroy failed')
+            raise RuntimeError('cuest_parameters_destroy failed: %s' % status)

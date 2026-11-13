@@ -3,8 +3,11 @@
 This directory contains standalone examples for the cuEST library, covering
 the C API, Python API, and the cuEST SCF Python library.
 
-The current version is v0.2, which may be incompatible with older versions.
-For v0.1 examples, please checkout d1ee93e936f161e5f548a5ea3edf45326e56fb59.
+The current version is v0.3, which may be incompatible with older versions.
+Examples for older versions are available at these commits:
+
+- v0.2: [`3204c6e`](https://github.com/NVIDIA/CUDALibrarySamples/tree/3204c6e7ee753455d98d9615ad8a799f57afb64e/cuEST)
+- v0.1: [`d1ee93e`](https://github.com/NVIDIA/CUDALibrarySamples/tree/d1ee93e936f161e5f548a5ea3edf45326e56fb59/cuEST)
 
 For full API documentation, see https://docs.nvidia.com/cuda/cuest/.
 
@@ -12,7 +15,8 @@ For full API documentation, see https://docs.nvidia.com/cuda/cuest/.
 
 - CUDA Toolkit 12 or later
 - Python 3.12 or later
-- An NVIDIA GPU (Ampere or later recommended)
+- An NVIDIA GPU (Ampere or later recommended). The direct J/K and Grid-K
+  examples are intended for datacenter GPUs with full-rate FP64 compute.
 
 ## Quick Start
 

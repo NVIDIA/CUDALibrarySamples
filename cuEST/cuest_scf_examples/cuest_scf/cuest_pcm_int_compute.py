@@ -20,7 +20,7 @@ from .cuest_pcm_int_plan import CuestPCMIntPlan
 
 from .cuest_workspace_descriptor import CuestWorkspaceDescriptor
 from .cuest_workspace import CuestWorkspace
-from .cuest_parameters import CuestParameters
+from .cuest_utility import CuestUtility
 from .cuest_results import CuestResults
 
 import numpy as np
@@ -28,7 +28,7 @@ import numpy as np
 class CuestPCMIntCompute(object):
 
     @staticmethod
-    def compute_pcm_energy_and_potential(
+    def potential(
         *,
         handle : CuestHandle,
         pcm_int_plan : CuestPCMIntPlan,
@@ -54,18 +54,11 @@ class CuestPCMIntCompute(object):
 
         pcm_results_handle = CuestResults(resultsType=ce.CuestResultsType.CUEST_PCM_RESULTS, results_handle=ce.cuestPCMResultsHandle())
         # pcm parameters
-        pcm_compute_parameters = CuestParameters(parametersType=ce.CuestParametersType.CUEST_PCMPOTENTIALCOMPUTE_PARAMETERS)
-
-        convergence_threshold = ce.data_double(pcm_int_plan.convergence_tol)
-        status = ce.cuestParametersConfigure(
-            parametersType=ce.CuestParametersType.CUEST_PCMPOTENTIALCOMPUTE_PARAMETERS,
-            parameters=pcm_compute_parameters.parameters,
-            attribute=ce.CuestPCMPotentialComputeParametersAttributes.CUEST_PCMPOTENTIALCOMPUTE_PARAMETERS_CONVERGENCE_THRESHOLD,
-            attributeValue=convergence_threshold,
+        pcm_compute_parameters = CuestUtility.make_compute_parameters(
+            ce.CuestParametersType.CUEST_PCMPOTENTIALCOMPUTE_PARAMETERS,
+            [(ce.CuestPCMPotentialComputeParametersAttributes.CUEST_PCMPOTENTIALCOMPUTE_PARAMETERS_CONVERGENCE_THRESHOLD,
+              ce.data_double(pcm_int_plan.convergence_tol))],
             )
-        if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestParametersConfigure failed: %d' % status)
-
         temporary_workspace_descriptor = CuestWorkspaceDescriptor()
 
         status = ce.cuestPCMPotentialComputeWorkspaceQuery(
@@ -80,7 +73,7 @@ class CuestPCMIntCompute(object):
             outPCMPotentialMatrix=Vptr2,
             )
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestPCMPotentialComputeWorkspaceQuery failed: %d' % status)
+            raise RuntimeError('cuestPCMPotentialComputeWorkspaceQuery failed: %s' % status)
 
         temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
 
@@ -96,8 +89,7 @@ class CuestPCMIntCompute(object):
             outPCMPotentialMatrix=Vptr2,
             )
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestPCMPotentialCompute failed: %d' % status)
-        del pcm_compute_parameters
+            raise RuntimeError('cuestPCMPotentialCompute failed: %s' % status)
 
         # get results
         Epcm = ce.data_double()
@@ -108,7 +100,7 @@ class CuestPCMIntCompute(object):
             attributeValue=Epcm,
             )
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestResultsQuery failed: %d' % status)
+            raise RuntimeError('cuestResultsQuery failed: %s' % status)
 
         converged = ce.data_int32_t()
         status = ce.cuestResultsQuery(
@@ -118,7 +110,7 @@ class CuestPCMIntCompute(object):
             attributeValue=converged,
             )
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestResultsQuery failed: %d' % status)
+            raise RuntimeError('cuestResultsQuery failed: %s' % status)
 
         residual = ce.data_double()
         status = ce.cuestResultsQuery(
@@ -128,13 +120,12 @@ class CuestPCMIntCompute(object):
             attributeValue=residual,
             )
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestResultsQuery failed: %d' % status)
+            raise RuntimeError('cuestResultsQuery failed: %s' % status)
 
-        del pcm_results_handle
         return Epcm.value, converged.value, residual.value
 
     @staticmethod
-    def compute_pcm_gradient(
+    def potential_gradient(
         *,
         handle : CuestHandle,
         pcm_int_plan : CuestPCMIntPlan,
@@ -158,18 +149,11 @@ class CuestPCMIntCompute(object):
 
         pcm_results_handle = CuestResults(resultsType=ce.CuestResultsType.CUEST_PCM_RESULTS, results_handle=ce.cuestPCMResultsHandle())
         # pcm parameters
-        pcm_derivative_compute_parameters = CuestParameters(parametersType=ce.CuestParametersType.CUEST_PCMDERIVATIVECOMPUTE_PARAMETERS)
-
-        convergence_threshold = ce.data_double(pcm_int_plan.convergence_tol)
-        status = ce.cuestParametersConfigure(
-            parametersType=ce.CuestParametersType.CUEST_PCMDERIVATIVECOMPUTE_PARAMETERS,
-            parameters=pcm_derivative_compute_parameters.parameters,
-            attribute=ce.CuestPCMDerivativeComputeParametersAttributes.CUEST_PCMDERIVATIVECOMPUTE_PARAMETERS_CONVERGENCE_THRESHOLD,
-            attributeValue=convergence_threshold,
+        pcm_derivative_compute_parameters = CuestUtility.make_compute_parameters(
+            ce.CuestParametersType.CUEST_PCMDERIVATIVECOMPUTE_PARAMETERS,
+            [(ce.CuestPCMDerivativeComputeParametersAttributes.CUEST_PCMDERIVATIVECOMPUTE_PARAMETERS_CONVERGENCE_THRESHOLD,
+              ce.data_double(pcm_int_plan.convergence_tol))],
             )
-        if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestParametersConfigure failed: %d' % status)
-
         temporary_workspace_descriptor = CuestWorkspaceDescriptor()
 
         status = ce.cuestPCMDerivativeComputeWorkspaceQuery(
@@ -184,7 +168,7 @@ class CuestPCMIntCompute(object):
             outPCMGradient=Gptr2,
             )
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestPCMDerivativeComputeWorkspaceQuery failed: %d' % status)
+            raise RuntimeError('cuestPCMDerivativeComputeWorkspaceQuery failed: %s' % status)
 
         temporary_workspace = CuestWorkspace(workspaceDescriptor=temporary_workspace_descriptor)
 
@@ -200,8 +184,7 @@ class CuestPCMIntCompute(object):
             outPCMGradient=Gptr2,
             )
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestPCMDerivativeCompute failed: %d' % status)
-        del pcm_derivative_compute_parameters
+            raise RuntimeError('cuestPCMDerivativeCompute failed: %s' % status)
 
         # get results
         converged = ce.data_int32_t()
@@ -212,7 +195,7 @@ class CuestPCMIntCompute(object):
             attributeValue=converged,
             )
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestResultsQuery failed: %d' % status)
+            raise RuntimeError('cuestResultsQuery failed: %s' % status)
 
         residual = ce.data_double()
         status = ce.cuestResultsQuery(
@@ -222,7 +205,6 @@ class CuestPCMIntCompute(object):
             attributeValue=residual,
             )
         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-            raise RuntimeError('cuestResultsQuery failed: %d' % status)
+            raise RuntimeError('cuestResultsQuery failed: %s' % status)
 
-        del pcm_results_handle
         return converged.value, residual.value

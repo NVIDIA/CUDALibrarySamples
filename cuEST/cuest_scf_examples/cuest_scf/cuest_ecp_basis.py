@@ -54,7 +54,7 @@ class CuestECPBasis(object):
                 outParameters=ecp_shell_parameters,
             )
             if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                raise RuntimeError("cuestParametersCreate failed for ECPShell parameters")
+                raise RuntimeError("cuestParametersCreate failed for ECPShell parameters: %s" % status)
             self.ecp_shell_parameters = ecp_shell_parameters
 
             ecp_atom_parameters = ce.cuestECPAtomParameters()
@@ -63,7 +63,7 @@ class CuestECPBasis(object):
                 outParameters=ecp_atom_parameters,
             )
             if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                raise RuntimeError("cuestParametersCreate failed for ECPAtom parameters")
+                raise RuntimeError("cuestParametersCreate failed for ECPAtom parameters: %s" % status)
             self.ecp_atom_parameters = ecp_atom_parameters
 
             for atom_idx, ecp_atom in enumerate(self.ecp_basis.atoms):
@@ -91,7 +91,7 @@ class CuestECPBasis(object):
                         outECPShell=top_shell_handle,
                     )
                     if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                        raise RuntimeError(f"cuestECPShellCreate failed for top shell on atom {atom_idx}")
+                        raise RuntimeError(f"cuestECPShellCreate failed for top shell on atom {atom_idx}: {status}")
 
                     # Other shells
                     for shell_idx, shell in enumerate(ecp_atom.shells):
@@ -109,7 +109,7 @@ class CuestECPBasis(object):
                         )
                         if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
                             raise RuntimeError(
-                                f"cuestECPShellCreate failed for shell {shell_idx} on atom {atom_idx}"
+                                f"cuestECPShellCreate failed for shell {shell_idx} on atom {atom_idx}: {status}"
                             )
 
                         this_atom_shells.append(ecp_shell_handle)
@@ -126,7 +126,7 @@ class CuestECPBasis(object):
                         outECPAtom=ecp_atom_handle,
                     )
                     if status != ce.CuestStatus.CUEST_STATUS_SUCCESS:
-                        raise RuntimeError(f"cuestECPAtomCreate failed for atom {atom_idx}")
+                        raise RuntimeError(f"cuestECPAtomCreate failed for atom {atom_idx}: {status}")
 
                     # Record the atom only once it is fully created, so
                     # ecp_atoms/ecp_indices stay aligned and cleanup-safe.
@@ -143,7 +143,7 @@ class CuestECPBasis(object):
                         if destroy_status != ce.CuestStatus.CUEST_STATUS_SUCCESS \
                                 and sys.exc_info()[0] is None:
                             raise RuntimeError(
-                                f"cuestECPShellDestroy failed on atom {atom_idx}"
+                                f"cuestECPShellDestroy failed on atom {atom_idx}: {destroy_status}"
                             )
 
             self.num_active_ecp = len(self.ecp_atoms)

@@ -63,6 +63,12 @@ static const char *cuestGetErrorEnum(cuestStatus_t error) {
             return "CUEST_STATUS_INVALID_PLAN";
         case CUEST_STATUS_HOME_NOT_FOUND:
             return "CUEST_STATUS_HOME_NOT_FOUND";
+        case CUEST_STATUS_UNRECOVERABLE_ERROR:
+            return "CUEST_STATUS_UNRECOVERABLE_ERROR";
+        case CUEST_STATUS_UNRECOVERABLE_ON_ENTRY:
+            return "CUEST_STATUS_UNRECOVERABLE_ON_ENTRY";
+        case CUEST_STATUS_EXCEEDS_MAX_L:
+            return "CUEST_STATUS_EXCEEDS_MAX_L";
     }
 
     return "<unknown>";

@@ -35,10 +35,15 @@
  * always contracted with a density (or pseudo-density) matrix. The
  * result of this contraction is stored in a number of atoms by 3 array.
  *
- * In this sample, a "real" density matrix is not availble, so a symmetric 
+ * In this sample, a "real" density matrix is not availble, so a symmetric
  * random matrix is substituted.
  *
- * The use of the one-electron integral derivative routines follows very 
+ * The potential integral derivative additionally takes a set of point
+ * charges as input (here, the nuclei) and produces two gradients: one
+ * with respect to the AO basis centers and one with respect to the
+ * point-charge coordinates.
+ *
+ * The use of the one-electron integral derivative routines follows very
  * closely with the underlying one-electron integrals.
  */
 
@@ -278,13 +283,21 @@ int main(int argc, char **argv)
         &nao,        
         sizeof(uint64_t)));
 
-    /* Allocate space for dS/dR, dT/dR, and density matrices */
-    double *d_dSdR, *d_dTdR, *d_D;
+    /* Allocate space for dS/dR, dT/dR, dV/dR, and density matrices */
+    double *d_dSdR, *d_dTdR, *d_dVdR_basis, *d_dVdR_charges, *d_D;
     if (cudaMalloc((void**) &d_dSdR, numAtoms * 3 * sizeof(double))) {
         fprintf(stderr, "Failed to allocate device buffer\n");
         exit(EXIT_FAILURE);
     }
     if (cudaMalloc((void**) &d_dTdR, numAtoms * 3 * sizeof(double))) {
+        fprintf(stderr, "Failed to allocate device buffer\n");
+        exit(EXIT_FAILURE);
+    }
+    if (cudaMalloc((void**) &d_dVdR_basis, numAtoms * 3 * sizeof(double))) {
+        fprintf(stderr, "Failed to allocate device buffer\n");
+        exit(EXIT_FAILURE);
+    }
+    if (cudaMalloc((void**) &d_dVdR_charges, numAtoms * 3 * sizeof(double))) {
         fprintf(stderr, "Failed to allocate device buffer\n");
         exit(EXIT_FAILURE);
     }
@@ -358,15 +371,69 @@ int main(int argc, char **argv)
 
     /* The kinetic compute parameter handle is no longer needed. */
     checkCuestErrors(cuestParametersDestroy(
-        CUEST_KINETICDERIVATIVECOMPUTE_PARAMETERS, 
+        CUEST_KINETICDERIVATIVECOMPUTE_PARAMETERS,
         kinetic_compute_parameters));
 
-    /* Free dSdR, dTdR, and density matrices */
+    /* Declare and create the potential compute parameter handle. */
+    cuestPotentialDerivativeComputeParameters_t potential_compute_parameters;
+    checkCuestErrors(cuestParametersCreate(
+        CUEST_POTENTIALDERIVATIVECOMPUTE_PARAMETERS,
+        &potential_compute_parameters));
+
+    /*
+     * Workspace query to find the temporary space needed to form the V derivative.
+     * The nuclei are used as the point charges here; any point charges can be
+     * provided (e.g. an MM region). Two gradients are produced: one with respect
+     * to the AO basis centers and one with respect to the point-charge coordinates.
+     */
+    checkCuestErrors(cuestPotentialDerivativeComputeWorkspaceQuery(
+        handle,
+        oeint_plan,
+        potential_compute_parameters,
+        temporaryWorkspaceDescriptor,
+        numAtoms,
+        xyzData->xyzGPU,
+        xyzData->chargesGPU,
+        d_D,
+        d_dVdR_basis,
+        d_dVdR_charges));
+
+    cuestWorkspace_t* temporaryVWorkspace = allocateWorkspace(temporaryWorkspaceDescriptor);
+
+    /* Compute V Derivative */
+    checkCuestErrors(cuestPotentialDerivativeCompute(
+        handle,
+        oeint_plan,
+        potential_compute_parameters,
+        temporaryVWorkspace,
+        numAtoms,
+        xyzData->xyzGPU,
+        xyzData->chargesGPU,
+        d_D,
+        d_dVdR_basis,
+        d_dVdR_charges));
+
+    freeWorkspace(temporaryVWorkspace);
+
+    /* The potential compute parameter handle is no longer needed. */
+    checkCuestErrors(cuestParametersDestroy(
+        CUEST_POTENTIALDERIVATIVECOMPUTE_PARAMETERS,
+        potential_compute_parameters));
+
+    /* Free dSdR, dTdR, dVdR, and density matrices */
     if (cudaFree((void*) d_dSdR) != cudaSuccess) {
         fprintf(stderr, "cudaFree failed\n");
         exit(EXIT_FAILURE);
     }
     if (cudaFree((void*) d_dTdR) != cudaSuccess) {
+        fprintf(stderr, "cudaFree failed\n");
+        exit(EXIT_FAILURE);
+    }
+    if (cudaFree((void*) d_dVdR_basis) != cudaSuccess) {
+        fprintf(stderr, "cudaFree failed\n");
+        exit(EXIT_FAILURE);
+    }
+    if (cudaFree((void*) d_dVdR_charges) != cudaSuccess) {
         fprintf(stderr, "cudaFree failed\n");
         exit(EXIT_FAILURE);
     }

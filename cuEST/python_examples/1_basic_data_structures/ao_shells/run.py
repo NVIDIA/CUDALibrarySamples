@@ -225,10 +225,10 @@ for atom_number, atom_shells in enumerate(shells):
                 type=ce.CuestType.CUEST_AOSHELL,
                 object=atom_shell,
                 attribute=ce.CuestAOShellAttributes.CUEST_AOSHELL_NUM_CART,
-                attributeValue=npure,
+                attributeValue=ncart,
                 )
             )
-        print(f"\t\tNum. Cartesian Functions : {npure.value}")
+        print(f"\t\tNum. Cartesian Functions : {ncart.value}")
 
 # Destroy the shells
 for atom_shells in shells:

@@ -227,10 +227,10 @@ for atom_number, atom_shells in enumerate(shells):
                 type=ce.CuestType.CUEST_AOSHELL,
                 object=atom_shell,
                 attribute=ce.CuestAOShellAttributes.CUEST_AOSHELL_NUM_CART,
-                attributeValue=npure,
+                attributeValue=ncart,
                 )
             )
-        print(f"\t\tNum. Cartesian Functions : {npure.value}")
+        print(f"\t\tNum. Cartesian Functions : {ncart.value}")
 
 # These workspace descriptors will be used in the resource query to figure out
 # how much device/host RAM will be needed in persistent/temporary workspaces to
@@ -292,7 +292,7 @@ cuest_check('Create AOBasis',
 del aobasis_temporary_workspace
 
 for i, shell in enumerate(shells):
-    cuest_check('Destroy AO Shell {i+1}',
+    cuest_check(f'Destroy AO Shell {i+1}',
         ce.cuestAOShellDestroy(
             handle=shell,
             )

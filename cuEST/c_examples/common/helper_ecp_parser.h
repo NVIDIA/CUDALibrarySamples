@@ -194,7 +194,7 @@ static ECPShellSet_t *parseECPFileForElement(const char *ecpFilePath, const char
         /* potential label */
         if (in_target_block && nwords == 2) {
             char shell_type[4], label[32];
-            if (sscanf(line, "%3s %s", shell_type, label) != 2) {
+            if (sscanf(line, "%3s %31s", shell_type, label) != 2) {
                 fail_flag = 1;
                 break;
             }
@@ -336,7 +336,7 @@ static ECPShellSet_t *parseECPFileForElement(const char *ecpFilePath, const char
         /* potential label */
         if (in_target_block && nwords == 2) {
             char shell_type[4], label[32];
-            if (sscanf(line, "%3s %s", shell_type, label) != 2) {
+            if (sscanf(line, "%3s %31s", shell_type, label) != 2) {
                 fail_flag = 1;
                 break;
             }

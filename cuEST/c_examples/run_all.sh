@@ -70,6 +70,15 @@ PASS=0
 FAIL=0
 SKIP=0
 
+# Number of visible GPUs. CUDA_VISIBLE_DEVICES is authoritative (a
+# comma-separated list of ordinals); otherwise ask nvidia-smi; if that
+# is unavailable, assume one device.
+if [ -n "${CUDA_VISIBLE_DEVICES+x}" ]; then
+    NUM_GPUS=$(printf '%s' "$CUDA_VISIBLE_DEVICES" | tr ',' '\n' | grep -c .) || NUM_GPUS=0
+else
+    NUM_GPUS=$(nvidia-smi -L 2>/dev/null | grep -c '^GPU') || NUM_GPUS=1
+fi
+
 run() {
     local name="$1"
     shift
@@ -92,6 +101,19 @@ run() {
     echo
 }
 
+# Run an example that needs at least N visible GPUs: run_min_gpus N <exe> [args...]
+run_min_gpus() {
+    local min_gpus="$1"
+    shift
+    if [ "$NUM_GPUS" -lt "$min_gpus" ]; then
+        echo "[ SKIP ] $1  (needs $min_gpus GPUs, $NUM_GPUS visible)"
+        (( SKIP++ )) || true
+        echo
+        return
+    fi
+    run "$@"
+}
+
 echo "============================================================"
 echo " cuEST C API Examples"
 echo " Build dir : $BUILD_DIR"
@@ -102,7 +124,7 @@ echo
 # 0_context
 run examples/0_context/basic_usage/basic_usage
 run examples/0_context/basic_multistream_usage/basic_multistream_usage
-run examples/0_context/basic_multigpu_usage/basic_multigpu_usage
+run_min_gpus 2 examples/0_context/basic_multigpu_usage/basic_multigpu_usage
 run examples/0_context/user_owned_resources/user_owned_resources
 
 # 1_basic_data_structures
@@ -117,6 +139,7 @@ run examples/1_basic_data_structures/xc_grid_general/xc_grid_general      "$XYZ"
 # 2_one_electron_integrals
 run examples/2_one_electron_integrals/one_electron_integrals/one_electron_integrals  "$XYZ" "$GBS"
 run examples/2_one_electron_integrals/one_electron_gradients/one_electron_gradients  "$XYZ" "$GBS"
+run examples/2_one_electron_integrals/one_electron_hessians/one_electron_hessians    "$XYZ" "$GBS"
 run examples/2_one_electron_integrals/property_integrals/property_integrals          "$XYZ" "$GBS"
 run examples/2_one_electron_integrals/property_gradients/property_gradients          "$XYZ" "$GBS"
 
@@ -124,6 +147,8 @@ run examples/2_one_electron_integrals/property_gradients/property_gradients     
 run examples/3_density_fitting/core_df_jk/core_df_jk                          "$XYZ" "$GBS" "$AUX_GBS"
 run examples/3_density_fitting/core_df_jk_gradients/core_df_jk_gradients      "$XYZ" "$GBS" "$AUX_GBS"
 run examples/3_density_fitting/df_mo_integrals/df_mo_integrals                "$XYZ" "$GBS" "$AUX_GBS"
+run examples/3_density_fitting/df_mo_integrals_derivative/df_mo_integrals_derivative "$XYZ" "$GBS" "$AUX_GBS"
+run examples/3_density_fitting/direct_df_j/direct_df_j                        "$XYZ" "$GBS" "$AUX_GBS"
 run examples/3_density_fitting/nonsymmetric_core_df_k/nonsymmetric_core_df_k  "$XYZ" "$GBS" "$AUX_GBS"
 
 # 4_exchange_correlation
@@ -141,6 +166,16 @@ run examples/5_effective_core_potentials/ecp_gradients/ecp_gradients  "$XYZ_ECP"
 # 6_pcm
 run examples/6_pcm/pcm_potential/pcm_potential  "$XYZ" "$GBS"
 run examples/6_pcm/pcm_gradients/pcm_gradients  "$XYZ" "$GBS"
+
+# 7_direct_jk
+run examples/7_direct_jk/direct_jk/direct_jk                                        "$XYZ" "$GBS"
+run examples/7_direct_jk/direct_jk_gradients/direct_jk_gradients                    "$XYZ" "$GBS"
+run examples/7_direct_jk/direct_jk_bilinear_gradients/direct_jk_bilinear_gradients  "$XYZ" "$GBS"
+
+# 8_grid_k
+run examples/8_grid_k/grid_k_exchange/grid_k_exchange                            "$XYZ" "$GBS"
+run examples/8_grid_k/grid_k_exchange_gradients/grid_k_exchange_gradients        "$XYZ" "$GBS"
+run examples/8_grid_k/nonsymmetric_grid_k_exchange/nonsymmetric_grid_k_exchange  "$XYZ" "$GBS"
 
 echo "============================================================"
 echo " Results: $PASS passed, $FAIL failed, $SKIP skipped"

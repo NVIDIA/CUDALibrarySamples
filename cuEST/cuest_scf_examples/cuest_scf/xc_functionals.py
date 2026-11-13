@@ -49,6 +49,10 @@ class XCFunctionalInfo(object):
             return ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_LCWPBE
         elif sanitized_name == 'wb97x':
             return ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_WB97X
+        elif sanitized_name == 'wb97xd':
+            return ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_WB97XD
+        elif sanitized_name == 'wb97xd3':
+            return ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_WB97XD3
         elif sanitized_name == 'wb97xv':
             return ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_WB97XV
         elif sanitized_name == 'wb97mv':
@@ -97,6 +101,10 @@ class XCFunctionalInfo(object):
             return 'LC-wPBE'
         elif functional_enum == ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_WB97X:
             return 'wB97X'
+        elif functional_enum == ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_WB97XD:
+            return 'wB97X-D'
+        elif functional_enum == ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_WB97XD3:
+            return 'wB97X-D3'
         elif functional_enum == ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_WB97XV:
             return 'wB97X-V'
         elif functional_enum == ce.CuestXCIntPlanParametersFunctional.CUEST_XCINTPLAN_PARAMETERS_FUNCTIONAL_WB97MV:

@@ -31,7 +31,6 @@ PYTHON="${1:-python3}"
 DATA_DIR="$(cd "$SCRIPT_DIR/../data" 2>/dev/null && pwd || true)"
 if [ -z "$DATA_DIR" ] || [ ! -d "$DATA_DIR" ]; then
     echo "ERROR: Data directory not found: $SCRIPT_DIR/../data"
-    echo "Run scripts/create_cuda_samples.py first."
     exit 1
 fi
 
@@ -79,6 +78,7 @@ run "ao_basis"   1_basic_data_structures/ao_basis
 # 2_one_electron_integrals
 run "one_electron_integrals"  2_one_electron_integrals/one_electron_integrals  "$XYZ" "$GBS"
 run "one_electron_gradients"  2_one_electron_integrals/one_electron_gradients  "$XYZ" "$GBS"
+run "one_electron_hessians"   2_one_electron_integrals/one_electron_hessians   "$XYZ" "$GBS"
 run "property_integrals"      2_one_electron_integrals/property_integrals      "$XYZ" "$GBS"
 run "property_gradients"      2_one_electron_integrals/property_gradients      "$XYZ" "$GBS"
 
@@ -87,6 +87,8 @@ run "core_df_jk"              3_density_fitting/core_df_jk              "$XYZ" "
 run "core_df_jk_gradient_rhf" 3_density_fitting/core_df_jk_gradient_rhf "$XYZ" "$GBS" "$AUX_GBS"
 run "core_df_jk_gradient_uhf" 3_density_fitting/core_df_jk_gradient_uhf "$XYZ" "$GBS" "$AUX_GBS"
 run "df_mo_integrals"         3_density_fitting/df_mo_integrals         "$XYZ" "$GBS" "$AUX_GBS"
+run "df_mo_integrals_derivative" 3_density_fitting/df_mo_integrals_derivative "$XYZ" "$GBS" "$AUX_GBS"
+run "direct_df_j"             3_density_fitting/direct_df_j             "$XYZ" "$GBS" "$AUX_GBS"
 run "nonsymmetric_core_df_k"  3_density_fitting/nonsymmetric_core_df_k  "$XYZ" "$GBS" "$AUX_GBS"
 
 # 4_exchange_correlation
@@ -102,6 +104,16 @@ run "ecp_gradients" 5_effective_core_potentials/ecp_gradients "$XYZ_ECP" "$GBS" 
 # 6_pcm
 run "pcm_potential" 6_pcm/pcm_potential "$XYZ" "$GBS"
 run "pcm_gradients" 6_pcm/pcm_gradients "$XYZ" "$GBS"
+
+# 7_direct_jk
+run "direct_jk"                    7_direct_jk/direct_jk                    "$XYZ" "$GBS"
+run "direct_jk_gradients"          7_direct_jk/direct_jk_gradients          "$XYZ" "$GBS"
+run "direct_jk_bilinear_gradients" 7_direct_jk/direct_jk_bilinear_gradients "$XYZ" "$GBS"
+
+# 8_grid_k
+run "grid_k_exchange"              8_grid_k/grid_k_exchange              "$XYZ" "$GBS"
+run "grid_k_exchange_gradients"    8_grid_k/grid_k_exchange_gradients    "$XYZ" "$GBS"
+run "nonsymmetric_grid_k_exchange" 8_grid_k/nonsymmetric_grid_k_exchange "$XYZ" "$GBS"
 
 echo "============================================================"
 echo " Results: $PASS passed, $FAIL failed"

@@ -10,9 +10,13 @@ reproduced below.
 1. Basis Set Exchange (bundled data)
 -----------------------------------------------------------------------
 
-The Gaussian basis set files in data/basis_set/ were downloaded from
-the Basis Set Exchange (https://www.basissetexchange.org), version 0.11,
-with data taken from Turbomole 7.3.
+The Gaussian basis set files in data/basis_set/ and in
+cuest_scf_examples/data/gbs/ (except minao-1.gbs, see below) were
+downloaded from the Basis Set Exchange
+(https://www.basissetexchange.org), versions 0.9 to 0.12. The header
+of each file records the Basis Set Exchange version it was downloaded
+with and the origin of its data (Turbomole 7.3 for the def2 basis
+sets, Gaussian09 for STO-3G).
 
 Basis Set Exchange is developed by the Molecular Sciences Software
 Institute (MolSSI) and is licensed under the BSD 3-Clause License:
@@ -58,15 +62,27 @@ Set Exchange:
       J. Chem. Inf. Model. 59, 4814 (2019).
       https://doi.org/10.1021/acs.jcim.9b00725
 
-The individual basis sets used by these examples, and their primary
-literature references, are:
+The individual basis sets bundled with these examples, and their
+primary literature references, are:
 
-def2-SVP  (data/basis_set/def2-svp.gbs)
-def2-SVP-ECP  (data/basis_set/def2-svp-ecp.gbs)
+def2-SVP  (data/basis_set/def2-svp.gbs,
+           cuest_scf_examples/data/gbs/def2-svp.gbs)
+def2-SVP-ECP  (data/basis_set/def2-svp-ecp.gbs,
+               cuest_scf_examples/data/gbs/def2-svp-ecp.gbs)
+def2-SV(P)  (cuest_scf_examples/data/gbs/def2-sv_p_.gbs)
+def2-TZVP  (cuest_scf_examples/data/gbs/def2-tzvp.gbs)
+def2-TZVP-ECP  (cuest_scf_examples/data/gbs/def2-tzvp-ecp.gbs)
+def2-TZVPP  (cuest_scf_examples/data/gbs/def2-tzvpp.gbs)
+def2-QZVP  (cuest_scf_examples/data/gbs/def2-qzvp.gbs)
+def2-QZVP-ECP  (cuest_scf_examples/data/gbs/def2-qzvp-ecp.gbs)
 
   F. Weigend and R. Ahlrichs,
   Phys. Chem. Chem. Phys. 7, 3297 (2005).
   https://doi.org/10.1039/B508541A
+
+  F. Weigend, F. Furche, R. Ahlrichs,
+  J. Chem. Phys. 119, 12753 (2003).  [def2-QZVP]
+  https://doi.org/10.1063/1.1627293
 
   D. Andrae, U. Häußermann, M. Dolg, H. Stoll, H. Preuß,
   Theor. Chim. Acta 77, 123 (1990).  [ECPs for 4th/5th row elements]
@@ -76,11 +92,71 @@ def2-SVP-ECP  (data/basis_set/def2-svp-ecp.gbs)
   J. Chem. Phys. 113, 2563 (2000).  [Small-core ECPs, including I]
   https://doi.org/10.1063/1.1305880
 
-def2-universal-JKFIT  (data/basis_set/def2-universal-jkfit.gbs)
+def2-universal-JKFIT  (data/basis_set/def2-universal-jkfit.gbs,
+                       cuest_scf_examples/data/gbs/def2-universal-jkfit.gbs)
 
   F. Weigend,
   J. Comput. Chem. 29, 167 (2008).
   https://doi.org/10.1002/jcc.20702
+
+def2-universal-JFIT  (cuest_scf_examples/data/gbs/def2-universal-jfit.gbs)
+
+  F. Weigend,
+  Phys. Chem. Chem. Phys. 8, 1057 (2006).
+  https://doi.org/10.1039/B515623H
+
+def2-SVP-RIFIT  (cuest_scf_examples/data/gbs/def2-svp-rifit.gbs)
+def2-TZVP-RIFIT  (cuest_scf_examples/data/gbs/def2-tzvp-rifit.gbs)
+def2-QZVP-RIFIT  (cuest_scf_examples/data/gbs/def2-qzvp-rifit.gbs)
+
+  F. Weigend, M. Häser, H. Patzelt, R. Ahlrichs,
+  Chem. Phys. Lett. 294, 143 (1998).  [def2-SVP-RIFIT, def2-TZVP-RIFIT]
+  https://doi.org/10.1016/S0009-2614(98)00862-8
+
+  C. Hättig,
+  Phys. Chem. Chem. Phys. 7, 59 (2005).
+  https://doi.org/10.1039/B415208E
+
+  A. Hellweg, C. Hättig, S. Höfener, W. Klopper,
+  Theor. Chem. Acc. 117, 587 (2007).
+  https://doi.org/10.1007/s00214-007-0250-5
+
+STO-3G  (cuest_scf_examples/data/gbs/sto-3g.gbs)
+
+  W. J. Hehre, R. F. Stewart, J. A. Pople,
+  J. Chem. Phys. 51, 2657 (1969).
+  https://doi.org/10.1063/1.1672392
+
+  W. J. Hehre, R. Ditchfield, R. F. Stewart, J. A. Pople,
+  J. Chem. Phys. 52, 2769 (1970).
+  https://doi.org/10.1063/1.1673374
+
+  W. J. Pietro, B. A. Levi, W. J. Hehre, R. F. Stewart,
+  Inorg. Chem. 19, 2225 (1980).
+  https://doi.org/10.1021/ic50210a005
+
+  W. J. Pietro, E. S. Blurock, R. F. Hout, W. J. Hehre, D. J. DeFrees,
+  R. F. Stewart,
+  Inorg. Chem. 20, 3650 (1981).
+  https://doi.org/10.1021/ic50225a013
+
+  W. J. Pietro and W. J. Hehre,
+  J. Comput. Chem. 4, 241 (1983).
+  https://doi.org/10.1002/jcc.540040215
+
+MinAO-1  (cuest_scf_examples/data/gbs/minao-1.gbs)
+
+  A minimal basis set used for the superposition of atomic densities
+  (SAD) initial guess. As recorded in the file header, it is built
+  from the ANO-DK3 basis set, with ANO-R0 for Pd:
+
+  T. Tsuchiya, M. Abe, T. Nakajima, K. Hirao,
+  J. Chem. Phys. 115, 4463 (2001).  [ANO-DK3]
+  https://doi.org/10.1063/1.1390515
+
+  J. P. Zobel, P.-O. Widmark, V. Veryazov,
+  J. Chem. Theory Comput. 16, 278 (2020).  [ANO-R0]
+  https://doi.org/10.1021/acs.jctc.9b00873
 
 
 -----------------------------------------------------------------------
