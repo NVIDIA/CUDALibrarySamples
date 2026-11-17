@@ -30,9 +30,10 @@
 // This example demonstrates how to use cuSolverDx API to solve a batched linear systems with multiple right hand side after performing LU
 // factorization (without pivoting) of the batched general matrix A.  The results are compared with the reference values obtained with cuSolver host API.
 
-template<class Solver, unsigned int BatchesPerBlock, typename DataType = typename Solver::a_data_type>
+template<class Solver, unsigned int BatchesPerBlock, unsigned int lda_smem, unsigned int ldb_smem, typename DataType = typename Solver::a_data_type>
 __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(
-        DataType* A, unsigned int lda_gmem, DataType* B, unsigned int ldb_gmem, typename Solver::status_type* info, const unsigned int batches) {
+        DataType* A, unsigned int lda_gmem, DataType* B, unsigned int ldb_gmem,
+        typename Solver::status_type* info, const unsigned int batches) {
     CUSOLVERDX_SKIP_IF_NOT_APPLICABLE_SM(Solver);
 
     constexpr auto m = Solver::m_size;
@@ -42,8 +43,6 @@ __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(
     const auto one_batch_size_a_gmem = (cusolverdx::arrangement_of_v_a<Solver> == cusolverdx::col_major) ? lda_gmem * n : m * lda_gmem;
     const auto one_batch_size_b_gmem = (cusolverdx::arrangement_of_v_b<Solver> == cusolverdx::col_major) ? ldb_gmem * k : n * ldb_gmem;
 
-    constexpr auto lda_smem              = Solver::lda;
-    constexpr auto ldb_smem              = Solver::ldb;
     constexpr auto one_batch_size_a_smem = (cusolverdx::arrangement_of_v_a<Solver> == cusolverdx::col_major) ? lda_smem * n : m * lda_smem;
     constexpr auto one_batch_size_b_smem = (cusolverdx::arrangement_of_v_b<Solver> == cusolverdx::col_major) ? ldb_smem * k : n * ldb_smem;
 
@@ -76,7 +75,7 @@ int gesv_batched_wo_pivot_block() {
 
     using namespace cusolverdx;
     using Base   = decltype(Size<5, 5, 4>() + Precision<float>() + Type<type::complex>() + Function<gesv_no_pivot>() +
-                          Arrangement<arrangement::row_major, col_major>() + LeadingDimension<5, 7>() + SM<Arch>() + Block() + TransposeMode<conj_trans>());
+                          Arrangement<arrangement::row_major, col_major>() + SM<Arch>() + Block() + TransposeMode<conj_trans>());
     using Solver = decltype(Base() + BatchesPerBlock<Base::suggested_batches_per_block>() + BlockDim<65, 1, 1>());
 
     constexpr unsigned bpb = Solver::batches_per_block;
@@ -90,10 +89,12 @@ int gesv_batched_wo_pivot_block() {
     constexpr auto m            = Solver::m_size;
     constexpr auto n            = Solver::n_size;
     constexpr auto k            = Solver::k_size;
-    const auto     lda          = arrangement_of_v_a<Solver> == col_major ? m : n;
-    const auto     ldb          = arrangement_of_v_b<Solver> == col_major ? n : k;
+    const auto     lda          = Solver::default_lda;
+    const auto     ldb          = Solver::default_ldb;
     const auto     input_size_a = m * n;
     const auto     input_size_b = n * k;
+    constexpr unsigned int lda_smem = Solver::default_lda; // row_major A: min ld = n = 5
+    constexpr unsigned int ldb_smem = 7; // col_major B: padded ld (min would be n = 5)
 
     const auto batches        = 14;
     const auto padded_batches = (batches + bpb - 1) / bpb * bpb;
@@ -122,10 +123,11 @@ int gesv_batched_wo_pivot_block() {
     CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(d_A, A.data(), sizeof(data_type) * A.size(), cudaMemcpyHostToDevice, stream));
     CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(d_B, B.data(), sizeof(data_type) * B.size(), cudaMemcpyHostToDevice, stream));
 
-    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(kernel<Solver, bpb>, cudaFuncAttributeMaxDynamicSharedMemorySize, Solver::shared_memory_size));
+    const auto smem_size = Solver::get_shared_memory_size(lda_smem, ldb_smem);
+    CUDA_CHECK_AND_EXIT(common::set_max_dynamic_shared_memory_size((kernel<Solver, bpb, lda_smem, ldb_smem>), smem_size));
 
     //Invokes kernel
-    kernel<Solver, bpb><<<padded_batches / bpb, Solver::block_dim, Solver::shared_memory_size, stream>>>(d_A, lda, d_B, ldb, d_info, batches);
+    kernel<Solver, bpb, lda_smem, ldb_smem><<<padded_batches / bpb, Solver::block_dim, smem_size, stream>>>(d_A, lda, d_B, ldb, d_info, batches);
     CUDA_CHECK_AND_EXIT(cudaGetLastError());
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 

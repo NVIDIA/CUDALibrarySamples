@@ -31,74 +31,75 @@ __global__ void gemm_kernel(const ValueType* a,
                             const ValueType  alpha,
                             const ValueType  beta,
                             ValueType*       output) {
-    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(BLAS);
-    using value_type = ValueType;
-    extern __shared__ __align__(16) cublasdx::byte smem[];
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM_BLOCK(BLAS) {
+        using value_type = ValueType;
+        extern __shared__ __align__(16) cublasdx::byte smem[];
 
-    auto a_global_tensor   = cublasdx::make_tensor(a, BLAS::get_layout_gmem_a());
-    auto b_global_tensor   = cublasdx::make_tensor(b, BLAS::get_layout_gmem_b());
-    auto c_global_tensor   = cublasdx::make_tensor(c, BLAS::get_layout_gmem_c());
-    auto out_global_tensor = cublasdx::make_tensor(output, BLAS::get_layout_gmem_c());
+        auto a_global_tensor   = cublasdx::make_tensor(a, BLAS::get_layout_gmem_a());
+        auto b_global_tensor   = cublasdx::make_tensor(b, BLAS::get_layout_gmem_b());
+        auto c_global_tensor   = cublasdx::make_tensor(c, BLAS::get_layout_gmem_c());
+        auto out_global_tensor = cublasdx::make_tensor(output, BLAS::get_layout_gmem_c());
 
-    auto [smem_a, smem_b, smem_c] = cublasdx::slice_shared_memory<BLAS>(smem);
-    auto a_shared_tensor          = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_a());
-    auto b_shared_tensor          = cublasdx::make_tensor(smem_b, BLAS::get_layout_smem_b());
-    auto c_shared_tensor          = cublasdx::make_tensor(smem_c, BLAS::get_layout_smem_c());
+        auto [smem_a, smem_b, smem_c] = cublasdx::slice_shared_memory<BLAS>(smem);
+        auto a_shared_tensor          = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_a());
+        auto b_shared_tensor          = cublasdx::make_tensor(smem_b, BLAS::get_layout_smem_b());
+        auto c_shared_tensor          = cublasdx::make_tensor(smem_c, BLAS::get_layout_smem_c());
 
-    using alignment = cublasdx::alignment_of<BLAS>;
-    // Kernel launched with block dimensions equal to BLAS::block_dim
-    if constexpr (Scenario == 0) {
-        cublasdx::copy<BLAS, alignment::a>(a_global_tensor, a_shared_tensor);
-        cublasdx::copy<BLAS, alignment::b>(b_global_tensor, b_shared_tensor);
-        cublasdx::copy<BLAS, alignment::c>(c_global_tensor, c_shared_tensor);
-        cublasdx::copy_wait();
-        BLAS().execute(alpha, a_shared_tensor, b_shared_tensor, beta, c_shared_tensor);
-        __syncthreads();
-        cublasdx::copy<BLAS, alignment::c>(c_shared_tensor, out_global_tensor);
-    }
-    // Kernel launched with block dimensions of the same rank as BLAS::block_dim and
-    // at least the same number of threads
-    else if constexpr (Scenario == 1) {
-        cublasdx::copy<BLAS, alignment::a>(a_global_tensor, a_shared_tensor);
-        cublasdx::copy<BLAS, alignment::b>(b_global_tensor, b_shared_tensor);
-        cublasdx::copy<BLAS, alignment::c>(c_global_tensor, c_shared_tensor);
-        cublasdx::copy_wait();
-        BLAS().execute(alpha, a_shared_tensor, b_shared_tensor, beta, c_shared_tensor);
-        __syncthreads();
-        cublasdx::copy<BLAS, alignment::c>(c_shared_tensor, out_global_tensor);
-    }
-    // Kernel launched with 2D block dimensions blockDim=dim3(X, Y), BLAS::block_dim is 1D,
-    // blockDim must have at least as many threads in X dimension (1st dim) as BLAS::block_dim.
-    else if constexpr (Scenario == 2) {
-        if (threadIdx.y == 0) {
+        using alignment = cublasdx::alignment_of<BLAS>;
+        // Kernel launched with block dimensions equal to BLAS::block_dim
+        if constexpr (Scenario == 0) {
             cublasdx::copy<BLAS, alignment::a>(a_global_tensor, a_shared_tensor);
             cublasdx::copy<BLAS, alignment::b>(b_global_tensor, b_shared_tensor);
             cublasdx::copy<BLAS, alignment::c>(c_global_tensor, c_shared_tensor);
-        }
-        cublasdx::copy_wait();
-        if (threadIdx.y == 0) {
+            cublasdx::copy_wait();
             BLAS().execute(alpha, a_shared_tensor, b_shared_tensor, beta, c_shared_tensor);
-        }
-        __syncthreads();
-        if (threadIdx.y == 0) {
+            __syncthreads();
             cublasdx::copy<BLAS, alignment::c>(c_shared_tensor, out_global_tensor);
         }
-    }
-    // Kernel launched with 3D block dimensions blockDim=dim3(X, Y, Z), BLAS::block_dim is 2D,
-    // blockDim must have at least as many threads in the first 2 dimensions (X, Y) as BLAS::block_dim.
-    else if constexpr (Scenario == 3) {
-        if (threadIdx.z == 0) {
+        // Kernel launched with block dimensions of the same rank as BLAS::block_dim and
+        // at least the same number of threads
+        else if constexpr (Scenario == 1) {
             cublasdx::copy<BLAS, alignment::a>(a_global_tensor, a_shared_tensor);
             cublasdx::copy<BLAS, alignment::b>(b_global_tensor, b_shared_tensor);
             cublasdx::copy<BLAS, alignment::c>(c_global_tensor, c_shared_tensor);
-        }
-        cublasdx::copy_wait();
-        if (threadIdx.z == 0) {
+            cublasdx::copy_wait();
             BLAS().execute(alpha, a_shared_tensor, b_shared_tensor, beta, c_shared_tensor);
-        }
-        __syncthreads();
-        if (threadIdx.z == 0) {
+            __syncthreads();
             cublasdx::copy<BLAS, alignment::c>(c_shared_tensor, out_global_tensor);
+        }
+        // Kernel launched with 2D block dimensions blockDim=dim3(X, Y), BLAS::block_dim is 1D,
+        // blockDim must have at least as many threads in X dimension (1st dim) as BLAS::block_dim.
+        else if constexpr (Scenario == 2) {
+            if (threadIdx.y == 0) {
+                cublasdx::copy<BLAS, alignment::a>(a_global_tensor, a_shared_tensor);
+                cublasdx::copy<BLAS, alignment::b>(b_global_tensor, b_shared_tensor);
+                cublasdx::copy<BLAS, alignment::c>(c_global_tensor, c_shared_tensor);
+            }
+            cublasdx::copy_wait();
+            if (threadIdx.y == 0) {
+                BLAS().execute(alpha, a_shared_tensor, b_shared_tensor, beta, c_shared_tensor);
+            }
+            __syncthreads();
+            if (threadIdx.y == 0) {
+                cublasdx::copy<BLAS, alignment::c>(c_shared_tensor, out_global_tensor);
+            }
+        }
+        // Kernel launched with 3D block dimensions blockDim=dim3(X, Y, Z), BLAS::block_dim is 2D,
+        // blockDim must have at least as many threads in the first 2 dimensions (X, Y) as BLAS::block_dim.
+        else if constexpr (Scenario == 3) {
+            if (threadIdx.z == 0) {
+                cublasdx::copy<BLAS, alignment::a>(a_global_tensor, a_shared_tensor);
+                cublasdx::copy<BLAS, alignment::b>(b_global_tensor, b_shared_tensor);
+                cublasdx::copy<BLAS, alignment::c>(c_global_tensor, c_shared_tensor);
+            }
+            cublasdx::copy_wait();
+            if (threadIdx.z == 0) {
+                BLAS().execute(alpha, a_shared_tensor, b_shared_tensor, beta, c_shared_tensor);
+            }
+            __syncthreads();
+            if (threadIdx.z == 0) {
+                cublasdx::copy<BLAS, alignment::c>(c_shared_tensor, out_global_tensor);
+            }
         }
     }
 }
@@ -222,9 +223,9 @@ int simple_gemm() {
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     // Increase max dynamic shared memory for the kernel if needed
-    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(gemm_kernel<Scenario, BLAS>,
-                                             cudaFuncAttributeMaxDynamicSharedMemorySize,
-                                             cublasdx::get_shared_storage_size<BLAS>()));
+    CUDA_CHECK_AND_EXIT(
+        example::set_max_dynamic_shared_memory_size(gemm_kernel<Scenario, BLAS>,
+                                                    cublasdx::get_shared_storage_size<BLAS>()));
 
     // Execute kernel
     gemm_kernel<Scenario, BLAS>

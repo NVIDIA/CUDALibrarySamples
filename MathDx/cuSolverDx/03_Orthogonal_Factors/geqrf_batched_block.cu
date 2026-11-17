@@ -39,9 +39,11 @@ __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(DataType
     constexpr auto m = Solver::m_size;
     constexpr auto n = Solver::n_size;
 
-    const auto     one_batch_size_a_gmem = (cusolverdx::arrangement_of_v_a<Solver> == cusolverdx::col_major) ? lda_gmem * n : m * lda_gmem;
-    constexpr auto lda_smem              = Solver::lda;
-    constexpr auto one_batch_size_a_smem = (cusolverdx::arrangement_of_v_a<Solver> == cusolverdx::col_major) ? lda_smem * n : m * lda_smem;
+    constexpr bool is_col_major = cusolverdx::arrangement_of_v_a<Solver> == cusolverdx::col_major;
+
+    const auto     one_batch_size_a_gmem = is_col_major ? lda_gmem * n : m * lda_gmem;
+    constexpr auto lda_smem              = Solver::default_lda;
+    constexpr auto one_batch_size_a_smem = is_col_major ? lda_smem * n : m * lda_smem;
 
     extern __shared__ __align__(16) cusolverdx::byte shared_mem[];
     // Slice shared memory into pointers
@@ -92,7 +94,7 @@ int geqrf_batched_block() {
 
     constexpr bool is_col_maj_a = arrangement_of_v_a<Solver> == arrangement::col_major;
 
-    const auto     lda          = is_col_maj_a ? m : n;
+    const auto     lda          = Solver::default_lda;
     constexpr auto input_size_a = m * n;
 
     const auto batches        = 2;
@@ -119,10 +121,10 @@ int geqrf_batched_block() {
 
     CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(d_A, A.data(), sizeof(data_type) * A.size(), cudaMemcpyHostToDevice, stream));
 
-    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(kernel<Solver, bpb>, cudaFuncAttributeMaxDynamicSharedMemorySize, Solver::shared_memory_size));
+    CUDA_CHECK_AND_EXIT(common::set_max_dynamic_shared_memory_size(kernel<Solver, bpb>, Solver::get_shared_memory_size(lda)));
 
     //Invokes kernel
-    kernel<Solver, bpb><<<padded_batches / bpb, Solver::block_dim, Solver::shared_memory_size, stream>>>(d_A, lda, d_tau, batches);
+    kernel<Solver, bpb><<<padded_batches / bpb, Solver::block_dim, Solver::get_shared_memory_size(lda), stream>>>(d_A, lda, d_tau, batches);
     CUDA_CHECK_AND_EXIT(cudaGetLastError());
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 

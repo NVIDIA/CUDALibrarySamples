@@ -28,9 +28,9 @@
 // This example demonstrates how to use cuSolverDx block execution API to compute eigenvalues, and optionally eigenvectors, of a batched symmetric tridiagonal matrix A.
 // The results are verified by comparing A * V with V * diagm(lambda), where V is the eigenvectors and diagm(lambda) is the diagonal matrix of eigenvalues.
 
-template<class Solver, unsigned int BatchesPerBlock, typename DataType = typename Solver::a_data_type>
+template<class Solver, unsigned int BatchesPerBlock, unsigned int ldv_smem, typename DataType = typename Solver::a_data_type>
 __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(
-        DataType* d, DataType* e, DataType* V, typename Solver::status_type* info, const unsigned batches) {
+        DataType* d, DataType* e, DataType* V, const unsigned int ldv_gmem, typename Solver::status_type* info, const unsigned batches) {
     CUSOLVERDX_SKIP_IF_NOT_APPLICABLE_SM(Solver);
 
     const auto batch_idx = blockIdx.x * BatchesPerBlock;
@@ -56,17 +56,17 @@ __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(
     } else {
         this_V = V + m * m * batch_idx;
         if constexpr (Solver::job == cusolverdx::job::multiply_vectors) {
-            common::io<Solver, BatchesPerBlock>::load_a<m, m, Solver::a_arrangement>(this_V, m, V_s, Solver::lda);
+            common::io<Solver, BatchesPerBlock>::load_a<m, m, Solver::a_arrangement>(this_V, ldv_gmem, V_s, ldv_smem);
         }
 
-        Solver().execute(d_s, e_s, V_s, Solver::lda, &info[batch_idx]);
+        Solver().execute(d_s, e_s, V_s, ldv_smem, &info[batch_idx]);
     }
 
     common::io<Solver, BatchesPerBlock>::store_a<m, 1, cusolverdx::col_major>(d_s, m, this_d, m);
     common::io<Solver, BatchesPerBlock>::store_a<m - 1, 1, cusolverdx::col_major>(e_s, m - 1, this_e, m - 1);
 
     if constexpr (Solver::job != cusolverdx::job::no_vectors) {
-        common::io<Solver, BatchesPerBlock>::store_a<m, m, Solver::a_arrangement>(V_s, Solver::lda, this_V, m);
+        common::io<Solver, BatchesPerBlock>::store_a<m, m, Solver::a_arrangement>(V_s, ldv_smem, this_V, ldv_gmem);
     }
 }
 
@@ -91,7 +91,8 @@ int htev_batched_block() {
     std::cout << "Suggested BlockDim = " << Solver::suggested_block_dim.x << std::endl;
     std::cout << "BlockDim Used = " << Solver::block_dim.x << std::endl;
 
-    constexpr auto m = Solver::m_size;
+    constexpr auto m   = Solver::m_size;
+    constexpr auto ldv = Solver::default_lda;
 
     constexpr bool                  compute_vectors = Solver::job != job::no_vectors;
     [[maybe_unused]] constexpr bool is_col_maj_v    = Solver::a_arrangement == arrangement::col_major; // only useful when eigenvectors are computed
@@ -145,12 +146,12 @@ int htev_batched_block() {
         }
     }
 
-    const auto shared_memory_size = Solver::shared_memory_size;
-    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(kernel<Solver, bpb>, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_memory_size));
+    const auto shared_memory_size = Solver::get_shared_memory_size(ldv);
+    CUDA_CHECK_AND_EXIT(common::set_max_dynamic_shared_memory_size(kernel<Solver, bpb, ldv>, shared_memory_size));
     std::cout << "shared_memory_size = " << shared_memory_size << " bytes" << std::endl;
 
     //Invokes kernel
-    kernel<Solver, bpb><<<padded_batches / bpb, Solver::block_dim, Solver::shared_memory_size, stream>>>(d_d, d_e, d_V, d_info, batches);
+    kernel<Solver, bpb, ldv><<<padded_batches / bpb, Solver::block_dim, Solver::get_shared_memory_size(ldv), stream>>>(d_d, d_e, d_V, ldv, d_info, batches);
     CUDA_CHECK_AND_EXIT(cudaGetLastError());
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 

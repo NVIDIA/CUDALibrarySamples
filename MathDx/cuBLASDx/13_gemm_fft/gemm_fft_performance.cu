@@ -141,88 +141,89 @@ __launch_bounds__(FFT::max_threads_per_block) __global__ void gemm_fft_kernel(co
                                                                               const ValueType  alpha,
                                                                               const ValueType  beta,
                                                                               ValueType*       output) {
-    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(GEMM);
-    using blas_complex_type = example::uniform_value_type_t<GEMM>;
-    using fft_complex_type  = typename FFT::value_type;
-    static_assert(std::is_same_v<fft_complex_type, blas_complex_type>, "BLAS and FFT complex type should match");
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM_BLOCK(GEMM) {
+        using blas_complex_type = example::uniform_value_type_t<GEMM>;
+        using fft_complex_type  = typename FFT::value_type;
+        static_assert(std::is_same_v<fft_complex_type, blas_complex_type>, "BLAS and FFT complex type should match");
 
-    using complex_type                = blas_complex_type;
-    using value_type                  = ValueType;
-    constexpr unsigned int block_size = GEMM::block_dim.x * GEMM::block_dim.y * GEMM::block_dim.z;
+        using complex_type                = blas_complex_type;
+        using value_type                  = ValueType;
+        constexpr unsigned int block_size = GEMM::block_dim.x * GEMM::block_dim.y * GEMM::block_dim.z;
 
-    extern __shared__ __align__(alignof(complex_type)) complex_type smem[];
+        extern __shared__ __align__(alignof(complex_type)) complex_type smem[];
 
-    constexpr auto global_a_size = example::global_memory_size_of<GEMM>::a_size;
-    constexpr auto global_b_size = example::global_memory_size_of<GEMM>::b_size;
-    constexpr auto global_c_size = example::global_memory_size_of<GEMM>::c_size;
+        constexpr auto global_a_size = example::global_memory_size_of<GEMM>::a_size;
+        constexpr auto global_b_size = example::global_memory_size_of<GEMM>::b_size;
+        constexpr auto global_c_size = example::global_memory_size_of<GEMM>::c_size;
 
-    // cuBLASDx
-    constexpr auto m = cublasdx::size_of<GEMM>::m;
-    constexpr auto n = cublasdx::size_of<GEMM>::n;
-    constexpr auto k = cublasdx::size_of<GEMM>::k;
+        // cuBLASDx
+        constexpr auto m = cublasdx::size_of<GEMM>::m;
+        constexpr auto n = cublasdx::size_of<GEMM>::n;
+        constexpr auto k = cublasdx::size_of<GEMM>::k;
 
-    // Select batch for this CUDA block
-    const value_type* batch_a      = a + (blockIdx.x * global_a_size);
-    const value_type* batch_b      = b + (blockIdx.x * global_b_size);
-    const value_type* batch_c      = c + (blockIdx.x * global_c_size);
-    value_type*       batch_output = output + (blockIdx.x * global_c_size);
+        // Select batch for this CUDA block
+        const value_type* batch_a      = a + (blockIdx.x * global_a_size);
+        const value_type* batch_b      = b + (blockIdx.x * global_b_size);
+        const value_type* batch_c      = c + (blockIdx.x * global_c_size);
+        value_type*       batch_output = output + (blockIdx.x * global_c_size);
 
-    auto a_global_tensor = cublasdx::make_tensor(batch_a, GEMM::get_layout_gmem_a());
-    auto b_global_tensor = cublasdx::make_tensor(batch_b, GEMM::get_layout_gmem_b());
-    auto c_global_tensor = cublasdx::make_tensor(batch_c, GEMM::get_layout_gmem_c());
+        auto a_global_tensor = cublasdx::make_tensor(batch_a, GEMM::get_layout_gmem_a());
+        auto b_global_tensor = cublasdx::make_tensor(batch_b, GEMM::get_layout_gmem_b());
+        auto c_global_tensor = cublasdx::make_tensor(batch_c, GEMM::get_layout_gmem_c());
 
-    auto [smem_a, smem_b, smem_c] = cublasdx::slice_shared_memory<GEMM>(reinterpret_cast<char*>(smem));
-    auto a_shared_tensor          = cublasdx::make_tensor(smem_a, GEMM::get_layout_smem_a());
-    auto b_shared_tensor          = cublasdx::make_tensor(smem_b, GEMM::get_layout_smem_b());
-    auto c_shared_tensor          = cublasdx::make_tensor(smem_c, GEMM::get_layout_smem_c());
+        auto [smem_a, smem_b, smem_c] = cublasdx::slice_shared_memory<GEMM>(reinterpret_cast<char*>(smem));
+        auto a_shared_tensor          = cublasdx::make_tensor(smem_a, GEMM::get_layout_smem_a());
+        auto b_shared_tensor          = cublasdx::make_tensor(smem_b, GEMM::get_layout_smem_b());
+        auto c_shared_tensor          = cublasdx::make_tensor(smem_c, GEMM::get_layout_smem_c());
 
-    // Load a, b, c from global to shared memory
-    using alignment = cublasdx::alignment_of<GEMM>;
-    cublasdx::copy<GEMM, alignment::a>(a_global_tensor, a_shared_tensor);
-    cublasdx::copy<GEMM, alignment::b>(b_global_tensor, b_shared_tensor);
-    cublasdx::copy<GEMM, alignment::c>(c_global_tensor, c_shared_tensor);
-    cublasdx::copy_wait();
+        // Load a, b, c from global to shared memory
+        using alignment = cublasdx::alignment_of<GEMM>;
+        cublasdx::copy<GEMM, alignment::a>(a_global_tensor, a_shared_tensor);
+        cublasdx::copy<GEMM, alignment::b>(b_global_tensor, b_shared_tensor);
+        cublasdx::copy<GEMM, alignment::c>(c_global_tensor, c_shared_tensor);
+        cublasdx::copy_wait();
 
-    // Transform A
-    custom_unary_op<complex_type> unary_op;
-    auto                          transformer = [unary_op](int i, complex_type v) {
-        int r = i % cublasdx::leading_dimension_of<GEMM>::a;
-        return r < cublasdx::size_of<GEMM>::m ? unary_op(v) : v;
-    };
-    example::transform(smem_a, GEMM::a_size, transformer);
+        // Transform A
+        custom_unary_op<complex_type> unary_op;
+        auto                          transformer = [unary_op](int i, complex_type v) {
+            int r = i % cublasdx::leading_dimension_of<GEMM>::a;
+            return r < cublasdx::size_of<GEMM>::m ? unary_op(v) : v;
+        };
+        example::transform(smem_a, GEMM::a_size, transformer);
 
-    // Execute GEMM
-    GEMM().execute(alpha, a_shared_tensor, b_shared_tensor, beta, c_shared_tensor);
-    __syncthreads();
+        // Execute GEMM
+        GEMM().execute(alpha, a_shared_tensor, b_shared_tensor, beta, c_shared_tensor);
+        __syncthreads();
 
-    // cuFFTDx
+        // cuFFTDx
 
-    // Local array for thread
-    complex_type thread_data[FFT::storage_size];
+        // Local array for thread
+        complex_type thread_data[FFT::storage_size];
 
-    // ID of FFT in CUDA block, in range [0; FFT::ffts_per_block)
-    const unsigned int local_fft_id = threadIdx.y;
-    // Load data from shared memory to registers
-    const unsigned int     offset = batch_offset<FFT>(local_fft_id, FFT::ffts_per_block);
-    constexpr unsigned int stride = FFT::stride;
-    unsigned int           index  = offset + threadIdx.x;
-    for (unsigned int i = 0; i < FFT::elements_per_thread; i++) {
-        if ((i * stride + threadIdx.x) < cufftdx::size_of<FFT>::value) {
-            thread_data[i] = smem_c[index];
-            index += stride;
+        // ID of FFT in CUDA block, in range [0; FFT::ffts_per_block)
+        const unsigned int local_fft_id = threadIdx.y;
+        // Load data from shared memory to registers
+        const unsigned int     offset = batch_offset<FFT>(local_fft_id, FFT::ffts_per_block);
+        constexpr unsigned int stride = FFT::stride;
+        unsigned int           index  = offset + threadIdx.x;
+        for (unsigned int i = 0; i < FFT::elements_per_thread; i++) {
+            if ((i * stride + threadIdx.x) < cufftdx::size_of<FFT>::value) {
+                thread_data[i] = smem_c[index];
+                index += stride;
+            }
         }
-    }
-    __syncthreads();
+        __syncthreads();
 
-    // Execute FFT on registers
-    FFT().execute(thread_data, smem);
+        // Execute FFT on registers
+        FFT().execute(thread_data, smem);
 
-    // Transform and save results
-    index = offset + threadIdx.x;
-    for (unsigned int i = 0; i < FFT::elements_per_thread; i++) {
-        if ((i * stride + threadIdx.x) < cufftdx::size_of<FFT>::value) {
-            batch_output[index] = unary_op(thread_data[i]);
-            index += stride;
+        // Transform and save results
+        index = offset + threadIdx.x;
+        for (unsigned int i = 0; i < FFT::elements_per_thread; i++) {
+            if ((i * stride + threadIdx.x) < cufftdx::size_of<FFT>::value) {
+                batch_output[index] = unary_op(thread_data[i]);
+                index += stride;
+            }
         }
     }
 }
@@ -239,8 +240,7 @@ double measure_cublasdx_cufftdx(const ValueType*   a,
     // Get max shared memory required by FFT and GEMM
     constexpr auto shared_memory_size = std::max({FFT::shared_memory_size, cublasdx::get_shared_storage_size<GEMM>()});
     // Increase max shared memory if needed
-    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(
-        gemm_fft_kernel<FFT, GEMM>, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_memory_size));
+    CUDA_CHECK_AND_EXIT(example::set_max_dynamic_shared_memory_size(gemm_fft_kernel<FFT, GEMM>, shared_memory_size));
 
     double time = example::measure::execution(
         [&](cudaStream_t stream) {

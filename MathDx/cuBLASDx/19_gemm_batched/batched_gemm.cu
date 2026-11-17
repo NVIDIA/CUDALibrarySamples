@@ -58,33 +58,34 @@ void batched_gemm_kernel(typename BLAS::c_value_type const alpha,
                          GlobalTensorB                     global_b,
                          GlobalTensorC                     global_c,
                          unsigned                          batch_count) {
-    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(BLAS);
-    extern __shared__ __align__(16) cublasdx::byte smem[];
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM_BLOCK(BLAS) {
+        extern __shared__ __align__(16) cublasdx::byte smem[];
 
-    using alignment = cublasdx::alignment_of<BLAS>;
+        using alignment = cublasdx::alignment_of<BLAS>;
 
-    // Slice shared memory for A and B only (C lives in registers via accumulator)
-    auto [a_shared, b_shared] = cublasdx::shared_memory::slice<typename BLAS::a_value_type, typename BLAS::b_value_type>(
-        smem, alignment::a, BLAS::suggest_layout_smem_a(), alignment::b, BLAS::suggest_layout_smem_b());
+        // Slice shared memory for A and B only (C lives in registers via accumulator)
+        auto [a_shared, b_shared] = cublasdx::shared_memory::slice<typename BLAS::a_value_type, typename BLAS::b_value_type>(
+            smem, alignment::a, BLAS::suggest_layout_smem_a(), alignment::b, BLAS::suggest_layout_smem_b());
 
-    // Grid-stride loop: each block processes multiple batches
-    for (unsigned batch = blockIdx.x; batch < batch_count; batch += gridDim.x) {
-        // Extract per-batch 2D slices with static layouts from rank-3 tensors
-        auto batch_a = cublasdx::get_batch(global_a, BLAS::get_layout_gmem_a(), batch);
-        auto batch_b = cublasdx::get_batch(global_b, BLAS::get_layout_gmem_b(), batch);
-        auto batch_c = cublasdx::get_batch(global_c, BLAS::get_layout_gmem_c(), batch);
+        // Grid-stride loop: each block processes multiple batches
+        for (unsigned batch = blockIdx.x; batch < batch_count; batch += gridDim.x) {
+            // Extract per-batch 2D slices with static layouts from rank-3 tensors
+            auto batch_a = cublasdx::get_batch(global_a, BLAS::get_layout_gmem_a(), batch);
+            auto batch_b = cublasdx::get_batch(global_b, BLAS::get_layout_gmem_b(), batch);
+            auto batch_c = cublasdx::get_batch(global_c, BLAS::get_layout_gmem_c(), batch);
 
-        // Copy A, B from global to shared memory
-        __syncthreads();
-        cublasdx::copy<BLAS, alignment::a>(batch_a, a_shared);
-        cublasdx::copy<BLAS, alignment::b>(batch_b, b_shared);
-        cublasdx::copy_wait();
+            // Copy A, B from global to shared memory
+            __syncthreads();
+            cublasdx::copy<BLAS, alignment::a>(batch_a, a_shared);
+            cublasdx::copy<BLAS, alignment::b>(batch_b, b_shared);
+            cublasdx::copy_wait();
 
-        // Execute GEMM: accumulator = A * B
-        auto accumulator = BLAS().execute(a_shared, b_shared);
+            // Execute GEMM: accumulator = A * B
+            auto accumulator = BLAS().execute(a_shared, b_shared);
 
-        // Epilogue: D = alpha * accumulator + beta * C (C loaded directly from gmem)
-        accumulator.axpby(alpha, beta, batch_c);
+            // Epilogue: D = alpha * accumulator + beta * C (C loaded directly from gmem)
+            accumulator.axpby(alpha, beta, batch_c);
+        }
     }
 }
 
@@ -172,7 +173,7 @@ int batched_gemm() {
     auto shared_memory_size = cublasdx::get_shared_storage_size_ab<BLAS>();
 
     auto kernel = batched_gemm_kernel<BLAS, global_tensor_a_t, global_tensor_b_t, global_tensor_c_t>;
-    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_memory_size));
+    CUDA_CHECK_AND_EXIT(example::set_max_dynamic_shared_memory_size(kernel, shared_memory_size));
 
     int num_sms = 0;
     CUDA_CHECK_AND_EXIT(cudaDeviceGetAttribute(&num_sms, cudaDevAttrMultiProcessorCount, 0));

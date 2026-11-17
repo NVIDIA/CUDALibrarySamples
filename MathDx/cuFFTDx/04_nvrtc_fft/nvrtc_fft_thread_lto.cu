@@ -23,6 +23,7 @@
 #include <cuda.h>
 #include <cuda_runtime_api.h>
 
+#define CUFFTDX_ENABLE_RUNTIME_DATABASE
 #include <cufftdx.hpp>
 
 #include "../common/common.hpp"
@@ -66,7 +67,7 @@ int main(int, char**) {
     CUDA_CHECK_AND_EXIT(cudaGetDevice(&current_device));
 
     // Get LTOIR and database from cuFFT
-    auto [lto_db, ltoirs, block_dim, shared_memory_size] =
+    auto [lto_db, ltoirs, traits] =
         cufftdx::utils::get_database_and_ltoir(fft_size,
                                                cufftdx::fft_direction::inverse,
                                                cufftdx::fft_type::c2c,

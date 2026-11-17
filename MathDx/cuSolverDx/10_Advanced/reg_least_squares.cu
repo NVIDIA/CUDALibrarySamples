@@ -23,6 +23,7 @@
 #include <type_traits>
 #include <iostream>
 
+#include "../common/cudart.hpp"
 #include "../common/device_io.hpp"
 #include "../common/macros.hpp"
 #include "../common/measure.hpp"
@@ -94,7 +95,7 @@ __global__ __launch_bounds__(NT) void solve_normal_equations(const T* A, unsigne
         Gs[i + i * N] += T(lambda);
     }
     __syncthreads();
-    POSV().execute(Gs, vs, info);
+    POSV().execute(Gs, POSV::default_lda, vs, POSV::default_ldb, info);
 
     //// store solution back to global memory
     __syncthreads();
@@ -136,9 +137,12 @@ __global__ __launch_bounds__(NT) void solve_householder(const T* A, unsigned lda
     using GELS = decltype(cusolverdx::Function<cusolverdx::gels>() + cusolverdx::Size<M+N, N, 1>() + cusolverdx::Precision<prec>() + cusolverdx::Type<type>() +
                           cusolverdx::Block() + cusolverdx::BlockDim<NT>() + cusolverdx::SM<Arch>());
 
+    constexpr auto lda_smem = GELS::default_lda;
+    constexpr auto ldb_smem = GELS::default_ldb;
+
     //// Load data from global memory
-    cusolverdx::copy_2d<NT, M, N, cusolverdx::arrangement::col_major>(A, lda, As, M+N);
-    cusolverdx::copy_2d<NT, M, 1, cusolverdx::arrangement::col_major>(b, M, bs, M+N);
+    cusolverdx::copy_2d<NT, M, N, cusolverdx::arrangement::col_major>(A, lda, As, lda_smem);
+    cusolverdx::copy_2d<NT, M, 1, cusolverdx::arrangement::col_major>(b, M, bs, ldb_smem);
     __syncthreads();
 
     // Fill the bottom block
@@ -146,7 +150,7 @@ __global__ __launch_bounds__(NT) void solve_householder(const T* A, unsigned lda
         int i = ij % N;
         int j = ij / N;
 
-        As[(M + i) + j * (M+N)] = T(i == j ? lambda : 0);
+        As[(M + i) + j * lda_smem] = T(i == j ? lambda : 0);
     }
     for (int i = threadIdx.x; i < N; i += NT) {
         bs[M + i] = 0;
@@ -154,11 +158,11 @@ __global__ __launch_bounds__(NT) void solve_householder(const T* A, unsigned lda
     __syncthreads();
 
     // Solve least squares problem
-    GELS().execute(As, M+N, taus, bs);
+    GELS().execute(As, lda_smem, taus, bs, ldb_smem);
 
     //// store solution back to global memory
     __syncthreads();
-    cusolverdx::copy_2d<NT, N, 1, cusolverdx::arrangement::col_major>(bs, M+N, x, N);
+    cusolverdx::copy_2d<NT, N, 1, cusolverdx::arrangement::col_major>(bs, ldb_smem, x, N);
 }
 
 
@@ -323,7 +327,7 @@ int main() {
     // Configure and invoke normal equations kernel
     constexpr unsigned ne_required_smem = (m + n) * (n + 1) * sizeof(data_type);
     const auto ne_kernel = solve_normal_equations<m, n, ne_NT, data_type, real_type>;
-    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(ne_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, ne_required_smem));
+    CUDA_CHECK_AND_EXIT(common::set_max_dynamic_shared_memory_size(ne_kernel, ne_required_smem));
     const auto run_ne_d_impl = [&](cudaStream_t str) {
         ne_kernel<<<batches, ne_NT, ne_required_smem, str>>>(d_A, lda, d_b, d_x, lambda, d_info);
     };
@@ -343,7 +347,7 @@ int main() {
     // Configure and invoke normal equations kernel
     constexpr unsigned qr_required_smem = ((m + n) * (n + 1) + n) * sizeof(data_type);
     const auto qr_kernel = solve_householder<m, n, qr_NT, data_type, real_type>;
-    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(qr_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, qr_required_smem));
+    CUDA_CHECK_AND_EXIT(common::set_max_dynamic_shared_memory_size(qr_kernel, qr_required_smem));
     const auto run_qr_d_impl = [&](cudaStream_t str) {
         qr_kernel<<<batches, qr_NT, qr_required_smem, str>>>(d_A, lda, d_b, d_x, lambda, d_info);
     };

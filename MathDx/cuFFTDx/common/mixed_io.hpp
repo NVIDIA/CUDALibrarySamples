@@ -155,19 +155,20 @@ namespace example {
 
         // input - global input with all FFTs
         // thread_data - local thread array to load values from input to
-        // local_fft_id - ID of FFT batch in CUDA block
+        // batchid - ID of FFT batch in CUDA block
         template<typename InputOutputType>
         static inline __device__ void load(const InputOutputType* input,
                                            complex_compute_type*  thread_data,
-                                           unsigned int           local_fft_id) {
+                                           unsigned int           local_batchid) {
             using complex_type = typename FFT::value_type;
             // Calculate global offset of FFT batch
-            const unsigned int offset = example::io<FFT>::input_batch_offset(local_fft_id);
+            const unsigned int offset = example::io<FFT>::input_batch_offset(local_batchid);
             // Get stride, this shows how elements from batch should be split between threads
             const unsigned int stride = FFT::stride;
-            unsigned int       index  = offset + threadIdx.x;
+            const unsigned int fftid  = FFT::working_group::fftid();
+            unsigned int       index  = offset + fftid;
             for (unsigned int i = 0; i < FFT::elements_per_thread; i++) {
-                if (i * stride + threadIdx.x < cufftdx::size_of<FFT>::value) {
+                if (i * stride + fftid < cufftdx::size_of<FFT>::value) {
                     thread_data[i] = convert<compute_precision>(input[index]);
                     index += stride;
                 }
@@ -177,14 +178,15 @@ namespace example {
         template<typename InputOutputType>
         static inline __device__ void store(const complex_compute_type* thread_data,
                                             InputOutputType*            output,
-                                            unsigned int                local_fft_id) {
+                                            unsigned int                local_batchid) {
             using io_precision = typename InputOutputType::value_type;
 
-            const unsigned int offset = example::io<FFT>::output_batch_offset(local_fft_id);
+            const unsigned int offset = example::io<FFT>::output_batch_offset(local_batchid);
             const unsigned int stride = FFT::stride;
-            unsigned int       index  = offset + threadIdx.x;
+            const unsigned int fftid  = FFT::working_group::fftid();
+            unsigned int       index  = offset + fftid;
             for (unsigned int i = 0; i < FFT::elements_per_thread; i++) {
-                if ((i * stride + threadIdx.x) < cufftdx::size_of<FFT>::value) {
+                if ((i * stride + fftid) < cufftdx::size_of<FFT>::value) {
                     output[index] = convert<io_precision>(thread_data[i]);
                 }
                 index += stride;
@@ -194,9 +196,13 @@ namespace example {
         template<typename InputOutputType>
         static inline __device__ void load(const InputOutputType* source,
                                            complex_compute_type*  target) {
-            unsigned int n      = blockDim.y * cufftdx::size_of<FFT>::value;
-            unsigned int stride = blockDim.x * blockDim.y;
-            unsigned int index  = threadIdx.y * blockDim.x + threadIdx.x;
+            const unsigned int bpb     = FFT::working_group::implicit_bpb();
+            const unsigned int batchid = FFT::working_group::batchid();
+            const unsigned int fftid   = FFT::working_group::fftid();
+
+            unsigned int n      = bpb * cufftdx::size_of<FFT>::value;
+            unsigned int stride = FFT::stride * bpb;
+            unsigned int index  = batchid * FFT::stride + fftid;
             for (int step = 0; step < FFT::elements_per_thread; step++) {
                 if (index < n) {
                     target[index] = convert<compute_precision>(source[index]);
@@ -211,9 +217,13 @@ namespace example {
                                             InputOutputType*            target) {
             using io_precision = typename InputOutputType::value_type;
 
-            unsigned int n      = blockDim.y * cufftdx::size_of<FFT>::value;
-            unsigned int stride = blockDim.x * blockDim.y;
-            unsigned int index  = threadIdx.y * blockDim.x + threadIdx.x;
+            const unsigned int bpb     = FFT::working_group::implicit_bpb();
+            const unsigned int batchid = FFT::working_group::batchid();
+            const unsigned int fftid   = FFT::working_group::fftid();
+
+            unsigned int n      = bpb * cufftdx::size_of<FFT>::value;
+            unsigned int stride = FFT::stride * bpb;
+            unsigned int index  = batchid * FFT::stride + fftid;
 
             __syncthreads();
             for (int step = 0; step < FFT::elements_per_thread; step++) {

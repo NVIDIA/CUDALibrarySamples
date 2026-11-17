@@ -29,7 +29,7 @@
 
 // This example demonstrates how to use cuSolverDx API to compute and measure performance of QR factorization on a batched m x n matrix
 
-template<class Solver, unsigned int BatchesPerBlock, typename DataType = typename Solver::a_data_type>
+template<class Solver, unsigned int BatchesPerBlock, unsigned int lda_smem, typename DataType = typename Solver::a_data_type>
 __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(DataType* A, DataType* A_out, const int lda_gmem, DataType* tau, const unsigned batches) {
     CUSOLVERDX_SKIP_IF_NOT_APPLICABLE_SM(Solver);
 
@@ -37,7 +37,6 @@ __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(DataType
     constexpr auto n = Solver::n_size;
 
     const auto     one_batch_size_a_gmem = (cusolverdx::arrangement_of_v_a<Solver> == cusolverdx::col_major) ? lda_gmem * n : m * lda_gmem;
-    constexpr auto lda_smem              = Solver::lda;
     constexpr auto one_batch_size_a_smem = (cusolverdx::arrangement_of_v_a<Solver> == cusolverdx::col_major) ? lda_smem * n : m * lda_smem;
 
     extern __shared__ __align__(16) cusolverdx::byte shared_mem[];
@@ -89,7 +88,8 @@ int geqrf_batched_performance() {
 
     constexpr bool is_col_maj_a = arrangement_of_v_a<Solver> == arrangement::col_major;
 
-    const auto     lda          = is_col_maj_a ? m : n;
+    const auto     lda          = Solver::default_lda;
+    constexpr auto lda_smem     = Solver::default_lda;
     constexpr auto input_size_a = m * n;
 
     const auto batches        = 10000;
@@ -112,11 +112,12 @@ int geqrf_batched_performance() {
 
     CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(d_A, A.data(), sizeof(data_type) * A.size(), cudaMemcpyHostToDevice, stream));
 
-    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(kernel<Solver, bpb>, cudaFuncAttributeMaxDynamicSharedMemorySize, Solver::shared_memory_size));
+    CUDA_CHECK_AND_EXIT(
+            common::set_max_dynamic_shared_memory_size(kernel<Solver, bpb, lda_smem>, Solver::get_shared_memory_size(lda_smem)));
 
     //Invokes kernel
     auto execute_solver = [&](cudaStream_t str) {
-        kernel<Solver, bpb><<<batches, Solver::block_dim, Solver::shared_memory_size, str>>>(d_A, d_A_out, lda, d_tau, batches);
+        kernel<Solver, bpb, lda_smem><<<batches, Solver::block_dim, Solver::get_shared_memory_size(lda_smem), str>>>(d_A, d_A_out, lda, d_tau, batches);
     };
 
     const int warmup_repeats = 1;

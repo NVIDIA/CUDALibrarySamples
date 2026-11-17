@@ -28,7 +28,7 @@
 // This example shows how to perform Cholesky factorization for a Hermitian positive-definite matrix
 // using cuSolverDx, and compare the result factors with cuSolver host API.
 
-template<class Solver, typename DataType = typename Solver::a_data_type>
+template<class Solver, unsigned int lda_smem, typename DataType = typename Solver::a_data_type>
 __global__ __launch_bounds__(Solver::max_threads_per_block) void potrf_kernel(DataType* A, typename Solver::status_type* info) {
     CUSOLVERDX_SKIP_IF_NOT_APPLICABLE_SM(Solver);
 
@@ -36,13 +36,12 @@ __global__ __launch_bounds__(Solver::max_threads_per_block) void potrf_kernel(Da
 
     DataType* As = reinterpret_cast<DataType*>(shared_mem);
 
-    constexpr auto lda_smem = Solver::lda;
-    constexpr auto lda_gmem = Solver::m_size;
+    constexpr auto lda_gmem = Solver::default_lda;
 
     // Load data from global memory to shared memory
     common::io<Solver>::load_a(A, lda_gmem, As, lda_smem);
 
-    Solver().execute(As, info);
+    Solver().execute(As, lda_smem, info);
 
     // Store results back to global memory
     common::io<Solver>::store_a(As, lda_smem, A, lda_gmem);
@@ -52,7 +51,7 @@ template<int Arch>
 int potrf_block() {
 
     using namespace cusolverdx;
-    using Solver = decltype(Size<32, 32>() + Precision<double>() + Type<type::complex>() + Function<potrf>() + LeadingDimension<33>() + SM<Arch>() +
+    using Solver = decltype(Size<32, 32>() + Precision<double>() + Type<type::complex>() + Function<potrf>() + SM<Arch>() +
                             BlockDim<256>() + FillMode<fill_mode::upper>() + Block());
 
     using data_type      = typename Solver::a_data_type;
@@ -61,9 +60,9 @@ int potrf_block() {
     constexpr auto m = Solver::m_size;
     constexpr auto n = Solver::n_size;
     static_assert(m == n, "potrf is for Hermitian positive-definite matrix matrix only");
-    constexpr auto lda_smem = Solver::lda;
+    constexpr unsigned int lda_smem = 33;
 
-    constexpr auto lda        = m; // this is the leading dimension in global memory for A
+    constexpr auto lda        = Solver::default_lda; // this is the leading dimension in global memory for A
     constexpr auto input_size = lda * n; // input global memory size for A
 
     std::cout << "Use compile-time leading dimension LDA for shared memory = " << lda_smem << std::endl;
@@ -93,9 +92,10 @@ int potrf_block() {
 
     CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(d_A, A.data(), sizeof(data_type) * A.size(), cudaMemcpyHostToDevice, stream));
 
-    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(potrf_kernel<Solver>, cudaFuncAttributeMaxDynamicSharedMemorySize, Solver::shared_memory_size));
+    const auto smem_size = Solver::get_shared_memory_size(lda_smem);
+    CUDA_CHECK_AND_EXIT(common::set_max_dynamic_shared_memory_size(potrf_kernel<Solver, lda_smem>, smem_size));
     //Invokes kernel
-    potrf_kernel<Solver><<<1, Solver::block_dim, Solver::shared_memory_size, stream>>>(d_A, d_info);
+    potrf_kernel<Solver, lda_smem><<<1, Solver::block_dim, smem_size, stream>>>(d_A, d_info);
 
     CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(L.data(), d_A, sizeof(data_type) * A.size(), cudaMemcpyDeviceToHost, stream));
     CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(&info, d_info, sizeof(int), cudaMemcpyDeviceToHost, stream));

@@ -39,41 +39,42 @@ __launch_bounds__(FFT::max_threads_per_block) __global__ void convolution_kernel
                                                                                  ScalarType*                   out,
                                                                                  typename FFT::workspace_type  workspace,
                                                                                  typename IFFT::workspace_type workspace_inverse) {
-    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFT);
+    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM_BLOCK(FFT) {
 
-    using complex_type = typename FFT::value_type;
-    using scalar_type  = typename complex_type::value_type;
+        using complex_type = typename FFT::value_type;
+        using scalar_type  = typename complex_type::value_type;
 
-    constexpr bool needs_padding = (SignalLength != cufftdx::size_of<FFT>::value);
+        constexpr bool needs_padding = (SignalLength != cufftdx::size_of<FFT>::value);
 
-    using input_utils = std::conditional_t<needs_padding, example::io_padded<FFT, SignalLength>, example::io<FFT>>;
-    using output_utils = std::conditional_t<needs_padding, example::io_padded<IFFT, SignalLength>, example::io<IFFT>>;
+        using input_utils  = std::conditional_t<needs_padding, example::io_padded<FFT, SignalLength>, example::io<FFT>>;
+        using output_utils = std::conditional_t<needs_padding, example::io_padded<IFFT, SignalLength>, example::io<IFFT>>;
 
-    // Local array for thread
-    complex_type thread_data[FFT::storage_size];
+        // Local array for thread
+        complex_type thread_data[FFT::storage_size];
 
-    // ID of FFT in CUDA block, in range [0; FFT::ffts_per_block)
-    const unsigned int local_fft_id = threadIdx.y;
+        // ID of FFT in CUDA block, in range [0; FFT::ffts_per_block)
+        const unsigned int batchid = FFT::working_group::batchid();
 
-    // Load data from global memory to registers
-    input_utils::load(in, thread_data, local_fft_id);
+        // Load data from global memory to registers
+        input_utils::load(in, thread_data, batchid);
 
-    // Execute FFT
-    extern __shared__ __align__(alignof(float4)) complex_type shared_mem[];
-    FFT().execute(thread_data, shared_mem, workspace);
+        // Execute FFT
+        extern __shared__ __align__(alignof(float4)) cufftdx::byte shared_mem[];
+        FFT().execute(thread_data, shared_mem, workspace);
 
-    // Scale values
-    scalar_type scale = (1.0 / cufftdx::size_of<FFT>::value) * scaling_factor;
-    for (unsigned int i = 0; i < FFT::storage_size; i++) {
-        thread_data[i].x *= scale;
-        thread_data[i].y *= scale;
+        // Scale values
+        scalar_type scale = (1.0 / cufftdx::size_of<FFT>::value) * scaling_factor;
+        for (unsigned int i = 0; i < FFT::storage_size; i++) {
+            thread_data[i].x *= scale;
+            thread_data[i].y *= scale;
+        }
+
+        // Execute inverse FFT
+        IFFT().execute(thread_data, shared_mem, workspace_inverse);
+
+        // Save results
+        output_utils::store(thread_data, out, batchid);
     }
-
-    // Execute inverse FFT
-    IFFT().execute(thread_data, shared_mem, workspace_inverse);
-
-    // Save results
-    output_utils::store(thread_data, out, local_fft_id);
 }
 
 // Scaling kernel; transforms data between cuFFTs.

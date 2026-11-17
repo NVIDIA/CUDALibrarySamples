@@ -40,7 +40,7 @@
         }
 #endif // CUFFT_CHECK_AND_EXIT
 
-const std::vector<int> supported_cuda_architectures = {750,800,860,870,890,900,1000,1030,1100,1200,1210};
+const std::vector<int> supported_cuda_architectures = {750,800,860,870,890,900,1000,1070,1030,1100,1200,1210};
 
 struct cufftdx_traits {
     cufftdx::utils::algorithm                     algorithm;
@@ -51,6 +51,7 @@ struct cufftdx_traits {
     cufftdx::fft_type                             type;
     cufftdx::precision                            precision;
     cufftdx::real_mode                            real_mode;
+    cufftdx::experimental::transposition          transposition;
     unsigned int                                  elements_per_thread;
     cufftdx::experimental::code_type              code_type;
     // Set to default values from https://docs.nvidia.com/cuda/cufftdx/api/traits.html#description-traits
@@ -63,6 +64,7 @@ struct cufftdx_traits {
         type(cufftdx::fft_type::c2c),
         precision(cufftdx::precision::f32),
         real_mode(cufftdx::real_mode::normal),
+        transposition(cufftdx::experimental::transposition::any),
         elements_per_thread(0),
         code_type(cufftdx::experimental::code_type::ltoir) {}
 
@@ -82,6 +84,13 @@ struct cufftdx_traits {
     }
     bool is_complete() const {
         return execution_type.has_value() && size.has_value() && direction.has_value() && sm.has_value();
+    }
+    // The same description resolved through Bluestein: frontend_to_backend maps it to the padded
+    // size as c2c forward.
+    static cufftdx_traits create_bluestein_traits(const cufftdx_traits& traits) {
+        cufftdx_traits blue = traits;
+        blue.algorithm      = cufftdx::utils::algorithm::bluestein;
+        return blue;
     }
 };
 
@@ -113,22 +122,54 @@ bool parseCUDAArchitectures(const std::string& architectures_arg, std::vector<in
     return true;
 }
 
-cufftDescriptionHandle createDescriptionHandleWithTraits(const cufftdx_traits& traits) {
+// Returns an empty optional when the requested transposition cannot be honored
+// by the cuFFT Device API in use, so that rows which do not depend on it still
+// generate exactly as they did before transposition support existed, and when
+// the mapping has no size for the traits (a Bluestein size past the padding table).
+std::optional<cufftDescriptionHandle> createDescriptionHandleWithTraits(const cufftdx_traits& traits) {
     if (!traits.is_complete()) {
         std::cerr << "Error: Not all traits are set.\n";
         std::exit(1);
     }
+
+    if (traits.transposition != cufftdx::experimental::transposition::any) {
+#if CUFFTDX_CUFFT_DEVICE_API_HAS_TRANSPOSITION
+        if (!cufftdx::utils::check_cufft_device_api_transposition_version(traits.transposition)) {
+            if (traits.transposition == cufftdx::experimental::transposition::by_component_padded) {
+                std::cout << "Warning: skipping padded transposition-constrained entry, these cuFFT headers do not "
+                             "expose the padded component transposition trait.\n";
+            } else {
+                std::cout << "Warning: skipping transposition-constrained entry, cuFFT Device API version "
+                          << CUFFT_DEVICE_API_TRANSPOSITION_MIN_VERSION << " or newer is required.\n";
+            }
+            return std::nullopt;
+        }
+#else
+        std::cout << "Warning: skipping transposition-constrained entry, these cuFFT headers do not "
+                     "expose transposition traits.\n";
+        return std::nullopt;
+#endif
+    }
+
     // Map frontend traits to backend traits
     const auto backend_traits = cufftdx::experimental::utils::frontend_to_backend(traits.algorithm,
                                                                     traits.execution_type.value(),
                                                                     traits.size.value(),
                                                                     traits.type,
                                                                     traits.direction.value(),
+                                                                    traits.precision,
+                                                                    0 /* ffts_per_block */,
                                                                     traits.sm.value(),
                                                                     traits.real_mode,
                                                                     traits.elements_per_thread,
+                                                                    false /* has_thread_linearization*/,
                                                                     0, /* block_dim_x */
+                                                                    0, /* block_dim_y */
+                                                                    0, /* block_dim_z */
                                                                     traits.code_type);
+    if (backend_traits.size == 0) {
+        return std::nullopt;
+    }
 
     // Create cufft description handle
     cufftDescriptionHandle desc_handle;
@@ -166,6 +207,16 @@ cufftDescriptionHandle createDescriptionHandleWithTraits(const cufftdx_traits& t
         case cufftdx::precision::f64: precision_value = CUFFT_DESC_DOUBLE; break;
     }
     CUFFT_CHECK_AND_EXIT(cufftDescriptionSetTraitInt64(desc_handle, CUFFT_DESC_TRAIT_PRECISION, precision_value));
+
+#if CUFFTDX_CUFFT_DEVICE_API_HAS_TRANSPOSITION
+    if (cufftdx::utils::check_cufft_device_api_transposition_version(traits.transposition)) {
+        CUFFT_CHECK_AND_EXIT(cufftDescriptionSetTraitInt64(
+            desc_handle,
+            CUFFT_DESC_TRAIT_TRANSPOSITION,
+            static_cast<long long int>(cufftdx::utils::cufft_detail::to_cufft_device_transposition(traits.transposition))));
+    }
+#endif
+
     return desc_handle;
 }
 
@@ -184,6 +235,12 @@ void printDescriptionInfo(cufftDescriptionHandle desc) {
     std::cout << "  CUFFT_DESC_TRAIT_SM: " << value << std::endl;
     CUFFT_CHECK_AND_EXIT(cufftDescriptionGetTraitInt64(desc, CUFFT_DESC_TRAIT_ELEMENTS_PER_THREAD, &value));
     std::cout << "  CUFFT_DESC_TRAIT_ELEMENTS_PER_THREAD: " << value << std::endl;
+#if CUFFTDX_CUFFT_DEVICE_API_HAS_TRANSPOSITION
+    if (cufftdx::utils::check_cufft_device_api_transposition_version()) {
+        CUFFT_CHECK_AND_EXIT(cufftDescriptionGetTraitInt64(desc, CUFFT_DESC_TRAIT_TRANSPOSITION, &value));
+        std::cout << "  CUFFT_DESC_TRAIT_TRANSPOSITION: " << value << std::endl;
+    }
+#endif
     std::cout << "------------------------------------------------------" << std::endl;
 }
 

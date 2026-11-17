@@ -77,7 +77,7 @@ extern "C" __global__ void test_kernel(typename FFT::value_type* fft_data)
     }
   }
 
-  extern __shared__ FFT::value_type shared_mem[];
+  extern __shared__ __align__(alignof(float4)) cufftdx::byte shared_mem[];
   FFT().execute(thread_data, shared_mem);
 
   index = offset + threadIdx.x;
@@ -160,13 +160,21 @@ int nvrtc_lto_query_database_helper() {
         {0, 0, 0}, // block_dim
         cufftdx::complex_layout::natural,
         cufftdx::real_mode::normal,
-        cufftdx::experimental::query_code_type::ltoir_offline);
+        cufftdx::experimental::query_code_type::ltoir_offline,
+        false      /* has_thread_linearization*/);
 
-    if (!query_result.has_value()) {
+    if (!query_result.has_value() || query_result->code != cufftdx::experimental::code_type::ltoir) {
         std::cout << "No offline LTO implementation found in pre-generated database for size=" << fft_size
                   << " arch=" << arch
-                  << "; empty query result is expected when this cuFFT database does not support offline LTO query." << std::endl;
+                  << "; this cuFFT database does not support offline LTO query for this description." << std::endl;
         return 0;
+    }
+
+    // A nonzero workspace_size means the query returned a Bluestein implementation. It needs a
+    // workspace, which NVRTC-compiled code cannot use.
+    if (query_result->workspace_size != 0) {
+        std::cout << "The queried FFT requires a separate workspace allocation" << std::endl;
+        return 1;
     }
 
     const auto& impl = query_result.value();

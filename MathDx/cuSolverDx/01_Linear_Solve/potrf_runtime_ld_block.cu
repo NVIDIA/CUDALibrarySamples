@@ -37,7 +37,7 @@ __global__ __launch_bounds__(Solver::max_threads_per_block) void potrf_kernel(Da
 
     DataType* As = reinterpret_cast<DataType*>(shared_mem);
 
-    constexpr auto lda_gmem = Solver::m_size;
+    constexpr auto lda_gmem = Solver::default_lda;
 
     // Load data from global memory to shared memory
     common::io<Solver>::load_a(A, lda_gmem, As, lda_smem);
@@ -62,7 +62,7 @@ int potrf_runtime_ld_block() {
     constexpr auto n = Solver::n_size;
     static_assert(m == n, "potrf is for Hermitian positive-definite matrix matrix only");
 
-    constexpr auto lda        = m; // this is the leading dimension in global memory for A
+    constexpr auto lda        = Solver::default_lda; // this is the leading dimension in global memory for A
     constexpr auto input_size = lda * n; // input global memory size for A
 
     // Use runtime LDA for SMEM
@@ -87,7 +87,7 @@ int potrf_runtime_ld_block() {
     CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(d_A, A.data(), sizeof(data_type) * A.size(), cudaMemcpyHostToDevice, stream));
 
     const unsigned int sm_size = Solver::get_shared_memory_size(lda_smem);
-    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(potrf_kernel<Solver>, cudaFuncAttributeMaxDynamicSharedMemorySize, sm_size));
+    CUDA_CHECK_AND_EXIT(common::set_max_dynamic_shared_memory_size(potrf_kernel<Solver>, sm_size));
     //Invokes kernel
     potrf_kernel<Solver><<<1, Solver::block_dim, sm_size, stream>>>(d_A, lda_smem, d_info);
 

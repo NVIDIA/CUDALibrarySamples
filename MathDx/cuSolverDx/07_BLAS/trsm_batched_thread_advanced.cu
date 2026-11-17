@@ -75,7 +75,7 @@ int trsm_thread_execution() {
     using cuda_data_type = typename TRSM::a_cuda_data_type;
 
     const auto     batches          = 300;
-    constexpr auto a_m              = TRSM::side == side::left ? M : N;
+    constexpr auto a_m              = TRSM::default_lda;
     constexpr auto nrhs             = TRSM::side == side::left ? N : M;
     const auto     one_batch_size_A = a_m * a_m;
     const auto     one_batch_size_B = M * N;

@@ -44,106 +44,110 @@ template<class FFT>
 __launch_bounds__(FFT::max_threads_per_block)
     __global__ void simple_fft_1d_kernel(typename FFT::value_type* input,
                                          typename FFT::value_type* output) {
-    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFT);
+    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM_BLOCK(FFT) {
 
-    using complex_type = typename FFT::value_type;
+        using complex_type = typename FFT::value_type;
 
-    // Local array for thread
+        // Local array for thread
 
-    complex_type thread_data[FFT::storage_size];
+        complex_type thread_data[FFT::storage_size];
 
-    // ID of FFT in CUDA block, in range [0; FFT::ffts_per_block)
-    const unsigned int local_fft_id = threadIdx.y;
-    // Load data from global memory to registers
-    example::io<FFT>::load(input, thread_data, local_fft_id);
+        // ID of FFT in CUDA block, in range [0; FFT::ffts_per_block)
+        const unsigned int batchid = FFT::working_group::batchid();
+        // Load data from global memory to registers
+        example::io<FFT>::load(input, thread_data, batchid);
 
-    // Execute FFT
-    extern __shared__ __align__(alignof(float4)) complex_type shared_mem[];
-    FFT().execute(thread_data, shared_mem);
+        // Execute FFT
+        extern __shared__ __align__(alignof(float4)) cufftdx::byte shared_mem[];
+        FFT().execute(thread_data, shared_mem);
 
-    // Save results
-    example::io<FFT>::store(thread_data, output, local_fft_id);
+        // Save results
+        example::io<FFT>::store(thread_data, output, batchid);
+    }
 }
 
 template<class FFT>
 __launch_bounds__(FFT::max_threads_per_block)
     __global__ void simple_fft_1d_shared_kernel(typename FFT::value_type* input,
                                                 typename FFT::value_type* output) {
-    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFT);
+    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM_BLOCK(FFT) {
 
-    using complex_type = typename FFT::value_type;
+        using complex_type = typename FFT::value_type;
 
-    extern __shared__ __align__(alignof(float4)) complex_type shared_mem[];
+        extern __shared__ __align__(alignof(float4)) cufftdx::byte shared_mem[];
 
-    // Since each block has a defined number of FFTs to compute, in here we offset global memory start address
-    // as to get a pointer to batch group assigned to the current block
-    //
-    // sub_batch_address = global_start_address + size(single FFT) * (batches per block) * (block index)
-    auto this_block_input  = input + cufftdx::size_of<FFT>::value * (FFT::ffts_per_block / FFT::implicit_type_batching) * blockIdx.x;
-    auto this_block_output = output + cufftdx::size_of<FFT>::value * (FFT::ffts_per_block / FFT::implicit_type_batching) * blockIdx.x;
+        // Since each block has a defined number of FFTs to compute, in here we offset global memory start address
+        // as to get a pointer to batch group assigned to the current block
+        //
+        // sub_batch_address = global_start_address + size(single FFT) * (batches per block) * (block index)
+        auto this_block_input  = input + cufftdx::size_of<FFT>::value * (FFT::ffts_per_block / FFT::implicit_type_batching) * blockIdx.x;
+        auto this_block_output = output + cufftdx::size_of<FFT>::value * (FFT::ffts_per_block / FFT::implicit_type_batching) * blockIdx.x;
 
-    example::io<FFT>::load_to_smem(this_block_input, reinterpret_cast<unsigned char*>(shared_mem));
+        example::io<FFT>::load_to_smem(this_block_input, reinterpret_cast<unsigned char*>(shared_mem));
 
-    FFT().execute(reinterpret_cast<void*>(shared_mem));
+        FFT().execute(reinterpret_cast<void*>(shared_mem));
 
-    example::io<FFT>::store_from_smem(reinterpret_cast<unsigned char*>(shared_mem), this_block_output);
+        example::io<FFT>::store_from_smem(reinterpret_cast<unsigned char*>(shared_mem), this_block_output);
+    }
 }
 
 template<typename FFT, typename InputOutputType>
 __launch_bounds__(FFT::max_threads_per_block)
     __global__ void mixed_fft_1d_shared_kernel(const InputOutputType* input,
                                                InputOutputType*       output) {
-    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFT);
+    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM_BLOCK(FFT) {
 
-    extern __shared__ __align__(alignof(float4)) typename FFT::value_type shared_mem[];
+        extern __shared__ __align__(alignof(float4)) cufftdx::byte shared_mem[];
 
-    // Since each block has a defined number of FFTs to compute, in here we offset global memory start address
-    // as to get a pointer to batch group assigned to the current block
-    //
-    // sub_batch_address = global_start_address + size(single FFT) * (batches per block) * (block index)
-    auto this_block_input  = input + cufftdx::size_of<FFT>::value * (FFT::ffts_per_block / FFT::implicit_type_batching) * blockIdx.x;
-    auto this_block_output = output + cufftdx::size_of<FFT>::value * (FFT::ffts_per_block / FFT::implicit_type_batching) * blockIdx.x;
+        // Since each block has a defined number of FFTs to compute, in here we offset global memory start address
+        // as to get a pointer to batch group assigned to the current block
+        //
+        // sub_batch_address = global_start_address + size(single FFT) * (batches per block) * (block index)
+        auto this_block_input  = input + cufftdx::size_of<FFT>::value * (FFT::ffts_per_block / FFT::implicit_type_batching) * blockIdx.x;
+        auto this_block_output = output + cufftdx::size_of<FFT>::value * (FFT::ffts_per_block / FFT::implicit_type_batching) * blockIdx.x;
 
-    // Load data from global memory to shared memory
-    // This load overload will perform a simple conversion
-    // from InputOutputPrecision into ComputePrecision
-    example::io_mixed<FFT>::load(this_block_input, shared_mem);
+        // Load data from global memory to shared memory
+        // This load overload will perform a simple conversion
+        // from InputOutputPrecision into ComputePrecision
+        example::io_mixed<FFT>::load(this_block_input, reinterpret_cast<typename FFT::value_type*>(shared_mem));
 
-    FFT().execute(shared_mem);
+        FFT().execute(reinterpret_cast<typename FFT::value_type*>(shared_mem));
 
-    // Save results to global memory
-    // This store overload will perform a simple conversion
-    // from ComputePrecision into InputOutputPrecision
-    example::io_mixed<FFT>::store(shared_mem, this_block_output);
+        // Save results to global memory
+        // This store overload will perform a simple conversion
+        // from ComputePrecision into InputOutputPrecision
+        example::io_mixed<FFT>::store(reinterpret_cast<typename FFT::value_type*>(shared_mem), this_block_output);
+    }
 }
 
 template<typename FFT, typename InputOutputType>
 __launch_bounds__(FFT::max_threads_per_block)
     __global__ void mixed_fft_1d_kernel(const InputOutputType* input,
                                         InputOutputType*       output) {
-    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFT);
+    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM_BLOCK(FFT) {
 
-    using complex_type = typename FFT::value_type;
-    extern __shared__ __align__(alignof(float4)) complex_type shared_mem[];
+        using complex_type = typename FFT::value_type;
+        extern __shared__ __align__(alignof(float4)) cufftdx::byte shared_mem[];
 
-    // Local array for thread
-    complex_type thread_data[FFT::storage_size];
+        // Local array for thread
+        complex_type thread_data[FFT::storage_size];
 
-    // ID of FFT in CUDA block, in range [0; FFT::ffts_per_block)
-    const unsigned int local_fft_id = threadIdx.y;
+        // ID of FFT in CUDA block, in range [0; FFT::ffts_per_block)
+        const unsigned int batchid = FFT::working_group::batchid();
 
-    // Load data from global memory to registers
-    // This load overload will perform a simple conversion
-    // from InputOutputPrecision into ComputePrecision
-    example::io_mixed<FFT>::load(input, thread_data, local_fft_id);
+        // Load data from global memory to registers
+        // This load overload will perform a simple conversion
+        // from InputOutputPrecision into ComputePrecision
+        example::io_mixed<FFT>::load(input, thread_data, batchid);
 
-    // Execute FFT in full precision
-    FFT().execute(thread_data, shared_mem);
+        // Execute FFT in full precision
+        FFT().execute(thread_data, shared_mem);
 
-    // Save results to global memory
-    // This store overload will perform a simple conversion
-    // from ComputePrecision into InputOutputPrecision
-    example::io_mixed<FFT>::store(thread_data, output, local_fft_id);
+        // Save results to global memory
+        // This store overload will perform a simple conversion
+        // from ComputePrecision into InputOutputPrecision
+        example::io_mixed<FFT>::store(thread_data, output, batchid);
+    }
 }
 
 template<typename FFT>
@@ -270,12 +274,17 @@ int mixed_precision_fft_1d() {
     static constexpr unsigned int warm_up_runs             = 1;
     static constexpr unsigned int kernel_runs              = 10;
 
-    // FFT is defined, its: size, type, direction, precision. Block() operator informs that FFT
-    // will be executed on block level. Shared memory is required for co-operation between threads.
+    // Transposition must be part of fft_base (not applied after) so that the
+    // suggested_elements_per_thread / suggested_ffts_per_block queries below only
+    // consider kernels that implement the padded layout.
     using fft_base = decltype(Block() + Size<fft_size>() + Type<fft_type::c2c>() + Direction<fft_direction::forward>() +
-                              Precision<compute_precision>() + SM<Arch>());
-    // cuFFTDx performance suggestions are used, as this example also tests execution times
-    using FFT = decltype(fft_base() + ElementsPerThread<fft_base::elements_per_thread>() + FFTsPerBlock<fft_base::ffts_per_block>());
+                              Precision<compute_precision>() + SM<Arch>() +
+                              experimental::Transposition<experimental::transposition::by_component_padded>());
+
+    static constexpr unsigned int ffts_per_block = fft_base::suggested_ffts_per_block;
+
+    using FFT = decltype(fft_base() + ElementsPerThread<fft_base::suggested_elements_per_thread>() +
+                         FFTsPerBlock<ffts_per_block>());
 
     // Data types which will be used, based on previously choisen
     // compute and input/output values

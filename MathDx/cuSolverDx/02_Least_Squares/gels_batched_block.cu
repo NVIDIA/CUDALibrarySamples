@@ -41,8 +41,8 @@ __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(
 
     const auto     one_batch_size_a_gmem = (cusolverdx::arrangement_of_v_a<Solver> == cusolverdx::col_major) ? lda_gmem * n : m * lda_gmem;
     const auto     one_batch_size_b_gmem = (cusolverdx::arrangement_of_v_b<Solver> == cusolverdx::col_major) ? ldb_gmem * k : max_mn * ldb_gmem;
-    constexpr auto lda_smem              = Solver::lda;
-    constexpr auto ldb_smem              = Solver::ldb;
+    constexpr auto lda_smem              = Solver::default_lda;
+    constexpr auto ldb_smem              = Solver::default_ldb;
     constexpr auto one_batch_size_a_smem = (cusolverdx::arrangement_of_v_a<Solver> == cusolverdx::col_major) ? lda_smem * n : m * lda_smem;
     constexpr auto one_batch_size_b_smem = (cusolverdx::arrangement_of_v_b<Solver> == cusolverdx::col_major) ? ldb_smem * k : max_mn * ldb_smem;
 
@@ -101,8 +101,8 @@ int gels_batched_block() {
     constexpr bool is_col_maj_a = arrangement_of_v_a<Solver> == arrangement::col_major;
     constexpr bool is_col_maj_b = arrangement_of_v_b<Solver> == arrangement::col_major;
 
-    const auto lda = is_col_maj_a ? m : n;
-    const auto ldb = is_col_maj_b ? max_mn : k;
+    const auto lda = Solver::default_lda;
+    const auto ldb = Solver::default_ldb;
 
     constexpr auto input_size_a = m * n; // input A size is m x n per batch
     constexpr auto input_size_b = max_mn * k; // allocate B/X with max(m, n) x k per batch
@@ -143,10 +143,10 @@ int gels_batched_block() {
     CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(d_A, A.data(), sizeof(data_type) * A.size(), cudaMemcpyHostToDevice, stream));
     CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(d_B, B.data(), sizeof(data_type) * B.size(), cudaMemcpyHostToDevice, stream));
 
-    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(kernel<Solver, bpb>, cudaFuncAttributeMaxDynamicSharedMemorySize, Solver::shared_memory_size));
+    CUDA_CHECK_AND_EXIT(common::set_max_dynamic_shared_memory_size(kernel<Solver, bpb>, Solver::get_shared_memory_size(lda, ldb)));
 
     //Invokes kernel
-    kernel<Solver, bpb><<<padded_batches / bpb, Solver::block_dim, Solver::shared_memory_size, stream>>>(d_A, lda, d_tau, d_B, ldb, batches);
+    kernel<Solver, bpb><<<padded_batches / bpb, Solver::block_dim, Solver::get_shared_memory_size(lda, ldb), stream>>>(d_A, lda, d_tau, d_B, ldb, batches);
     CUDA_CHECK_AND_EXIT(cudaGetLastError());
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 

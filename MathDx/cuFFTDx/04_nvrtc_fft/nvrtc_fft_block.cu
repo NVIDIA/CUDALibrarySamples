@@ -63,7 +63,7 @@ extern "C" __global__ void test_kernel(typename FFT::value_type* fft_data)
     }
   }
 
-  extern __shared__ FFT::value_type shared_mem[];
+  extern __shared__ __align__(alignof(float4)) cufftdx::byte shared_mem[];
   FFT().execute(thread_data, shared_mem);
 
   index = offset + threadIdx.x;

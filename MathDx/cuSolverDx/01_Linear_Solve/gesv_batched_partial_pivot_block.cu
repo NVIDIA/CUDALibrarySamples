@@ -30,7 +30,9 @@
 
 template<class Solver, unsigned int BatchesPerBlock, typename DataType = typename Solver::a_data_type>
 __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(
-        DataType* A, const int lda_gmem, int* ipiv, DataType* B, const int ldb_gmem, typename Solver::status_type* info, const unsigned batches) {
+        DataType* A, const int lda_gmem, int* ipiv, DataType* B, const int ldb_gmem,
+        const unsigned int lda_smem, const unsigned int ldb_smem,
+        typename Solver::status_type* info, const unsigned batches) {
     CUSOLVERDX_SKIP_IF_NOT_APPLICABLE_SM(Solver);
 
     constexpr auto m = Solver::m_size;
@@ -38,12 +40,10 @@ __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(
     static_assert(m == n, "gesv kernels only allow square matrices");
     constexpr auto k = Solver::k_size;
 
-    const auto     one_batch_size_a_gmem = lda_gmem * m;
-    const auto     one_batch_size_b_gmem = (cusolverdx::arrangement_of_v_b<Solver> == cusolverdx::col_major) ? ldb_gmem * k : n * ldb_gmem;
-    constexpr auto lda_smem              = Solver::lda;
-    constexpr auto ldb_smem              = Solver::ldb;
-    constexpr auto one_batch_size_a_smem = lda_smem * m;
-    constexpr auto one_batch_size_b_smem = (cusolverdx::arrangement_of_v_b<Solver> == cusolverdx::col_major) ? ldb_smem * k : n * ldb_smem;
+    const auto one_batch_size_a_gmem = lda_gmem * m;
+    const auto one_batch_size_b_gmem = (cusolverdx::arrangement_of_v_b<Solver> == cusolverdx::col_major) ? ldb_gmem * k : n * ldb_gmem;
+    const auto one_batch_size_a_smem = lda_smem * m;
+    const auto one_batch_size_b_smem = (cusolverdx::arrangement_of_v_b<Solver> == cusolverdx::col_major) ? ldb_smem * k : n * ldb_smem;
 
     extern __shared__ __align__(16) cusolverdx::byte shared_mem[];
     // Slice shared memory into pointers
@@ -63,7 +63,7 @@ __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(
     common::io<Solver, BatchesPerBlock>::load_a(Ag, lda_gmem, As, lda_smem);
     common::io<Solver, BatchesPerBlock>::load_b(Bg, ldb_gmem, Bs, ldb_smem);
 
-    Solver().execute(As, ipivs, Bs, &info[batch_idx]);
+    Solver().execute(As, lda_smem, ipivs, Bs, ldb_smem, &info[batch_idx]);
 
     // Store results back to global memory
     common::io<Solver, BatchesPerBlock>::store_a(As, lda_smem, Ag, lda_gmem);
@@ -81,7 +81,7 @@ int gesv_batched_partial_pivot_block() {
 
     using namespace cusolverdx;
     using Base   = decltype(Size<18, 18, 1>() + Precision<float>() + Type<type::complex>() + Function<gesv_partial_pivot>() +
-                          Arrangement<arrangement::col_major, arrangement::col_major>() + TransposeMode<non_trans>() + LeadingDimension<18, 20>() + SM<Arch>() +
+                          Arrangement<arrangement::col_major, arrangement::col_major>() + TransposeMode<non_trans>() + SM<Arch>() +
                           Block() + BlockDim<64>());
     using Solver = decltype(Base() + BatchesPerBlock<Base::suggested_batches_per_block>());
 
@@ -100,10 +100,12 @@ int gesv_batched_partial_pivot_block() {
     constexpr bool is_col_maj_a = arrangement_of_v_a<Solver> == arrangement::col_major;
     constexpr bool is_col_maj_b = arrangement_of_v_b<Solver> == arrangement::col_major;
 
-    const auto     lda          = is_col_maj_a ? m : n;
-    const auto     ldb          = is_col_maj_b ? n : k;
+    const auto     lda          = Solver::default_lda;
+    const auto     ldb          = Solver::default_ldb;
     constexpr auto input_size_a = m * n;
     constexpr auto input_size_b = n * k;
+    constexpr unsigned int lda_smem = Solver::default_lda;
+    constexpr unsigned int ldb_smem = 20;
 
     const auto batches        = 3;
     const auto padded_batches = (batches + bpb - 1) / bpb * bpb;
@@ -136,10 +138,11 @@ int gesv_batched_partial_pivot_block() {
     CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(d_A, A.data(), sizeof(data_type) * A.size(), cudaMemcpyHostToDevice, stream));
     CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(d_b, B.data(), sizeof(data_type) * B.size(), cudaMemcpyHostToDevice, stream));
 
-    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(kernel<Solver, bpb>, cudaFuncAttributeMaxDynamicSharedMemorySize, Solver::shared_memory_size));
+    const auto smem_size = Solver::get_shared_memory_size(lda_smem, ldb_smem);
+    CUDA_CHECK_AND_EXIT(common::set_max_dynamic_shared_memory_size(kernel<Solver, bpb>, smem_size));
 
     //Invokes kernel
-    kernel<Solver, bpb><<<padded_batches / bpb, Solver::block_dim, Solver::shared_memory_size, stream>>>(d_A, lda, d_ipiv, d_b, ldb, d_info, batches);
+    kernel<Solver, bpb><<<padded_batches / bpb, Solver::block_dim, smem_size, stream>>>(d_A, lda, d_ipiv, d_b, ldb, lda_smem, ldb_smem, d_info, batches);
     CUDA_CHECK_AND_EXIT(cudaGetLastError());
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 

@@ -49,13 +49,18 @@ namespace example {
         constexpr bool is_integral =
             commondx::is_integral_v<TA> and commondx::is_integral_v<TB> and commondx::is_integral_v<TC>;
 
+        constexpr bool is_float_or_double_a = std::is_same_v<TA, float> || std::is_same_v<TA, double> ||
+                                              std::is_same_v<TA, cublasdx::complex<float>> ||
+                                              std::is_same_v<TA, cublasdx::complex<double>>;
+        constexpr bool is_float_or_double_b = std::is_same_v<TB, float> || std::is_same_v<TB, double> ||
+                                              std::is_same_v<TB, cublasdx::complex<float>> ||
+                                              std::is_same_v<TB, cublasdx::complex<double>>;
+        constexpr bool is_float_or_double_c = std::is_same_v<TC, float> || std::is_same_v<TC, double> ||
+                                              std::is_same_v<TC, cublasdx::complex<float>> ||
+                                              std::is_same_v<TC, cublasdx::complex<double>>;
+
         constexpr bool is_non_float_non_double_a_b_c =
-            (!std::is_same_v<TA, float> && !std::is_same_v<TA, double>) ||
-            (!std::is_same_v<TB, float> && !std::is_same_v<TB, double>) ||
-            (!std::is_same_v<TC, float> && !std::is_same_v<TC, double>) ||
-            (!std::is_same_v<TA, cublasdx::complex<float>> && !std::is_same_v<TA, cublasdx::complex<double>>) ||
-            (!std::is_same_v<TB, cublasdx::complex<float>> && !std::is_same_v<TB, cublasdx::complex<double>>) ||
-            (!std::is_same_v<TC, cublasdx::complex<float>> && !std::is_same_v<TC, cublasdx::complex<double>>);
+            !(is_float_or_double_a && is_float_or_double_b && is_float_or_double_c);
 
         if constexpr (is_integral) {
             if (tot_rel_err != 0.0) {

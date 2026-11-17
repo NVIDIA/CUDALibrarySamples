@@ -36,24 +36,25 @@ inline constexpr unsigned int cufftdx_example_performance_runs = 20;
 template<class FFT, class InputType, class OutputType>
 __launch_bounds__(FFT::max_threads_per_block) __global__
     void fft_2d_kernel_y(const InputType* input, OutputType* output, typename FFT::workspace_type workspace) {
-    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFT);
+    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM_BLOCK(FFT) {
 
-    using complex_type = typename FFT::value_type;
+        using complex_type = typename FFT::value_type;
 
-    // Local array for thread
-    complex_type thread_data[FFT::storage_size];
+        // Local array for thread
+        complex_type thread_data[FFT::storage_size];
 
-    // ID of FFT in CUDA block, in range [0; FFT::ffts_per_block)
-    const unsigned int local_fft_id = threadIdx.y;
-    // Load data from global memory to registers
-    example::io<FFT>::load(input, thread_data, local_fft_id);
+        // ID of FFT in CUDA block, in range [0; FFT::ffts_per_block)
+        const unsigned int batchid = FFT::working_group::batchid();
+        // Load data from global memory to registers
+        example::io<FFT>::load(input, thread_data, batchid);
 
-    // Execute FFT
-    extern __shared__ __align__(alignof(float4)) complex_type shared_mem[];
-    FFT().execute(thread_data, shared_mem, workspace);
+        // Execute FFT
+        extern __shared__ __align__(alignof(float4)) cufftdx::byte shared_mem[];
+        FFT().execute(thread_data, shared_mem, workspace);
 
-    // Save results
-    example::io<FFT>::store(thread_data, output, local_fft_id);
+        // Save results
+        example::io<FFT>::store(thread_data, output, batchid);
+    }
 }
 
 template<class FFTF,
@@ -67,37 +68,40 @@ __launch_bounds__(FFTF::max_threads_per_block) __global__
                          ComplexType*                  output,
                          typename FFTF::workspace_type workspacef,
                          typename FFTI::workspace_type workspacei) {
-    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFTF);
+    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM_BLOCK(FFTF) {
 
-    using complex_type = typename FFTF::value_type;
+        using complex_type = typename FFTF::value_type;
 
-    extern __shared__ __align__(alignof(float4)) complex_type shared_mem[];
+        extern __shared__ __align__(alignof(float4)) cufftdx::byte shared_mem[];
 
-    // Local array for thread
-    complex_type thread_data[FFTF::storage_size];
+        // Local array for thread
+        complex_type thread_data[FFTF::storage_size];
 
-    // ID of FFT in CUDA block, in range [0; FFT::ffts_per_block)
-    const unsigned int local_fft_id = threadIdx.y;
-    // Load data from global memory to registers
-    if constexpr (UseSharedMemoryStridedIO) {
-        example::io_strided<FFTF>::load_strided<Stride, SizeY>(input, thread_data, shared_mem, local_fft_id);
-    } else {
-        example::io_strided<FFTF>::load_strided<Stride, SizeY>(input, thread_data, local_fft_id);
-    }
+        // ID of FFT in CUDA block, in range [0; FFT::ffts_per_block)
+        const unsigned int batchid = FFTF::working_group::batchid();
+        // Load data from global memory to registers
+        if constexpr (UseSharedMemoryStridedIO) {
+            example::io_strided<FFTF>::load_strided<Stride, SizeY>(
+                input, thread_data, reinterpret_cast<complex_type*>(shared_mem), batchid);
+        } else {
+            example::io_strided<FFTF>::load_strided<Stride, SizeY>(input, thread_data, batchid);
+        }
 
-    // Execute FFT (part of the 2D R2C FFT)
-    FFTF().execute(thread_data, shared_mem, workspacef);
+        // Execute FFT (part of the 2D R2C FFT)
+        FFTF().execute(thread_data, shared_mem, workspacef);
 
-    // Note: You can do any point-wise operation in here.
+        // Note: You can do any point-wise operation in here.
 
-    // Execute FFT (part of the 2D C2R FFT)
-    FFTI().execute(thread_data, shared_mem, workspacei);
+        // Execute FFT (part of the 2D C2R FFT)
+        FFTI().execute(thread_data, shared_mem, workspacei);
 
-    // Save results
-    if constexpr (UseSharedMemoryStridedIO) {
-        example::io_strided<FFTI>::store_strided<Stride, SizeY>(thread_data, shared_mem, output, local_fft_id);
-    } else {
-        example::io_strided<FFTI>::store_strided<Stride, SizeY>(thread_data, output, local_fft_id);
+        // Save results
+        if constexpr (UseSharedMemoryStridedIO) {
+            example::io_strided<FFTI>::store_strided<Stride, SizeY>(
+                thread_data, reinterpret_cast<complex_type*>(shared_mem), output, batchid);
+        } else {
+            example::io_strided<FFTI>::store_strided<Stride, SizeY>(thread_data, output, batchid);
+        }
     }
 }
 

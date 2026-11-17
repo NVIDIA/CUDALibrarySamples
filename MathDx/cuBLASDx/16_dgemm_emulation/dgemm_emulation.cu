@@ -311,6 +311,7 @@ int dgemm_emulation(const std::vector<problem_shape>& problems, const bool& debu
     /*            Performance evaluation of multiple problem sizes           */
     /* ===================================================================== */
 
+    bool all_correct = true;
     for (const auto& shape : problems) {
         const int32_t m          = cuda::std::get<0>(shape);
         const int32_t n          = cuda::std::get<1>(shape);
@@ -425,11 +426,15 @@ int dgemm_emulation(const std::vector<problem_shape>& problems, const bool& debu
                   << cuda::std::get<2>(gemm_shape) << "} "
                   << "cuBLASDx emulation to cuBLAS native DGEMM total relative error = "
                   << tot_rel_cublasdx_emulation_error << std::endl;
+        const bool is_correct = example::is_error_acceptable<c_value_type, a_value_type, b_value_type>(
+            tot_rel_cublasdx_emulation_error);
+        std::cout << (is_correct ? "Success!" : "Failure!") << "\n";
+        all_correct = all_correct and is_correct;
     }
 
     CUDA_CHECK_AND_EXIT(cudaStreamDestroy(stream));
 
-    return 0;
+    return all_correct ? 0 : 1;
 }
 
 template<typename Params>

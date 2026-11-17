@@ -46,7 +46,7 @@ __global__ void kernel(DataType* d, DataType* e, DataType* V, typename Solver::s
     } else {
         this_V = V + m * m * batch_idx;
 
-        Solver().execute(this_d, this_e, this_V, &info[batch_idx]);
+        Solver().execute(this_d, this_e, this_V, m, &info[batch_idx]);
     }
 }
 

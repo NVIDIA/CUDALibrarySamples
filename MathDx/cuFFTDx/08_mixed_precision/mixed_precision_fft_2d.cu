@@ -40,65 +40,66 @@ __launch_bounds__(FFTX::max_threads_per_block) __global__
                              InputOutputType*              output,
                              typename FFTX::workspace_type workspace_x,
                              typename FFTY::workspace_type workspace_y) {
-    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFTX);
+    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM_BLOCK(FFTX) {
 
-    using complex_type      = typename FFTX::value_type;
-    constexpr bool is_mixed = !std::is_same_v<InputOutputType, complex_type>;
+        using complex_type      = typename FFTX::value_type;
+        constexpr bool is_mixed = !std::is_same_v<InputOutputType, complex_type>;
 
-    // Shared memory
-    extern __shared__ __align__(alignof(float4)) cufftdx::byte shared_mem[];
+        // Shared memory
+        extern __shared__ __align__(alignof(float4)) cufftdx::byte shared_mem[];
 
-    // Local array for thread
-    complex_type thread_data[RequiredStorageSize];
+        // Local array for thread
+        complex_type thread_data[RequiredStorageSize];
 
-    // FFTY
+        // FFTY
 
-    // ID of FFT in CUDA block, in range [0; FFT::ffts_per_block)
-    const unsigned int local_fft_id = threadIdx.y;
-    if (blockIdx.x < (cufftdx::size_of<FFTX>::value / FFTX::ffts_per_block)) {
-        using io_type = std::conditional_t<is_mixed, example::io_mixed<FFTY>, example::io<FFTY>>;
-        // Load data from global memory to registers
-        io_type::load(input, thread_data, local_fft_id);
+        // ID of FFT in CUDA block, in range [0; FFT::ffts_per_block)
+        const unsigned int batchid = FFTX::working_group::batchid();
+        if (blockIdx.x < (cufftdx::size_of<FFTX>::value / FFTX::ffts_per_block)) {
+            using io_type = std::conditional_t<is_mixed, example::io_mixed<FFTY>, example::io<FFTY>>;
+            // Load data from global memory to registers
+            io_type::load(input, thread_data, batchid);
 
-        // Execute FFTY
-        FFTY().execute(thread_data, reinterpret_cast<complex_type*>(shared_mem), workspace_y);
+            // Execute FFTY
+            FFTY().execute(thread_data, reinterpret_cast<complex_type*>(shared_mem), workspace_y);
 
-        // Save results
-        io_type::store(thread_data, output, local_fft_id);
-    }
-
-    // Synchronize the whole CUDA Grid
-    cooperative_groups::grid_group grid = cooperative_groups::this_grid();
-    grid.sync();
-
-    // FFTX
-    if (blockIdx.x < (cufftdx::size_of<FFTY>::value / FFTY::ffts_per_block)) {
-        using dim_desc_type = example::dimension_description;
-        using io_type       = example::io_generic_strided<FFTX>;
-
-        // Load data from global memory to registers
-        // Both loads will convert the input if mixed
-        // precision is used
-        if constexpr (UseSharedMemoryStridedIO) {
-            io_type::load_strided<dim_desc_type::X, cufftdx::size_of<FFTX>::value, cufftdx::size_of<FFTY>::value>(
-                output, thread_data, reinterpret_cast<InputOutputType*>(shared_mem), local_fft_id);
-        } else {
-            io_type::load_strided<dim_desc_type::X, cufftdx::size_of<FFTX>::value, cufftdx::size_of<FFTY>::value>(
-                output, thread_data, local_fft_id);
+            // Save results
+            io_type::store(thread_data, output, batchid);
         }
 
-        // Execute FFTX
-        FFTX().execute(thread_data, reinterpret_cast<complex_type*>(shared_mem), workspace_x);
+        // Synchronize the whole CUDA Grid
+        cooperative_groups::grid_group grid = cooperative_groups::this_grid();
+        grid.sync();
 
-        // Save results
-        // Both stores will convert the input if mixed
-        // precision is used
-        if constexpr (UseSharedMemoryStridedIO) {
-            io_type::store_strided<dim_desc_type::X, cufftdx::size_of<FFTX>::value, cufftdx::size_of<FFTY>::value>(
-                thread_data, reinterpret_cast<InputOutputType*>(shared_mem), output, local_fft_id);
-        } else {
-            io_type::store_strided<dim_desc_type::X, cufftdx::size_of<FFTX>::value, cufftdx::size_of<FFTY>::value>(
-                thread_data, output, local_fft_id);
+        // FFTX
+        if (blockIdx.x < (cufftdx::size_of<FFTY>::value / FFTY::ffts_per_block)) {
+            using dim_desc_type = example::dimension_description;
+            using io_type       = example::io_generic_strided<FFTX>;
+
+            // Load data from global memory to registers
+            // Both loads will convert the input if mixed
+            // precision is used
+            if constexpr (UseSharedMemoryStridedIO) {
+                io_type::load_strided<dim_desc_type::X, cufftdx::size_of<FFTX>::value, cufftdx::size_of<FFTY>::value>(
+                    output, thread_data, reinterpret_cast<InputOutputType*>(shared_mem), batchid);
+            } else {
+                io_type::load_strided<dim_desc_type::X, cufftdx::size_of<FFTX>::value, cufftdx::size_of<FFTY>::value>(
+                    output, thread_data, batchid);
+            }
+
+            // Execute FFTX
+            FFTX().execute(thread_data, reinterpret_cast<complex_type*>(shared_mem), workspace_x);
+
+            // Save results
+            // Both stores will convert the input if mixed
+            // precision is used
+            if constexpr (UseSharedMemoryStridedIO) {
+                io_type::store_strided<dim_desc_type::X, cufftdx::size_of<FFTX>::value, cufftdx::size_of<FFTY>::value>(
+                    thread_data, reinterpret_cast<InputOutputType*>(shared_mem), output, batchid);
+            } else {
+                io_type::store_strided<dim_desc_type::X, cufftdx::size_of<FFTX>::value, cufftdx::size_of<FFTY>::value>(
+                    thread_data, output, batchid);
+            }
         }
     }
 }

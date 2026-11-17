@@ -36,42 +36,44 @@ __launch_bounds__(GEMM::max_threads_per_block) __global__ void gemm_kernel(const
                                                                            const typename GEMM::c_value_type beta,
                                                                            CInputType*                       output,
                                                                            unsigned int                      repeats) {
-    extern __shared__ __align__(16) cublasdx::byte smem[];
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM_BLOCK(GEMM) {
+        extern __shared__ __align__(16) cublasdx::byte smem[];
 
-    auto a_global_tensor   = cublasdx::make_tensor(a, GEMM::get_layout_gmem_a());
-    auto b_global_tensor   = cublasdx::make_tensor(b, GEMM::get_layout_gmem_b());
-    auto c_global_tensor   = cublasdx::make_tensor(c, GEMM::get_layout_gmem_c());
-    auto out_global_tensor = cublasdx::make_tensor(output, GEMM::get_layout_gmem_c());
+        auto a_global_tensor   = cublasdx::make_tensor(a, GEMM::get_layout_gmem_a());
+        auto b_global_tensor   = cublasdx::make_tensor(b, GEMM::get_layout_gmem_b());
+        auto c_global_tensor   = cublasdx::make_tensor(c, GEMM::get_layout_gmem_c());
+        auto out_global_tensor = cublasdx::make_tensor(output, GEMM::get_layout_gmem_c());
 
-    auto [smem_a, smem_b] = cublasdx::slice_shared_memory_ab<GEMM, AInputType, BInputType>(smem);
-    auto a_shared_tensor  = cublasdx::make_tensor(smem_a, GEMM::suggest_layout_smem_a());
-    auto b_shared_tensor  = cublasdx::make_tensor(smem_b, GEMM::suggest_layout_smem_b());
+        auto [smem_a, smem_b] = cublasdx::slice_shared_memory_ab<GEMM, AInputType, BInputType>(smem);
+        auto a_shared_tensor  = cublasdx::make_tensor(smem_a, GEMM::suggest_layout_smem_a());
+        auto b_shared_tensor  = cublasdx::make_tensor(smem_b, GEMM::suggest_layout_smem_b());
 
-    using blas_alignment = cublasdx::alignment_of<GEMM>;
-    cublasdx::copy<GEMM, blas_alignment::a>(a_global_tensor, a_shared_tensor);
-    cublasdx::copy<GEMM, blas_alignment::b>(b_global_tensor, b_shared_tensor);
-    cublasdx::copy_wait();
+        using blas_alignment = cublasdx::alignment_of<GEMM>;
+        cublasdx::copy<GEMM, blas_alignment::a>(a_global_tensor, a_shared_tensor);
+        cublasdx::copy<GEMM, blas_alignment::b>(b_global_tensor, b_shared_tensor);
+        cublasdx::copy_wait();
 
-    auto accumulator = GEMM::suggest_accumulator();
+        auto accumulator = GEMM::suggest_accumulator();
 
-    // Download d data
-    auto d_frag_compute = accumulator.make_empty_fragment();
-    auto d_frag_io      = accumulator.make_partition_and_copy(c_global_tensor);
-    cublasdx::transform_fragment(d_frag_io, d_frag_compute, example::converter<typename GEMM::c_value_type> {});
+        // Download d data
+        auto d_frag_compute = accumulator.make_empty_fragment();
+        auto d_frag_io      = accumulator.make_partition_and_copy(c_global_tensor);
+        cublasdx::transform_fragment(d_frag_io, d_frag_compute, example::converter<typename GEMM::c_value_type> {});
 
 #pragma unroll 1
-    for (unsigned int i = 0; i < repeats; i++) {
-        GEMM().execute(a_shared_tensor,
-                       b_shared_tensor,
-                       accumulator,
-                       example::converter<typename GEMM::a_value_type> {},
-                       example::converter<typename GEMM::b_value_type> {});
-        auto result_fragment = accumulator.get_results();
-        cublasdx::axpby(alpha, result_fragment, beta, d_frag_compute);
-    }
+        for (unsigned int i = 0; i < repeats; i++) {
+            GEMM().execute(a_shared_tensor,
+                           b_shared_tensor,
+                           accumulator,
+                           example::converter<typename GEMM::a_value_type> {},
+                           example::converter<typename GEMM::b_value_type> {});
+            auto result_fragment = accumulator.get_results();
+            cublasdx::axpby(alpha, result_fragment, beta, d_frag_compute);
+        }
 
-    cublasdx::transform_fragment(d_frag_compute, d_frag_io, example::converter<CInputType> {});
-    accumulator.partition_and_copy(d_frag_io, out_global_tensor);
+        cublasdx::transform_fragment(d_frag_compute, d_frag_io, example::converter<CInputType> {});
+        accumulator.partition_and_copy(d_frag_io, out_global_tensor);
+    }
 }
 
 template<class GEMM,
@@ -127,8 +129,8 @@ int benchmark_mixed_precision_gemm(const cudaStream_t& stream, bool verbose = fa
 
     // Increase max dynamic shared memory for the kernel if needed.
     auto shared_memory_size = cublasdx::get_shared_storage_size_ab<gemm_type, TA, TB>();
-    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(
-        gemm_kernel<gemm_type, TA, TB, TC>, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_memory_size));
+    CUDA_CHECK_AND_EXIT(
+        example::set_max_dynamic_shared_memory_size(gemm_kernel<gemm_type, TA, TB, TC>, shared_memory_size));
 
     // Correctness run
     gemm_kernel<gemm_type, TA, TB, TC>

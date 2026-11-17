@@ -40,7 +40,8 @@ int lto_query_database_helper() {
                                                                                      {0, 0, 0},
                                                                                      cufftdx::complex_layout::natural,
                                                                                      cufftdx::real_mode::normal,
-                                                                                     cufftdx::experimental::query_code_type::ltoir_offline);
+                                                                                     cufftdx::experimental::query_code_type::ltoir_offline,
+                                                                                     false);
 
     if (all_implementations.empty()) {
         std::cout << "No offline LTO implementations found for size=" << fft_size << " arch=" << arch

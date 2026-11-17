@@ -30,7 +30,7 @@
 // after performing Cholesky factorization of the batched symmetric, positive-definite matrix A.
 // The results are compared with the reference values obtained with cuSolver host API.
 
-template<class POSV, unsigned int BatchesPerBlock, class DataType = typename POSV::a_data_type>
+template<class POSV, unsigned int BatchesPerBlock, unsigned int lda_smem, unsigned int ldb_smem, class DataType = typename POSV::a_data_type>
 __global__ __launch_bounds__(POSV::max_threads_per_block) void posv_kernel(
         DataType* A, const unsigned int lda_gmem, DataType* B, const unsigned int ldb_gmem, typename POSV::status_type* info, const unsigned int batches) {
     CUSOLVERDX_SKIP_IF_NOT_APPLICABLE_SM(POSV);
@@ -41,8 +41,6 @@ __global__ __launch_bounds__(POSV::max_threads_per_block) void posv_kernel(
     const auto     one_batch_size_a_gmem = lda_gmem * m;
     const auto     one_batch_size_b_gmem = (arrangement_of_v_b<POSV> == arrangement::col_major) ? ldb_gmem * nrhs : m * ldb_gmem;
 
-    constexpr auto lda_smem              = POSV::lda;
-    constexpr auto ldb_smem              = POSV::ldb;
     constexpr auto one_batch_size_a_smem = lda_smem * m;
     constexpr auto one_batch_size_b_smem = (arrangement_of_v_b<POSV> == arrangement::col_major) ? ldb_smem * nrhs : m * ldb_smem;
 
@@ -62,7 +60,7 @@ __global__ __launch_bounds__(POSV::max_threads_per_block) void posv_kernel(
     common::io<POSV, BatchesPerBlock>::load_a(Ag, lda_gmem, As, lda_smem);
     common::io<POSV, BatchesPerBlock>::load_b(Bg, ldb_gmem, Bs, ldb_smem);
 
-    POSV().execute(As, lda_smem, Bs, &info[batch_idx]);
+    POSV().execute(As, lda_smem, Bs, ldb_smem, &info[batch_idx]);
 
     // Store results back to global memory
     common::io<POSV, BatchesPerBlock>::store_a(As, lda_smem, Ag, lda_gmem);
@@ -89,15 +87,15 @@ int simple_posv_batched() {
     constexpr auto n    = POSV::n_size;
     constexpr auto nrhs = POSV::k_size;
     static_assert(m == n, "posv is for Hermitian positive-definite matrix matrix only");
-    constexpr auto lda_smem = POSV::lda;
-    constexpr auto ldb_smem = POSV::ldb;
+    constexpr auto lda_smem = POSV::default_lda;
+    constexpr auto ldb_smem = POSV::default_ldb;
 
     constexpr bool is_col_maj_a = arrangement_of_v_a<POSV> == arrangement::col_major;
     constexpr bool is_col_maj_b = arrangement_of_v_b<POSV> == arrangement::col_major;
 
     // no padding for global memory
-    constexpr auto lda = m;
-    constexpr auto ldb = is_col_maj_b ? m : nrhs;
+    constexpr auto lda = POSV::default_lda;
+    constexpr auto ldb = POSV::default_ldb;
 
     printf("Size m = %d, n = %d, nrhs = %d\n", m, n, nrhs);
     std::cout << "Using leading dimension LDA = " << lda_smem << ", LDB = " << ldb_smem << std::endl;
@@ -134,10 +132,10 @@ int simple_posv_batched() {
     CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(d_B, B.data(), sizeof(data_type) * B.size(), cudaMemcpyHostToDevice, stream));
 
     // Increase max dynamic shared memory for the kernel if needed.
-    const auto sm_size = POSV::shared_memory_size;
+    const auto sm_size = POSV::get_shared_memory_size(lda_smem, ldb_smem);
 
-    const auto kernel = posv_kernel<POSV, POSV::batches_per_block>;
-    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, sm_size));
+    const auto kernel = posv_kernel<POSV, POSV::batches_per_block, lda_smem, ldb_smem>;
+    CUDA_CHECK_AND_EXIT(common::set_max_dynamic_shared_memory_size(kernel, sm_size));
 
     //Invokes kernel
     kernel<<<(batches + bpb - 1) / bpb, POSV::block_dim, sm_size, stream>>>(d_A, lda, d_B, ldb, d_info, batches);

@@ -110,7 +110,7 @@ namespace example {
         const auto cuda_device_arch = get_cuda_device_arch();
 
         switch (cuda_device_arch) {
-// All SM supported by cuRANDDx 
+// All SM supported by cuRANDDx
 #ifdef CURANDDX_EXAMPLE_ENABLE_SM_75
             case 750: return Functor<750>()();
 #endif
@@ -134,6 +134,9 @@ namespace example {
 #endif
 #ifdef CURANDDX_EXAMPLE_ENABLE_SM_103
             case 1030: return Functor<1030>()();
+#endif
+#ifdef CURANDDX_EXAMPLE_ENABLE_SM_107
+            case 1070: return Functor<1070>()();
 #endif
 #ifdef CURANDDX_EXAMPLE_ENABLE_SM_110
             case 1100: return Functor<1100>()();

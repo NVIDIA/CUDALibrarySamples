@@ -29,7 +29,7 @@
 // This example demonstrates how to use cuSolverDx block execution API to solve triangular systems
 // The results are compared with the reference values obtained with cublasXtrsm API.
 
-template<class TRSM, unsigned int BatchesPerBlock, class DataType = typename TRSM::a_data_type>
+template<class TRSM, unsigned int BatchesPerBlock, unsigned int lda_smem, unsigned int ldb_smem, class DataType = typename TRSM::a_data_type>
 __global__ __launch_bounds__(TRSM::max_threads_per_block) void trsm_kernel(const DataType* A, const unsigned int lda_gmem, DataType* B, const unsigned int ldb_gmem, const unsigned int batches) {
     CUSOLVERDX_SKIP_IF_NOT_APPLICABLE_SM(TRSM);
 
@@ -38,8 +38,6 @@ __global__ __launch_bounds__(TRSM::max_threads_per_block) void trsm_kernel(const
     constexpr auto one_batch_size_a = a_m * a_m;
     constexpr auto one_batch_size_b = TRSM::m_size * TRSM::n_size;
 
-    constexpr auto lda_smem              = TRSM::lda;
-    constexpr auto ldb_smem              = TRSM::ldb;
     const auto     one_batch_size_a_smem = lda_smem * a_m;
     const auto     one_batch_size_b_smem = ldb_smem * (cusolverdx::arrangement_of_v_b<TRSM> == cusolverdx::col_major ? TRSM::n_size : TRSM::m_size);
 
@@ -88,8 +86,8 @@ int trsm_block_execution() {
 
     constexpr auto m        = TRSM::m_size;
     constexpr auto n        = TRSM::n_size;
-    constexpr auto lda_smem = TRSM::lda;
-    constexpr auto ldb_smem = TRSM::ldb;
+    constexpr auto lda_smem = TRSM::default_lda;
+    constexpr auto ldb_smem = TRSM::default_ldb;
 
     std::cout << "lda_smem = " << lda_smem << ", ldb_smem = " << ldb_smem << std::endl;
 
@@ -98,8 +96,8 @@ int trsm_block_execution() {
 
     // no padding for global memory
     constexpr auto a_m = (side_of_v<TRSM> == side::left) ? m : n;
-    constexpr auto lda = a_m;
-    constexpr auto ldb = is_col_maj_b ? m : n;
+    constexpr auto lda = TRSM::default_lda;
+    constexpr auto ldb = TRSM::default_ldb;
 
     printf("TRSM Size m = %d, n = %d\n", m, n);
     std::cout << "Using leading dimension LDA = " << lda_smem << ", LDB = " << ldb_smem << std::endl;
@@ -133,11 +131,11 @@ int trsm_block_execution() {
     CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(d_B, B.data(), sizeof(data_type) * B.size(), cudaMemcpyHostToDevice, stream));
 
     // Increase max dynamic shared memory for the kernel if needed.
-    const auto sm_size = TRSM::shared_memory_size;
+    const auto sm_size = TRSM::get_shared_memory_size(lda_smem, ldb_smem);
     std::cout << "sm_size = " << sm_size << std::endl;
 
-    const auto kernel = trsm_kernel<TRSM, TRSM::batches_per_block>;
-    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, sm_size));
+    const auto kernel = trsm_kernel<TRSM, TRSM::batches_per_block, lda_smem, ldb_smem>;
+    CUDA_CHECK_AND_EXIT(common::set_max_dynamic_shared_memory_size(kernel, sm_size));
 
     //Invokes kernel
     kernel<<<(batches + bpb - 1) / bpb, TRSM::block_dim, sm_size, stream>>>(d_A, lda, d_B, ldb, batches);

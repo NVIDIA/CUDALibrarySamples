@@ -110,7 +110,7 @@ namespace example {
         // Single index is decayed to full N-D index by applying modulo and division
         // recursively. The pairs given in index_mapper definition are (Size, Stride) pairs.
         // --------------------------------------------------------------------------
-        // Please refer to io_strided_conv_smem.hpp for further explanation of multidimensional addressing.
+        // Please refer to io_strided_conv.hpp for further explanation of multidimensional addressing.
 
         using global_layout_x_subbatches = index_mapper<int_pair<z_dim, 1>,           // inner 2d dimension
                                                         int_pair<fft_size_y, z_dim>>; // outer 2d dimension
@@ -152,14 +152,14 @@ namespace example {
             GlobalLayout global_layout;
             SharedLayout shared_layout;
 
-            constexpr auto fpb            = FFT::ffts_per_block;
-            constexpr auto is_padded      = SignalLength != cufftdx::size_of<FFT>::value;
+            constexpr auto fpb       = FFT::ffts_per_block;
+            constexpr auto is_padded = SignalLength != cufftdx::size_of<FFT>::value;
 
             // While all blocks must be started with the same FPB and number of threads,
             // this example is flexible enough to allow batches % FPB != 0. In that case
             // the last block will process exactly (batches % FPB) subbatches, and
             // this_block_fpb is the actual value of computed FFTs for each block.
-            const auto     this_block_fpb = (blockIdx.x == Subbatches / fpb) ? Subbatches % fpb : fpb;
+            const auto this_block_fpb = (blockIdx.x == Subbatches / fpb) ? Subbatches % fpb : fpb;
 
             // Load data from global by emulating a switch between
             // threadIdx.x and threadIdx.y

@@ -46,25 +46,26 @@ __constant__ unsigned int blas_shared_memory = cublasdx::get_shared_storage_size
 
 extern "C" __global__ void test_kernel(const typename BLAS::a_value_type* a, typename BLAS::b_value_type* b)
 {
-    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(BLAS);
-    extern __shared__ __align__(16) cublasdx::byte smem[];
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM_BLOCK(BLAS) {
+        extern __shared__ __align__(16) cublasdx::byte smem[];
 
-    auto a_global_tensor = cublasdx::make_tensor(a, BLAS::get_layout_gmem_a());
-    auto b_global_tensor = cublasdx::make_tensor(b, BLAS::get_layout_gmem_b());
+        auto a_global_tensor = cublasdx::make_tensor(a, BLAS::get_layout_gmem_a());
+        auto b_global_tensor = cublasdx::make_tensor(b, BLAS::get_layout_gmem_b());
 
-    auto [smem_a, smem_b] = cublasdx::slice_shared_memory_ab<BLAS>(smem);
-    auto a_shared_tensor  = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_a());
-    auto b_shared_tensor  = cublasdx::make_tensor(smem_b, BLAS::get_layout_smem_b());
+        auto [smem_a, smem_b] = cublasdx::slice_shared_memory_ab<BLAS>(smem);
+        auto a_shared_tensor  = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_a());
+        auto b_shared_tensor  = cublasdx::make_tensor(smem_b, BLAS::get_layout_smem_b());
 
-    using alignment = cublasdx::alignment_of<BLAS>;
-    cublasdx::copy<BLAS, alignment::a>(a_global_tensor, a_shared_tensor);
-    cublasdx::copy<BLAS, alignment::b>(b_global_tensor, b_shared_tensor);
-    cublasdx::copy_wait();
+        using alignment = cublasdx::alignment_of<BLAS>;
+        cublasdx::copy<BLAS, alignment::a>(a_global_tensor, a_shared_tensor);
+        cublasdx::copy<BLAS, alignment::b>(b_global_tensor, b_shared_tensor);
+        cublasdx::copy_wait();
 
-    BLAS().execute(a_shared_tensor, b_shared_tensor);
-    __syncthreads();
+        BLAS().execute(a_shared_tensor, b_shared_tensor);
+        __syncthreads();
 
-    cublasdx::copy<BLAS, alignment::b>(b_shared_tensor, b_global_tensor);
+        cublasdx::copy<BLAS, alignment::b>(b_shared_tensor, b_global_tensor);
+    }
 }
 )kernel";
 

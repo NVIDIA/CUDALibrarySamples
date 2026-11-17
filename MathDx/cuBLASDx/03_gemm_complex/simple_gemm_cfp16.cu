@@ -33,30 +33,31 @@ __launch_bounds__(BLAS::max_threads_per_block) //
                      const ValueType  alpha,
                      const ValueType  beta,
                      ValueType*       output) {
-    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(BLAS);
-    using value_type = ValueType;
-    extern __shared__ __align__(16) cublasdx::byte smem[];
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM_BLOCK(BLAS) {
+        using value_type = ValueType;
+        extern __shared__ __align__(16) cublasdx::byte smem[];
 
-    auto a_global_tensor = cublasdx::make_tensor(a, BLAS::get_layout_gmem_a());
-    auto b_global_tensor = cublasdx::make_tensor(b, BLAS::get_layout_gmem_b());
-    auto c_global_tensor = cublasdx::make_tensor(c, BLAS::get_layout_gmem_c());
+        auto a_global_tensor = cublasdx::make_tensor(a, BLAS::get_layout_gmem_a());
+        auto b_global_tensor = cublasdx::make_tensor(b, BLAS::get_layout_gmem_b());
+        auto c_global_tensor = cublasdx::make_tensor(c, BLAS::get_layout_gmem_c());
 
-    auto [smem_a, smem_b, smem_c] = cublasdx::slice_shared_memory<BLAS>(smem);
-    auto a_shared_tensor          = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_a());
-    auto b_shared_tensor          = cublasdx::make_tensor(smem_b, BLAS::get_layout_smem_b());
-    auto c_shared_tensor          = cublasdx::make_tensor(smem_c, BLAS::get_layout_smem_c());
+        auto [smem_a, smem_b, smem_c] = cublasdx::slice_shared_memory<BLAS>(smem);
+        auto a_shared_tensor          = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_a());
+        auto b_shared_tensor          = cublasdx::make_tensor(smem_b, BLAS::get_layout_smem_b());
+        auto c_shared_tensor          = cublasdx::make_tensor(smem_c, BLAS::get_layout_smem_c());
 
-    using alignment = cublasdx::alignment_of<BLAS>;
-    cublasdx::copy<BLAS, alignment::a>(a_global_tensor, a_shared_tensor);
-    cublasdx::copy<BLAS, alignment::b>(b_global_tensor, b_shared_tensor);
-    cublasdx::copy<BLAS, alignment::c>(c_global_tensor, c_shared_tensor);
-    cublasdx::copy_wait();
+        using alignment = cublasdx::alignment_of<BLAS>;
+        cublasdx::copy<BLAS, alignment::a>(a_global_tensor, a_shared_tensor);
+        cublasdx::copy<BLAS, alignment::b>(b_global_tensor, b_shared_tensor);
+        cublasdx::copy<BLAS, alignment::c>(c_global_tensor, c_shared_tensor);
+        cublasdx::copy_wait();
 
-    BLAS().execute(alpha, a_shared_tensor, b_shared_tensor, beta, c_shared_tensor);
+        BLAS().execute(alpha, a_shared_tensor, b_shared_tensor, beta, c_shared_tensor);
 
-    __syncthreads();
-    auto out_global_tensor = cublasdx::make_tensor(output, BLAS::get_layout_gmem_c());
-    cublasdx::copy<BLAS, alignment::c>(c_shared_tensor, out_global_tensor);
+        __syncthreads();
+        auto out_global_tensor = cublasdx::make_tensor(output, BLAS::get_layout_gmem_c());
+        cublasdx::copy<BLAS, alignment::c>(c_shared_tensor, out_global_tensor);
+    }
 }
 
 // This is an example of complex fp16 general matrix-matrix multiplication (GEMM) performed
@@ -127,8 +128,8 @@ int simple_gemm() {
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
     // Increase max dynamic shared memory for the kernel if needed
-    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(
-        gemm_kernel<BLAS>, cudaFuncAttributeMaxDynamicSharedMemorySize, cublasdx::get_shared_storage_size<BLAS>()));
+    CUDA_CHECK_AND_EXIT(
+        example::set_max_dynamic_shared_memory_size(gemm_kernel<BLAS>, cublasdx::get_shared_storage_size<BLAS>()));
 
     // Execute kernel
     gemm_kernel<BLAS><<<1, BLAS::block_dim, cublasdx::get_shared_storage_size<BLAS>()>>>(a, b, c, alpha, beta, output);

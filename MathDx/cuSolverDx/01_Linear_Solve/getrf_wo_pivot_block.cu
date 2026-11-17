@@ -56,7 +56,7 @@ int getrf_wo_pivot_block() {
 
     constexpr auto m          = Solver::m_size;
     constexpr auto n          = Solver::n_size;
-    const auto     lda        = m;
+    const auto     lda        = Solver::default_lda;
     const auto     input_size = lda * n;
 
     cudaStream_t stream = nullptr;
@@ -77,10 +77,11 @@ int getrf_wo_pivot_block() {
 
     CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(d_A, A.data(), sizeof(data_type) * A.size(), cudaMemcpyHostToDevice, stream));
 
-    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(kernel<Solver>, cudaFuncAttributeMaxDynamicSharedMemorySize, Solver::shared_memory_size));
+    const auto smem_size = Solver::get_shared_memory_size(lda);
+    CUDA_CHECK_AND_EXIT(common::set_max_dynamic_shared_memory_size(kernel<Solver>, smem_size));
 
     //Invokes kernel
-    kernel<Solver><<<1, Solver::block_dim, Solver::shared_memory_size, stream>>>(d_A, lda, d_info);
+    kernel<Solver><<<1, Solver::block_dim, smem_size, stream>>>(d_A, lda, d_info);
     CUDA_CHECK_AND_EXIT(cudaGetLastError());
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 

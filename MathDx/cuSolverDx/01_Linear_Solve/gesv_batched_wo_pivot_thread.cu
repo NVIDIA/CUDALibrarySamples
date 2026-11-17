@@ -41,8 +41,8 @@ __global__ void gesv_kernel(
     using namespace cusolverdx;
     constexpr auto m    = GESV_thread::m_size;
     constexpr auto nrhs = GESV_thread::k_size;
-    constexpr auto lda  = GESV_thread::lda;
-    constexpr auto ldb  = GESV_thread::ldb;
+    constexpr auto lda  = GESV_thread::default_lda;
+    constexpr auto ldb  = GESV_thread::default_ldb;
 
     const auto one_batch_size_a = lda * m;
     const auto is_col_maj_b     = GESV_thread::b_arrangement == col_major;
@@ -56,7 +56,7 @@ __global__ void gesv_kernel(
     auto this_B = B + one_batch_size_b * batch_idx;
 
     // cuSolverDX thread execution can be executed on either global, shared memory or registers. In this example, we use global memory.
-    GESV_thread().execute(this_A, this_B, &info[batch_idx]);
+    GESV_thread().execute(this_A, lda, this_B, ldb, &info[batch_idx]);
 }
 
 template<int Arch>
@@ -79,8 +79,8 @@ int gesv_batched_wo_pivot_thread() {
     constexpr bool is_col_maj_b = arrangement_of_v_b<GESV> == arrangement::col_major;
 
     printf("Size m = %d, n = %d, nrhs = %d\n", m, n, nrhs);
-    const auto lda = GESV::lda;
-    const auto ldb = GESV::ldb;
+    const auto lda = GESV::default_lda;
+    const auto ldb = GESV::default_ldb;
 
     const auto batches          = 100;
     const auto one_batch_size_A = lda * m;

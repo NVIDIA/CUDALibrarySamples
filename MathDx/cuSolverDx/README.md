@@ -28,51 +28,61 @@ make
 ctest
 ```
 
+## Shared Memory
+
+Kernels that use more than 48 KB of shared memory per thread block must allocate it as dynamic shared memory and opt in with [`cudaFuncSetAttribute`](https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__EXECUTION.html). CuSolverDx's Block execution examples do this through a helper function `common::set_max_dynamic_shared_memory_size()` in `common/cudart.hpp`.
+
+* On most GPUs the opt-in is `cudaFuncAttributeMaxDynamicSharedMemorySize`, which can raise the per-block limit up to 227 KB on compute capability 9.0 / 10.0 / 10.3 / 11.0, and on 10.7 without oversized mode.
+
+* Compute capability 10.7 (Rubin) adds a 328 KB shared-memory configuration. Requests above 227 KB must set `cudaFuncAttributeSharedMemoryMode` to `cudaSharedMemoryModeAllowOversizedSharedMemory` (CUDA 13.4+). `MaxDynamicSharedMemorySize` is ignored once a shared-memory mode is set and cannot grant oversized shared memory. Oversized mode also [limits L1 to 8 KB](https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html#_CPPv4N20cudaSharedMemoryMode46cudaSharedMemoryModeAllowOversizedSharedMemoryE), which could have performance implications.
+
+See [Compute Capabilities](https://docs.nvidia.com/cuda/cuda-programming-guide/05-appendices/compute-capabilities.html) in the CUDA Programming Guide.
+
 ## Examples
 
 For the detailed descriptions of the examples please visit [Examples](https://docs.nvidia.com/cuda/cusolverdx/examples/index.html) section of the cuSolverDx documentation.
 
-| Group                         | Example                           | Description                                                                                                          |
-| ----------------------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| Introduction Examples         | posv_batched_block                | Introduction example with Cholesky factorization and solve (block execution)                                         |
-| Linear Solve Examples         | potrf_batched_thread              | Cholesky factorization (thread execution)                                                                            |
-|                               | posv_batched_thread               | Cholesky factorization and solve (thread execution)                                                                  |
-|                               | potrf_block                       | Cholesky factorization (block execution)                                                                             |
-|                               | potrf_runtime_ld_block            | Cholesky factorization with runtime leading dimensions (block execution)                                             |
-|                               | potrf_batched_cluster             | Batched Cholesky factorization with experimental cluster execution, Hopper+ (cluster execution)                      |
-|                               | getrf_wo_pivot_block              | LU factorization without pivoting (block execution)                                                                  |
-|                               | getrf_partial_pivot_block         | LU factorization with partial pivoting (block execution)                                                             |
-|                               | gesv_batched_wo_pivot_thread      | Solves batched linear systems without pivoting (thread execution)                                                    |
-|                               | gesv_batched_wo_pivot_block       | Solves batched linear systems without pivoting (block execution)                                                     |
-|                               | gesv_batched_partial_pivot_thread | Solves batched linear systems with partial pivoting (thread execution)                                               |
-|                               | gesv_batched_partial_pivot_block  | Solves batched linear systems with partial pivoting (block execution)                                                |
-|                               | gtsv_batched_wo_pivot_thread      | Solves batched tridiagonal linear systems without pivoting (thread execution)                                        |
-|                               | gtsv_batched_wo_pivot_block       | Solves batched tridiagonal linear systems without pivoting (block execution)                                         |
-| Least Squares Examples        | gels_batched_thread               | Solves batched least squares problems (thread execution)                                                             |
-|                               | gels_batched_block                | Solves batched least squares problems (block execution)                                                              |
-| Orthogonal Factors Examples   | geqrf_batched_thread              | QR factorization for batched matrices (thread execution)                                                             |
-|                               | geqrf_batched_block               | QR factorization for batched matrices (block execution)                                                              |
-|                               | unmqr_batched_thread              | Multiplies matrix by Q from QR factorization (thread execution)                                                      |
-|                               | unmqr_batched_block               | Multiplies matrix by Q from QR factorization (block execution)                                                       |
-|                               | ungqr_batched_thread              | Generates orthogonal matrix Q from QR factorization (thread execution)                                               |
-|                               | ungqr_batched_block               | Generates orthogonal matrix Q from QR factorization (block execution)                                                |
-| Symmetric Eigenvalue Examples | heev_batched_thread               | Eigenvalues and eigenvectors of batched Hermitian matrices (thread execution)                                        |
-|                               | heev_batched_block                | Eigenvalues and eigenvectors of batched Hermitian matrices (block execution)                                         |
-|                               | htev_batched_thread               | Eigenvalues and eigenvectors of batched Hermitian tridiagonal matrices (thread execution)                            |
-|                               | htev_batched_block                | Eigenvalues and eigenvectors of batched Hermitian tridiagonal matrices (block execution)                             |
-|                               | hegst_batched_thread              | Reduces batched Hermitian-definite generalized eigenproblem to standard form (thread execution)                      |
-|                               | hegst_batched_block               | Reduces batched Hermitian-definite generalized eigenproblem to standard form (block execution)                       |
-|                               | hegv_batched_block                | Eigenvalues and eigenvectors of batched Hermitian-definite generalized eigenproblems (block execution)               |
-| SVD Examples                  | gesvd_batched_thread              | Singular value decomposition for batched general matrices (thread execution)                                         |
-|                               | gesvd_batched_block               | Singular value decomposition for batched general matrices (block execution)                                          |
-|                               | bdsvd_batched_thread              | Singular value decomposition for batched bidiagonal matrices (thread execution)                                      |
-|                               | bdsvd_batched_block               | Singular value decomposition for batched bidiagonal matrices (block execution)                                       |
-| BLAS Examples                 | trsm_batched_block                | Batched triangular solve with multiple right-hand sides (block execution)                                            |
-|                               | trsm_batched_thread               | Batched triangular solve with multiple right-hand sides (thread execution)                                           |
-|                               | trsm_batched_thread_advanced      | Batched triangular solve with advanced options (thread execution)                                                    |
-| NVRTC Examples                | nvrtc_potrs                       | cuSolverDx with NVRTC runtime compilation and nvJitLink runtime linking                                              |
-| Performance Examples          | geqrf_batched_performance         | Performance analysis of batched QR factorization                                                                     |
-| Advanced Examples             | blocked_potrf                     | Cholesky factorization using blocked left-looking algorithm for large matrices (requires cuBLASDx)                   |
-|                               | cga_blocked_potrf_right_looking   | Blocked right-looking Cholesky with thread block clusters and distributed shared memory, Hopper+ (requires cuBLASDx) |
-|                               | cga_tsqrhr                        | Batched tall-skinny QR with Householder reconstruction using thread block clusters, Hopper+ (requires cuBLASDx)      |
-|                               | reg_least_squares                 | Regularized least squares solver (requires cuBLASDx)                                                                 |
+| Group                         | Example                                | Description                                                                                                                 |
+| ----------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Introduction Examples         | posv_batched_block                     | Introduction example with Cholesky factorization and solve (block execution)                                                |
+| Linear Solve Examples         | potrf_batched_thread                   | Cholesky factorization (thread execution)                                                                                   |
+|                               | posv_batched_thread                    | Cholesky factorization and solve (thread execution)                                                                         |
+|                               | potrf_block                            | Cholesky factorization (block execution)                                                                                    |
+|                               | potrf_runtime_ld_block                 | Cholesky factorization with runtime leading dimensions (block execution)                                                    |
+|                               | potrf_batched_cluster                  | Batched Cholesky factorization with experimental cluster execution, Hopper+ (cluster execution)                             |
+|                               | getrf_wo_pivot_block                   | LU factorization without pivoting (block execution)                                                                         |
+|                               | getrf_partial_pivot_block              | LU factorization with partial pivoting (block execution)                                                                    |
+|                               | gesv_batched_wo_pivot_thread           | Solves batched linear systems without pivoting (thread execution)                                                           |
+|                               | gesv_batched_wo_pivot_block            | Solves batched linear systems without pivoting (block execution)                                                            |
+|                               | gesv_batched_partial_pivot_thread      | Solves batched linear systems with partial pivoting (thread execution)                                                      |
+|                               | gesv_batched_partial_pivot_block       | Solves batched linear systems with partial pivoting (block execution)                                                       |
+|                               | gtsv_batched_wo_pivot_thread           | Solves batched tridiagonal linear systems without pivoting (thread execution)                                               |
+|                               | gtsv_batched_wo_pivot_block            | Solves batched tridiagonal linear systems without pivoting (block execution)                                                |
+| Least Squares Examples        | gels_batched_thread                    | Solves batched least squares problems (thread execution)                                                                    |
+|                               | gels_batched_block                     | Solves batched least squares problems (block execution)                                                                     |
+| Orthogonal Factors Examples   | geqrf_batched_thread                   | QR factorization for batched matrices (thread execution)                                                                    |
+|                               | geqrf_batched_block                    | QR factorization for batched matrices (block execution)                                                                     |
+|                               | geqrf_batched_cluster                  | Experimental cluster tall-skinny QR / TSQRHR, Hopper+ (requires cuBLASDx)                                                   |
+|                               | unmqr_batched_thread                   | Multiplies matrix by Q from QR factorization (thread execution)                                                             |
+|                               | unmqr_batched_block                    | Multiplies matrix by Q from QR factorization (block execution)                                                              |
+|                               | ungqr_batched_thread                   | Generates orthogonal matrix Q from QR factorization (thread execution)                                                      |
+|                               | ungqr_batched_block                    | Generates orthogonal matrix Q from QR factorization (block execution)                                                       |
+| Symmetric Eigenvalue Examples | heev_batched_thread                    | Eigenvalues and eigenvectors of batched Hermitian matrices (thread execution)                                               |
+|                               | heev_batched_block                     | Eigenvalues and eigenvectors of batched Hermitian matrices (block execution)                                                |
+|                               | htev_batched_thread                    | Eigenvalues and eigenvectors of batched Hermitian tridiagonal matrices (thread execution)                                   |
+|                               | htev_batched_block                     | Eigenvalues and eigenvectors of batched Hermitian tridiagonal matrices (block execution)                                    |
+|                               | hegst_batched_thread                   | Reduces batched Hermitian-definite generalized eigenproblem to standard form (thread execution)                             |
+|                               | hegst_batched_block                    | Reduces batched Hermitian-definite generalized eigenproblem to standard form (block execution)                              |
+|                               | hegv_batched_block                     | Eigenvalues and eigenvectors of batched Hermitian-definite generalized eigenproblems (block execution)                      |
+| SVD Examples                  | gesvd_batched_thread                   | Singular value decomposition for batched general matrices (thread execution)                                                |
+|                               | gesvd_batched_block                    | Singular value decomposition for batched general matrices (block execution)                                                 |
+|                               | bdsvd_batched_thread                   | Singular value decomposition for batched bidiagonal matrices (thread execution)                                             |
+|                               | bdsvd_batched_block                    | Singular value decomposition for batched bidiagonal matrices (block execution)                                              |
+| BLAS Examples                 | trsm_batched_block                     | Batched triangular solve with multiple right-hand sides (block execution)                                                   |
+|                               | trsm_batched_thread                    | Batched triangular solve with multiple right-hand sides (thread execution)                                                  |
+|                               | trsm_batched_thread_advanced           | Batched triangular solve with advanced options (thread execution)                                                           |
+| NVRTC Examples                | nvrtc_potrs                            | cuSolverDx with NVRTC runtime compilation and nvJitLink runtime linking                                                     |
+| Performance Examples          | geqrf_batched_performance              | Performance analysis of batched QR factorization                                                                            |
+| Advanced Examples             | blocked_potrf                          | Cholesky factorization using blocked left-looking algorithm for large matrices (requires cuBLASDx)                          |
+|                               | cga_hybrid_blocked_potrf_right_looking | Hybrid right-looking blocked Cholesky with thread block clusters (DSMEM panel + GMEM trailing), Hopper+ (requires cuBLASDx) |
+|                               | reg_least_squares                      | Regularized least squares solver (requires cuBLASDx)                                                                        |

@@ -27,19 +27,20 @@
 
 template<class FFT>
 __launch_bounds__(FFT::max_threads_per_block) __global__ void block_fft_kernel(typename FFT::value_type* data) {
-    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFT);
+    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM_BLOCK(FFT) {
 
-    using complex_type = typename FFT::value_type;
+        using complex_type = typename FFT::value_type;
 
-    extern __shared__ __align__(alignof(float4)) cufftdx::byte shared_mem[];
+        extern __shared__ __align__(alignof(float4)) cufftdx::byte shared_mem[];
 
-    auto this_block_data = data + cufftdx::size_of<FFT>::value * (FFT::ffts_per_block / FFT::implicit_type_batching) * blockIdx.x;
+        auto this_block_data = data + cufftdx::size_of<FFT>::value * (FFT::ffts_per_block / FFT::implicit_type_batching) * blockIdx.x;
 
-    example::io<FFT>::load_to_smem(this_block_data, shared_mem);
+        example::io<FFT>::load_to_smem(this_block_data, shared_mem);
 
-    FFT().execute(reinterpret_cast<void*>(shared_mem));
+        FFT().execute(reinterpret_cast<void*>(shared_mem));
 
-    example::io<FFT>::store_from_smem(shared_mem, this_block_data);
+        example::io<FFT>::store_from_smem(shared_mem, this_block_data);
+    }
 }
 
 // In this example a one-dimensional complex-to-complex transform is performed by a CUDA block.

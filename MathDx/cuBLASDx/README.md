@@ -35,7 +35,7 @@ ctest
 For the detailed descriptions of the examples please visit [Examples](https://docs.nvidia.com/cuda/cublasdx/examples.html) section of the cuBLASDx documentation.
 
 | Group               | Subgroup       | Example                           | Description                                                                                                           |
-| ------------------- | -------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+|---------------------|----------------|-----------------------------------|-----------------------------------------------------------------------------------------------------------------------|
 | Introduction        | GEMM           | 01_introduction_example           | Walks through descriptor creation and the shared-memory and register-result GEMM APIs.                                |
 |                     | Pipeline       | 01_introduction_pipeline          | Introduces the host pipeline object, device handle, tile pipeline, and epilogue flow.                                 |
 | Simple GEMM         | Basic          | 02_simple_gemm_fp32               | Performs a checked fp32 GEMM and is the smallest general-purpose starting point.                                      |
@@ -70,3 +70,4 @@ For the detailed descriptions of the examples please visit [Examples](https://do
 | Emulation           | Ozaki          | 16_dgemm_emulation                | Emulates double-precision GEMM using lower-precision GEMM operations. Requires CUDA Toolkit 13.1 or newer.            |
 |                     | Pipeline       | 20_dgemm_emulation_pipeline       | Runs pipelined double-precision emulation controlled by required mantissa bits. Requires CUDA Toolkit 13.1 or newer.  |
 |                     | Pipeline       | 21_sgemm_emulation_pipeline       | Runs pipelined single-precision emulation using the same mantissa-bit mechanism. Requires CUDA Toolkit 13.1 or newer. |
+| Cluster             | Persistent     | 22_persistent_cluster_gemm        | Runs a persistent GEMM kernel launched with thread block clusters (BlocksPerCluster) and rasterized tile scheduling.  |

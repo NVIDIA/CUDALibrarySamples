@@ -142,7 +142,7 @@ int main(int, char**) {
 
     // Invokes kernel
     const unsigned int block_dim = 256;
-    const unsigned int grid_size = (size + block_dim - 1) / block_dim;
+    const unsigned int grid_size = static_cast<unsigned int>((size + block_dim - 1) / block_dim);
 
     // Execute generate_kernel
     void* args[] = {&d_out, &seed, &offset, &size};

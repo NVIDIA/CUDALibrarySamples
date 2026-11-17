@@ -314,7 +314,7 @@ function(add_nvcompdx_example_impl GROUP_TARGET EXAMPLE_SOURCES CTEST_ARGUMENTS)
               NVCOMPDX_INCLUDE_DIRS="${nvcompdx_INCLUDE_DIRS}"
               NVCOMPDX_LIBRARY="$<TARGET_FILE:mathdx::nvcompdx>")
     # Use fatbin for arm/aarch64 (given the .a file is an x86-64 library)
-    if((NOT CMAKE_SYSTEM_PROCESSOR MATCHES "(x86)|(X86)|(amd64)|(AMD64)"))
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
       target_compile_definitions(${EXAMPLE_TARGET}
                                  PRIVATE NVCOMPDX_FATBIN="${nvcompdx_FATBIN}")
     endif()

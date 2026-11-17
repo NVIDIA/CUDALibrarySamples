@@ -63,7 +63,7 @@ extern "C" __global__ void test_kernel(typename FFT::value_type* fft_data)
     }
   }
 
-  extern __shared__ FFT::value_type shared_mem[];
+  extern __shared__ __align__(alignof(float4)) cufftdx::byte shared_mem[];
   FFT().execute(thread_data, shared_mem);
 
   index = offset + threadIdx.x;
@@ -103,6 +103,12 @@ int main(int, char**) {
     dim3     fft_block_dim {};
     unsigned shared_memory_size;
     if (result.has_value()) {
+        // A nonzero workspace_size means the query returned a Bluestein implementation. It needs a
+        // workspace, which NVRTC-compiled code cannot use.
+        if (result.value().workspace_size != 0) {
+            std::cout << "The queried FFT requires a separate workspace allocation" << std::endl;
+            exit(1);
+        }
         fft_block_dim      = dim3(result.value().block_dim_x, result.value().block_dim_y, result.value().block_dim_z);
         shared_memory_size = result.value().shared_memory_size;
     } else {

@@ -24,6 +24,7 @@
 #include <cublasdx.hpp>
 
 #include "../common/common.hpp"
+#include "../common/pipeline_budget.hpp"
 
 template<class BLAS, class Alpha, class Beta, class CTensor, class DevicePipeline>
 __launch_bounds__(DevicePipeline::max_threads_per_block, 1) __global__
@@ -32,24 +33,25 @@ __launch_bounds__(DevicePipeline::max_threads_per_block, 1) __global__
                      CTensor                                global_c,
                      // IMPORTANT: Notice __grid_constant__ is used for device_pipeline argument
                      __grid_constant__ DevicePipeline const device_pipeline) {
-    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(BLAS);
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM_BLOCK(BLAS) {
 
-    // Use device_pipeline traits to properly align dynamic shared memory
-    extern __shared__ __align__(device_pipeline.buffer_alignment()) cublasdx::byte smem[];
+        // Use device_pipeline traits to properly align dynamic shared memory
+        extern __shared__ __align__(device_pipeline.buffer_alignment()) cublasdx::byte smem[];
 
-    // Instantiate tile_pipeline for trivial tile dictated by block coordinates
-    auto tile_pipeline = device_pipeline.get_tile(smem, blockIdx.x, blockIdx.y);
+        // Instantiate tile_pipeline for trivial tile dictated by block coordinates
+        auto tile_pipeline = device_pipeline.get_tile(smem, blockIdx.x, blockIdx.y);
 
-    // Define epilogue to be opaquely executed by BLAS::block_dim threads
-    auto epilogue_functor = [&](auto& accumulator) {
-        // Partition logical C tile of input/output data
-        auto tile_gmem_c = cublasdx::get_tile(global_c, BLAS::c_shape, blockIdx.x, blockIdx.y);
-        // D = alpha * A * B + beta * C
-        accumulator.axpby(alpha, beta, tile_gmem_c);
-    };
+        // Define epilogue to be opaquely executed by BLAS::block_dim threads
+        auto epilogue_functor = [&](auto& accumulator) {
+            // Partition logical C tile of input/output data
+            auto tile_gmem_c = cublasdx::get_tile(global_c, BLAS::c_shape, blockIdx.x, blockIdx.y);
+            // D = alpha * A * B + beta * C
+            accumulator.axpby(alpha, beta, tile_gmem_c);
+        };
 
-    // Execute the pipeline, accumulating over entire K dimension the chosen per-CTA tile
-    tile_pipeline.execute(epilogue_functor);
+        // Execute the pipeline, accumulating over entire K dimension the chosen per-CTA tile
+        tile_pipeline.execute(epilogue_functor);
+    }
 }
 
 // This is an example of testing performance of cuBLASDx as tile provider, executing a general matrix multiply (GEMM)
@@ -155,7 +157,7 @@ int introduction_pipeline() {
                                           tile_k * tile_n * sizeof(b_compute_value_type) +
                                           sizeof(cublasdx::pipeline_stage_scratch_t);
 
-    constexpr unsigned available_shared_memory = commondx::device_info<Arch>::shared_memory();
+    constexpr unsigned available_shared_memory = example::pipeline_shared_memory_budget<Arch>();
     constexpr unsigned maximal_pipeline_depth  = cute::min(16, (available_shared_memory - 32) / stage_shared_req);
     constexpr unsigned pipeline_depth = override_pipeline_depth ? manual_pipeline_depth : maximal_pipeline_depth;
     static_assert(pipeline_depth <= maximal_pipeline_depth,
@@ -250,8 +252,7 @@ int introduction_pipeline() {
     using alpha_t = c_compute_value_type;
     using beta_t = c_compute_value_type;
     auto kernel = gemm_kernel<BLAS, alpha_t, beta_t, decltype(global_c), decltype(pipeline->get_device_handle())>;
-    CUDA_CHECK_AND_EXIT(
-        cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_memory_size));
+    CUDA_CHECK_AND_EXIT(example::set_max_dynamic_shared_memory_size(kernel, shared_memory_size));
 
     // Pass device_pipeline to kernel as regular by value argument
     kernel<<<grid_dim, pipeline->get_block_dim(), shared_memory_size, stream>>>(

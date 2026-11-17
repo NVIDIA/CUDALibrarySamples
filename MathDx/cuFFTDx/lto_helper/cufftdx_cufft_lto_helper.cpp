@@ -117,6 +117,22 @@ std::optional<cufftdx_traits> parseLineToTraits(const std::string& line, int lin
                 std::cerr << "Error: Invalid value for 'elements_per_thread' on line " << line_number << ": " << token << std::endl;
                 return std::nullopt;
             }
+        } else if (field == "transposition") {
+            if (token == "transposition::any" ) {
+                traits.transposition = cufftdx::experimental::transposition::any;
+            } else if (token == "transposition::none" ) {
+                traits.transposition = cufftdx::experimental::transposition::none;
+            } else if (token == "transposition::by_component" ) {
+                traits.transposition = cufftdx::experimental::transposition::by_component;
+            } else if (token == "transposition::by_component_padded" ) {
+                traits.transposition = cufftdx::experimental::transposition::by_component_padded;
+            } else if (token == "transposition::by_complex" ) {
+                traits.transposition = cufftdx::experimental::transposition::by_complex;
+            } else {
+                std::cerr << "Error: Invalid value for 'transposition' on line " << line_number << ": " << token
+                          << "\n Valid values are: transposition::any, transposition::none, transposition::by_component, transposition::by_component_padded, transposition::by_complex\n";
+                return std::nullopt;
+            }
         } else {
             std::cerr << "Error: Unexpected field '" << field << "' on line " << line_number << "\n";
             return std::nullopt;
@@ -189,7 +205,8 @@ int main(int argc, char *argv[]) {
         "direction",
         "precision",
         "real_mode",
-        "elements_per_thread"
+        "elements_per_thread",
+        "transposition"
     };
 
     // Dynamically parse the header
@@ -199,19 +216,52 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    // Start reading lines from the CSV file
+    // Start reading lines from the CSV file. A size cuFFT has no device function for is a size
+    // cuFFTDx runs Bluestein for, so every row also gets the padded descriptor beside the plain
+    // one wherever Bluestein can reach the size.
+    //
+    // Both are emitted unconditionally because the choice between them is made when the user's
+    // kernel is compiled, which this tool cannot observe, so shipping both guarantees the piece
+    // cuFFTDx ends up asking for is present. For a size cuFFT does support the padded descriptor
+    // is therefore redundant. That waste is bounded: Bluestein pads to a power of two, so every
+    // row collapses onto one of a small fixed set of padded descriptions. Applications
+    // replicating this flow should expect the same trade.
+    struct csv_entry {
+        size_t                ct_index;
+        std::optional<size_t> bluestein_index;
+    };
+    std::vector<csv_entry> entries;
+
     while (std::getline(file, line)) {
         line_number++;
         auto frontend_traits = parseLineToTraits(line, line_number, header_map);
-        if (frontend_traits.has_value()) {
-            for (int arch : cuda_architectures) {
-                frontend_traits.value().sm = arch;
-                cufftDescriptionHandle desc = createDescriptionHandleWithTraits(frontend_traits.value());
-                desc_handles.push_back(desc);
-            }
-        } else {
+        if (!frontend_traits.has_value()) {
             std::cout << "Skipping invalid line " << line_number << "\n";
             continue;
+        }
+        for (int arch : cuda_architectures) {
+            frontend_traits->sm = arch;
+
+            auto desc = createDescriptionHandleWithTraits(frontend_traits.value());
+            if (!desc.has_value()) {
+                continue;
+            }
+            entries.push_back(csv_entry {desc_handles.size(), std::nullopt});
+            desc_handles.push_back(desc.value());
+
+            // Bluestein is a block algorithm.
+            if (frontend_traits->execution_type.value() != cufftdx::utils::execution_type::block) {
+                continue;
+            }
+            const cufftdx_traits blue      = cufftdx_traits::create_bluestein_traits(frontend_traits.value());
+            auto                 blue_desc = createDescriptionHandleWithTraits(blue);
+            if (!blue_desc.has_value()) {
+                std::cout << "Warning: size " << frontend_traits->size.value()
+                          << " cannot run under Bluestein, only its plain descriptor is generated.\n";
+                continue;
+            }
+            entries.back().bluestein_index = desc_handles.size();
+            desc_handles.push_back(blue_desc.value());
         }
     }
     file.close(); // Close the CSV file
@@ -220,14 +270,27 @@ int main(int argc, char *argv[]) {
     cufftDeviceHandle device_handle;
     CUFFT_CHECK_AND_EXIT(cufftDeviceCreate(&device_handle, desc_handles.size(), desc_handles.data()));
 
-    // For every description handle, check if it is valid / supported
-    for (const auto& desc : desc_handles) {
-        bool is_supported = false;
-        CUFFT_CHECK_AND_EXIT(cufftDeviceIsSupported(device_handle, desc, &is_supported));
-        if (!is_supported) {
-            printDescriptionInfo(desc);
-            std::cout << "Warning: Description handle (" << desc << ") is currently not supported.\n";
+    // An unsupported plain descriptor is the normal case for a Bluestein size, so a row is only
+    // reported when neither of its descriptors is supported and it therefore generates nothing.
+    auto is_supported = [&](size_t index) {
+        bool supported = false;
+        CUFFT_CHECK_AND_EXIT(cufftDeviceIsSupported(device_handle, desc_handles[index], &supported));
+        return supported;
+    };
+    for (const auto& entry : entries) {
+        if (is_supported(entry.ct_index)) {
+            continue;
         }
+        if (entry.bluestein_index.has_value() && is_supported(entry.bluestein_index.value())) {
+            std::cout << "Info: description handle (" << desc_handles[entry.ct_index]
+                      << ") is unsupported, it will run under Bluestein with description handle ("
+                      << desc_handles[entry.bluestein_index.value()] << "):\n";
+            printDescriptionInfo(desc_handles[entry.bluestein_index.value()]);
+            continue;
+        }
+        printDescriptionInfo(desc_handles[entry.ct_index]);
+        std::cout << "Warning: Description handle (" << desc_handles[entry.ct_index]
+                  << ") is currently not supported.\n";
     }
 
     size_t database_str_size = 0;

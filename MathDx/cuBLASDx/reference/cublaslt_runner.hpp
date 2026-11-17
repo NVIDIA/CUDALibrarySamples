@@ -163,17 +163,19 @@ namespace example {
             CUBLAS_CHECK_AND_EXIT(cublasLtMatrixLayoutCreate(&a_desc, cublas_data_type_a, m, k, lda));
             CUBLAS_CHECK_AND_EXIT(cublasLtMatrixLayoutSetAttribute(
                 a_desc, CUBLASLT_MATRIX_LAYOUT_ORDER, &cublas_order_a, sizeof(cublas_order_a)));
-            num_a_elements = arr_a == cublasdx::col_major ? m * lda : k * lda;
+            // A col-major (m, k) matrix has k columns of length lda; its row-major
+            // form has m rows of length lda.
+            num_a_elements = arr_a == cublasdx::col_major ? k * lda : m * lda;
 
             CUBLAS_CHECK_AND_EXIT(cublasLtMatrixLayoutCreate(&b_desc, cublas_data_type_b, k, n, ldb));
             CUBLAS_CHECK_AND_EXIT(cublasLtMatrixLayoutSetAttribute(
                 b_desc, CUBLASLT_MATRIX_LAYOUT_ORDER, &cublas_order_b, sizeof(cublas_order_b)));
-            num_b_elements = arr_b == cublasdx::col_major ? k * ldb : n * ldb;
+            num_b_elements = arr_b == cublasdx::col_major ? n * ldb : k * ldb;
 
             CUBLAS_CHECK_AND_EXIT(cublasLtMatrixLayoutCreate(&c_desc, cublas_data_type_c, m, n, ldc));
             CUBLAS_CHECK_AND_EXIT(cublasLtMatrixLayoutSetAttribute(
                 c_desc, CUBLASLT_MATRIX_LAYOUT_ORDER, &cublas_order_c, sizeof(cublas_order_c)));
-            num_c_elements = arr_c == cublasdx::col_major ? m * ldc : n * ldc;
+            num_c_elements = arr_c == cublasdx::col_major ? n * ldc : m * ldc;
 
             cublas_scale_type   = cublas_data_type_c;
             cublas_compute_type = get_cublas_compute_type<AComputeType, CComputeType>();

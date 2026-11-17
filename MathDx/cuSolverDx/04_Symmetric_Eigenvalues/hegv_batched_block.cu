@@ -54,8 +54,8 @@ __global__ void kernel(DataType*                     A,
     constexpr auto m                     = Solver::m_size;
     constexpr auto one_batch_size_a_gmem = m * m;
     constexpr auto one_batch_size_b_gmem = m * m;
-    constexpr auto lda_smem              = Solver::lda;
-    constexpr auto ldb_smem              = Solver::ldb;
+    constexpr auto lda_smem              = Solver::default_lda;
+    constexpr auto ldb_smem              = Solver::default_ldb;
     const auto     one_batch_size_a_smem = lda_smem * m;
     const auto     one_batch_size_b_smem = ldb_smem * m;
     constexpr auto workspace_elems       = Solver::workspace_size > 0 ? Solver::workspace_size : 1;
@@ -116,8 +116,8 @@ int hegv_batched_block() {
     constexpr bool compute_vectors = job_of_v<Solver> != job::no_vectors;
     constexpr int  eig_type        = eig_type_of_v<Solver>;
 
-    const auto     lda_gmem     = m;
-    const auto     ldb_gmem     = m;
+    const auto     lda_gmem     = Solver::default_lda;
+    const auto     ldb_gmem     = Solver::default_ldb;
     constexpr auto input_size_a = m * m;
 
     const auto batches        = 5;
@@ -162,10 +162,9 @@ int hegv_batched_block() {
     CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(d_A, A.data(), sizeof(data_type) * A.size(), cudaMemcpyHostToDevice, stream));
     CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(d_B, B.data(), sizeof(data_type) * B.size(), cudaMemcpyHostToDevice, stream));
 
-    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(
-        kernel<Solver, bpb, compute_vectors>, cudaFuncAttributeMaxDynamicSharedMemorySize, Solver::shared_memory_size));
+    CUDA_CHECK_AND_EXIT(common::set_max_dynamic_shared_memory_size(kernel<Solver, bpb, compute_vectors>, Solver::get_shared_memory_size(lda_gmem, ldb_gmem)));
 
-    kernel<Solver, bpb, compute_vectors><<<padded_batches / bpb, Solver::block_dim, Solver::shared_memory_size, stream>>>(
+    kernel<Solver, bpb, compute_vectors><<<padded_batches / bpb, Solver::block_dim, Solver::get_shared_memory_size(lda_gmem, ldb_gmem), stream>>>(
         d_A, lda_gmem, d_B, ldb_gmem, d_lambda, d_workspace, d_info, batches);
     CUDA_CHECK_AND_EXIT(cudaGetLastError());
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());

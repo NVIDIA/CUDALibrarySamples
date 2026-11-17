@@ -39,25 +39,26 @@ template<class FFT, example::dimension_description Dimension,
          class ComplexType = typename FFT::value_type>
 __launch_bounds__(FFT::max_threads_per_block) __global__
     void fft_3d_kernel_z(const ComplexType* input, ComplexType* output, typename FFT::workspace_type workspace) {
-    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFT);
+    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM_BLOCK(FFT) {
 
-    using complex_type = typename FFT::value_type;
-    using io_type      = example::io_generic_strided<FFT>;
+        using complex_type = typename FFT::value_type;
+        using io_type      = example::io_generic_strided<FFT>;
 
-    // Local array for thread
-    complex_type thread_data[FFT::storage_size];
+        // Local array for thread
+        complex_type thread_data[FFT::storage_size];
 
-    // ID of FFT in CUDA block, in range [0; FFT::ffts_per_block)
-    const unsigned int local_fft_id = threadIdx.y;
-    // Load data from global memory to registers
-    io_type::load_strided<Dimension, SizeX, SizeY, SizeZ>(input, thread_data, local_fft_id);
+        // ID of FFT in CUDA block, in range [0; FFT::ffts_per_block)
+        const unsigned int batchid = FFT::working_group::batchid();
+        // Load data from global memory to registers
+        io_type::load_strided<Dimension, SizeX, SizeY, SizeZ>(input, thread_data, batchid);
 
-    // Execute FFT
-    extern __shared__ __align__(alignof(float4)) complex_type shared_mem[];
-    FFT().execute(thread_data, shared_mem, workspace);
+        // Execute FFT
+        extern __shared__ __align__(alignof(float4)) cufftdx::byte shared_mem[];
+        FFT().execute(thread_data, shared_mem, workspace);
 
-    // Save results
-    io_type::store_strided<Dimension, SizeX, SizeY, SizeZ>(thread_data, output, local_fft_id);
+        // Save results
+        io_type::store_strided<Dimension, SizeX, SizeY, SizeZ>(thread_data, output, batchid);
+    }
 }
 
 template<class FFT, bool UseSharedMemoryStridedIO, example::dimension_description Dimension,
@@ -65,33 +66,36 @@ template<class FFT, bool UseSharedMemoryStridedIO, example::dimension_descriptio
          class ComplexType = typename FFT::value_type>
 __launch_bounds__(FFT::max_threads_per_block) __global__
     void fft_3d_kernel_yx(const ComplexType* input, ComplexType* output, typename FFT::workspace_type workspace) {
-    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFT);
+    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM_BLOCK(FFT) {
 
-    using complex_type = typename FFT::value_type;
-    using io_type      = example::io_generic_strided<FFT>;
+        using complex_type = typename FFT::value_type;
+        using io_type      = example::io_generic_strided<FFT>;
 
-    extern __shared__ __align__(alignof(float4)) complex_type shared_mem[];
+        extern __shared__ __align__(alignof(float4)) cufftdx::byte shared_mem[];
 
-    // Local array for thread
-    complex_type thread_data[FFT::storage_size];
+        // Local array for thread
+        complex_type thread_data[FFT::storage_size];
 
-    // ID of FFT in CUDA block, in range [0; FFT::ffts_per_block)
-    const unsigned int local_fft_id = threadIdx.y;
-    // Load data from global memory to registers
-    if constexpr (UseSharedMemoryStridedIO) {
-        io_type::load_strided<Dimension, SizeX, SizeY, SizeZ>(input, thread_data, shared_mem, local_fft_id);
-    } else {
-        io_type::load_strided<Dimension, SizeX, SizeY, SizeZ>(input, thread_data, local_fft_id);
-    }
+        // ID of FFT in CUDA block, in range [0; FFT::ffts_per_block)
+        const unsigned int batchid = FFT::working_group::batchid();
+        // Load data from global memory to registers
+        if constexpr (UseSharedMemoryStridedIO) {
+            io_type::load_strided<Dimension, SizeX, SizeY, SizeZ>(
+                input, thread_data, reinterpret_cast<complex_type*>(shared_mem), batchid);
+        } else {
+            io_type::load_strided<Dimension, SizeX, SizeY, SizeZ>(input, thread_data, batchid);
+        }
 
-    // Execute FFT
-    FFT().execute(thread_data, shared_mem, workspace);
+        // Execute FFT
+        FFT().execute(thread_data, shared_mem, workspace);
 
-    // Save results
-    if constexpr (UseSharedMemoryStridedIO) {
-        io_type::store_strided<Dimension, SizeX, SizeY, SizeZ>(thread_data, shared_mem, output, local_fft_id);
-    } else {
-        io_type::store_strided<Dimension, SizeX, SizeY, SizeZ>(thread_data, output, local_fft_id);
+        // Save results
+        if constexpr (UseSharedMemoryStridedIO) {
+            io_type::store_strided<Dimension, SizeX, SizeY, SizeZ>(
+                thread_data, reinterpret_cast<complex_type*>(shared_mem), output, batchid);
+        } else {
+            io_type::store_strided<Dimension, SizeX, SizeY, SizeZ>(thread_data, output, batchid);
+        }
     }
 }
 

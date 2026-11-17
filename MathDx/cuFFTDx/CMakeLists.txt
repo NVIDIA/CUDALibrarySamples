@@ -16,7 +16,7 @@
 cmake_minimum_required(VERSION 3.26...4.0)
 
 # cuFFTDx project
-project(cufftdx_examples VERSION 1.7.3 LANGUAGES CXX CUDA)
+project(cufftdx_examples VERSION 1.8.0 LANGUAGES CXX CUDA)
 
 # Project options
 option(USE_MATHDX_PACKAGE "Use mathDx package to find cuFFTDx" ON)
@@ -365,16 +365,28 @@ function(add_cufft_and_cufftdx_example GROUP_TARGET EXAMPLE_SOURCES)
             $<IF:$<TARGET_EXISTS:mathdx::cufftdx>,mathdx::cufftdx,cufftdx::cufftdx>
     )
     if(CUFFTDX_EXAMPLES_CUFFT_CALLBACK)
+        # LTO (JIT) callbacks are compiled at run time with NVRTC and linked by
+        # cuFFT while the plan is built, so the shared cuFFT library is enough:
+        # neither the static cuFFT nor separable compilation are required.
         if(TARGET cufft)
-            target_link_libraries(${EXAMPLE_TARGET} PRIVATE cufft_static)
+            target_link_libraries(${EXAMPLE_TARGET} PRIVATE cufft)
         else()
-            target_link_libraries(${EXAMPLE_TARGET} PRIVATE CUDA::cufft_static)
+            target_link_libraries(${EXAMPLE_TARGET} PRIVATE CUDA::cufft)
         endif()
-        set_target_properties(${EXAMPLE_TARGET}
-            PROPERTIES
-                CUDA_SEPARABLE_COMPILATION ON
+        target_link_libraries(${EXAMPLE_TARGET} PRIVATE CUDA::nvrtc CUDA::nvfatbin)
+        # NVRTC needs the include paths to compile the callback at run time
+        set(CUFFTDX_CB_CUDA_INCLUDE_DIRS "${CUDAToolkit_INCLUDE_DIRS}")
+        list(LENGTH CUFFTDX_CB_CUDA_INCLUDE_DIRS CUFFTDX_CB_CUDA_INCLUDE_LENGTH)
+        if(${CUFFTDX_CB_CUDA_INCLUDE_LENGTH} GREATER 1)
+            list(GET CUFFTDX_CB_CUDA_INCLUDE_DIRS 0 CUFFTDX_CB_CUDA_INCLUDE_DIRS)
+        endif()
+        target_compile_definitions(${EXAMPLE_TARGET}
+            PRIVATE
+                CUFFTDX_EXAMPLES_CUFFT_CALLBACK
+                CUDA_INCLUDE_DIR="${CUFFTDX_CB_CUDA_INCLUDE_DIRS}"
+                COMMONDX_INCLUDE_DIR="${cufftdx_commondx_INCLUDE_DIR}"
+                CUFFTDX_INCLUDE_DIRS="${cufftdx_INCLUDE_DIRS}"
         )
-        target_compile_definitions(${EXAMPLE_TARGET} PRIVATE CUFFTDX_EXAMPLES_CUFFT_CALLBACK)
     else()
         if(TARGET cufft)
             target_link_libraries(${EXAMPLE_TARGET} PRIVATE cufft)
@@ -527,14 +539,6 @@ function(check_cufftdx_lto_support RESULT)
         set(LTO_SUPPORTED FALSE)
     endif()
 
-    # Check CUDA architecture
-    if(LTO_SUPPORTED)
-        foreach(CUDA_ARCH ${CUFFTDX_CUDA_ARCHITECTURES})
-            string(REPLACE "-" ";" CUDA_ARCH_LIST ${CUDA_ARCH})
-            list(GET CUDA_ARCH_LIST 0 ARCH)
-        endforeach()
-    endif()
-
     # Check cuFFT version and CUDA compatibility
     if(LTO_SUPPORTED)
         list(APPEND CMAKE_MODULE_PATH "${cufftdx_cufft_MODULE_PATH}") # Path to Findcufft.cmake
@@ -587,16 +591,21 @@ add_cufftdx_example(cufftdx_examples 02_simple_fft_block/simple_fft_block_c2r_fp
 add_cufftdx_example(cufftdx_examples 02_simple_fft_block/simple_fft_block_r2c_fp16.cu)
 add_cufftdx_example(cufftdx_examples 02_simple_fft_block/simple_fft_block_cub_io.cu)
 add_cufftdx_example(cufftdx_examples 02_simple_fft_block/simple_fft_block_block_dim.cu)
+add_cufftdx_example(cufftdx_examples 02_simple_fft_block/simple_fft_block_tl.cu)
+add_cufftdx_example(cufftdx_examples 02_simple_fft_block/simple_fft_block_thread_layout.cu)
+add_cufftdx_example(cufftdx_examples 02_simple_fft_block/simple_fft_block_thread_layout_shared.cu)
 add_cufftdx_example(cufftdx_examples 03_block_fft_performance/block_fft_performance.cu)
 add_cufftdx_example(cufftdx_examples 03_block_fft_performance/block_fft_performance_many.cu)
 add_cufftdx_nvrtc_example(cufftdx_examples 04_nvrtc_fft/nvrtc_fft_thread.cu)
 add_cufftdx_nvrtc_example(cufftdx_examples 04_nvrtc_fft/nvrtc_fft_block.cu)
 add_cufftdx_nvrtc_example(cufftdx_examples 04_nvrtc_fft/nvrtc_query_database_fft_block.cu)
 add_cufft_and_cufftdx_example(cufftdx_examples 05_fft_Xd/fft_2d.cu)
+add_cufft_and_cufftdx_example(cufftdx_examples 05_fft_Xd/fft_2d_thread_layout_optimization.cu)
 add_cufft_and_cufftdx_example(cufftdx_examples 05_fft_Xd/fft_2d_single_kernel.cu)
 add_cufft_and_cufftdx_example(cufftdx_examples 05_fft_Xd/fft_2d_single_kernel_block_dim.cu)
 add_cufft_and_cufftdx_example(cufftdx_examples 05_fft_Xd/fft_2d_r2c_c2r.cu)
 add_cufft_and_cufftdx_example(cufftdx_examples 05_fft_Xd/fft_3d.cu)
+add_cufft_and_cufftdx_example(cufftdx_examples 05_fft_Xd/fft_3d_thread_layout_optimization.cu)
 add_cufft_and_cufftdx_example(cufftdx_examples 05_fft_Xd/fft_3d_box_single_block.cu)
 add_cufft_and_cufftdx_example(cufftdx_examples 05_fft_Xd/fft_3d_cube_single_block.cu)
 add_cufftdx_example(cufftdx_examples 06_convolution/convolution.cu)
@@ -604,6 +613,7 @@ add_cufft_and_cufftdx_example(cufftdx_examples 06_convolution/convolution_padded
 add_cufft_and_cufftdx_example(cufftdx_examples 06_convolution/convolution_performance.cu)
 add_cufftdx_example(cufftdx_examples 06_convolution/convolution_r2c_c2r.cu)
 add_cufft_and_cufftdx_example(cufftdx_examples 07_convolution_3d/convolution_3d.cu)
+add_cufft_and_cufftdx_example(cufftdx_examples 07_convolution_3d/convolution_3d_thread_layout_optimization.cu)
 add_cufft_and_cufftdx_example(cufftdx_examples 07_convolution_3d/convolution_3d_c2r.cu)
 add_cufft_and_cufftdx_example(cufftdx_examples 07_convolution_3d/convolution_3d_r2c.cu)
 add_cufft_and_cufftdx_example(cufftdx_examples 07_convolution_3d/convolution_3d_padded.cu)
@@ -613,6 +623,7 @@ add_cufft_and_cufftdx_example(cufftdx_examples 08_mixed_precision/mixed_precisio
 
 # Flags for block dim compilation on unsupported nvcc
 add_ptxas_o1_for_unsupported_nvcc(02_simple_fft_block_simple_fft_block_block_dim)
+add_ptxas_o1_for_unsupported_nvcc(02_simple_fft_block_simple_fft_block_tl)
 add_ptxas_o1_for_unsupported_nvcc(05_fft_Xd_fft_2d_single_kernel_block_dim)
 
 if(CUFFTDX_EXAMPLES_LTO)

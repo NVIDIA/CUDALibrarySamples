@@ -66,7 +66,7 @@ __global__ void unmqr_kernel(const DataType* A, const DataType* tau, DataType* B
     auto this_B   = B + one_batch_size_b_gmem * batch_idx;
     auto this_tau = tau + k * batch_idx;
 
-    Solver().execute(this_A, this_tau, this_B);
+    Solver().execute(this_A, AN, this_tau, this_B, BN);
 }
 
 template<int Arch>
@@ -92,8 +92,8 @@ int unmqr_batched_thread() {
     constexpr auto b_m = m;
     constexpr auto b_n = n;
 
-    const auto     lda          = is_col_maj_a ? a_m : a_n;
-    const auto     ldb          = is_col_maj_b ? b_m : b_n;
+    const auto     lda          = Solver::default_lda;
+    const auto     ldb          = Solver::default_ldb;
     constexpr auto input_size_a = a_m * a_n;
     constexpr auto input_size_b = b_m * b_n;
 

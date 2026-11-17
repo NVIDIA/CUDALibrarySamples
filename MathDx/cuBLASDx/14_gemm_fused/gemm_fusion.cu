@@ -38,57 +38,58 @@ __launch_bounds__(BLAS1::max_threads_per_block) //
                      const ValueType  beta2,
                      const ValueType* f,
                      ValueType*       output) {
-    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(BLAS1);
-    using value_type = ValueType;
-    extern __shared__ __align__(16) cublasdx::byte smem[];
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM_BLOCK(BLAS1) {
+        using value_type = ValueType;
+        extern __shared__ __align__(16) cublasdx::byte smem[];
 
-    static_assert(std::is_same_v<value_type, example::uniform_value_type_t<BLAS2>>,
-                  "BLAS1 and BLAS2 must have the same type and precision");
-    static_assert((BLAS1::c_shape == BLAS2::a_shape), "The shape of C matrix is different in BLAS1 and BLAS2");
+        static_assert(std::is_same_v<value_type, example::uniform_value_type_t<BLAS2>>,
+                      "BLAS1 and BLAS2 must have the same type and precision");
+        static_assert((BLAS1::c_shape == BLAS2::a_shape), "The shape of C matrix is different in BLAS1 and BLAS2");
 
-    // Matrix C is the first in shared memory, because it's reused in the 2nd GEMM. Moreover,
-    // matrices A and B might have different sizes than F and D.
-    value_type* smem_c = reinterpret_cast<value_type*>(smem);
-    value_type* smem_a = reinterpret_cast<value_type*>(smem) + BLAS1::c_size;
-    value_type* smem_b = reinterpret_cast<value_type*>(smem) + BLAS1::c_size + BLAS1::a_size;
+        // Matrix C is the first in shared memory, because it's reused in the 2nd GEMM. Moreover,
+        // matrices A and B might have different sizes than F and D.
+        value_type* smem_c = reinterpret_cast<value_type*>(smem);
+        value_type* smem_a = reinterpret_cast<value_type*>(smem) + BLAS1::c_size;
+        value_type* smem_b = reinterpret_cast<value_type*>(smem) + BLAS1::c_size + BLAS1::a_size;
 
-    auto a_global_tensor = cublasdx::make_tensor(a, BLAS1::get_layout_gmem_a());
-    auto b_global_tensor = cublasdx::make_tensor(b, BLAS1::get_layout_gmem_b());
-    auto c_global_tensor = cublasdx::make_tensor(c, BLAS1::get_layout_gmem_c());
+        auto a_global_tensor = cublasdx::make_tensor(a, BLAS1::get_layout_gmem_a());
+        auto b_global_tensor = cublasdx::make_tensor(b, BLAS1::get_layout_gmem_b());
+        auto c_global_tensor = cublasdx::make_tensor(c, BLAS1::get_layout_gmem_c());
 
-    auto a_shared_tensor = cublasdx::make_tensor(smem_a, BLAS1::get_layout_smem_a());
-    auto b_shared_tensor = cublasdx::make_tensor(smem_b, BLAS1::get_layout_smem_b());
-    auto c_shared_tensor = cublasdx::make_tensor(smem_c, BLAS1::get_layout_smem_c());
+        auto a_shared_tensor = cublasdx::make_tensor(smem_a, BLAS1::get_layout_smem_a());
+        auto b_shared_tensor = cublasdx::make_tensor(smem_b, BLAS1::get_layout_smem_b());
+        auto c_shared_tensor = cublasdx::make_tensor(smem_c, BLAS1::get_layout_smem_c());
 
-    using alignment1 = cublasdx::alignment_of<BLAS1>;
-    cublasdx::copy<BLAS1, alignment1::a>(a_global_tensor, a_shared_tensor);
-    cublasdx::copy<BLAS1, alignment1::b>(b_global_tensor, b_shared_tensor);
-    cublasdx::copy<BLAS1, alignment1::c>(c_global_tensor, c_shared_tensor);
-    cublasdx::copy_wait();
+        using alignment1 = cublasdx::alignment_of<BLAS1>;
+        cublasdx::copy<BLAS1, alignment1::a>(a_global_tensor, a_shared_tensor);
+        cublasdx::copy<BLAS1, alignment1::b>(b_global_tensor, b_shared_tensor);
+        cublasdx::copy<BLAS1, alignment1::c>(c_global_tensor, c_shared_tensor);
+        cublasdx::copy_wait();
 
-    BLAS1().execute(alpha1, a_shared_tensor, b_shared_tensor, beta1, c_shared_tensor);
-    __syncthreads();
+        BLAS1().execute(alpha1, a_shared_tensor, b_shared_tensor, beta1, c_shared_tensor);
+        __syncthreads();
 
-    static_assert((BLAS1::c_size == BLAS2::a_size), "The sizes of C matrix are different in BLAS1 and BLAS2");
-    value_type* smem_d = smem_c + BLAS2::a_size;
-    value_type* smem_f = smem_c + BLAS2::a_size + BLAS2::b_size;
+        static_assert((BLAS1::c_size == BLAS2::a_size), "The sizes of C matrix are different in BLAS1 and BLAS2");
+        value_type* smem_d = smem_c + BLAS2::a_size;
+        value_type* smem_f = smem_c + BLAS2::a_size + BLAS2::b_size;
 
-    auto d_global_tensor = cublasdx::make_tensor(d, BLAS2::get_layout_gmem_b());
-    auto f_global_tensor = cublasdx::make_tensor(f, BLAS2::get_layout_gmem_c());
+        auto d_global_tensor = cublasdx::make_tensor(d, BLAS2::get_layout_gmem_b());
+        auto f_global_tensor = cublasdx::make_tensor(f, BLAS2::get_layout_gmem_c());
 
-    auto d_shared_tensor = cublasdx::make_tensor(smem_d, BLAS2::get_layout_smem_b());
-    auto f_shared_tensor = cublasdx::make_tensor(smem_f, BLAS2::get_layout_smem_c());
+        auto d_shared_tensor = cublasdx::make_tensor(smem_d, BLAS2::get_layout_smem_b());
+        auto f_shared_tensor = cublasdx::make_tensor(smem_f, BLAS2::get_layout_smem_c());
 
-    using alignment2 = cublasdx::alignment_of<BLAS2>;
-    cublasdx::copy<BLAS2, alignment2::b>(d_global_tensor, d_shared_tensor);
-    cublasdx::copy<BLAS2, alignment2::c>(f_global_tensor, f_shared_tensor);
-    cublasdx::copy_wait();
+        using alignment2 = cublasdx::alignment_of<BLAS2>;
+        cublasdx::copy<BLAS2, alignment2::b>(d_global_tensor, d_shared_tensor);
+        cublasdx::copy<BLAS2, alignment2::c>(f_global_tensor, f_shared_tensor);
+        cublasdx::copy_wait();
 
-    BLAS2().execute(alpha2, c_shared_tensor, d_shared_tensor, beta2, f_shared_tensor);
+        BLAS2().execute(alpha2, c_shared_tensor, d_shared_tensor, beta2, f_shared_tensor);
 
-    __syncthreads();
-    auto out_global_tensor = cublasdx::make_tensor(output, BLAS2::get_layout_gmem_c());
-    cublasdx::copy<BLAS2, alignment2::c>(f_shared_tensor, out_global_tensor);
+        __syncthreads();
+        auto out_global_tensor = cublasdx::make_tensor(output, BLAS2::get_layout_gmem_c());
+        cublasdx::copy<BLAS2, alignment2::c>(f_shared_tensor, out_global_tensor);
+    }
 }
 
 // This is an example of two fp16 general matrix-matrix multiplications (GEMM) fused together
@@ -199,8 +200,7 @@ int simple_gemm() {
     // Increase max dynamic shared memory for the kernel if needed
     const auto shared_memory =
         std::max<size_t>(cublasdx::get_shared_storage_size<BLAS1>(), cublasdx::get_shared_storage_size<BLAS2>());
-    CUDA_CHECK_AND_EXIT(
-        cudaFuncSetAttribute(gemm_kernel<BLAS1, BLAS2>, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_memory));
+    CUDA_CHECK_AND_EXIT(example::set_max_dynamic_shared_memory_size(gemm_kernel<BLAS1, BLAS2>, shared_memory));
 
     // Execute kernel
     gemm_kernel<BLAS1, BLAS2>

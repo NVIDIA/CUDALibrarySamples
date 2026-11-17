@@ -72,7 +72,7 @@ function(build_cufft_lto_helper SRC_DIR BUILD_DIR)
     message(STATUS "'lto_helper' has been built successfully.")
 
     # Register the files in lto_helper as part of the standard clean
-    set_property(DIRECTORY APPEND PROPERTY ADDITIONAL_MAKE_CLEAN_FILES "${BUILD_DIR}")
+    set_property(DIRECTORY APPEND PROPERTY ADDITIONAL_CLEAN_FILES "${BUILD_DIR}")
 endfunction()
 
 function(run_cufft_lto_helper SRC_DIR BUILD_DIR OUTPUT_NAME DESCS CUDA_ARCHITECTURES FORCE_REGENEARTE)
@@ -122,10 +122,9 @@ function(run_cufft_lto_helper SRC_DIR BUILD_DIR OUTPUT_NAME DESCS CUDA_ARCHITECT
 
         # Register the generated files as part of the standard clean
         file(GLOB GENERATED_FILES CONFIGURE_DEPENDS "${ARTIFACTS_DIR}/*")
-        set_property(DIRECTORY APPEND PROPERTY ADDITIONAL_MAKE_CLEAN_FILES ${GENERATED_FILES})
+        set_property(DIRECTORY APPEND PROPERTY ADDITIONAL_CLEAN_FILES ${GENERATED_FILES})
     endif()
 
     # Propagate the result to the caller
     set(CUFFT_LTO_HELPER_RESULT ${CUFFT_LTO_HELPER_RESULT} PARENT_SCOPE)
 endfunction()
-

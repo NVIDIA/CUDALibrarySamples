@@ -46,8 +46,8 @@ __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(DataType
 
     constexpr auto m = Solver::m_size;
     constexpr auto e_size = m - 1;
-    constexpr auto ldu = Solver::lda;
-    constexpr auto ldvt = Solver::ldb;
+    constexpr auto ldu = Solver::default_lda;
+    constexpr auto ldvt = Solver::default_ldb;
 
     extern __shared__ __align__(16) cusolverdx::byte shared_mem[];
     // Slice shared memory into pointers
@@ -116,6 +116,8 @@ int bdsvd_batched_block() {
 
     constexpr auto m      = Solver::m_size; // the size of the diagonal elements
     constexpr auto e_size = m - 1;         // the size of the off-diagonal elements
+    constexpr auto ldu    = Solver::default_lda;
+    constexpr auto ldvt   = Solver::default_ldb;
 
     constexpr bool                  compute_vectors_u = Solver::jobu != job::no_vectors;
     constexpr bool                  compute_vectors_vt = Solver::jobvt != job::no_vectors;
@@ -186,12 +188,12 @@ int bdsvd_batched_block() {
         }
     }
 
-    const auto shared_memory_size = Solver::shared_memory_size;
-    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(kernel<Solver, bpb>, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_memory_size));
+    const auto shared_memory_size = Solver::get_shared_memory_size(ldu, ldvt);
+    CUDA_CHECK_AND_EXIT(common::set_max_dynamic_shared_memory_size(kernel<Solver, bpb>, shared_memory_size));
     std::cout << "shared_memory_size = " << shared_memory_size << " bytes" << std::endl;
 
     //Invokes kernel
-    kernel<Solver, bpb><<<padded_batches / bpb, Solver::block_dim, Solver::shared_memory_size, stream>>>(d_d, d_e, d_U, d_VT, d_info, batches);
+    kernel<Solver, bpb><<<padded_batches / bpb, Solver::block_dim, Solver::get_shared_memory_size(ldu, ldvt), stream>>>(d_d, d_e, d_U, d_VT, d_info, batches);
     CUDA_CHECK_AND_EXIT(cudaGetLastError());
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 

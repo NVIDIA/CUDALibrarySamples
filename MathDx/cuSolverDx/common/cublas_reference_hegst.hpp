@@ -184,6 +184,8 @@ namespace common {
                                 const std::vector<T>& B_factor,
                                 std::vector<T>&       C_reference,
                                 const unsigned int    m,
+                                const unsigned int    lda,
+                                const unsigned int    ldb,
                                 const unsigned int    batches) {
         static_assert(EigTypeValue == 1 || EigTypeValue == 2 || EigTypeValue == 3);
 
@@ -194,10 +196,6 @@ namespace common {
         if (batches == 0 || m == 0) {
             return;
         }
-
-        // lda: HEGST matrix A side. ldb: Cholesky factor on B (d_L_or_U).
-        const unsigned int lda = m;
-        const unsigned int ldb = m;
 
         cublasHandle_t cublasH = nullptr;
         CUBLAS_CHECK_AND_EXIT(cublasCreate(&cublasH));

@@ -26,35 +26,36 @@
 
 template<class FFTR2C, class FFTC2R>
 __launch_bounds__(FFTR2C::max_threads_per_block) __global__ void convolution_kernel(cufftdx::precision_of_t<FFTR2C>* data) {
-    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFTR2C);
+    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM_BLOCK(FFTR2C) {
 
-    using complex_type = typename FFTR2C::value_type;
-    using scalar_type  = typename complex_type::value_type;
+        using complex_type = typename FFTR2C::value_type;
+        using scalar_type  = typename complex_type::value_type;
 
-    // Local array for thread
-    complex_type thread_data[FFTR2C::storage_size];
+        // Local array for thread
+        complex_type thread_data[FFTR2C::storage_size];
 
-    // ID of FFT in CUDA block, in range [0; FFTR2C::ffts_per_block)
-    const unsigned int local_fft_id = threadIdx.y;
-    // Load data from global memory to registers
-    example::io<FFTR2C>::load(data, thread_data, local_fft_id);
+        // ID of FFT in CUDA block, in range [0; FFTR2C::ffts_per_block)
+        const unsigned int batchid = FFTR2C::working_group::batchid();
+        // Load data from global memory to registers
+        example::io<FFTR2C>::load(data, thread_data, batchid);
 
-    // Execute FFT
-    extern __shared__ __align__(alignof(float4)) complex_type shared_mem[];
-    FFTR2C().execute(thread_data, shared_mem);
+        // Execute FFT
+        extern __shared__ __align__(alignof(float4)) cufftdx::byte shared_mem[];
+        FFTR2C().execute(thread_data, shared_mem);
 
-    // Scale values
-    scalar_type scale = 1.0 / cufftdx::size_of<FFTR2C>::value;
-    for (unsigned int i = 0; i < FFTR2C::elements_per_thread; i++) {
-        thread_data[i].x *= scale;
-        thread_data[i].y *= scale;
+        // Scale values
+        scalar_type scale = 1.0 / cufftdx::size_of<FFTR2C>::value;
+        for (unsigned int i = 0; i < FFTR2C::elements_per_thread; i++) {
+            thread_data[i].x *= scale;
+            thread_data[i].y *= scale;
+        }
+
+        // Execute inverse FFT
+        FFTC2R().execute(thread_data, shared_mem);
+
+        // Save results
+        example::io<FFTC2R>::store(thread_data, data, batchid);
     }
-
-    // Execute inverse FFT
-    FFTC2R().execute(thread_data, shared_mem);
-
-    // Save results
-    example::io<FFTC2R>::store(thread_data, data, local_fft_id);
 }
 
 // This example demonstrates how to use cuFFTDx t operform a convolution using one-dimensional FFTs.

@@ -22,6 +22,12 @@
 #include <cuComplex.h>
 #include <cusolverDn.h>
 
+#if defined(CUDART_VERSION) && CUDART_VERSION >= 13040
+#    define CUSOLVERDX_EXAMPLE_OVERSIZED_SMEM_AVAILABLE 1
+#else
+#    define CUSOLVERDX_EXAMPLE_OVERSIZED_SMEM_AVAILABLE 0
+#endif
+
 namespace common {
     inline unsigned int get_cuda_device_arch() {
         int device;
@@ -45,6 +51,38 @@ namespace common {
         int device = 0;
         CUDA_CHECK_AND_EXIT(cudaGetDevice(&device));
         return get_multiprocessor_count(device);
+    }
+
+    // Allows `kernel` to launch with `bytes` of dynamic shared memory.
+    // On compute capability 10.7, requests above 227 KB opt in to oversized
+    // shared memory; MaxDynamicSharedMemorySize is ignored once a shared-memory
+    // mode is set and cannot grant oversized shared memory. The request is then
+    // checked against cudaDevAttrOversizedSharedMemoryPerBlock.
+    template<typename Kernel>
+    inline cudaError_t set_max_dynamic_shared_memory_size(Kernel kernel, std::size_t bytes) {
+#if CUSOLVERDX_EXAMPLE_OVERSIZED_SMEM_AVAILABLE
+        constexpr int rubin_oversized_bytes_threshold = 227 * 1024; // 227 KB per-block opt-in max
+        if (get_cuda_device_arch() == 1070 && bytes > rubin_oversized_bytes_threshold) {
+            cudaError_t status = cudaFuncSetAttribute(
+                kernel, cudaFuncAttributeSharedMemoryMode, cudaSharedMemoryModeAllowOversizedSharedMemory);
+            if (status != cudaSuccess) {
+                return status;
+            }
+            int device = 0;
+            status     = cudaGetDevice(&device);
+            if (status != cudaSuccess) {
+                return status;
+            }
+            // Chip-specific maximum shared memory per-block limit (327 KB on Compute Capability 10.7).
+            int oversized_bytes = 0;
+            status = cudaDeviceGetAttribute(&oversized_bytes, cudaDevAttrOversizedSharedMemoryPerBlock, device);
+            if (status != cudaSuccess) {
+                return status;
+            }
+            return bytes > static_cast<std::size_t>(oversized_bytes) ? cudaErrorInvalidValue : cudaSuccess;
+        }
+#endif
+        return cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, static_cast<int>(bytes));
     }
 
     //============================

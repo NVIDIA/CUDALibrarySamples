@@ -48,8 +48,7 @@ namespace example {
             error_type ref = convert<error_type>(reference[i]);
 
             double aref = detail::cbabs(ref);
-            double aval = detail::cbabs(val);
-            double diff = std::abs(aref - aval);
+            double diff = detail::cbabs(ref - val);
 
             double rel_error = diff / (aref + eps);
 

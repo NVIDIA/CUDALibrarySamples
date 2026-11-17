@@ -29,7 +29,7 @@
 // This example demonstrates how to use cuSolverDx API to compute eigenvalues, and optionally eigenvectors, of a batched m x m symmetric matrix A.
 // The results are compared with the reference values obtained with cuSolver host API, cusolverDnXsyevBatched and cusolverDn<t>syevjBatched.
 
-template<class Solver, unsigned int BatchesPerBlock, bool compute_vectors = false, typename DataType = typename Solver::a_data_type,
+template<class Solver, unsigned int BatchesPerBlock, unsigned int lda_smem, bool compute_vectors = false, typename DataType = typename Solver::a_data_type,
         typename PrecisionType = typename Solver::a_precision>
 __global__ void kernel(
         DataType* A, const int lda_gmem, PrecisionType* lambda, DataType* workspace, typename Solver::status_type* info, const unsigned batches) {
@@ -41,7 +41,6 @@ __global__ void kernel(
 
     constexpr auto m                     = Solver::m_size;
     constexpr auto one_batch_size_a_gmem = m * m;
-    constexpr auto lda_smem              = Solver::lda;
     const auto     one_batch_size_a_smem = lda_smem * m;
     constexpr auto workspace_size        = Solver::workspace_size;
 
@@ -92,7 +91,8 @@ int heev_batched_block() {
     constexpr bool is_lower_fill   = fill_mode_of_v<Solver> == fill_mode::lower;
     constexpr bool compute_vectors = job_of_v<Solver> != job::no_vectors;
 
-    const auto     lda_gmem     = m;
+    const auto     lda_gmem     = Solver::default_lda;
+    constexpr auto lda_smem     = Solver::default_lda;
     constexpr auto input_size_a = m * m;
 
     const auto batches        = 5;
@@ -130,11 +130,12 @@ int heev_batched_block() {
 
     CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(d_A, A.data(), sizeof(data_type) * A.size(), cudaMemcpyHostToDevice, stream));
 
-    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(kernel<Solver, bpb, compute_vectors>, cudaFuncAttributeMaxDynamicSharedMemorySize, Solver::shared_memory_size));
+    const auto smem_size = Solver::get_shared_memory_size(lda_smem);
+    CUDA_CHECK_AND_EXIT(common::set_max_dynamic_shared_memory_size(kernel<Solver, bpb, lda_smem, compute_vectors>, smem_size));
 
     //Invokes kernel
-    kernel<Solver, bpb, compute_vectors>
-            <<<padded_batches / bpb, Solver::block_dim, Solver::shared_memory_size, stream>>>(d_A, lda_gmem, d_lambda, d_workspace, d_info, batches);
+    kernel<Solver, bpb, lda_smem, compute_vectors>
+            <<<padded_batches / bpb, Solver::block_dim, smem_size, stream>>>(d_A, lda_gmem, d_lambda, d_workspace, d_info, batches);
     CUDA_CHECK_AND_EXIT(cudaGetLastError());
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 

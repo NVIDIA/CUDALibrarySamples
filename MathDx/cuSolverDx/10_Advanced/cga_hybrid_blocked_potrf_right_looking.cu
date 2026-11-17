@@ -158,7 +158,7 @@ __global__ __launch_bounds__(POTRF::max_threads_per_block) void cga_blocked_potr
     info += batch_id;
 
     constexpr unsigned NB               = POTRF::m_size;
-    constexpr unsigned lds              = POTRF::lda;
+    constexpr unsigned lds              = POTRF::default_lda;
     constexpr unsigned NT               = POTRF::max_threads_per_block;
     constexpr unsigned n_tiles_per_side = N / NB;
     constexpr auto     Arrange          = POTRF::a_arrangement;
@@ -358,9 +358,9 @@ int cga_blocked_potrf_right_looking_impl() {
 
     // Define operators
     using POTRF = decltype(cusolverdx::Function<cusolverdx::function::potrf>() + cusolverdx::FillMode<Fill>() + cusolverdx::Size<NB>() +
-                           cusolverdx::LeadingDimension<lds>() + cusolverdx::Precision<precision_type>() + cusolverdx::Type<type>() +
+                           cusolverdx::Precision<precision_type>() + cusolverdx::Type<type>() +
                            cusolverdx::Arrangement<Arrange>() + cusolverdx::Block() + cusolverdx::BlockDim<NT>() + cusolverdx::SM<Arch>());
-    using TRSM  = decltype(cusolverdx::Function<cusolverdx::function::trsm>() + cusolverdx::Size<NB, NB, NB>() + cusolverdx::LeadingDimension<lds, lds>() +
+    using TRSM  = decltype(cusolverdx::Function<cusolverdx::function::trsm>() + cusolverdx::Size<NB, NB, NB>() +
                           cusolverdx::Precision<precision_type>() + cusolverdx::Type<type>() + cusolverdx::Side<cusolverdx::side::left>() +
                           cusolverdx::Diag<cusolverdx::diag::non_unit>() + cusolverdx::TransposeMode<cusolverdx::transpose::transposed>() +
                           cusolverdx::Arrangement<Arrange, Arrange>() + cusolverdx::FillMode<Fill>() + cusolverdx::Block() + cusolverdx::BlockDim<NT>() +
@@ -425,7 +425,7 @@ int cga_blocked_potrf_right_looking_impl() {
     void* args[] = {reinterpret_cast<void*>(&d_A), reinterpret_cast<void*>(&lda_arg), reinterpret_cast<void*>(&d_info), reinterpret_cast<void*>(&batches_arg)};
 
     CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(kernel, cudaFuncAttributeNonPortableClusterSizeAllowed, 1));
-    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, config.dynamicSmemBytes));
+    CUDA_CHECK_AND_EXIT(common::set_max_dynamic_shared_memory_size(kernel, config.dynamicSmemBytes));
 
     int maxClusterSize;
     CUDA_CHECK_AND_EXIT(cudaOccupancyMaxPotentialClusterSize(&maxClusterSize, kernel, &config));

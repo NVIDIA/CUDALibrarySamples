@@ -240,7 +240,7 @@ int blocked_potrf() {
     CUDA_CHECK_AND_EXIT(cudaMalloc(reinterpret_cast<void**>(&d_info), sizeof(int) * info.size()));
 
     size_t smem_size = 4 * NB * NB * sizeof(data_type) + sizeof(int);
-    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(potrf_kernel<N, NB, Arrange, NT, data_type>, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
+    CUDA_CHECK_AND_EXIT(common::set_max_dynamic_shared_memory_size(potrf_kernel<N, NB, Arrange, NT, data_type>, smem_size));
     //Invokes kernel
     auto run_kernel = [&](cudaStream_t str) {
         potrf_kernel<N, NB, Arrange, NT, data_type><<<batches, NT, smem_size, str>>>(d_A, lda, d_info);

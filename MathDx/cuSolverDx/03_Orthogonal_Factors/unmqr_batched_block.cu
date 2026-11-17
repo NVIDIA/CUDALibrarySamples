@@ -55,10 +55,10 @@ __global__ __launch_bounds__(Solver::max_threads_per_block) void unmqr_kernel(co
     constexpr auto BM = m;
     constexpr auto BN = n;
 
-    const auto lda_gmem = (cusolverdx::arrangement_of_v_a<Solver> == cusolverdx::col_major) ? AM : AN;
-    const auto ldb_gmem = (cusolverdx::arrangement_of_v_b<Solver> == cusolverdx::col_major) ? BM : BN;
-    const auto lda_smem = Solver::lda;
-    const auto ldb_smem = Solver::ldb;
+    const auto lda_gmem = Solver::default_lda;
+    const auto ldb_gmem = Solver::default_ldb;
+    const auto lda_smem = lda_gmem;
+    const auto ldb_smem = ldb_gmem;
 
     constexpr auto one_batch_size_a_gmem = AM * AN;
     constexpr auto one_batch_size_b_gmem = BM * BN;
@@ -123,8 +123,8 @@ int unmqr_batched_block() {
     constexpr auto b_m = m;
     constexpr auto b_n = n;
 
-    const auto     lda          = is_col_maj_a ? a_m : a_n;
-    const auto     ldb          = is_col_maj_b ? b_m : b_n;
+    const auto     lda          = Solver::default_lda;
+    const auto     ldb          = Solver::default_ldb;
     constexpr auto input_size_a = a_m * a_n;
     constexpr auto input_size_b = b_m * b_n;
 
@@ -170,7 +170,7 @@ int unmqr_batched_block() {
 
     auto       sm_size = Solver::get_shared_memory_size(lda, ldb);
     const auto kernel  = unmqr_kernel<Solver, bpb>;
-    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, sm_size));
+    CUDA_CHECK_AND_EXIT(common::set_max_dynamic_shared_memory_size(kernel, sm_size));
 
     // Invoke kernel to compute Q*B
     kernel<<<padded_batches / bpb, Solver::block_dim, sm_size, stream>>>(d_A, d_tau, d_B, batches);

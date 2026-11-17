@@ -34,55 +34,56 @@ __global__ void gemm_kernel(const ValueType* a,
                             const ValueType  alpha,
                             const ValueType  beta,
                             ValueType*       output) {
-    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(BLAS);
-    using value_type = ValueType;
-    extern __shared__ __align__(16) cublasdx::byte smem[];
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM_BLOCK(BLAS) {
+        using value_type = ValueType;
+        extern __shared__ __align__(16) cublasdx::byte smem[];
 
-    // threads (X, 0) calculates the first batch
-    // threads (X, 1) calculates the 2nd batch etc.
-    // We need to move pointers to corresponding batches
-    constexpr auto global_a_size = example::global_memory_size_of<BLAS>::a_size;
-    constexpr auto global_b_size = example::global_memory_size_of<BLAS>::b_size;
-    constexpr auto global_c_size = example::global_memory_size_of<BLAS>::c_size;
+        // threads (X, 0) calculates the first batch
+        // threads (X, 1) calculates the 2nd batch etc.
+        // We need to move pointers to corresponding batches
+        constexpr auto global_a_size = example::global_memory_size_of<BLAS>::a_size;
+        constexpr auto global_b_size = example::global_memory_size_of<BLAS>::b_size;
+        constexpr auto global_c_size = example::global_memory_size_of<BLAS>::c_size;
 
-    a += threadIdx.y * global_a_size;
-    b += threadIdx.y * global_b_size;
-    c += threadIdx.y * global_c_size;
-    output += threadIdx.y * global_c_size;
+        a += threadIdx.y * global_a_size;
+        b += threadIdx.y * global_b_size;
+        c += threadIdx.y * global_c_size;
+        output += threadIdx.y * global_c_size;
 
-    value_type* smem_a = reinterpret_cast<value_type*>(smem) + threadIdx.y * BLAS::a_size;
-    value_type* smem_b = reinterpret_cast<value_type*>(smem) + (batches * BLAS::a_size) + threadIdx.y * BLAS::b_size;
-    value_type* smem_c = reinterpret_cast<value_type*>(smem) + (batches * BLAS::a_size) + (batches * BLAS::b_size) +
-                         threadIdx.y * BLAS::c_size;
+        value_type* smem_a = reinterpret_cast<value_type*>(smem) + threadIdx.y * BLAS::a_size;
+        value_type* smem_b = reinterpret_cast<value_type*>(smem) + (batches * BLAS::a_size) + threadIdx.y * BLAS::b_size;
+        value_type* smem_c = reinterpret_cast<value_type*>(smem) + (batches * BLAS::a_size) + (batches * BLAS::b_size) +
+                             threadIdx.y * BLAS::c_size;
 
-    // Load all batches
-    auto a_global_tensor = cublasdx::make_tensor(a, BLAS::get_layout_gmem_a());
-    auto b_global_tensor = cublasdx::make_tensor(b, BLAS::get_layout_gmem_b());
-    auto c_global_tensor = cublasdx::make_tensor(c, BLAS::get_layout_gmem_c());
+        // Load all batches
+        auto a_global_tensor = cublasdx::make_tensor(a, BLAS::get_layout_gmem_a());
+        auto b_global_tensor = cublasdx::make_tensor(b, BLAS::get_layout_gmem_b());
+        auto c_global_tensor = cublasdx::make_tensor(c, BLAS::get_layout_gmem_c());
 
-    auto a_shared_tensor = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_a());
-    auto b_shared_tensor = cublasdx::make_tensor(smem_b, BLAS::get_layout_smem_b());
-    auto c_shared_tensor = cublasdx::make_tensor(smem_c, BLAS::get_layout_smem_c());
+        auto a_shared_tensor = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_a());
+        auto b_shared_tensor = cublasdx::make_tensor(smem_b, BLAS::get_layout_smem_b());
+        auto c_shared_tensor = cublasdx::make_tensor(smem_c, BLAS::get_layout_smem_c());
 
-    using alignment = cublasdx::alignment_of<BLAS>;
-    cublasdx::copy<BLAS, alignment::a>(a_global_tensor, a_shared_tensor);
-    cublasdx::copy<BLAS, alignment::b>(b_global_tensor, b_shared_tensor);
-    cublasdx::copy<BLAS, alignment::c>(c_global_tensor, c_shared_tensor);
-    cublasdx::copy_wait();
-    BLAS().execute(alpha, a_shared_tensor, b_shared_tensor, beta, c_shared_tensor);
+        using alignment = cublasdx::alignment_of<BLAS>;
+        cublasdx::copy<BLAS, alignment::a>(a_global_tensor, a_shared_tensor);
+        cublasdx::copy<BLAS, alignment::b>(b_global_tensor, b_shared_tensor);
+        cublasdx::copy<BLAS, alignment::c>(c_global_tensor, c_shared_tensor);
+        cublasdx::copy_wait();
+        BLAS().execute(alpha, a_shared_tensor, b_shared_tensor, beta, c_shared_tensor);
 
-    __syncthreads();
-    auto out_global_tensor = cublasdx::make_tensor(output, BLAS::get_layout_gmem_c());
-    cublasdx::copy<BLAS, alignment::c>(c_shared_tensor, out_global_tensor);
+        __syncthreads();
+        auto out_global_tensor = cublasdx::make_tensor(output, BLAS::get_layout_gmem_c());
+        cublasdx::copy<BLAS, alignment::c>(c_shared_tensor, out_global_tensor);
+    }
 }
 
-// This is an example of two fp32 general matrix-matrix multiplications (GEMM) performed in a single CUDA block:
+// This is an example of two fp64 general matrix-matrix multiplications (GEMM) performed in a single CUDA block:
 //
 //              C(X) = alpha * A(X) * B(X) + beta * C(X)
 //
 // * X - batch id
-// * A, B, and C are matrices containing real single precision floating-point values.
-// * alpha and beta are real single precision floating-point values.
+// * A, B, and C are matrices containing real double precision floating-point values.
+// * alpha and beta are real double precision floating-point values.
 //
 // Input data is generated on host using random number generators, and later copied to
 // the global memory. Next, kernel with GEMM is executed, and then the matrix C (the result)
@@ -161,8 +162,7 @@ int simple_gemm() {
     const auto shared_memory_size = batches * cublasdx::get_shared_storage_size<BLAS>();
 
     // Increase max dynamic shared memory for the kernel if needed
-    CUDA_CHECK_AND_EXIT(
-        cudaFuncSetAttribute(gemm_kernel<BLAS>, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_memory_size));
+    CUDA_CHECK_AND_EXIT(example::set_max_dynamic_shared_memory_size(gemm_kernel<BLAS>, shared_memory_size));
 
     // Execute kernel
     gemm_kernel<BLAS><<<1, block_dim, shared_memory_size>>>(a, b, c, alpha, beta, output);

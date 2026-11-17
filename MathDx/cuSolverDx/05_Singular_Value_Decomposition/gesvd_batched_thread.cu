@@ -45,7 +45,8 @@ __global__ void kernel(DataType* A, PrecisionType* sigma, DataType* workspace, t
     auto sigma_g     = sigma + n * batch_idx;
     auto workspace_g = workspace + workspace_size * batch_idx;
 
-    Solver().execute(A_g, sigma_g, workspace_g, &info[batch_idx]);
+    constexpr auto lda = Solver::default_lda;
+    Solver().execute(A_g, lda, sigma_g, workspace_g, &info[batch_idx]);
 }
 
 template<int Arch>
@@ -64,7 +65,7 @@ int gesvd_batched_thread() {
     static_assert(m >= n, "m must be greater than or equal to n for gesvd");
 
     constexpr bool is_col_maj_a = arrangement_of_v_a<Solver> == arrangement::col_major;
-    const auto     lda_gmem     = is_col_maj_a ? m : n;
+    const auto     lda_gmem     = Solver::default_lda;
     constexpr auto input_size_a = m * n;
 
     const auto batches = 500;

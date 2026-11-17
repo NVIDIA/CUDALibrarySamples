@@ -27,40 +27,43 @@
 template<class FFT>
 __launch_bounds__(FFT::max_threads_per_block)
     __global__ void block_fft_kernel(typename FFT::value_type* data, typename FFT::workspace_type workspace) {
-    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFT);
+    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM_BLOCK(FFT) {
 
-    using complex_type = typename FFT::value_type;
+        using complex_type = typename FFT::value_type;
 
-    // Local array for thread
-    complex_type thread_data[FFT::storage_size];
+        // Local array for thread
+        complex_type thread_data[FFT::storage_size];
 
-    // Local batch id of this FFT in CUDA block, in range [0; FFT::ffts_per_block)
-    const unsigned int local_fft_id = threadIdx.y;
-    // Global batch id of this FFT in CUDA grid is equal to number of batches per CUDA block (ffts_per_block)
-    // times CUDA block id, plus local batch id.
-    const unsigned int global_fft_id = (blockIdx.x * FFT::ffts_per_block) + local_fft_id;
+        // Local batch id of this FFT in CUDA block, in range [0; FFT::ffts_per_block)
+        const unsigned int batchid = FFT::working_group::batchid();
+        // Local fft id of this FFT, in range [0; FFT::stride)
+        const unsigned int fftid = FFT::working_group::fftid();
+        // Global batch id of this FFT in CUDA grid is equal to number of batches per CUDA block (ffts_per_block)
+        // times CUDA block id, plus local batch id.
+        const unsigned int global_fft_id = blockIdx.x * FFT::ffts_per_block + batchid;
 
-    // Load data from global memory to registers
-    const unsigned int     offset = cufftdx::size_of<FFT>::value * global_fft_id;
-    constexpr unsigned int stride = FFT::stride;
-    unsigned int           index  = offset + threadIdx.x;
-    for (unsigned int i = 0; i < FFT::elements_per_thread; i++) {
-        if ((i * stride + threadIdx.x) < cufftdx::size_of<FFT>::value) {
-            thread_data[i] = data[index];
-            index += stride;
+        // Load data from global memory to registers
+        const unsigned int     offset = cufftdx::size_of<FFT>::value * global_fft_id;
+        constexpr unsigned int stride = FFT::stride;
+        unsigned int           index  = offset + fftid;
+        for (unsigned int i = 0; i < FFT::elements_per_thread; i++) {
+            if ((i * stride + fftid) < cufftdx::size_of<FFT>::value) {
+                thread_data[i] = data[index];
+                index += stride;
+            }
         }
-    }
 
-    // Execute FFT
-    extern __shared__ __align__(alignof(float4)) complex_type shared_memory[];
-    FFT().execute(thread_data, shared_memory, workspace);
+        // Execute FFT
+        extern __shared__ __align__(alignof(float4)) cufftdx::byte shared_memory[];
+        FFT().execute(thread_data, shared_memory, workspace);
 
-    // Save results
-    index = offset + threadIdx.x;
-    for (unsigned int i = 0; i < FFT::elements_per_thread; i++) {
-        if ((i * stride + threadIdx.x) < cufftdx::size_of<FFT>::value) {
-            data[index] = thread_data[i];
-            index += stride;
+        // Save results
+        index = offset + fftid;
+        for (unsigned int i = 0; i < FFT::elements_per_thread; i++) {
+            if ((i * stride + fftid) < cufftdx::size_of<FFT>::value) {
+                data[index] = thread_data[i];
+                index += stride;
+            }
         }
     }
 }

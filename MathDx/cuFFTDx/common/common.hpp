@@ -238,6 +238,12 @@ namespace example {
         static constexpr bool sm_100 = false;
         #endif
 
+        #if defined(CUFFTDX_EXAMPLE_ENABLE_SM_107)
+        static constexpr bool sm_107 = true;
+        #else
+        static constexpr bool sm_107 = false;
+        #endif
+
         #if defined(CUFFTDX_EXAMPLE_ENABLE_SM_103)
         static constexpr bool sm_103 = true;
         #else
@@ -261,6 +267,7 @@ namespace example {
         #else
         static constexpr bool sm_121 = false;
         #endif
+
     };
 
     template<class EnableSM>
@@ -287,6 +294,9 @@ namespace example {
         }
         if constexpr (EnableSM::sm_100) {
             stream << "- SM 1000" << std::endl;
+        }
+        if constexpr (EnableSM::sm_107) {
+            stream << "- SM 1070" << std::endl;
         }
         if constexpr (EnableSM::sm_103) {
             stream << "- SM 1030" << std::endl;
@@ -333,6 +343,9 @@ namespace example {
 #endif
 #if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_100)
             case 1000: return Functor<1000>()();
+#endif
+#if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_107)
+            case 1070: return Functor<1070>()();
 #endif
 #if !defined(CUFFTDX_EXAMPLE_CMAKE) || defined(CUFFTDX_EXAMPLE_ENABLE_SM_103)
             case 1030: return Functor<1030>()();

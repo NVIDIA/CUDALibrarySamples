@@ -43,7 +43,8 @@ __global__ void trsm_kernel(const DataType* A, DataType* B, const unsigned int b
     auto       this_A           = A + one_batch_size_a * batch_idx;
     auto       this_B           = B + one_batch_size_b * batch_idx;
 
-    TRSM_thread().execute(this_A, this_B);
+    constexpr auto ldb = TRSM_thread::default_ldb;
+    TRSM_thread().execute(this_A, a_m, this_B, ldb);
 }
 
 template<int Arch>
@@ -62,7 +63,7 @@ int trsm_thread_execution() {
 
     constexpr bool is_col_maj_a = arrangement_of_v_a<TRSM> == arrangement::col_major;
     constexpr bool is_col_maj_b = arrangement_of_v_b<TRSM> == arrangement::col_major;
-    constexpr auto ldb          = is_col_maj_b ? m : n;
+    constexpr auto ldb          = TRSM::default_ldb;
 
     // If left side, A is MxM, else A is NxN
     constexpr auto a_m = (side_of_v<TRSM> == side::left) ? m : n; // The acutal size of A

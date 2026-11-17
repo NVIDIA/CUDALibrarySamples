@@ -27,24 +27,25 @@
 template<class FFT, class ComplexType = typename FFT::value_type, class ScalarType = typename ComplexType::value_type>
 __launch_bounds__(FFT::max_threads_per_block) __global__
     void block_fft_kernel_r2c_fp16(ScalarType* input_data, ComplexType* output_data) {
-    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFT);
+    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM_BLOCK(FFT) {
 
-    using complex_type = ComplexType;
+        using complex_type = ComplexType;
 
-    // Local array for thread
-    complex_type thread_data[FFT::storage_size];
+        // Local array for thread
+        complex_type thread_data[FFT::storage_size];
 
-    // ID of FFT in CUDA block, in range [0; FFT::ffts_per_block)
-    const unsigned int local_fft_id = threadIdx.y;
-    // Load data from global memory to registers
-    example::io<FFT>::load(input_data, thread_data, local_fft_id);
+        // ID of FFT in CUDA block, in range [0; FFT::ffts_per_block)
+        const unsigned int batchid = FFT::working_group::batchid();
+        // Load data from global memory to registers
+        example::io<FFT>::load(input_data, thread_data, batchid);
 
-    // Execute FFT
-    extern __shared__ __align__(alignof(float4)) complex_type shared_mem[];
-    FFT().execute(thread_data, shared_mem);
+        // Execute FFT
+        extern __shared__ __align__(alignof(float4)) cufftdx::byte shared_mem[];
+        FFT().execute(thread_data, shared_mem);
 
-    // Save results
-    example::io<FFT>::store(thread_data, output_data, local_fft_id);
+        // Save results
+        example::io<FFT>::store(thread_data, output_data, batchid);
+    }
 }
 
 // In this example a one-dimensional real-to-complex transform is performed by a CUDA block.

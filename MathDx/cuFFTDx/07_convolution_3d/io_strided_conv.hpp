@@ -15,8 +15,8 @@
  * limitations under the License.
  */
 
-#ifndef CUFFTDX_EXAMPLE_3D_io_strided_conv_smem_HPP
-#define CUFFTDX_EXAMPLE_3D_io_strided_conv_smem_HPP
+#ifndef CUFFTDX_EXAMPLE_3D_IO_STRIDED_CONV_HPP
+#define CUFFTDX_EXAMPLE_3D_IO_STRIDED_CONV_HPP
 
 #include "../common/common.hpp"
 #include "../common/block_io.hpp"
@@ -34,8 +34,17 @@ namespace example {
     // - FFTX is the outermost (most strided)
     // - FFTY is the second outermost (strided)
     // - FFTZ is contiguous
-    template<dimension Dim, bool Front, int Batches, class FFTX_, class IFFTX_, class FFTY_, class IFFTY_, class FFTZ_, class IFFTZ_>
-    class io_strided_conv_smem
+    template<dimension Dim,
+             bool      Front,
+             int       Batches,
+             class FFTX_,
+             class IFFTX_,
+             class FFTY_,
+             class IFFTY_,
+             class FFTZ_,
+             class IFFTZ_,
+             bool UseSharedMemory = true>
+    class io_strided_conv
     {
         // Convolution happens in the x dimension
         static constexpr bool is_c2r_conv =
@@ -89,7 +98,7 @@ namespace example {
         // Single index is decayed to full N-D index by applying modulo and division
         // recursively. The pairs given in index_mapper definition are (Size, Stride) pairs.
         // --------------------------------------------------------------------------
-        // Please refer to io_strided_conv_smem.hpp for further explanation of multidimensional addressing.
+        // Please refer to io_strided_conv.hpp for further explanation of multidimensional addressing.
 
         using global_layout_x_subbatches = index_mapper<int_pair<z_dim, 1>,           // inner 2d dimension
                                                         int_pair<fft_size_y, z_dim>>; // outer 2d dimension
@@ -123,6 +132,13 @@ namespace example {
         static constexpr int y_pad_bytes    = fft_size_y * y_fpb * sizeof(value_type) + y_fpb * y_pad * sizeof(value_type);
         static constexpr int y_shared_bytes = std::max<int>(FFTY::shared_memory_size, y_pad_bytes);
 
+        // The staged transfer permutes physical CUDA threads. It is needed for
+        // regular layout, where adjacent threads own adjacent FFT elements. A
+        // transposed layout already gives adjacent threads adjacent batches, so
+        // its direct transfers are coalesced and do not need staging.
+        template<class FFT>
+        static constexpr bool use_staged_io =
+            UseSharedMemory and FFT::thread_layout == cufftdx::experimental::thread_layout::regular;
 
         // These IO functions perform shared <--> registers transfers based on provided layouts.
         // This enables taking padding under account.
@@ -135,8 +151,8 @@ namespace example {
             const auto            this_block_fpb = (blockIdx.x == Subbatches / fpb) ? Subbatches % fpb : fpb;
             static constexpr auto fft_size       = FFT::input_length;
 
-            // Load data from global by emulating a switch between
-            // threadIdx.x and threadIdx.y
+            // Use physical CUDA thread order to coalesce the staged transfer.
+            // This path is selected only for ThreadLayout<regular>.
             const int tid            = (threadIdx.x + threadIdx.y * blockDim.x);
             const int rev_elem_start = tid / this_block_fpb;
             const int rev_batch_id   = tid % this_block_fpb;
@@ -167,8 +183,8 @@ namespace example {
             const auto            this_block_fpb = (blockIdx.x == Subbatches / fpb) ? Subbatches % fpb : fpb;
             static constexpr auto fft_size       = FFT::output_length;
 
-            // Load data from global by emulating a switch between
-            // threadIdx.x and threadIdx.y
+            // Use physical CUDA thread order to coalesce the staged transfer.
+            // This path is selected only for ThreadLayout<regular>.
             const int tid            = (threadIdx.x + threadIdx.y * blockDim.x);
             const int rev_elem_start = tid / this_block_fpb;
             const int rev_batch_id   = tid % this_block_fpb;
@@ -203,8 +219,8 @@ namespace example {
 
 #pragma unroll
             for (int i = 0; i < FFT::input_ept; ++i) {
-                const auto elem_id  = threadIdx.x + i * FFT::stride;
-                const auto batch_id = threadIdx.y;
+                const auto elem_id  = FFT::working_group::fftid() + i * FFT::stride;
+                const auto batch_id = FFT::working_group::batchid();
                 if (not FFT::requires_workspace or (elem_id < fft_size)) {
                     input_rmem[i] = op(input_smem[shared_layout(elem_id, batch_id)]);
                 }
@@ -225,10 +241,62 @@ namespace example {
 
 #pragma unroll
             for (int i = 0; i < FFT::output_ept; ++i) {
-                const auto elem_id  = threadIdx.x + i * FFT::stride;
-                const auto batch_id = threadIdx.y;
+                const auto elem_id  = FFT::working_group::fftid() + i * FFT::stride;
+                const auto batch_id = FFT::working_group::batchid();
                 if (not FFT::requires_workspace or (elem_id < fft_size)) {
                     output_smem[shared_layout(elem_id, batch_id)] = op(output_rmem[i]);
+                }
+            }
+        }
+
+        // Direct transfers retain the multidimensional global-memory mapping
+        // used by the staged path. With ThreadLayout<transposed>, adjacent
+        // CUDA threads access adjacent subbatches, so these accesses are
+        // already coalesced and no staging copy is required.
+        template<class FFT, class GlobalLayout, class Op>
+        __device__ __forceinline__ void load_gmem_to_rmem_direct(const value_type* gmem, value_type* rmem) const {
+            GlobalLayout global_layout;
+            Op           op;
+
+            constexpr auto fpb      = FFT::ffts_per_block;
+            constexpr auto fft_size = FFT::input_length;
+
+            using input_t   = typename FFT::input_type;
+            auto input_rmem = reinterpret_cast<input_t*>(rmem);
+            auto input_gmem = reinterpret_cast<const input_t*>(gmem);
+
+            const auto fft_id   = FFT::working_group::fftid();
+            const auto batch_id = FFT::working_group::batchid() + blockIdx.x * fpb;
+
+#pragma unroll
+            for (int i = 0; i < FFT::input_ept; ++i) {
+                const auto elem_id = fft_id + i * FFT::stride;
+                if (not FFT::requires_workspace or (elem_id < fft_size)) {
+                    input_rmem[i] = op(input_gmem[global_layout(elem_id, batch_id, blockIdx.y)]);
+                }
+            }
+        }
+
+        template<class FFT, class GlobalLayout, class Op>
+        __device__ __forceinline__ void store_rmem_to_gmem_direct(const value_type* rmem, value_type* gmem) const {
+            GlobalLayout global_layout;
+            Op           op;
+
+            constexpr auto fpb      = FFT::ffts_per_block;
+            constexpr auto fft_size = FFT::output_length;
+
+            using output_t   = typename FFT::output_type;
+            auto output_rmem = reinterpret_cast<const output_t*>(rmem);
+            auto output_gmem = reinterpret_cast<output_t*>(gmem);
+
+            const auto fft_id   = FFT::working_group::fftid();
+            const auto batch_id = FFT::working_group::batchid() + blockIdx.x * fpb;
+
+#pragma unroll
+            for (int i = 0; i < FFT::output_ept; ++i) {
+                const auto elem_id = fft_id + i * FFT::stride;
+                if (not FFT::requires_workspace or (elem_id < fft_size)) {
+                    output_gmem[global_layout(elem_id, batch_id, blockIdx.y)] = op(output_rmem[i]);
                 }
             }
         }
@@ -237,10 +305,10 @@ namespace example {
         static constexpr __device__ __host__ __forceinline__
             size_t
             get_shared_bytes() {
-            if (Dim == dimension::x) {
-                return x_shared_bytes;
-            } else if (Dim == dimension::y) {
-                return y_shared_bytes;
+            if constexpr (Dim == dimension::x) {
+                return use_staged_io<FFTX> ? x_shared_bytes : FFTX::shared_memory_size;
+            } else if constexpr (Dim == dimension::y) {
+                return use_staged_io<FFTY> ? y_shared_bytes : FFTY::shared_memory_size;
             } else {
                 return FFTZ::shared_memory_size;
             }
@@ -250,19 +318,28 @@ namespace example {
         __device__ __forceinline__ void load_gmem_to_rmem(const GmemType* gmem, [[maybe_unused]] SmemType* smem, RmemType* rmem, [[maybe_unused]] LoadOp op = {}) const {
             if constexpr (Dim == dimension::x) {
                 constexpr int x_batches = fft_size_y * z_dim;
-                load_gmem_to_smem<FFTX, x_batches, global_layout_x, shared_layout_x>(gmem, smem);
-                __syncthreads();
-                load_smem_to_rmem<FFTX, shared_layout_x, LoadOp>(smem, rmem);
+                if constexpr (use_staged_io<FFTX>) {
+                    load_gmem_to_smem<FFTX, x_batches, global_layout_x, shared_layout_x>(gmem, smem);
+                    __syncthreads();
+                    load_smem_to_rmem<FFTX, shared_layout_x, LoadOp>(smem, rmem);
+                } else {
+                    load_gmem_to_rmem_direct<FFTX, global_layout_x, LoadOp>(gmem, rmem);
+                }
             } else if constexpr (Dim == dimension::y) {
                 constexpr int y_batches = fft_size_x * z_dim;
-                load_gmem_to_smem<FFTY, y_batches, global_layout_y, shared_layout_y>(gmem, smem);
-                __syncthreads();
-                load_smem_to_rmem<FFTY, shared_layout_y, LoadOp>(smem, rmem);
+                if constexpr (use_staged_io<FFTY>) {
+                    load_gmem_to_smem<FFTY, y_batches, global_layout_y, shared_layout_y>(gmem, smem);
+                    __syncthreads();
+                    load_smem_to_rmem<FFTY, shared_layout_y, LoadOp>(smem, rmem);
+                } else {
+                    load_gmem_to_rmem_direct<FFTY, global_layout_y, LoadOp>(gmem, rmem);
+                }
             } else { // Z dimension (contiguous)
                 constexpr auto block_offset = (Front and is_r2c_conv) ? (fft_size_x * fft_size_y * FFTZ::input_length) : flat_batch_size;
                 using input_t               = typename FFTZ::input_type;
                 auto gmem_input             = reinterpret_cast<const input_t*>(gmem);
-                example::io<FFTZ>::load(gmem_input + blockIdx.y * block_offset, rmem, threadIdx.y, op);
+                example::io<FFTZ>::load(
+                    gmem_input + blockIdx.y * block_offset, rmem, FFTZ::working_group::batchid(), op);
             }
         }
 
@@ -270,23 +347,32 @@ namespace example {
         __device__ __forceinline__ void store_rmem_to_gmem(const RmemType* rmem, [[maybe_unused]] SmemType* smem, GmemType* gmem, [[maybe_unused]] StoreOp op = {}) const {
             if constexpr (Dim == dimension::x) {
                 constexpr int x_batches = fft_size_y * z_dim;
-                store_rmem_to_smem<FFTX, shared_layout_x, StoreOp>(rmem, smem);
-                __syncthreads();
-                store_smem_to_gmem<FFTX, x_batches, shared_layout_x, global_layout_x>(smem, gmem);
+                if constexpr (use_staged_io<FFTX>) {
+                    store_rmem_to_smem<FFTX, shared_layout_x, StoreOp>(rmem, smem);
+                    __syncthreads();
+                    store_smem_to_gmem<FFTX, x_batches, shared_layout_x, global_layout_x>(smem, gmem);
+                } else {
+                    store_rmem_to_gmem_direct<FFTX, global_layout_x, StoreOp>(rmem, gmem);
+                }
             } else if constexpr (Dim == dimension::y) {
                 constexpr int y_batches = fft_size_x * z_dim;
-                store_rmem_to_smem<FFTY, shared_layout_y, StoreOp>(rmem, smem);
-                __syncthreads();
-                store_smem_to_gmem<FFTY, y_batches, shared_layout_y, global_layout_y>(smem, gmem);
+                if constexpr (use_staged_io<FFTY>) {
+                    store_rmem_to_smem<FFTY, shared_layout_y, StoreOp>(rmem, smem);
+                    __syncthreads();
+                    store_smem_to_gmem<FFTY, y_batches, shared_layout_y, global_layout_y>(smem, gmem);
+                } else {
+                    store_rmem_to_gmem_direct<FFTY, global_layout_y, StoreOp>(rmem, gmem);
+                }
             } else { // Z dimension (contiguous)
                 constexpr auto block_offset = (not Front and is_r2c_conv) ? (fft_size_x * fft_size_y * FFTZ::output_length) : flat_batch_size;
                 using output_t              = typename FFTZ::output_type;
                 auto gmem_output            = reinterpret_cast<output_t*>(gmem);
-                example::io<FFTZ>::store(rmem, gmem_output + blockIdx.y * block_offset, threadIdx.y, op);
+                example::io<FFTZ>::store(
+                    rmem, gmem_output + blockIdx.y * block_offset, FFTZ::working_group::batchid(), op);
             }
         }
-    }; // io_strided_conv_smem
+    }; // io_strided_conv
 } // namespace example
 
 
-#endif // CUFFTDX_EXAMPLE_3D_io_strided_conv_smem_HPP
+#endif // CUFFTDX_EXAMPLE_3D_IO_STRIDED_CONV_HPP

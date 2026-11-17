@@ -50,40 +50,41 @@
 template<class BLAS, class GlobalTensorA, class GlobalTensorB>
 __launch_bounds__(BLAS::max_threads_per_block)
 __global__ void trsm_block_kernel(GlobalTensorA global_a, GlobalTensorB global_b) {
-    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(BLAS);
-    extern __shared__ __align__(16) cublasdx::byte smem[];
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM_BLOCK(BLAS) {
+        extern __shared__ __align__(16) cublasdx::byte smem[];
 
-    using T         = typename BLAS::a_value_type;
-    using alignment = cublasdx::alignment_of<BLAS>;
+        using T         = typename BLAS::a_value_type;
+        using alignment = cublasdx::alignment_of<BLAS>;
 
-    // Guard: skip blocks beyond the total block count.
-    const unsigned total_blocks = cute::size<2>(global_a) / BLAS::batches_per_block;
-    if (blockIdx.x >= total_blocks) {
-        return;
+        // Guard: skip blocks past the last full BatchesPerBlock tile (pad the batch count to a multiple of it).
+        const unsigned total_blocks = cute::size<2>(global_a) / BLAS::batches_per_block;
+        if (blockIdx.x >= total_blocks) {
+            return;
+        }
+
+        // Extract the tile handled by this block. get_batch() takes the tile index (in units of
+        // BPB instances), not the first batch index: for BPB>1 the returned tile covers batches
+        // [blockIdx.x * BPB, (blockIdx.x + 1) * BPB). Do not pass blockIdx.x * BPB here.
+        auto batch_a = cublasdx::get_batch(global_a, BLAS::get_layout_gmem_a(), blockIdx.x);
+        auto batch_b = cublasdx::get_batch(global_b, BLAS::get_layout_gmem_b(), blockIdx.x);
+
+        // Partition shared memory into A and B tensors.
+        auto [smem_tensor_a, smem_tensor_b] =
+            cublasdx::shared_memory::slice<T, T>(smem,
+                                                 alignment::a, BLAS::get_layout_smem_a(),
+                                                 alignment::b, BLAS::get_layout_smem_b());
+
+        // Load A and B from global memory into shared memory.
+        cublasdx::copy<BLAS, alignment::a>(batch_a, smem_tensor_a);
+        cublasdx::copy<BLAS, alignment::b>(batch_b, smem_tensor_b);
+        cublasdx::copy_wait();
+
+        BLAS{}.execute(smem_tensor_a, smem_tensor_b);
+        __syncthreads();
+
+        // Write the solution (B overwritten by X) back to global memory.
+        cublasdx::copy<BLAS, alignment::b>(smem_tensor_b, batch_b);
     }
-
-    // Extract the first batch handled by this block. For BPB>1 the returned tile
-    // covers BPB consecutive instances starting at first_batch.
-    const unsigned first_batch = blockIdx.x * BLAS::batches_per_block;
-    auto batch_a = cublasdx::get_batch(global_a, BLAS::get_layout_gmem_a(), first_batch);
-    auto batch_b = cublasdx::get_batch(global_b, BLAS::get_layout_gmem_b(), first_batch);
-
-    // Partition shared memory into A and B tensors.
-    auto [smem_tensor_a, smem_tensor_b] =
-        cublasdx::shared_memory::slice<T, T>(smem,
-                                             alignment::a, BLAS::get_layout_smem_a(),
-                                             alignment::b, BLAS::get_layout_smem_b());
-
-    // Load A and B from global memory into shared memory.
-    cublasdx::copy<BLAS, alignment::a>(batch_a, smem_tensor_a);
-    cublasdx::copy<BLAS, alignment::b>(batch_b, smem_tensor_b);
-    cublasdx::copy_wait();
-
-    BLAS{}.execute(smem_tensor_a, smem_tensor_b);
-    __syncthreads();
-
-    // Write the solution (B overwritten by X) back to global memory.
-    cublasdx::copy<BLAS, alignment::b>(smem_tensor_b, batch_b);
 }
 
 // -------------------------------------------------------------------------
@@ -178,8 +179,7 @@ int simple_trsm() {
             .get();
 
     auto kernel = trsm_block_kernel<BLAS, global_tensor_a_t, global_tensor_b_t>;
-    CUDA_CHECK_AND_EXIT(
-        cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_bytes));
+    CUDA_CHECK_AND_EXIT(example::set_max_dynamic_shared_memory_size(kernel, smem_bytes));
 
     const unsigned num_blocks = padded_batches / BPB;
     const dim3     block_dim(num_threads);

@@ -1,0 +1,558 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include <array>
+#include <algorithm>
+#include <iostream>
+#include <system_error>
+#include <iomanip>
+#include <type_traits>
+#include <vector>
+
+#include <cuda_runtime_api.h>
+#include <cublasdx.hpp>
+
+
+#include "../common/common.hpp"
+#include "../common/pipeline_budget.hpp"
+#include "../common/cluster.hpp"
+#include "../reference/reference.hpp"
+
+// Raster window in TILES, for L2 locality. Must divide the cluster extents;
+// build_windowed_rasterizer static_asserts that.
+constexpr unsigned raster_window_m = 16;
+constexpr unsigned raster_window_n = 16;
+
+template<class BLAS, class Alpha, class Beta, class CTensor, class Rasterizer, class DevicePipeline>
+__launch_bounds__(DevicePipeline::max_threads_per_block, 1) __global__
+    void persistent_gemm_kernel(Alpha const                            alpha,
+                                Beta const                             beta,
+                                CTensor                                global_c,
+                                Rasterizer const                       raster,
+                                __grid_constant__ DevicePipeline const device_pipeline) {
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM_BLOCK(BLAS) {
+        extern __shared__ __align__(device_pipeline.buffer_alignment()) cublasdx::byte smem[];
+
+        // BlocksPerCluster<M, N>'s layout contract: the cluster is laid out column-major,
+        // blockIdx.x M-fastest. rank_m/rank_n are this CTA's coordinates inside the
+        // cluster, in per-CTA tiles. The rasterizer assigns every cluster a contiguous
+        // BlocksPerCluster-shaped block of output tiles.
+        unsigned const rank_m = blockIdx.x % cublasdx::blocks_per_cluster_of_v_m<BLAS>;
+        unsigned const rank_n = blockIdx.y % cublasdx::blocks_per_cluster_of_v_n<BLAS>;
+
+        int const first = raster.begin();
+
+        // The grid can hold more clusters than there is work. begin() is uniform across a
+        // cluster, so whole clusters exit together before constructing their tile pipelines.
+        if (first >= raster.clusters()) {
+            return;
+        }
+
+        auto coord         = raster.tile_coord(first, rank_m, rank_n);
+        auto tile_pipeline = device_pipeline.get_tile(smem, cute::get<0>(coord), cute::get<1>(coord));
+
+        for (int i = first; i < raster.clusters(); i += raster.stride()) {
+            if (i != first) {
+                coord = raster.tile_coord(i, rank_m, rank_n);
+                device_pipeline.reset_tile(tile_pipeline, cute::get<0>(coord), cute::get<1>(coord));
+            }
+
+            tile_pipeline.execute([&](auto& accumulator) {
+                auto tile_gmem_c =
+                    cublasdx::get_tile(global_c, BLAS::c_shape, cute::get<0>(coord), cute::get<1>(coord));
+                accumulator.axpby(alpha, beta, tile_gmem_c);
+            });
+        }
+    }
+}
+
+template<class BLAS,
+         int PipelineDepth,
+         class GEMMShape,
+         class GEMMArr,
+         class GEMMLD,
+         class Alpha,
+         class AValueType,
+         class BValueType,
+         class Beta,
+         class CValueType>
+auto measure_cublasdx(GEMMShape const   gemm_shape,
+                      GEMMArr const     gemm_arr,
+                      GEMMLD const      gemm_ld,
+                      const Alpha       alpha,
+                      const AValueType* a,
+                      const BValueType* b,
+                      const Beta        beta,
+                      CValueType*       c,
+                      unsigned const    kernel_warm_up_repeats,
+                      unsigned const    kernel_repeats,
+                      cudaStream_t const stream) {
+    // Grid size configuration
+    const auto [m, n, k]       = gemm_shape;
+    const auto [lda, ldb, ldc] = gemm_ld;
+    constexpr auto tile_m      = cublasdx::size_of_v_m<BLAS>;
+    constexpr auto tile_n      = cublasdx::size_of_v_n<BLAS>;
+
+    // Create tensors for global A / B / C corresponding to set MNK, arrangement and LDs
+    auto global_a = cublasdx::make_gmem_tensor<cute::get<0>(gemm_arr)>(a, m, k, lda);
+    auto global_b = cublasdx::make_gmem_tensor<cute::get<1>(gemm_arr)>(b, k, n, ldb);
+    auto global_c = cublasdx::make_gmem_tensor<cute::get<2>(gemm_arr)>(c, m, n, ldc);
+
+    // Per-CTA tiles: one CTA computes one Size<M, N, K> tile, and a cluster covers
+    // a BlocksPerCluster<M, N> block of them.
+    auto const tile_grid = cute::make_shape(static_cast<unsigned>((m + tile_m - 1) / tile_m),
+                                            static_cast<unsigned>((n + tile_n - 1) / tile_n));
+
+    auto const cluster_ctas = cute::make_shape(cute::Int<cublasdx::blocks_per_cluster_of_v_m<BLAS>> {},
+                                               cute::Int<cublasdx::blocks_per_cluster_of_v_n<BLAS>> {});
+
+    auto const raster = example::build_windowed_rasterizer(
+        tile_grid,
+        cluster_ctas,
+        cute::make_shape(cute::Int<raster_window_m> {}, cute::Int<raster_window_n> {}));
+
+    auto run_cublasdx_gemm = [&](cudaStream_t const str) {
+        auto pipeline = cublasdx::suggest_pipeline<BLAS, cublasdx::internal_accumulator>(global_a, global_b);
+
+        if (not pipeline) {
+            auto const error = pipeline.error();
+            std::cout << "Failed to create device pipeline";
+            if (error.code != cublasdx::pipeline_error_code::none) {
+                std::cout << ": " << cublasdx::pipeline_error_string(error.code);
+            }
+            if (error.get_cuda_error() != cudaSuccess) {
+                std::cout << " (" << cudaGetErrorString(error.get_cuda_error()) << ")";
+            }
+            std::cout << std::endl;
+            exit(1);
+        }
+
+        auto shared_memory_size = cublasdx::make_shared_storage_calculator()
+                                      .add(pipeline->buffer_alignment(), pipeline->buffer_size())
+                                      .get();
+
+        auto kernel = persistent_gemm_kernel<BLAS,
+                                             Alpha,
+                                             Beta,
+                                             decltype(global_c),
+                                             decltype(raster),
+                                             decltype(pipeline->get_device_handle())>;
+
+        // The launch grid must contain at least one complete cluster, with each extent
+        // divisible by the corresponding cluster extent.
+        auto const grid_dim = example::suggest_persistent_cluster_grid(
+            kernel, pipeline->get_block_dim(), shared_memory_size, pipeline->get_cluster_dim());
+
+        CUDA_CHECK_AND_EXIT(example::launch(*pipeline,
+                                             kernel,
+                                             grid_dim,
+                                             shared_memory_size,
+                                             str,
+                                             alpha,
+                                             beta,
+                                             global_c,
+                                             raster,
+                                             pipeline->get_device_handle()));
+    };
+
+    // Report the selected pipeline configuration.
+    {
+        auto probe = cublasdx::suggest_pipeline<BLAS, cublasdx::internal_accumulator>(global_a, global_b);
+        if (probe) {
+            std::cout << "pipeline: stages " << probe->stages() << ", cluster "
+                      << cublasdx::blocks_per_cluster_of_v_m<BLAS> << "x" << cublasdx::blocks_per_cluster_of_v_n<BLAS>
+                      << ", clusters " << raster.clusters()
+                      << ", grid " << example::suggest_persistent_cluster_grid(
+                             persistent_gemm_kernel<BLAS, Alpha, Beta, decltype(global_c), decltype(raster),
+                                                    decltype(probe->get_device_handle())>,
+                             probe->get_block_dim(),
+                             cublasdx::make_shared_storage_calculator()
+                                 .add(probe->buffer_alignment(), probe->buffer_size())
+                                 .get(),
+                             probe->get_cluster_dim())
+                             .x
+                      << std::endl;
+        }
+    }
+
+    // First run for correctness check
+    run_cublasdx_gemm(stream);
+    CUDA_CHECK_AND_EXIT(cudaPeekAtLastError());
+    CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
+
+    // Copy back data
+    std::vector<CValueType> results(m * n);
+    CUDA_CHECK_AND_EXIT(cudaMemcpy(results.data(), c, results.size() * sizeof(CValueType), cudaMemcpyDeviceToHost));
+    CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
+
+    // Execute kernel.
+    double time = example::measure::execution(run_cublasdx_gemm, kernel_warm_up_repeats, kernel_repeats, stream);
+
+    CUDA_CHECK_AND_EXIT(cudaPeekAtLastError());
+    CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
+
+    return std::make_tuple(time, results);
+}
+
+// This is an example of testing performance of cuBLASDx as tile provider, executing a general matrix multiply (GEMM)
+// on the entire GPU and distributing work across all SMs, each of them running a small GEMM tile with cuBLASDx.
+//
+//              C = alpha * A * B + beta * C
+//
+// A, B, and C are matrices. Mixed precisions are supported, decoupled precisions are supported.
+// cuBLASLt is the comparison point for this example.
+//
+// This example provides a CLI interface for changing the dynamic size of the GEMM
+// make persistent_cluster_gemm <m> <n> <k>
+//
+// Please refer to the documentation for more details.
+
+template<unsigned int Arch, cublasdx::sm_modifier Modifier, class GlobalShape>
+int persistent_cluster_gemm(GlobalShape const global_shape) {
+
+    // ===================================
+    // Configurable Global GEMM properties
+    // ===================================
+
+    // Global GEMM Size --> MNK, where:
+    // - A matrix is M x K
+    // - B matrix is K x N
+    // - C matrix is M x N
+
+    // This size can be set dynamically from command line
+    const auto m = cute::get<0>(global_shape); // Global M GEMM Size
+    const auto n = cute::get<1>(global_shape); // Global N GEMM Size
+    const auto k = cute::get<2>(global_shape); // Global K GEMM Size
+
+    // Global GEMM Arrangement:
+    // - cubladsx::row_major, row major data arrangement
+    // - cubladsx::col_major, col major data arrangement
+    // Note: these values need to be constexpr
+    constexpr auto global_arrangement_a = cublasdx::row_major;
+    constexpr auto global_arrangement_b = cublasdx::col_major;
+    constexpr auto global_arrangement_c = cublasdx::row_major;
+
+    // Leading Dimensions to be used for global data
+    // Note: for matrix of size X x Y, the LD must be:
+    // - greater or equal than X if matrix is col-major
+    // - greater or equal than Y if matrix is row-major
+    // Note: these values can be dynamic
+    const auto global_lda = (global_arrangement_a == cublasdx::col_major) ? m : k;
+    const auto global_ldb = (global_arrangement_b == cublasdx::col_major) ? k : n;
+    const auto global_ldc = (global_arrangement_c == cublasdx::col_major) ? m : n;
+
+    // Compute precision (use Tensor Cores of this precision)
+    // and cuBLAS input precision for reference calculation
+    using a_compute_precision = __half;
+    using b_compute_precision = __half;
+    using c_compute_precision = float;
+
+    // Number type, either real or complex
+    constexpr auto type = cublasdx::type::real;
+
+    // Create data type, based on:
+    // - precision
+    // - type (real / complex)
+    // this will be either precision or cublasdx::complex<precision>
+    using a_compute_value_type = cute::conditional_t<type == cublasdx::type::real, a_compute_precision, cublasdx::complex<a_compute_precision>>;
+    using b_compute_value_type = cute::conditional_t<type == cublasdx::type::real, b_compute_precision, cublasdx::complex<b_compute_precision>>;
+    using c_compute_value_type = cute::conditional_t<type == cublasdx::type::real, c_compute_precision, cublasdx::complex<c_compute_precision>>;
+
+    // Scalar multipliers
+    // C = alpha * A * B + beta * C
+    c_compute_value_type alpha = example::make_value<c_compute_value_type>(1.1);
+    c_compute_value_type beta  = example::make_value<c_compute_value_type>(1.2);
+
+    // ======================================
+    // Configurable cuBLASDx tile properties
+    // ======================================
+
+    // tile size, this describes smaller GEMM, which will be computed by each
+    // threadblock using cuBLASDx.
+    // 128x128 keeps the example portable across GPUs; increase tile_n to 256
+    // on B200 and later for best performance.
+    constexpr unsigned tile_m = 128;
+    constexpr unsigned tile_n = 128;
+    constexpr unsigned tile_k = 64;
+
+    // Number of threads used to compute each tile, tuned for the target architecture.
+    constexpr int tile_threads = (Arch >= 1000) ? 128 : 256;
+
+    // Start with one block. Increase these extents to enable clustered execution.
+    constexpr unsigned cluster_m = 1;
+    constexpr unsigned cluster_n = 1;
+
+
+    // Arrangement of data in a per-threadblock tile of data
+    constexpr auto tile_arr_a = global_arrangement_a;
+    constexpr auto tile_arr_b = global_arrangement_b;
+    constexpr auto tile_arr_c = global_arrangement_c;
+
+    // Input types may differ from compute types when suitable converters are
+    // provided.
+    using a_io_value_type = a_compute_value_type;
+    using b_io_value_type = b_compute_value_type;
+    using c_io_value_type = c_compute_value_type;
+
+    // Maximal alignment to be used for shared memory data.
+    // Effectively this limits maximal vectorization level
+    // for loads and stores.
+    constexpr unsigned int maximal_alignment  = 16;
+    constexpr unsigned int cublasdx_alignment = maximal_alignment;
+
+    // ================================
+    // Verify configuration correctness
+    // ================================
+
+    constexpr unsigned stage_shared_req = tile_m * tile_k * sizeof(a_compute_value_type) +
+                                          tile_k * tile_n * sizeof(b_compute_value_type) +
+                                          sizeof(cublasdx::pipeline_stage_scratch_t);
+
+    constexpr unsigned available_shared_memory = example::pipeline_shared_memory_budget<Arch>();
+    constexpr unsigned maximal_pipeline_depth  = cute::min(16, (available_shared_memory - 32) / stage_shared_req);
+    constexpr unsigned pipeline_depth          = maximal_pipeline_depth;
+
+    const bool divisible = (m % tile_m == 0 and n % tile_n == 0 and k % tile_k == 0);
+    if (not divisible) {
+        std::cerr << "M, N, K dimensions must be divisible by tile_m, tile_n, tile_k" << std::endl;
+        return 1;
+    }
+
+    // ================================
+    // Prepare inputs
+    // ================================
+
+    // Use tuples to avoid passing 20 arguments to a function
+    constexpr auto global_arrangement = cute::make_tuple(
+        // These must be passed as integral constants to properly dispatch static striding
+        std::integral_constant<cublasdx::arrangement, global_arrangement_a> {},
+        std::integral_constant<cublasdx::arrangement, global_arrangement_b> {},
+        std::integral_constant<cublasdx::arrangement, global_arrangement_c> {});
+
+    const auto global_ld = cute::make_tuple(global_lda, global_ldb, global_ldc);
+
+    // Performance comparison parameters
+    const unsigned int kernel_repeats         = 10;
+    const unsigned int kernel_warm_up_repeats = 5;
+
+    constexpr bool compare_to_fp64_cublas = false;
+    using a_cublas_value_type             = cute::conditional_t<compare_to_fp64_cublas, double, a_compute_value_type>;
+    using b_cublas_value_type             = cute::conditional_t<compare_to_fp64_cublas, double, b_compute_value_type>;
+    using c_cublas_value_type             = cute::conditional_t<compare_to_fp64_cublas, double, c_compute_value_type>;
+
+    // Test implementation
+    a_io_value_type* a_cublasdx = nullptr;
+    b_io_value_type* b_cublasdx = nullptr;
+    c_io_value_type* c_cublasdx = nullptr;
+
+    a_cublas_value_type* a_cublas = nullptr;
+    b_cublas_value_type* b_cublas = nullptr;
+    c_cublas_value_type* c_cublas = nullptr;
+
+    // Fill the A, B, C matrices with random values.
+    {
+        // Use nullptr tensors to make it easier to calculate memory requirements
+        auto dummy_global_a =
+            cublasdx::make_gmem_tensor<cute::get<0>(global_arrangement)>(a_cublasdx, m, k, global_lda);
+        auto dummy_global_b =
+            cublasdx::make_gmem_tensor<cute::get<1>(global_arrangement)>(b_cublasdx, k, n, global_ldb);
+        auto dummy_global_c =
+            cublasdx::make_gmem_tensor<cute::get<2>(global_arrangement)>(c_cublasdx, m, n, global_ldc);
+
+        CUDA_CHECK_AND_EXIT(
+            cudaMalloc(&a_cublasdx, cublasdx::cosize(dummy_global_a.layout()) * sizeof(a_io_value_type)));
+        CUDA_CHECK_AND_EXIT(
+            cudaMalloc(&a_cublas, cublasdx::cosize(dummy_global_a.layout()) * sizeof(a_cublas_value_type)));
+
+        CUDA_CHECK_AND_EXIT(
+            cudaMalloc(&b_cublasdx, cublasdx::cosize(dummy_global_b.layout()) * sizeof(b_io_value_type)));
+        CUDA_CHECK_AND_EXIT(
+            cudaMalloc(&b_cublas, cublasdx::cosize(dummy_global_b.layout()) * sizeof(b_cublas_value_type)));
+
+        CUDA_CHECK_AND_EXIT(
+            cudaMalloc(&c_cublasdx, cublasdx::cosize(dummy_global_c.layout()) * sizeof(c_io_value_type)));
+        CUDA_CHECK_AND_EXIT(
+            cudaMalloc(&c_cublas, cublasdx::cosize(dummy_global_c.layout()) * sizeof(c_cublas_value_type)));
+
+        auto host_a_io = example::get_random_data<a_io_value_type>(m * k, 1);
+        auto host_b_io = example::get_random_data<b_io_value_type>(k * n, 2);
+        auto host_c_io = example::get_random_data<c_io_value_type>(m * n, 3);
+
+        // Create A cuBLASLt input
+        using a_converter_t      = example::converter<a_cublas_value_type>;
+        using a_functor_output_t = std::decay_t<std::invoke_result_t<a_converter_t, a_io_value_type>>;
+        static_assert(std::is_convertible_v<a_functor_output_t, a_cublas_value_type>,
+                      "Input type must be convertible to compute type");
+
+        auto host_a_cublas = std::vector<a_cublas_value_type>(host_a_io.size());
+        std::transform(host_a_io.cbegin(), host_a_io.cend(), host_a_cublas.begin(), a_converter_t {});
+
+        // Create B cuBLASLt input
+        using b_converter_t      = example::converter<b_cublas_value_type>;
+        using b_functor_output_t = std::decay_t<std::invoke_result_t<b_converter_t, b_io_value_type>>;
+        static_assert(std::is_convertible_v<b_functor_output_t, b_cublas_value_type>,
+                      "Input type must be convertible to compute type");
+
+        auto host_b_cublas = std::vector<b_cublas_value_type>(host_b_io.size());
+        std::transform(host_b_io.cbegin(), host_b_io.cend(), host_b_cublas.begin(), b_converter_t {});
+
+        // Create C cuBLASLt input
+        using c_converter_t      = example::converter<c_cublas_value_type>;
+        using c_functor_output_t = std::decay_t<std::invoke_result_t<c_converter_t, c_io_value_type>>;
+        static_assert(std::is_convertible_v<c_functor_output_t, c_cublas_value_type>,
+                      "Input type must be convertible to compute type");
+
+        auto host_c_cublas = std::vector<c_cublas_value_type>(host_c_io.size());
+        std::transform(host_c_io.cbegin(), host_c_io.cend(), host_c_cublas.begin(), c_converter_t {});
+
+        CUDA_CHECK_AND_EXIT(
+            cudaMemcpy(a_cublasdx, host_a_io.data(), m * k * sizeof(a_io_value_type), cudaMemcpyHostToDevice));
+        CUDA_CHECK_AND_EXIT(
+            cudaMemcpy(b_cublasdx, host_b_io.data(), k * n * sizeof(b_io_value_type), cudaMemcpyHostToDevice));
+        CUDA_CHECK_AND_EXIT(
+            cudaMemcpy(c_cublasdx, host_c_io.data(), m * n * sizeof(c_io_value_type), cudaMemcpyHostToDevice));
+
+        CUDA_CHECK_AND_EXIT(
+            cudaMemcpy(a_cublas, host_a_cublas.data(), m * k * sizeof(a_cublas_value_type), cudaMemcpyHostToDevice));
+        CUDA_CHECK_AND_EXIT(
+            cudaMemcpy(b_cublas, host_b_cublas.data(), k * n * sizeof(b_cublas_value_type), cudaMemcpyHostToDevice));
+        CUDA_CHECK_AND_EXIT(
+            cudaMemcpy(c_cublas, host_c_cublas.data(), m * n * sizeof(c_cublas_value_type), cudaMemcpyHostToDevice));
+        // destroy host vectors
+    }
+
+    cudaStream_t stream;
+    CUDA_CHECK_AND_EXIT(cudaStreamCreate(&stream))
+
+    // cuBLASDx type creation
+    using BLAS = decltype(cublasdx::Size<tile_m, tile_n, tile_k>() +
+                          cublasdx::Precision<a_compute_precision, b_compute_precision, c_compute_precision>() +
+                          cublasdx::Type<type>() + cublasdx::Function<cublasdx::function::MM>() +
+                          cublasdx::Arrangement<tile_arr_a, tile_arr_b, tile_arr_c>() + cublasdx::Block() +
+                          cublasdx::BlockDim<tile_threads>() + cublasdx::StaticBlockDim() +
+                          cublasdx::Alignment<cublasdx_alignment, cublasdx_alignment, cublasdx_alignment>() +
+                          cublasdx::EnableInputStreaming() + cublasdx::WithPipeline() +
+                          cublasdx::BlocksPerCluster<cluster_m, cluster_n, 1>() + cublasdx::SM<Arch, Modifier>());
+
+    // =============================
+    // Execute cuBLASDx and cuBLASLt
+    // =============================
+
+    auto [time_cublasdx, host_dx_results] = measure_cublasdx<BLAS, pipeline_depth>(global_shape,
+                                                                                   global_arrangement,
+                                                                                   global_ld,
+                                                                                   alpha,
+                                                                                   a_cublasdx,
+                                                                                   b_cublasdx,
+                                                                                   beta,
+                                                                                   c_cublasdx,
+                                                                                   kernel_warm_up_repeats,
+                                                                                   kernel_repeats,
+                                                                                   stream);
+
+    // Measure cuBLAS performance.
+    auto [time_cublas, host_blas_results] =
+        example::cublaslt_runner<a_cublas_value_type, b_cublas_value_type, c_cublas_value_type>(
+            global_shape, global_arrangement, global_ld)
+            .execute_with_time_and_results(
+                alpha, a_cublas, b_cublas, beta, c_cublas, kernel_warm_up_repeats, kernel_repeats, stream);
+
+    // Write performance data.
+    using cublasdx::size_of;
+    std::cout << "m, n, k: " << m << ", " << n << ", " << k << std::endl;
+    std::cout << "tile m, n, k / threads / stages: " << tile_m << ", " << tile_n << ", " << tile_k << " / "
+              << tile_threads << " / " << pipeline_depth << std::endl;
+    std::cout << "Compute Type A: " << example::type_string<a_compute_value_type>() << std::endl;
+    std::cout << "Compute Type B: " << example::type_string<b_compute_value_type>() << std::endl;
+    std::cout << "Compute Type C: " << example::type_string<c_compute_value_type>() << std::endl;
+    std::cout << "Dx Input Precision A: " << example::precision_string<a_io_value_type>() << std::endl;
+    std::cout << "Dx Input Precision B: " << example::precision_string<b_io_value_type>() << std::endl;
+    std::cout << "Dx Input Precision C: " << example::precision_string<c_io_value_type>() << std::endl;
+
+    const double avg_time_dx = time_cublasdx / kernel_repeats;
+    const double dx_gflops =
+        example::gemm_flops<a_compute_value_type, b_compute_value_type, c_compute_value_type>(m, n, k) /
+        (avg_time_dx * 1e6);
+
+    std::cout << "\ncuBLASDx\n";
+    std::cout << std::fixed << std::setprecision(4);
+    std::cout << "Avg time [ms]  = " << avg_time_dx << "\n";
+    std::cout << "Avg GFLOP/s  = " << dx_gflops << "\n";
+
+    const double avg_time_cublas = time_cublas / kernel_repeats;
+    double cublas_gflops = example::gemm_flops<a_cublas_value_type, b_cublas_value_type, c_cublas_value_type>(m, n, k) /
+                           (avg_time_cublas * 1e6);
+
+    std::cout << "\ncuBLASLt (not including heuristic)\n";
+    std::cout << "Avg time [ms]  = " << avg_time_cublas << "\n";
+    std::cout << "Avg GFLOP/s  = " << cublas_gflops << "\n";
+
+    constexpr bool verbose_knob = false;
+    constexpr bool print_knob   = true;
+
+    const bool is_correct = example::check_error<BLAS>(host_dx_results, host_blas_results, verbose_knob, print_knob);
+    std::cout << (is_correct ? "Success!" : "Failure!") << "\n";
+
+    std::cout << std::fixed << std::setprecision(2) << "cuBLAS / cuBLASDx timings = " << time_cublas / time_cublasdx
+              << "\n";
+
+    // Free resources.
+    CUDA_CHECK_AND_EXIT(cudaStreamDestroy(stream));
+    CUDA_CHECK_AND_EXIT(cudaFree(a_cublasdx));
+    CUDA_CHECK_AND_EXIT(cudaFree(b_cublasdx));
+    CUDA_CHECK_AND_EXIT(cudaFree(c_cublasdx));
+    CUDA_CHECK_AND_EXIT(cudaFree(a_cublas));
+    CUDA_CHECK_AND_EXIT(cudaFree(b_cublas));
+    CUDA_CHECK_AND_EXIT(cudaFree(c_cublas));
+
+    return is_correct ? 0 : 1;
+}
+
+struct persistent_cluster_gemm_functor {
+
+    template<int Arch, cublasdx::sm_modifier Modifier, class GlobalShape>
+    int operator()(std::integral_constant<int, Arch>,
+                   std::integral_constant<cublasdx::sm_modifier, Modifier>,
+                   GlobalShape const global_shape) {
+        return persistent_cluster_gemm<Arch, Modifier>(global_shape);
+    }
+};
+
+int main(int const argc, char** argv) {
+    std::array<unsigned int, 3> mnk = {8192, 8192, 8192};
+    auto usage = []() { std::cerr << "Incorrect usage: ./persistent_cluster_gemm [m n k]" << std::endl; };
+
+    if (argc == 4) {
+        std::cout << "Tile optimized for big HGEMMs on B200 (fp16-fp32), for best "
+                     "results for other precisions attempt a thorough "
+                     "parameter scan over: (tile_m / tile_n / tile_k / threads) "
+                     "and pipeline depth with threadblock swizzling"
+                  << std::endl;
+
+        try {
+            std::transform(argv + 1, argv + argc, mnk.begin(), [&](char const* const dim_input) { return std::stoul(dim_input); });
+        } catch (...) {
+            usage();
+            return 1;
+        }
+    } else if (argc != 1) {
+        usage();
+        return 1;
+    }
+
+    return example::sm_runner(persistent_cluster_gemm_functor {}, cute::make_shape(mnk[0], mnk[1], mnk[2]));
+}

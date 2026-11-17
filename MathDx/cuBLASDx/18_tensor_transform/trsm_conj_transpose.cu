@@ -49,35 +49,37 @@
 template<class BLAS, class GlobalTensorA, class GlobalTensorB>
 __launch_bounds__(BLAS::max_threads_per_block)
 __global__ void trsm_conj_transpose_kernel(GlobalTensorA global_a, GlobalTensorB global_b) {
-    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(BLAS);
-    extern __shared__ __align__(16) cublasdx::byte smem[];
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM_BLOCK(BLAS) {
+        extern __shared__ __align__(16) cublasdx::byte smem[];
 
-    using T         = typename BLAS::a_value_type;
-    using alignment = cublasdx::alignment_of<BLAS>;
+        using T         = typename BLAS::a_value_type;
+        using alignment = cublasdx::alignment_of<BLAS>;
 
-    const unsigned total_blocks = cute::size<2>(global_a) / BLAS::batches_per_block;
-    if (blockIdx.x >= total_blocks) {
-        return;
+        const unsigned total_blocks = cute::size<2>(global_a) / BLAS::batches_per_block;
+        if (blockIdx.x >= total_blocks) {
+            return;
+        }
+
+        // get_batch() takes the tile index (in units of BLAS::batches_per_block instances),
+        // so each block passes blockIdx.x, not blockIdx.x * BLAS::batches_per_block.
+        auto batch_a = cublasdx::get_batch(global_a, BLAS::get_layout_gmem_a(), blockIdx.x);
+        auto batch_b = cublasdx::get_batch(global_b, BLAS::get_layout_gmem_b(), blockIdx.x);
+
+        auto [smem_tensor_a, smem_tensor_b] =
+            cublasdx::shared_memory::slice<T, T>(smem,
+                                                 alignment::a, BLAS::get_layout_smem_a(),
+                                                 alignment::b, BLAS::get_layout_smem_b());
+
+        cublasdx::copy<BLAS, alignment::a>(batch_a, smem_tensor_a);
+        cublasdx::copy<BLAS, alignment::b>(batch_b, smem_tensor_b);
+        cublasdx::copy_wait();
+
+        // Solve A^H * X = B by passing the conjugate-transpose view of A.
+        BLAS{}.execute(cublasdx::conj_transpose_view(smem_tensor_a), smem_tensor_b);
+        __syncthreads();
+
+        cublasdx::copy<BLAS, alignment::b>(smem_tensor_b, batch_b);
     }
-
-    const unsigned first_batch = blockIdx.x * BLAS::batches_per_block;
-    auto batch_a = cublasdx::get_batch(global_a, BLAS::get_layout_gmem_a(), first_batch);
-    auto batch_b = cublasdx::get_batch(global_b, BLAS::get_layout_gmem_b(), first_batch);
-
-    auto [smem_tensor_a, smem_tensor_b] =
-        cublasdx::shared_memory::slice<T, T>(smem,
-                                             alignment::a, BLAS::get_layout_smem_a(),
-                                             alignment::b, BLAS::get_layout_smem_b());
-
-    cublasdx::copy<BLAS, alignment::a>(batch_a, smem_tensor_a);
-    cublasdx::copy<BLAS, alignment::b>(batch_b, smem_tensor_b);
-    cublasdx::copy_wait();
-
-    // Solve A^H * X = B by passing the conjugate-transpose view of A.
-    BLAS{}.execute(cublasdx::conj_transpose_view(smem_tensor_a), smem_tensor_b);
-    __syncthreads();
-
-    cublasdx::copy<BLAS, alignment::b>(smem_tensor_b, batch_b);
 }
 
 // -------------------------------------------------------------------------
@@ -172,8 +174,7 @@ int trsm_conj_transpose() {
             .get();
 
     auto kernel = trsm_conj_transpose_kernel<BLAS, global_tensor_a_t, global_tensor_b_t>;
-    CUDA_CHECK_AND_EXIT(
-        cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_bytes));
+    CUDA_CHECK_AND_EXIT(example::set_max_dynamic_shared_memory_size(kernel, smem_bytes));
 
     const unsigned num_blocks = padded_batches / BPB;
 

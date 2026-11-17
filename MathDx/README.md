@@ -28,7 +28,7 @@ This folder includes examples for libmathdx as well as all libraries in the [Mat
 #### Examples
 
 | Group               | Subgroup       | Example                           | Description                                                                                                           |
-| ------------------- | -------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+|---------------------|----------------|-----------------------------------|-----------------------------------------------------------------------------------------------------------------------|
 | Introduction        | GEMM           | 01_introduction_example           | Walks through descriptor creation and the shared-memory and register-result GEMM APIs.                                |
 |                     | Pipeline       | 01_introduction_pipeline          | Introduces the host pipeline object, device handle, tile pipeline, and epilogue flow.                                 |
 | Simple GEMM         | Basic          | 02_simple_gemm_fp32               | Performs a checked fp32 GEMM and is the smallest general-purpose starting point.                                      |
@@ -63,6 +63,7 @@ This folder includes examples for libmathdx as well as all libraries in the [Mat
 | Emulation           | Ozaki          | 16_dgemm_emulation                | Emulates double-precision GEMM using lower-precision GEMM operations. Requires CUDA Toolkit 13.1 or newer.            |
 |                     | Pipeline       | 20_dgemm_emulation_pipeline       | Runs pipelined double-precision emulation controlled by required mantissa bits. Requires CUDA Toolkit 13.1 or newer.  |
 |                     | Pipeline       | 21_sgemm_emulation_pipeline       | Runs pipelined single-precision emulation using the same mantissa-bit mechanism. Requires CUDA Toolkit 13.1 or newer. |
+| Cluster             | Persistent     | 22_persistent_cluster_gemm        | Runs a persistent GEMM kernel launched with thread block clusters (BlocksPerCluster) and rasterized tile scheduling.  |
 
 
 ## [cuFFTDx](cuFFTDx)
@@ -73,45 +74,51 @@ This folder includes examples for libmathdx as well as all libraries in the [Mat
 #### Examples
 
 
-| Group                    | Subgroup            | Example                        | Description                                                                                            |
-| ------------------------ | ------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------ |
-| Introduction Examples    |                     | introduction_example           | cuFFTDx API introduction                                                                               |
-| Simple FFT Examples      | Thread FFT Examples | simple_fft_thread              | Complex-to-complex thread FFT                                                                          |
-|                          |                     | simple_fft_thread_fp16         | Complex-to-complex thread FFT half-precision                                                           |
-|                          | Block FFT Examples  | simple_fft_block               | Complex-to-complex block FFT                                                                           |
-|                          |                     | simple_fft_block_shared        | Complex-to-complex block FFT shared-memory API                                                         |
-|                          |                     | simple_fft_block_std_complex   | Complex-to-complex block FFT with `cuda::std::complex` as data type                                    |
-|                          |                     | simple_fft_block_half2         | Complex-to-complex block FFT with `__half2` as data type                                               |
-|                          |                     | simple_fft_block_fp16          | Complex-to-complex block FFT half-precision                                                            |
-|                          |                     | simple_fft_block_c2r           | Complex-to-real block FFT                                                                              |
-|                          |                     | simple_fft_block_r2c           | Real-to-complex block FFT                                                                              |
-|                          |                     | simple_fft_block_c2r_fp16      | Complex-to-real block FFT half-precision                                                               |
-|                          |                     | simple_fft_block_r2c_fp16      | Real-to-complex block FFT half-precision                                                               |
-|                          |                     | simple_fft_block_cub_io        | Complex-to-complex block FFT with `CUB` used for loading/storing data                                  |
-|                          |                     | simple_fft_block_block_dim     | Complex-to-complex block FFT with custom `BlockDim` operator                                           |
-| FFT Performance          |                     | block_fft_performance          | Benchmark for C2C block FFT                                                                            |
-|                          |                     | block_fft_performance_many     | Benchmark for C2C/R2C/C2R block FFT                                                                    |
-| NVRTC Examples           |                     | nvrtc_fft_thread               | Complex-to-complex thread FFT                                                                          |
-|                          |                     | nvrtc_fft_block                | Complex-to-complex block FFT                                                                           |
-|                          |                     | nvrtc_query_database_fft_block | Complex-to-complex block FFT using database queries to get required traits at runtime                  |
-| 2D/3D FFT Examples       |                     | fft_2d                         | Example showing how to perform 2D FP32 C2C FFT with cuFFTDx                                            |
-|                          |                     | fft_2d_single_kernel           | 2D FP32 FFT in a single kernel using Cooperative Groups kernel launch                                  |
-|                          |                     | fft_2d_single_kernel_block_dim | 2D FP32 FFT in a single kernel using Cooperative Groups kernel launch with non square block dimensions |
-|                          |                     | fft_2d_r2c_c2r                 | Example showing how to perform 2D FP32 R2C/C2R convolution with cuFFTDx                                |
-|                          |                     | fft_3d                         | Example showing how to perform 3D FP32 C2C FFT with cuFFTDx                                            |
-|                          |                     | fft_3d_box_single_block        | Small 3D FP32 FFT that fits into a single block, each dimension is different                           |
-|                          |                     | fft_3d_cube_single_block       | Small 3D (equal dimensions) FP32 FFT that fits into a single block                                     |
-| Convolution Examples     |                     | convolution                    | Simplified FFT convolution                                                                             |
-|                          |                     | convolution_padded             | R2C-C2R FFT convolution with optimization and zero padding                                             |
-|                          |                     | convolution_r2c_c2r            | Simplified R2C-C2R FFT convolution                                                                     |
-|                          |                     | convolution_performance        | Benchmark for FFT convolution using cuFFTDx and cuFFT                                                  |
-| 3D Convolution Examples  |                     | convolution_3d                 | cuFFTDx fused 3D convolution with preprocessing, filtering and postprocessing                          |
-|                          |                     | convolution_3d_c2r             | cuFFTDx fused 3D C2R/R2C FFT convolution                                                               |
-|                          |                     | convolution_3d_r2c             | cuFFTDx fused 3D R2C/C2R FFT convolution                                                               |
-|                          |                     | convolution_3d_padded          | cuFFTDx fused 3D FFT convolution using zero padding                                                    |
-|                          |                     | convolution_3d_padded_r2c      | cuFFTDx fused 3D R2C/C2R FFT convolution with zero padding                                             |
-| Mixed Precision Examples |                     | mixed_precision_fft_1d         | Example showing how to use separate storage and compute precisions                                     |
-|                          |                     | mixed_precision_fft_2d         | Mixed precision 2D FFT with benchmarking and accuracy comparison                                       |
+| Group                    | Subgroup            | Example                                   | Description                                                                                            |
+| ------------------------ | ------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Introduction Examples    |                     | introduction_example                      | cuFFTDx API introduction                                                                               |
+| Simple FFT Examples      | Thread FFT Examples | simple_fft_thread                         | Complex-to-complex thread FFT                                                                          |
+|                          |                     | simple_fft_thread_fp16                    | Complex-to-complex thread FFT half-precision                                                           |
+|                          | Block FFT Examples  | simple_fft_block                          | Complex-to-complex block FFT                                                                           |
+|                          |                     | simple_fft_block_shared                   | Complex-to-complex block FFT shared-memory API                                                         |
+|                          |                     | simple_fft_block_std_complex              | Complex-to-complex block FFT with `cuda::std::complex` as data type                                    |
+|                          |                     | simple_fft_block_half2                    | Complex-to-complex block FFT with `__half2` as data type                                               |
+|                          |                     | simple_fft_block_fp16                     | Complex-to-complex block FFT half-precision                                                            |
+|                          |                     | simple_fft_block_c2r                      | Complex-to-real block FFT                                                                              |
+|                          |                     | simple_fft_block_r2c                      | Real-to-complex block FFT                                                                              |
+|                          |                     | simple_fft_block_c2r_fp16                 | Complex-to-real block FFT half-precision                                                               |
+|                          |                     | simple_fft_block_r2c_fp16                 | Real-to-complex block FFT half-precision                                                               |
+|                          |                     | simple_fft_block_cub_io                   | Complex-to-complex block FFT with `CUB` used for loading/storing data                                  |
+|                          |                     | simple_fft_block_block_dim                | Complex-to-complex block FFT with custom `BlockDim` operator                                           |
+|                          |                     | simple_fft_block_tl                       | Complex-to-complex block FFT with `ThreadLinearization` and a 3D block layout                          |
+|                          |                     | simple_fft_block_thread_layout            | Complex-to-complex block FFT register API with a transposed thread layout                              |
+|                          |                     | simple_fft_block_thread_layout_shared     | Complex-to-complex block FFT shared-memory API with a transposed thread layout                         |
+| FFT Performance          |                     | block_fft_performance                     | Benchmark for C2C block FFT                                                                            |
+|                          |                     | block_fft_performance_many                | Benchmark for C2C/R2C/C2R block FFT                                                                    |
+| NVRTC Examples           |                     | nvrtc_fft_thread                          | Complex-to-complex thread FFT                                                                          |
+|                          |                     | nvrtc_fft_block                           | Complex-to-complex block FFT                                                                           |
+|                          |                     | nvrtc_query_database_fft_block            | Complex-to-complex block FFT using database queries to get required traits at runtime                  |
+| 2D/3D FFT Examples       |                     | fft_2d                                    | Example showing how to perform 2D FP32 C2C FFT with cuFFTDx                                            |
+|                          |                     | fft_2d_single_kernel                      | 2D FP32 FFT in a single kernel using Cooperative Groups kernel launch                                  |
+|                          |                     | fft_2d_single_kernel_block_dim            | 2D FP32 FFT in a single kernel using Cooperative Groups kernel launch with non square block dimensions |
+|                          |                     | fft_2d_r2c_c2r                            | Example showing how to perform 2D FP32 R2C/C2R convolution with cuFFTDx                                |
+|                          |                     | fft_3d                                    | Example showing how to perform 3D FP32 C2C FFT with cuFFTDx                                            |
+|                          |                     | fft_3d_box_single_block                   | Small 3D FP32 FFT that fits into a single block, each dimension is different                           |
+|                          |                     | fft_3d_cube_single_block                  | Small 3D (equal dimensions) FP32 FFT that fits into a single block                                     |
+|                          |                     | fft_2d_thread_layout_optimization         | 2D FFT using the transposed thread layout for coalesced strided global-memory I/O                      |
+|                          |                     | fft_3d_thread_layout_optimization         | 3D FFT using the transposed thread layout for coalesced strided global-memory I/O                      |
+| Convolution Examples     |                     | convolution                               | Simplified FFT convolution                                                                             |
+|                          |                     | convolution_padded                        | R2C-C2R FFT convolution with optimization and zero padding                                             |
+|                          |                     | convolution_r2c_c2r                       | Simplified R2C-C2R FFT convolution                                                                     |
+|                          |                     | convolution_performance                   | Benchmark for FFT convolution using cuFFTDx and cuFFT                                                  |
+| 3D Convolution Examples  |                     | convolution_3d                            | cuFFTDx fused 3D convolution with preprocessing, filtering and postprocessing                          |
+|                          |                     | convolution_3d_c2r                        | cuFFTDx fused 3D C2R/R2C FFT convolution                                                               |
+|                          |                     | convolution_3d_r2c                        | cuFFTDx fused 3D R2C/C2R FFT convolution                                                               |
+|                          |                     | convolution_3d_padded                     | cuFFTDx fused 3D FFT convolution using zero padding                                                    |
+|                          |                     | convolution_3d_padded_r2c                 | cuFFTDx fused 3D R2C/C2R FFT convolution with zero padding                                             |
+|                          |                     | convolution_3d_thread_layout_optimization | cuFFTDx fused 3D FFT convolution using the transposed thread layout                                    |
+| Mixed Precision Examples |                     | mixed_precision_fft_1d                    | Example showing how to use separate storage and compute precisions                                     |
+|                          |                     | mixed_precision_fft_2d                    | Mixed precision 2D FFT with benchmarking and accuracy comparison                                       |
 
 
 ## [cuSolverDx](cuSolverDx)
@@ -121,50 +128,50 @@ This folder includes examples for libmathdx as well as all libraries in the [Mat
 
 #### Examples
 
-| Group                         | Example                           | Description                                                                                                          |
-| ----------------------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| Introduction Examples         | posv_batched_block                | Introduction example with Cholesky factorization and solve (block execution)                                         |
-| Linear Solve Examples         | potrf_batched_thread              | Cholesky factorization (thread execution)                                                                            |
-|                               | posv_batched_thread               | Cholesky factorization and solve (thread execution)                                                                  |
-|                               | potrf_block                       | Cholesky factorization (block execution)                                                                             |
-|                               | potrf_runtime_ld_block            | Cholesky factorization with runtime leading dimensions (block execution)                                             |
-|                               | potrf_batched_cluster             | Batched Cholesky factorization with experimental cluster execution, Hopper+ (cluster execution)                      |
-|                               | getrf_wo_pivot_block              | LU factorization without pivoting (block execution)                                                                  |
-|                               | getrf_partial_pivot_block         | LU factorization with partial pivoting (block execution)                                                             |
-|                               | gesv_batched_wo_pivot_thread      | Solves batched linear systems without pivoting (thread execution)                                                    |
-|                               | gesv_batched_wo_pivot_block       | Solves batched linear systems without pivoting (block execution)                                                     |
-|                               | gesv_batched_partial_pivot_thread | Solves batched linear systems with partial pivoting (thread execution)                                               |
-|                               | gesv_batched_partial_pivot_block  | Solves batched linear systems with partial pivoting (block execution)                                                |
-|                               | gtsv_batched_wo_pivot_thread      | Solves batched tridiagonal linear systems without pivoting (thread execution)                                        |
-|                               | gtsv_batched_wo_pivot_block       | Solves batched tridiagonal linear systems without pivoting (block execution)                                         |
-| Least Squares Examples        | gels_batched_thread               | Solves batched least squares problems (thread execution)                                                             |
-|                               | gels_batched_block                | Solves batched least squares problems (block execution)                                                              |
-| Orthogonal Factors Examples   | geqrf_batched_thread              | QR factorization for batched matrices (thread execution)                                                             |
-|                               | geqrf_batched_block               | QR factorization for batched matrices (block execution)                                                              |
-|                               | unmqr_batched_thread              | Multiplies matrix by Q from QR factorization (thread execution)                                                      |
-|                               | unmqr_batched_block               | Multiplies matrix by Q from QR factorization (block execution)                                                       |
-|                               | ungqr_batched_thread              | Generates orthogonal matrix Q from QR factorization (thread execution)                                               |
-|                               | ungqr_batched_block               | Generates orthogonal matrix Q from QR factorization (block execution)                                                |
-| Symmetric Eigenvalue Examples | heev_batched_thread               | Eigenvalues and eigenvectors of batched Hermitian matrices (thread execution)                                        |
-|                               | heev_batched_block                | Eigenvalues and eigenvectors of batched Hermitian matrices (block execution)                                         |
-|                               | htev_batched_thread               | Eigenvalues and eigenvectors of batched Hermitian tridiagonal matrices (thread execution)                            |
-|                               | htev_batched_block                | Eigenvalues and eigenvectors of batched Hermitian tridiagonal matrices (block execution)                             |
-|                               | hegst_batched_thread              | Reduces batched Hermitian-definite generalized eigenproblem to standard form (thread execution)                      |
-|                               | hegst_batched_block               | Reduces batched Hermitian-definite generalized eigenproblem to standard form (block execution)                       |
-|                               | hegv_batched_block                | Eigenvalues and eigenvectors of batched Hermitian-definite generalized eigenproblems (block execution)               |
-| SVD Examples                  | gesvd_batched_thread              | Singular value decomposition for batched general matrices (thread execution)                                         |
-|                               | gesvd_batched_block               | Singular value decomposition for batched general matrices (block execution)                                          |
-|                               | bdsvd_batched_thread              | Singular value decomposition for batched bidiagonal matrices (thread execution)                                      |
-|                               | bdsvd_batched_block               | Singular value decomposition for batched bidiagonal matrices (block execution)                                       |
-| BLAS Examples                 | trsm_batched_block                | Batched triangular solve with multiple right-hand sides (block execution)                                            |
-|                               | trsm_batched_thread               | Batched triangular solve with multiple right-hand sides (thread execution)                                           |
-|                               | trsm_batched_thread_advanced      | Batched triangular solve with advanced options (thread execution)                                                    |
-| NVRTC Examples                | nvrtc_potrs                       | cuSolverDx with NVRTC runtime compilation and nvJitLink runtime linking                                              |
-| Performance Examples          | geqrf_batched_performance         | Performance analysis of batched QR factorization                                                                     |
-| Advanced Examples             | blocked_potrf                     | Cholesky factorization using blocked left-looking algorithm for large matrices (requires cuBLASDx)                   |
-|                               | cga_blocked_potrf_right_looking   | Blocked right-looking Cholesky with thread block clusters and distributed shared memory, Hopper+ (requires cuBLASDx) |
-|                               | cga_tsqrhr                        | Batched tall-skinny QR with Householder reconstruction using thread block clusters, Hopper+ (requires cuBLASDx)      |
-|                               | reg_least_squares                 | Regularized least squares solver (requires cuBLASDx)                                                                 |
+| Group                         | Example                                | Description                                                                                                                 |
+| ----------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Introduction Examples         | posv_batched_block                     | Introduction example with Cholesky factorization and solve (block execution)                                                |
+| Linear Solve Examples         | potrf_batched_thread                   | Cholesky factorization (thread execution)                                                                                   |
+|                               | posv_batched_thread                    | Cholesky factorization and solve (thread execution)                                                                         |
+|                               | potrf_block                            | Cholesky factorization (block execution)                                                                                    |
+|                               | potrf_runtime_ld_block                 | Cholesky factorization with runtime leading dimensions (block execution)                                                    |
+|                               | potrf_batched_cluster                  | Batched Cholesky factorization with experimental cluster execution, Hopper+ (cluster execution)                             |
+|                               | getrf_wo_pivot_block                   | LU factorization without pivoting (block execution)                                                                         |
+|                               | getrf_partial_pivot_block              | LU factorization with partial pivoting (block execution)                                                                    |
+|                               | gesv_batched_wo_pivot_thread           | Solves batched linear systems without pivoting (thread execution)                                                           |
+|                               | gesv_batched_wo_pivot_block            | Solves batched linear systems without pivoting (block execution)                                                            |
+|                               | gesv_batched_partial_pivot_thread      | Solves batched linear systems with partial pivoting (thread execution)                                                      |
+|                               | gesv_batched_partial_pivot_block       | Solves batched linear systems with partial pivoting (block execution)                                                       |
+|                               | gtsv_batched_wo_pivot_thread           | Solves batched tridiagonal linear systems without pivoting (thread execution)                                               |
+|                               | gtsv_batched_wo_pivot_block            | Solves batched tridiagonal linear systems without pivoting (block execution)                                                |
+| Least Squares Examples        | gels_batched_thread                    | Solves batched least squares problems (thread execution)                                                                    |
+|                               | gels_batched_block                     | Solves batched least squares problems (block execution)                                                                     |
+| Orthogonal Factors Examples   | geqrf_batched_thread                   | QR factorization for batched matrices (thread execution)                                                                    |
+|                               | geqrf_batched_block                    | QR factorization for batched matrices (block execution)                                                                     |
+|                               | geqrf_batched_cluster                  | Experimental cluster tall-skinny QR / TSQRHR, Hopper+ (requires cuBLASDx)                                                   |
+|                               | unmqr_batched_thread                   | Multiplies matrix by Q from QR factorization (thread execution)                                                             |
+|                               | unmqr_batched_block                    | Multiplies matrix by Q from QR factorization (block execution)                                                              |
+|                               | ungqr_batched_thread                   | Generates orthogonal matrix Q from QR factorization (thread execution)                                                      |
+|                               | ungqr_batched_block                    | Generates orthogonal matrix Q from QR factorization (block execution)                                                       |
+| Symmetric Eigenvalue Examples | heev_batched_thread                    | Eigenvalues and eigenvectors of batched Hermitian matrices (thread execution)                                               |
+|                               | heev_batched_block                     | Eigenvalues and eigenvectors of batched Hermitian matrices (block execution)                                                |
+|                               | htev_batched_thread                    | Eigenvalues and eigenvectors of batched Hermitian tridiagonal matrices (thread execution)                                   |
+|                               | htev_batched_block                     | Eigenvalues and eigenvectors of batched Hermitian tridiagonal matrices (block execution)                                    |
+|                               | hegst_batched_thread                   | Reduces batched Hermitian-definite generalized eigenproblem to standard form (thread execution)                             |
+|                               | hegst_batched_block                    | Reduces batched Hermitian-definite generalized eigenproblem to standard form (block execution)                              |
+|                               | hegv_batched_block                     | Eigenvalues and eigenvectors of batched Hermitian-definite generalized eigenproblems (block execution)                      |
+| SVD Examples                  | gesvd_batched_thread                   | Singular value decomposition for batched general matrices (thread execution)                                                |
+|                               | gesvd_batched_block                    | Singular value decomposition for batched general matrices (block execution)                                                 |
+|                               | bdsvd_batched_thread                   | Singular value decomposition for batched bidiagonal matrices (thread execution)                                             |
+|                               | bdsvd_batched_block                    | Singular value decomposition for batched bidiagonal matrices (block execution)                                              |
+| BLAS Examples                 | trsm_batched_block                     | Batched triangular solve with multiple right-hand sides (block execution)                                                   |
+|                               | trsm_batched_thread                    | Batched triangular solve with multiple right-hand sides (thread execution)                                                  |
+|                               | trsm_batched_thread_advanced           | Batched triangular solve with advanced options (thread execution)                                                           |
+| NVRTC Examples                | nvrtc_potrs                            | cuSolverDx with NVRTC runtime compilation and nvJitLink runtime linking                                                     |
+| Performance Examples          | geqrf_batched_performance              | Performance analysis of batched QR factorization                                                                            |
+| Advanced Examples             | blocked_potrf                          | Cholesky factorization using blocked left-looking algorithm for large matrices (requires cuBLASDx)                          |
+|                               | cga_hybrid_blocked_potrf_right_looking | Hybrid right-looking blocked Cholesky with thread block clusters (DSMEM panel + GMEM trailing), Hopper+ (requires cuBLASDx) |
+|                               | reg_least_squares                      | Regularized least squares solver (requires cuBLASDx)                                                                        |
 
 
 ## [cuRANDDx](cuRANDDx)

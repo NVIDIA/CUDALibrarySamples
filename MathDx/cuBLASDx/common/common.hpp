@@ -18,6 +18,7 @@
 #ifndef CUBLASDX_EXAMPLE_COMMON_HPP_
 #define CUBLASDX_EXAMPLE_COMMON_HPP_
 
+#include <cstddef>
 #include <type_traits>
 #include <vector>
 #include <sstream>
@@ -29,6 +30,12 @@
 #include <cuda_runtime_api.h>
 #include <cufft.h>
 #include <cublas_v2.h>
+
+#if defined(CUDART_VERSION) && CUDART_VERSION >= 13040
+#    define IS_OVERSIZED_SMEM_AVAILABLE 1
+#else
+#    define IS_OVERSIZED_SMEM_AVAILABLE 0
+#endif
 
 #if !defined(CUBLASDX_EXAMPLE_NVRTC) && !defined(CUBLASDX_EXAMPLE_NO_THRUST)
 #    include <thrust/transform.h>
@@ -123,6 +130,37 @@ namespace example {
         CUDA_CHECK_AND_EXIT(cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, device));
 
         return static_cast<unsigned>(major) * 100 + static_cast<unsigned>(minor) * 10;
+    }
+
+    // Allows `kernel` to launch with `bytes` of dynamic shared memory. On SM107 a request at or above the
+    // regular per-block limit opts the kernel in to oversized shared memory instead of setting
+    // MaxDynamicSharedMemorySize, which is ignored once a shared memory mode is set and cannot grant oversized
+    // shared memory; such a request is checked against the oversized shared memory limit. Smaller requests keep
+    // the regular MaxDynamicSharedMemorySize path.
+    template<typename Kernel>
+    inline cudaError_t set_max_dynamic_shared_memory_size(Kernel* kernel, std::size_t bytes) {
+#if IS_OVERSIZED_SMEM_AVAILABLE
+        constexpr std::size_t rubin_oversized_bytes_threshold = 227 * 1024;
+        if (get_cuda_device_arch() == 1070 and bytes >= rubin_oversized_bytes_threshold) {
+            cudaError_t status = cudaFuncSetAttribute(
+                kernel, cudaFuncAttributeSharedMemoryMode, cudaSharedMemoryModeAllowOversizedSharedMemory);
+            if (status != cudaSuccess) {
+                return status;
+            }
+            int device = 0;
+            status     = cudaGetDevice(&device);
+            if (status != cudaSuccess) {
+                return status;
+            }
+            int oversized_bytes = 0;
+            status = cudaDeviceGetAttribute(&oversized_bytes, cudaDevAttrOversizedSharedMemoryPerBlock, device);
+            if (status != cudaSuccess) {
+                return status;
+            }
+            return bytes > static_cast<std::size_t>(oversized_bytes) ? cudaErrorInvalidValue : cudaSuccess;
+        }
+#endif
+        return cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, static_cast<int>(bytes));
     }
 
     inline unsigned int get_multiprocessor_count(int const device) {
@@ -463,6 +501,42 @@ namespace example {
         }
     }
 
+    // Evicts L2 before each timed iteration so all kernels start from the same cache
+    // state.
+    class l2_flusher {
+        void*       buffer_ = nullptr;
+        std::size_t bytes_  = 0;
+
+        l2_flusher() {
+            int device = 0;
+            CUDA_CHECK_AND_EXIT(cudaGetDevice(&device));
+            int l2_bytes = 0;
+            CUDA_CHECK_AND_EXIT(cudaDeviceGetAttribute(&l2_bytes, cudaDevAttrL2CacheSize, device));
+            // Twice the L2 capacity is sufficient to evict the timed working set.
+            bytes_ = (l2_bytes > 0) ? (static_cast<std::size_t>(l2_bytes) * 2) : (std::size_t(64) << 20);
+            CUDA_CHECK_AND_EXIT(cudaMalloc(&buffer_, bytes_));
+        }
+
+    public:
+        // The constructor initializes the CUDA runtime before this static finishes construction, so the
+        // static is destroyed before the runtime shuts down and may free its buffer in the destructor.
+        static l2_flusher const& instance() {
+            static l2_flusher const flusher;
+            return flusher;
+        }
+
+        l2_flusher(l2_flusher const&)            = delete;
+        l2_flusher& operator=(l2_flusher const&) = delete;
+
+        ~l2_flusher() {
+            cudaFree(buffer_);
+        }
+
+        void flush(cudaStream_t const stream) const {
+            CUDA_CHECK_AND_EXIT(cudaMemsetAsync(buffer_, 0, bytes_, stream));
+        }
+    };
+
     struct measure {
         struct execution_result {
             float  event_ms = 0.0f;
@@ -473,7 +547,10 @@ namespace example {
             }
         };
 
-        // Returns execution time in ms.
+        // Returns total execution time of `runs` iterations in ms, excluding the
+        // L2 flush that precedes each of them.
+        //
+        // Per-iteration events exclude cache eviction from device time.
         template<typename Kernel>
         static execution_result execution(Kernel&&           kernel,
                                           const unsigned int warm_up_runs,
@@ -484,24 +561,35 @@ namespace example {
             CUDA_CHECK_AND_EXIT(cudaEventCreate(&stopEvent));
             CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
+            auto const& flusher = l2_flusher::instance();
+
+            // Warm up under the same cache regime the measured iterations will see.
             for (unsigned int i = 0; i < warm_up_runs; i++) {
+                flusher.flush(stream);
                 kernel(stream);
             }
 
             CUDA_CHECK_AND_EXIT(cudaGetLastError());
             CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 
-            auto const host_start = std::chrono::steady_clock::now();
-            CUDA_CHECK_AND_EXIT(cudaEventRecord(startEvent, stream));
+            execution_result time;
+            auto const       host_start = std::chrono::steady_clock::now();
             for (unsigned int i = 0; i < runs; i++) {
+                flusher.flush(stream);
+                CUDA_CHECK_AND_EXIT(cudaEventRecord(startEvent, stream));
                 kernel(stream);
+                CUDA_CHECK_AND_EXIT(cudaEventRecord(stopEvent, stream));
+                CUDA_CHECK_AND_EXIT(cudaEventSynchronize(stopEvent));
+
+                float iteration_ms = 0.0f;
+                CUDA_CHECK_AND_EXIT(cudaEventElapsedTime(&iteration_ms, startEvent, stopEvent));
+                time.event_ms += iteration_ms;
             }
-            CUDA_CHECK_AND_EXIT(cudaEventRecord(stopEvent, stream));
             CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
             auto const host_stop = std::chrono::steady_clock::now();
 
-            execution_result time;
-            CUDA_CHECK_AND_EXIT(cudaEventElapsedTime(&time.event_ms, startEvent, stopEvent));
+            // Wall time of the whole loop, so unlike event_ms it does include the
+            // flushes and the per-iteration synchronisation.
             time.host_ms = std::chrono::duration<double, std::milli>(host_stop - host_start).count();
             CUDA_CHECK_AND_EXIT(cudaEventDestroy(startEvent));
             CUDA_CHECK_AND_EXIT(cudaEventDestroy(stopEvent));
@@ -737,6 +825,18 @@ namespace example {
         static constexpr bool sm_103a = true;
 #    else
         static constexpr bool sm_103a = false;
+#    endif
+
+#    if defined(CUBLASDX_EXAMPLE_ENABLE_SM_107)
+        static constexpr bool sm_107 = true;
+#    else
+        static constexpr bool sm_107 = false;
+#    endif
+
+#    if defined(CUBLASDX_EXAMPLE_ENABLE_SM_107a)
+        static constexpr bool sm_107a = true;
+#    else
+        static constexpr bool sm_107a = false;
 #    endif
 
 #    if defined(CUBLASDX_EXAMPLE_ENABLE_SM_110) 

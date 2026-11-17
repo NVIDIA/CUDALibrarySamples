@@ -75,7 +75,7 @@ int single_gemm_performance() {
 
     bool         verbose = true;
     cudaStream_t stream;
-    CUDA_CHECK_AND_EXIT(cudaStreamCreate(&stream))
+    CUDA_CHECK_AND_EXIT(cudaStreamCreate(&stream));
     int status =
         benchmark_mixed_precision_gemm<GEMM, input_type_a, input_type_b, input_type_c, Arch, BlockSize, UseSuggestedLD>(
             stream, verbose);

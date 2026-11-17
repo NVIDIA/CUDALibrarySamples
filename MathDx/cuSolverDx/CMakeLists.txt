@@ -17,7 +17,7 @@
 cmake_minimum_required(VERSION 3.18...4.0)
 
 # cuSOLVERDx examples project
-project(cusolverdx_examples VERSION 0.5.0 LANGUAGES CXX CUDA)
+project(cusolverdx_examples VERSION 0.6.0 LANGUAGES CXX CUDA)
 
 # PROJECT_IS_TOP_LEVEL is available since 3.21
 if(CMAKE_VERSION VERSION_LESS 3.21)
@@ -188,7 +188,7 @@ if(PROJECT_IS_TOP_LEVEL)
             "${PROJECT_SOURCE_DIR}/../.." # example/cusolverdx
             "${INSTALLED_MATHDX_DIRECTORIES}"
     )
-    set(CUSOLVERDX_MIN_VERSION 0.5.0)
+    set(CUSOLVERDX_MIN_VERSION 0.6.0)
     if(cusolverdx_VERSION VERSION_LESS ${CUSOLVERDX_MIN_VERSION})
         message(FATAL_ERROR "cuSOLVERDx version (${cusolverdx_VERSION}) is less than ${CUSOLVERDX_MIN_VERSION}")
     endif()
@@ -257,8 +257,7 @@ endfunction()
 # ##############################################################
 # Common example objects
 # #############################################################
-set(common_example_objects_sources common/error_checking.cpp)
-set_source_files_properties("${common_example_objects_sources}" PROPERTIES LANGUAGE CUDA)
+set(common_example_objects_sources common/error_checking.cu)
 add_library(common_example_objects STATIC "${common_example_objects_sources}")
 target_link_libraries(common_example_objects PRIVATE cusolverdx_compiler_options mathdx::cusolverdx_fatbin)
 target_compile_definitions(common_example_objects PRIVATE CUSOLVERDX_TEST_NO_GTEST)
@@ -273,7 +272,6 @@ set_target_properties(common_example_objects
 function(add_cublasdx_cusolverdx_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
     list(GET EXAMPLE_SOURCES 0 EXAMPLE_MAIN_SOURCE)
     get_filename_component(EXAMPLE_TARGET ${EXAMPLE_MAIN_SOURCE} NAME_WE)
-    set_source_files_properties(${EXAMPLE_SOURCES} PROPERTIES LANGUAGE CUDA)
     add_executable(${EXAMPLE_TARGET} ${EXAMPLE_SOURCES})
     set_target_properties(${EXAMPLE_TARGET}
         PROPERTIES
@@ -319,7 +317,6 @@ endfunction()
 function(add_cusolverdx_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
     list(GET EXAMPLE_SOURCES 0 EXAMPLE_MAIN_SOURCE)
     get_filename_component(EXAMPLE_TARGET ${EXAMPLE_MAIN_SOURCE} NAME_WE)
-    set_source_files_properties(${EXAMPLE_SOURCES} PROPERTIES LANGUAGE CUDA)
     add_executable(${EXAMPLE_TARGET} ${EXAMPLE_SOURCES})
     set_target_properties(${EXAMPLE_TARGET}
         PROPERTIES
@@ -475,11 +472,11 @@ add_cusolverdx_example(cusolverdx_examples "cusolverdx.example.geqrf_batched_per
 
 # Cluster execution examples
 add_cublasdx_cusolverdx_example(cusolverdx_examples "cusolverdx.example.potrf_batched_cluster" 01_Linear_Solve/potrf_batched_cluster.cu)
+add_cublasdx_cusolverdx_example(cusolverdx_examples "cusolverdx.example.geqrf_batched_cluster" 03_Orthogonal_Factors/geqrf_batched_cluster.cu)
 
 # cuBLASDx/cuSolverDx examples
 message(STATUS "cuBLASDx is required, examples requiring cuBLASDx enabled")
 # Example for handling larger matrices directly out of global memory
 add_cublasdx_cusolverdx_example(cusolverdx_examples "cusolverdx.example.blocked_potrf" 10_Advanced/blocked_potrf.cu)
 add_cublasdx_cusolverdx_example(cusolverdx_examples "cusolverdx.example.reg_least_squares" 10_Advanced/reg_least_squares.cu)
-add_cublasdx_cusolverdx_example(cusolverdx_examples "cusolverdx.example.cga_blocked_potrf_right_looking" 10_Advanced/cga_blocked_potrf_right_looking.cu)
-add_cublasdx_cusolverdx_example(cusolverdx_examples "cusolverdx.example.cga_tsqrhr" 10_Advanced/cga_tsqrhr.cu)
+add_cublasdx_cusolverdx_example(cusolverdx_examples "cusolverdx.example.cga_hybrid_blocked_potrf_right_looking" 10_Advanced/cga_hybrid_blocked_potrf_right_looking.cu)

@@ -28,27 +28,28 @@ template<class BLAS, class ValueType = typename example::uniform_value_type_t<BL
 __launch_bounds__(BLAS::max_threads_per_block) //
     __global__                                 //
     void gemm_kernel(const ValueType* a, ValueType* output) {
-    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(BLAS);
-    using value_type = ValueType;
-    extern __shared__ __align__(16) cublasdx::byte smem[];
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM_BLOCK(BLAS) {
+        using value_type = ValueType;
+        extern __shared__ __align__(16) cublasdx::byte smem[];
 
-    auto a_global_tensor   = cublasdx::make_tensor(a, BLAS::get_layout_gmem_a());
-    auto out_global_tensor = cublasdx::make_tensor(output, BLAS::get_layout_gmem_c());
+        auto a_global_tensor   = cublasdx::make_tensor(a, BLAS::get_layout_gmem_a());
+        auto out_global_tensor = cublasdx::make_tensor(output, BLAS::get_layout_gmem_c());
 
-    ValueType* smem_a = reinterpret_cast<ValueType*>(smem);
-    /// A, column major arrangement
-    auto a_shared_tensor = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_a());
-    // Same data, but because arrangement for 2nd argument (B) was set row major it will be read as A^T
-    auto at_shared_tensor = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_b());
+        ValueType* smem_a = reinterpret_cast<ValueType*>(smem);
+        /// A, column major arrangement
+        auto a_shared_tensor = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_a());
+        // Same data, but because arrangement for 2nd argument (B) was set row major it will be read as A^T
+        auto at_shared_tensor = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_b());
 
-    using alignment = cublasdx::alignment_of<BLAS>;
-    cublasdx::copy<BLAS, alignment::a>(a_global_tensor, a_shared_tensor);
-    cublasdx::copy_wait();
+        using alignment = cublasdx::alignment_of<BLAS>;
+        cublasdx::copy<BLAS, alignment::a>(a_global_tensor, a_shared_tensor);
+        cublasdx::copy_wait();
 
-    // C = A * A^T
-    auto accumulator = BLAS().execute(a_shared_tensor, at_shared_tensor);
+        // C = A * A^T
+        auto accumulator = BLAS().execute(a_shared_tensor, at_shared_tensor);
 
-    accumulator.partition_and_store(out_global_tensor);
+        accumulator.partition_and_store(out_global_tensor);
+    }
 }
 
 // This example demonstrates a special case of matrix multiplication where an input matrix is multiplied
@@ -120,8 +121,7 @@ int simple_gemm() {
         cublasdx::make_shared_storage_calculator()
             .add(cublasdx::alignment_of_v_a<BLAS>, sizeof(value_type), BLAS::get_layout_smem_a())
             .get();
-    CUDA_CHECK_AND_EXIT(
-        cudaFuncSetAttribute(gemm_kernel<BLAS>, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_memory_size));
+    CUDA_CHECK_AND_EXIT(example::set_max_dynamic_shared_memory_size(gemm_kernel<BLAS>, shared_memory_size));
 
     // Execute kernel
     gemm_kernel<BLAS><<<1, BLAS::block_dim, shared_memory_size>>>(a_matrix, output);

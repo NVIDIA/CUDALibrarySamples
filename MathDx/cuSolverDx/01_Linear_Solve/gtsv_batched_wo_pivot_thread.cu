@@ -53,7 +53,8 @@ __global__ void kernel(const DataType* dl, const DataType* d, const DataType* du
     auto du_g = du + (m - 1) * batch_idx;
     auto B_g  = B + one_batch_size_b_gmem * batch_idx;
 
-    Solver().execute(dl_g, d_g, du_g, B_g, &info[batch_idx]);
+    constexpr auto ldb = Solver::default_ldb;
+    Solver().execute(dl_g, d_g, du_g, B_g, ldb, &info[batch_idx]);
 }
 
 template<int Arch>
@@ -69,7 +70,7 @@ int gtsv_batched_wo_pivot_thread() {
 
     constexpr auto m            = Solver::m_size;
     constexpr auto k            = Solver::k_size;
-    const auto     ldb          = arrangement_of_v_b<Solver> == col_major ? m : k;
+    const auto     ldb          = Solver::default_ldb;
     const auto     input_size_b = m * k;
 
     const auto batches = 400;

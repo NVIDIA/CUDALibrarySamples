@@ -32,7 +32,7 @@
 // This example demonstrates how to use cuSolverDx API to solve a batched linear tridiagonal systems with multiple right hand side after performing LU
 // factorization without pivoting.  The results are compared with the reference values obtained with cuSparse host API, cuSparse<t>gtsv2StridedBatch().
 
-template<class Solver, unsigned int BatchesPerBlock, typename DataType = typename Solver::a_data_type>
+template<class Solver, unsigned int BatchesPerBlock, unsigned int ldb_smem, typename DataType = typename Solver::a_data_type>
 __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(const DataType* dl, const DataType* d, const DataType* du, DataType* B,
         unsigned int ldb_gmem, typename Solver::status_type* info, const unsigned int batches) {
     CUSOLVERDX_SKIP_IF_NOT_APPLICABLE_SM(Solver);
@@ -47,7 +47,6 @@ __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(const Da
     static_assert(m == n, "m and n must be the same");
 
     const auto     one_batch_size_b_gmem = (cusolverdx::arrangement_of_v_b<Solver> == cusolverdx::col_major) ? ldb_gmem * k : n * ldb_gmem;
-    constexpr auto ldb_smem              = Solver::ldb;
     constexpr auto one_batch_size_b_smem = (cusolverdx::arrangement_of_v_b<Solver> == cusolverdx::col_major) ? ldb_smem * k : n * ldb_smem;
 
     extern __shared__ cusolverdx::byte shared_mem[];
@@ -80,7 +79,6 @@ int gtsv_batched_wo_pivot_block() {
     using namespace cusolverdx;
     using Base   = decltype(Size<18, 18, 4>() + Precision<float>() + Type<type::complex>() + Function<gtsv_no_pivot>() +
                           Arrangement<arrangement::col_major, row_major>() + // Arrangement of A is ignored
-                          LeadingDimension<5, 19>() +                        // Leading dimension of A is ignored
                           SM<Arch>() + Block());
     using Solver = decltype(Base() + BatchesPerBlock<Base::suggested_batches_per_block>());
 
@@ -94,7 +92,8 @@ int gtsv_batched_wo_pivot_block() {
 
     constexpr auto m            = Solver::m_size;
     constexpr auto k            = Solver::k_size;
-    const auto     ldb          = arrangement_of_v_b<Solver> == col_major ? m : k;
+    const auto     ldb          = Solver::default_ldb;
+    constexpr auto ldb_smem     = 19;
     const auto     input_size_b = m * k;
 
     const auto batches        = 4;
@@ -155,10 +154,11 @@ int gtsv_batched_wo_pivot_block() {
     CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(d_du, du.data(), sizeof(data_type) * du.size(), cudaMemcpyHostToDevice, stream));
     CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(d_B, B.data(), sizeof(data_type) * B.size(), cudaMemcpyHostToDevice, stream));
 
-    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(kernel<Solver, bpb>, cudaFuncAttributeMaxDynamicSharedMemorySize, Solver::shared_memory_size));
+    const auto smem_size = Solver::get_shared_memory_size(m, ldb_smem); // "A" leading dimension is ignored
+    CUDA_CHECK_AND_EXIT(common::set_max_dynamic_shared_memory_size(kernel<Solver, bpb, ldb_smem>, smem_size));
 
     //Invokes kernel
-    kernel<Solver, bpb><<<padded_batches / bpb, Solver::block_dim, Solver::shared_memory_size, stream>>>(d_dl, d_d, d_du, d_B, ldb, d_info, batches);
+    kernel<Solver, bpb, ldb_smem><<<padded_batches / bpb, Solver::block_dim, smem_size, stream>>>(d_dl, d_d, d_du, d_B, ldb, d_info, batches);
     CUDA_CHECK_AND_EXIT(cudaGetLastError());
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 

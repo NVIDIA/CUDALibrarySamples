@@ -108,9 +108,9 @@ namespace example {
         using complex_type = typename FFT::value_type;
         using scalar_type  = typename complex_type::value_type;
 
-        static inline __device__ unsigned int batch_id(unsigned int local_fft_id) {
-            unsigned int global_fft_id = blockIdx.x * FFT::ffts_per_block + local_fft_id;
-            return global_fft_id;
+        static inline __device__ unsigned int global_batch_id(unsigned int local_batchid) {
+            unsigned int global_batchid = blockIdx.x * FFT::ffts_per_block + local_batchid;
+            return global_batchid;
         }
 
         /////////////////////////////////////////////////////////////////////////////////////////
@@ -118,10 +118,12 @@ namespace example {
         template<dimension_description Dimension, unsigned int SizeX, unsigned int SizeY, unsigned int SizeZ = 1, typename InputOutputType>
         static inline __device__ void load_strided(const InputOutputType* input,
                                                    complex_type*          thread_data,
-                                                   unsigned int           local_fft_id) {
+                                                   unsigned int           local_batchid) {
             using dah_type = detail::data_access_helper<Dimension, SizeX, SizeY, SizeZ>;
 
-            const unsigned int bid = batch_id(local_fft_id);
+            const unsigned int fftid = FFT::working_group::fftid();
+
+            const unsigned int bid = global_batch_id(local_batchid);
             if (bid < dah_type::batches) {
                 // Calculate global offset of FFT batch
                 const unsigned int batch_offset  = dah_type::batch_offset_strided(bid);
@@ -130,9 +132,9 @@ namespace example {
                 const unsigned int ept_stride    = dah_type::element_stride * FFT::stride;
                 // Index of the first element loaded by given thread in a block, elements
                 // processed by this thread are separated by ept_stride distance
-                unsigned int       index         = batch_offset + (threadIdx.x * dah_type::element_stride);
+                unsigned int       index         = batch_offset + (fftid * dah_type::element_stride);
                 for (unsigned int i = 0; i < FFT::elements_per_thread; i++) {
-                    if ((i * FFT::stride + threadIdx.x) < cufftdx::size_of<FFT>::value) {
+                    if ((i * FFT::stride + fftid) < cufftdx::size_of<FFT>::value) {
                         thread_data[i] = convert<complex_type>(input[index]);
                     }
                     index += ept_stride;
@@ -143,10 +145,12 @@ namespace example {
         template<dimension_description Dimension, unsigned int SizeX, unsigned int SizeY, unsigned int SizeZ = 1, typename InputOutputType>
         static inline __device__ void store_strided(const complex_type* thread_data,
                                                     InputOutputType*    output,
-                                                    unsigned int        local_fft_id) {
+                                                    unsigned int        local_batchid) {
             using dah_type = detail::data_access_helper<Dimension, SizeX, SizeY, SizeZ>;
 
-            const unsigned int bid = batch_id(local_fft_id);
+            const unsigned int fftid = FFT::working_group::fftid();
+
+            const unsigned int bid = global_batch_id(local_batchid);
             if (bid < dah_type::batches) {
                 // Calculate global offset of FFT batch
                 const unsigned int batch_offset  = dah_type::batch_offset_strided(bid);
@@ -155,9 +159,9 @@ namespace example {
                 const unsigned int ept_stride    = dah_type::element_stride * FFT::stride;
                 // Index of the first element loaded by given thread in a block, elements
                 // processed by this thread are separated by ept_stride distance
-                unsigned int       index         = batch_offset + (threadIdx.x * dah_type::element_stride);
+                unsigned int       index         = batch_offset + (fftid * dah_type::element_stride);
                 for (unsigned int i = 0; i < FFT::elements_per_thread; i++) {
-                    if ((i * FFT::stride + threadIdx.x) < cufftdx::size_of<FFT>::value) {
+                    if ((i * FFT::stride + fftid) < cufftdx::size_of<FFT>::value) {
                         output[index] = convert<InputOutputType>(thread_data[i]);
                     }
                     index += ept_stride;
@@ -171,15 +175,19 @@ namespace example {
         static inline __device__ void load_strided(const InputOutputType* input,
                                                    complex_type*          thread_data,
                                                    InputOutputType*       shared_memory,
-                                                   unsigned int           local_fft_id) {
+                                                   unsigned int           local_batchid) {
             using dah_type = detail::data_access_helper<Dimension, SizeX, SizeY, SizeZ>;
 
-            const unsigned int tid          = threadIdx.x + blockDim.x * threadIdx.y;
-            const unsigned int tidx         = tid / blockDim.y;
-            const unsigned int tidy         = tid % blockDim.y;
-            unsigned int       smem_index   = tidx + tidy * blockDim.x;
+            const unsigned int bpb     = FFT::working_group::implicit_bpb();
+            const unsigned int batchid = FFT::working_group::batchid();
+            const unsigned int fftid   = FFT::working_group::fftid();
 
-            const unsigned int bid          = batch_id(tidy);
+            const unsigned int tid          = fftid + FFT::stride * batchid;
+            const unsigned int tidy         = tid % bpb;
+            const unsigned int tidx         = tid / bpb;
+            unsigned int       smem_index   = tidx + tidy * FFT::stride;
+
+            const unsigned int bid          = global_batch_id(tidy);
             if (bid < dah_type::batches) {
                 // Calculate global offset of FFT batch
                 const unsigned int batch_offset = dah_type::batch_offset_strided(bid);
@@ -193,16 +201,16 @@ namespace example {
                     if ((i * FFT::stride + tidx) < cufftdx::size_of<FFT>::value) {
                         shared_memory[smem_index] = input[index];
                         index += ept_stride;
-                        smem_index += (blockDim.x * blockDim.y);
+                        smem_index += (FFT::stride * bpb);
                     }
                 }
             }
             __syncthreads();
-            smem_index = threadIdx.x + threadIdx.y * blockDim.x;
+            smem_index = fftid + batchid * FFT::stride;
             for (unsigned int i = 0; i < FFT::elements_per_thread; i++) {
-                if ((i * FFT::stride + threadIdx.x) < cufftdx::size_of<FFT>::value) {
+                if ((i * FFT::stride + fftid) < cufftdx::size_of<FFT>::value) {
                     thread_data[i] = convert<complex_type>(shared_memory[smem_index]);
-                    smem_index += (blockDim.x * blockDim.y);
+                    smem_index += (FFT::stride * bpb);
                 }
             }
         }
@@ -211,23 +219,28 @@ namespace example {
         static inline __device__ void store_strided(const complex_type* thread_data,
                                                     InputOutputType*    shared_memory,
                                                     InputOutputType*    output,
-                                                    unsigned int        local_fft_id) {
+                                                    unsigned int        local_batchid) {
             __syncthreads();
-            unsigned int smem_index = threadIdx.x + threadIdx.y * blockDim.x;
+
+            const unsigned int bpb     = FFT::working_group::implicit_bpb();
+            const unsigned int batchid = FFT::working_group::batchid();
+            const unsigned int fftid   = FFT::working_group::fftid();
+
+            unsigned int smem_index = fftid + batchid * FFT::stride;
             for (unsigned int i = 0; i < FFT::elements_per_thread; i++) {
-                if ((i * FFT::stride + threadIdx.x) < cufftdx::size_of<FFT>::value) {
+                if ((i * FFT::stride + fftid) < cufftdx::size_of<FFT>::value) {
                     shared_memory[smem_index] = convert<InputOutputType>(thread_data[i]);
-                    smem_index += (blockDim.x * blockDim.y);
+                    smem_index += (FFT::stride * bpb);
                 }
             }
             __syncthreads();
             using dah_type = detail::data_access_helper<Dimension, SizeX, SizeY, SizeZ>;
-            const unsigned int tid          = threadIdx.x + blockDim.x * threadIdx.y;
-            const unsigned int tidx         = tid / blockDim.y;
-            const unsigned int tidy         = tid % blockDim.y;
-            smem_index                      = tidx + tidy * blockDim.x;
+            const unsigned int tid          = fftid + FFT::stride * batchid;
+            const unsigned int tidx         = tid / bpb;
+            const unsigned int tidy         = tid % bpb;
+            smem_index                      = tidx + tidy * FFT::stride;
 
-            const unsigned int bid          = batch_id(tidy);
+            const unsigned int bid          = global_batch_id(tidy);
             if (bid < dah_type::batches) {
                 // Calculate global offset of FFT batch
                 const unsigned int batch_offset = dah_type::batch_offset_strided(bid);
@@ -241,7 +254,7 @@ namespace example {
                     if ((i * FFT::stride + tidx) < cufftdx::size_of<FFT>::value) {
                         output[index] = shared_memory[smem_index];
                         index += ept_stride;
-                        smem_index += (blockDim.x * blockDim.y);
+                        smem_index += (FFT::stride * bpb);
                     }
                 }
             }

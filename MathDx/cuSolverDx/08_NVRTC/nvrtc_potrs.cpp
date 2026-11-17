@@ -44,12 +44,12 @@ using namespace cusolverdx;
 
 using Base =
         decltype(Size<M_SIZE, M_SIZE>() + FillMode<lower>() + Precision<double>() + Type<type::complex>() + Block() +
-                 LeadingDimension<SOLVER_LDA>() + SM<SOLVER_SM>() + BatchesPerBlock<1>());
+                 SM<SOLVER_SM>() + BatchesPerBlock<1>());
 using POTRF = decltype(Base() + Function<potrf>());
 using POTRS = decltype(Base() + Function<potrs>());
 
 __constant__ dim3         solver_block_dim     = POTRF::block_dim;
-__constant__ unsigned int solver_shared_memory_size = POTRS::shared_memory_size;
+__constant__ unsigned int solver_shared_memory_size = POTRS::get_shared_memory_size(SOLVER_LDA, POTRS::m_size);
 
 extern "C" __global__ void potrs_kernel(typename POTRS::a_data_type* A, typename POTRS::a_data_type* B, typename POTRF::status_type* info)
 {
@@ -60,7 +60,7 @@ extern "C" __global__ void potrs_kernel(typename POTRS::a_data_type* A, typename
     using DataType = typename POTRS::a_data_type;
 
     constexpr auto m = POTRS::m_size;
-    constexpr auto lda_smem = POTRF::lda;
+    constexpr auto lda_smem = SOLVER_LDA;
     constexpr auto lda_gmem = m;
     constexpr auto one_batch_size_a_smem = lda_smem * m;
     constexpr auto one_batch_size_a_gmem = lda_gmem * m;
@@ -89,8 +89,8 @@ extern "C" __global__ void potrs_kernel(typename POTRS::a_data_type* A, typename
 
     __syncthreads();
 
-    POTRF().execute(As, info);
-    POTRS().execute(As, Bs);
+    POTRF().execute(As, lda_smem, info);
+    POTRS().execute(As, lda_smem, Bs, m);
     __syncthreads();
 
     // Store from smem to gmem

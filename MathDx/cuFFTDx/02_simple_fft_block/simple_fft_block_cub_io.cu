@@ -38,33 +38,34 @@ int main(int, char**) {
 
 template<class FFT>
 __launch_bounds__(FFT::max_threads_per_block) __global__ void block_fft_kernel(typename FFT::value_type* data) {
-    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM(FFT);
+    CUFFTDX_SKIP_IF_NOT_APPLICABLE_SM_BLOCK(FFT) {
 
-    using complex_type = typename FFT::value_type;
+        using complex_type = typename FFT::value_type;
 
-    // FFT::stride == FFT::block_dim.x in most cases
-    using BlockLoad  = cub::BlockLoad <complex_type, FFT::stride /* BLOCK_DIM_X */, FFT::storage_size, cub::BLOCK_LOAD_STRIPED>;
-    using BlockStore = cub::BlockStore<complex_type, FFT::stride, FFT::storage_size, cub::BLOCK_STORE_STRIPED>;
+        // FFT::stride == FFT::block_dim.x in most cases
+        using BlockLoad  = cub::BlockLoad<complex_type, FFT::stride /* BLOCK_DIM_X */, FFT::storage_size, cub::BLOCK_LOAD_STRIPED>;
+        using BlockStore = cub::BlockStore<complex_type, FFT::stride, FFT::storage_size, cub::BLOCK_STORE_STRIPED>;
 
-    // Local array for thread
-    complex_type thread_data[FFT::storage_size];
+        // Local array for thread
+        complex_type thread_data[FFT::storage_size];
 
-    // ID of FFT in CUDA block, in range [0; FFT::ffts_per_block)
-    const unsigned int local_fft_id = threadIdx.y;
-    // ID of FFT in CUDA grid
-    unsigned int global_fft_id =
-        (FFT::ffts_per_block == 1) ? local_fft_id : ( blockIdx.x * FFT::ffts_per_block + local_fft_id);
+        // ID of FFT in CUDA block, in range [0; FFT::ffts_per_block)
+        const unsigned int batchid = FFT::working_group::batchid();
+        // ID of FFT in CUDA grid
+        unsigned int global_fft_id =
+            (FFT::ffts_per_block == 1) ? batchid : (blockIdx.x * FFT::ffts_per_block + batchid);
 
-    // Load data from global memory to registers
-    auto fft_data = data + (global_fft_id * cufftdx::size_of<FFT>::value);
-    BlockLoad().Load(fft_data, thread_data, cufftdx::size_of<FFT>::value, complex_type { 0.0, 0.0 });
+        // Load data from global memory to registers
+        auto fft_data = data + (global_fft_id * cufftdx::size_of<FFT>::value);
+        BlockLoad().Load(fft_data, thread_data, cufftdx::size_of<FFT>::value, complex_type {0.0, 0.0});
 
-    // Execute FFT
-    extern __shared__ __align__(alignof(float4)) complex_type shared_mem[];
-    FFT().execute(thread_data, shared_mem);
+        // Execute FFT
+        extern __shared__ __align__(alignof(float4)) cufftdx::byte shared_mem[];
+        FFT().execute(thread_data, shared_mem);
 
-    // Save results
-    BlockStore().Store(fft_data, thread_data, cufftdx::size_of<FFT>::value);
+        // Save results
+        BlockStore().Store(fft_data, thread_data, cufftdx::size_of<FFT>::value);
+    }
 }
 
 // In this example a one-dimensional complex-to-complex transform is performed by a CUDA block. CUB

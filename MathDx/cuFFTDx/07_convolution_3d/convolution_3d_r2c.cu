@@ -26,7 +26,7 @@
 #include "../common/common.hpp"
 #include "../common/random.hpp"
 
-#include "io_strided_conv_smem.hpp"
+#include "io_strided_conv.hpp"
 #include "kernels.hpp"
 #include "reference.hpp"
 
@@ -92,14 +92,14 @@ auto cufftdx_3d_convolution_r2c(InputType* input, InputType* output, cudaStream_
     static constexpr unsigned int z_batches = total_complex_elems / z_output_length;
 
     // X is always the convolution dimension
-    using io_x_front = io_strided_conv_smem<dimension::x, true, Batches, FFTX, IFFTX, FFTY, IFFTY, FFTZ, IFFTZ>;
-    using io_x_back  = io_strided_conv_smem<dimension::x, false, Batches, FFTX, IFFTX, FFTY, IFFTY, FFTZ, IFFTZ>;
+    using io_x_front = io_strided_conv<dimension::x, true, Batches, FFTX, IFFTX, FFTY, IFFTY, FFTZ, IFFTZ>;
+    using io_x_back  = io_strided_conv<dimension::x, false, Batches, FFTX, IFFTX, FFTY, IFFTY, FFTZ, IFFTZ>;
 
-    using io_y_front = io_strided_conv_smem<dimension::y, true, Batches, FFTX, IFFTX, FFTY, IFFTY, FFTZ, IFFTZ>;
-    using io_y_back  = io_strided_conv_smem<dimension::y, false, Batches, FFTX, IFFTX, FFTY, IFFTY, FFTZ, IFFTZ>;
+    using io_y_front = io_strided_conv<dimension::y, true, Batches, FFTX, IFFTX, FFTY, IFFTY, FFTZ, IFFTZ>;
+    using io_y_back  = io_strided_conv<dimension::y, false, Batches, FFTX, IFFTX, FFTY, IFFTY, FFTZ, IFFTZ>;
 
-    using io_z_front = io_strided_conv_smem<dimension::z, true, Batches, FFTX, IFFTX, FFTY, IFFTY, FFTZ, IFFTZ>;
-    using io_z_back  = io_strided_conv_smem<dimension::z, false, Batches, FFTX, IFFTX, FFTY, IFFTY, FFTZ, IFFTZ>;
+    using io_z_front = io_strided_conv<dimension::z, true, Batches, FFTX, IFFTX, FFTY, IFFTY, FFTZ, IFFTZ>;
+    using io_z_back  = io_strided_conv<dimension::z, false, Batches, FFTX, IFFTX, FFTY, IFFTY, FFTZ, IFFTZ>;
 
     cudaError_t err;
 

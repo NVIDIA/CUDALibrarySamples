@@ -33,7 +33,7 @@
 constexpr unsigned int subsequences = 65536;
 
 template<class RNG, typename DataType>
-__global__ void generate_kernel(double4*                        d_out,
+__global__ void generate_kernel(double4_32a*                    d_out,
                                 const unsigned long long        seed,
                                 const typename RNG::offset_type offset,
                                 const size_t                    size,
@@ -72,7 +72,7 @@ int philox_thread_api() {
     // Invokes kernel
     const unsigned int block_dim = 256;
     const unsigned int grid_size = (size / 4 + block_dim - 1) / block_dim;
-    generate_kernel<RNG, DataType><<<grid_size, block_dim, 0>>>((double4*)d_out, seed, offset, size, mean, stddev);
+    generate_kernel<RNG, DataType><<<grid_size, block_dim, 0>>>((double4_32a*)d_out, seed, offset, size, mean, stddev);
     CUDA_CHECK_AND_EXIT(cudaPeekAtLastError());
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 

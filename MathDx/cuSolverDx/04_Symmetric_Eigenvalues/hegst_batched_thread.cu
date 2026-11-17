@@ -43,7 +43,7 @@ __global__ void potrf_kernel(DataType* A, typename POTRF::status_type* info, uns
     constexpr auto batch_size = m * m;
 
     auto this_A = A + batch_size * batch_idx;
-    POTRF().execute(this_A, &info[batch_idx]);
+    POTRF().execute(this_A, m, &info[batch_idx]);
 }
 
 template<class HEGST, typename DataType = typename HEGST::a_data_type>
@@ -135,7 +135,7 @@ int run_hegst_case() {
     common::cublas_reference_hegst<eig_type_of_v<HEGST>,
                                    fill_mode_of_v<HEGST>,
                                    arrangement_of_v_a<HEGST>,
-                                   arrangement_of_v_b<HEGST>>(A_input, B, A_reference, m, batches);
+                                   arrangement_of_v_b<HEGST>>(A_input, B, A_reference, m, HEGST::default_lda, HEGST::default_ldb, batches);
 
     double total_relative_error = 0.0;
     const auto dx_active = common::extract_active_triangle<fill_mode_of_v<HEGST>, arrangement_of_v_a<HEGST>>(A, m, batches);

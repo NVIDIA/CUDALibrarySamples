@@ -13,10 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-cmake_minimum_required(VERSION 3.23...4.0)
+cmake_minimum_required(VERSION 3.24...4.0)
 
 # cuRANDDx example project
-project(curanddx_example VERSION 0.2.4 LANGUAGES CXX CUDA)
+project(curanddx_example VERSION 0.2.5 LANGUAGES CXX CUDA)
 
 if(PROJECT_IS_TOP_LEVEL)
     # Creates curanddx_compiler_options INTERFACE target with compiler flags.
@@ -69,9 +69,15 @@ if(PROJECT_IS_TOP_LEVEL)
             $<$<COMPILE_LANGUAGE:CXX>:/W3>
             $<$<COMPILE_LANGUAGE:CXX>:/WX>
             $<$<COMPILE_LANGUAGE:CXX>:/Zc:__cplusplus>
+            $<$<COMPILE_LANGUAGE:CXX>:/Zc:preprocessor>
+            # C5105: Windows SDK headers (e.g., winbase.h) use macros that
+            # expand to 'defined' under the conformant preprocessor.
+            $<$<COMPILE_LANGUAGE:CXX>:/wd5105>
             $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/W3>
             $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/WX>
             $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/Zc:__cplusplus>
+            $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/Zc:preprocessor>
+            $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/wd5105>
         )
     endif()
 
@@ -115,12 +121,12 @@ endif()
 # Tests as standalone project to enable testing release package
 # ******************************************
 if(PROJECT_IS_TOP_LEVEL)
-    find_package(mathdx REQUIRED CONFIG
+    find_package(mathdx REQUIRED COMPONENTS curanddx CONFIG
         PATHS
             "${PROJECT_SOURCE_DIR}/../.." # example/curanddx
             "/opt/nvidia/mathdx/*"
     )
-    set(CURANDDX_MIN_VERSION 0.2.4)
+    set(CURANDDX_MIN_VERSION 0.2.5)
     if(curanddx_VERSION VERSION_LESS ${CURANDDX_MIN_VERSION})
         message(FATAL_ERROR "cuRANDDx version (${curanddx_VERSION}) is less than ${CURANDDX_MIN_VERSION}")
     endif()
@@ -166,7 +172,7 @@ function(add_curanddx_example2_nvpl_rand GROUP_TARGET EXAMPLE_NAME ENABLE_RELAXE
         target_compile_definitions(${EXAMPLE_TARGET} PRIVATE -DCURANDDX_EXAMPLE_NVPL_RAND_AVAILABLE)
     endif()
 
-    add_test(NAME ${EXAMPLE_NAME} COMMAND ${EXAMPLE_TARGET})
+    add_test(NAME ${EXAMPLE_NAME} COMMAND $<PATH:RELATIVE_PATH,$<TARGET_FILE:${EXAMPLE_TARGET}>,${CMAKE_CURRENT_BINARY_DIR}>)
     set_target_properties(${EXAMPLE_TARGET}
         PROPERTIES
         CUDA_ARCHITECTURES "${CURANDDX_CUDA_ARCHITECTURES}"
@@ -203,7 +209,7 @@ function(add_curanddx_example2 GROUP_TARGET EXAMPLE_NAME ENABLE_RELAXED_CONSTEXP
         CUDA::curand
     )
 
-    add_test(NAME ${EXAMPLE_NAME} COMMAND ${EXAMPLE_TARGET})
+    add_test(NAME ${EXAMPLE_NAME} COMMAND $<PATH:RELATIVE_PATH,$<TARGET_FILE:${EXAMPLE_TARGET}>,${CMAKE_CURRENT_BINARY_DIR}>)
     set_target_properties(${EXAMPLE_TARGET}
         PROPERTIES
         CUDA_ARCHITECTURES "${CURANDDX_CUDA_ARCHITECTURES}"
@@ -258,7 +264,7 @@ function(add_curanddx_nvrtc_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
             COMMONDX_INCLUDE_DIR="${curanddx_commondx_INCLUDE_DIR}"
             CURANDDX_INCLUDE_DIRS="${curanddx_INCLUDE_DIRS}"
     )
-    add_test(NAME ${EXAMPLE_NAME} COMMAND ${EXAMPLE_TARGET})
+    add_test(NAME ${EXAMPLE_NAME} COMMAND $<PATH:RELATIVE_PATH,$<TARGET_FILE:${EXAMPLE_TARGET}>,${CMAKE_CURRENT_BINARY_DIR}>)
     set_tests_properties(${EXAMPLE_NAME}
         PROPERTIES
         LABELS "EXAMPLE"

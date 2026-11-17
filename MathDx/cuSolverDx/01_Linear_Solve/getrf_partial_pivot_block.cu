@@ -28,15 +28,14 @@
 // This example demonstrates using cuSolverDx API to perform LU factorization with pivoting on a single-batch, general MxN matrix.
 // The results are compared with the reference values obtained with cuSolver host API.
 
-template<class Solver, typename DataType = typename Solver::a_data_type>
+template<class Solver, unsigned int lda_smem, typename DataType = typename Solver::a_data_type>
 __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(DataType* A, typename Solver::status_type* info, int* d_ipiv) {
     CUSOLVERDX_SKIP_IF_NOT_APPLICABLE_SM(Solver);
 
     constexpr auto m        = Solver::m_size;
     constexpr auto n        = Solver::n_size;
-    constexpr auto lda_smem = Solver::lda;
 
-    constexpr auto lda_gmem              = (cusolverdx::arrangement_of_v_a<Solver> == cusolverdx::col_major) ? m : n;
+    constexpr auto lda_gmem              = Solver::default_lda;
     constexpr auto one_batch_size_a_smem = (cusolverdx::arrangement_of_v_a<Solver> == cusolverdx::col_major) ? lda_smem * n : m * lda_smem;
 
     extern __shared__ __align__(16) cusolverdx::byte shared_mem[];
@@ -48,7 +47,7 @@ __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(DataType
     // Load data from global memory to shared memory
     common::io<Solver>::load_a(A, lda_gmem, As, lda_smem);
 
-    Solver().execute(As, ipivs, info);
+    Solver().execute(As, lda_smem, ipivs, info);
 
     // Store results back to global memory
     common::io<Solver>::store_a(As, lda_smem, A, lda_gmem);
@@ -77,7 +76,8 @@ int getrf_partial_pivot_block() {
     constexpr auto n = Solver::n_size;
 
     constexpr bool is_col_maj = arrangement_of_v_a<Solver> == arrangement::col_major;
-    constexpr auto lda        = is_col_maj ? m : n;
+    constexpr auto lda        = Solver::default_lda;
+    constexpr auto lda_smem   = Solver::default_lda;
     constexpr auto input_size = is_col_maj ? lda * n : m * lda;
 
     cudaStream_t stream = nullptr;
@@ -100,10 +100,11 @@ int getrf_partial_pivot_block() {
 
     CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(d_A, A.data(), sizeof(data_type) * A.size(), cudaMemcpyHostToDevice, stream));
 
-    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(kernel<Solver>, cudaFuncAttributeMaxDynamicSharedMemorySize, Solver::shared_memory_size));
+    const auto smem_size = Solver::get_shared_memory_size(lda_smem);
+    CUDA_CHECK_AND_EXIT(common::set_max_dynamic_shared_memory_size(kernel<Solver, lda_smem>, smem_size));
 
     //Invokes kernel
-    kernel<Solver><<<1, Solver::block_dim, Solver::shared_memory_size, stream>>>(d_A, d_info, d_ipiv);
+    kernel<Solver, lda_smem><<<1, Solver::block_dim, smem_size, stream>>>(d_A, d_info, d_ipiv);
     CUDA_CHECK_AND_EXIT(cudaGetLastError());
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 

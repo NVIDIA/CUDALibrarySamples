@@ -16,7 +16,7 @@
 cmake_minimum_required(VERSION 3.18...4.0)
 
 # cuBLASDx Examples project
-project(cublasdx_examples VERSION 0.7.1 LANGUAGES CXX CUDA)
+project(cublasdx_examples VERSION 0.8.0 LANGUAGES CXX CUDA)
 
 # PROJECT_IS_TOP_LEVEL is available since 3.21
 if(CMAKE_VERSION VERSION_LESS 3.21)
@@ -160,12 +160,12 @@ if(PROJECT_IS_TOP_LEVEL)
 endif()
 
 if(PROJECT_IS_TOP_LEVEL OR CUBLASDX_TEST_PACKAGE)
-    find_package(mathdx REQUIRED CONFIG
+    find_package(mathdx REQUIRED COMPONENTS cublasdx cufftdx CONFIG
         PATHS
             "${PROJECT_SOURCE_DIR}/../.." # example/cublasdx
             "/opt/nvidia/mathdx/*"
     )
-    set(CUBLASDX_MIN_VERSION 0.7.1)
+    set(CUBLASDX_MIN_VERSION 0.8.0)
     if(cublasdx_VERSION VERSION_LESS ${CUBLASDX_MIN_VERSION})
         message(FATAL_ERROR "cuBLASDx version (${cublasdx_VERSION}) is less than ${CUBLASDX_MIN_VERSION}")
     endif()
@@ -290,6 +290,8 @@ function(make_cublasdx_example_target_name EXAMPLE_MAIN_SOURCE EXAMPLE_TARGET_VA
         set(EXAMPLE_TARGET "20_dgemm_emulation_pipeline")
     elseif("${EXAMPLE_MAIN_SOURCE}" STREQUAL "21_sgemm_emulation_pipeline/sgemm_emulation_pipeline.cu")
         set(EXAMPLE_TARGET "21_sgemm_emulation_pipeline")
+    elseif("${EXAMPLE_MAIN_SOURCE}" STREQUAL "22_persistent_cluster_gemm/persistent_cluster_gemm.cu")
+        set(EXAMPLE_TARGET "22_persistent_cluster_gemm")
     endif()
 
     if(NOT EXAMPLE_TARGET)
@@ -342,7 +344,7 @@ function(add_cufftdx_cublasdx_example GROUP_TARGET EXAMPLE_SOURCES)
         PRIVATE
             cublasdx_compiler_options
             CUDA::cublas
-            cufftdx::cufftdx
+            mathdx::cufftdx
             CUDA::cufft
             common_correctness_objects
     )
@@ -538,6 +540,9 @@ add_cublasdx_example(cublasdx_examples 09_gemm_custom_layout/simple_gemm_custom_
 add_cublasdx_example(cublasdx_examples 07_gemm_transform/simple_gemm_transform.cu)
 add_cublasdx_example(cublasdx_examples 09_gemm_custom_layout/simple_gemm_aat.cu)
 add_cublasdx_example(cublasdx_examples 11_gemm_device_performance/device_gemm_performance.cu)
+add_cublasdx_example(cublasdx_examples 22_persistent_cluster_gemm/persistent_cluster_gemm.cu)
+set_tests_properties("cuBLASDx.example.22_persistent_cluster_gemm.persistent_cluster_gemm"
+    PROPERTIES TIMEOUT 120)
 add_cublasdx_example(cublasdx_examples 12_gemm_device_partial_sums/gemm_device_partial_sums.cu)
 
 if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.1)

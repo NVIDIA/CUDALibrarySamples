@@ -68,6 +68,9 @@ namespace common {
 #ifdef CUSOLVERDX_EXAMPLE_ENABLE_SM_103
             case 1030: return Functor<1030>()();
 #endif
+#ifdef CUSOLVERDX_EXAMPLE_ENABLE_SM_107
+            case 1070: return Functor<1070>()();
+#endif
 #ifdef CUSOLVERDX_EXAMPLE_ENABLE_SM_121
             case 1210: return Functor<1210>()();
 #endif

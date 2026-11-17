@@ -53,8 +53,10 @@ int main(int argc, char* argv[]) {
         traits.direction = cufftdx::fft_direction::forward;
         traits.set_execution_type(cufftdx::utils::execution_type::block);
         traits.sm = cuda_arch;
-        cufftDescriptionHandle desc_handle = createDescriptionHandleWithTraits(traits);
-        desc_handles.push_back(desc_handle);
+        auto desc_handle = createDescriptionHandleWithTraits(traits);
+        if (desc_handle.has_value()) {
+            desc_handles.push_back(desc_handle.value());
+        }
     }
 
     cufftDeviceHandle device_handle;

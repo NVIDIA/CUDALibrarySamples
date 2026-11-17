@@ -49,7 +49,9 @@ __global__ void gels_kernel(DataType* A, DataType* tau, DataType* B, const unsig
     auto Bg    = B + one_batch_size_b_gmem * batch_idx;
     auto tau_g = tau + min(m, n) * batch_idx;
 
-    Solver().execute(Ag, tau_g, Bg);
+    constexpr auto lda = Solver::default_lda;
+    constexpr auto ldb = Solver::default_ldb;
+    Solver().execute(Ag, lda, tau_g, Bg, ldb);
 }
 
 template<int Arch>
@@ -70,8 +72,8 @@ int gels_batched_thread() {
     constexpr bool is_col_maj_a = arrangement_of_v_a<Solver> == arrangement::col_major;
     constexpr bool is_col_maj_b = arrangement_of_v_b<Solver> == arrangement::col_major;
 
-    const auto lda = is_col_maj_a ? m : n;
-    const auto ldb = is_col_maj_b ? max_mn : k;
+    const auto lda = Solver::default_lda;
+    const auto ldb = Solver::default_ldb;
 
     constexpr auto input_size_a = m * n; // input A size is m x n per batch
     constexpr auto input_size_b = max_mn * k; // allocate B/X with max(m, n) x k per batch

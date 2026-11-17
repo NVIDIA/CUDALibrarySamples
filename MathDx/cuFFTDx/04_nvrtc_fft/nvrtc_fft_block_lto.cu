@@ -24,6 +24,7 @@
 #include <cuda.h>
 #include <cuda_runtime_api.h>
 
+#define CUFFTDX_ENABLE_RUNTIME_DATABASE
 #include <cufftdx.hpp>
 
 #include "../common/common.hpp"
@@ -59,7 +60,7 @@ extern "C" __global__ void test_kernel(typename FFT::value_type* fft_data)
     }
   }
 
-  extern __shared__ FFT::value_type shared_mem[];
+  extern __shared__ __align__(alignof(float4)) cufftdx::byte shared_mem[];
   FFT().execute(thread_data, shared_mem);
 
   index = offset + threadIdx.x;
@@ -88,7 +89,7 @@ int main(int, char**) {
         return 1;
     }
 
-    auto [lto_db, ltoirs, block_dim, shared_memory_size] =
+    auto [lto_db, ltoirs, traits] =
         cufftdx::utils::get_database_and_ltoir(fft_size,
                                                cufftdx::fft_direction::inverse,
                                                cufftdx::fft_type::c2c,
@@ -226,10 +227,10 @@ int main(int, char**) {
                                      1, // number of blocks
                                      1,
                                      1,
-                                     block_dim.x, // number of threads
-                                     block_dim.y,
-                                     block_dim.z,
-                                     shared_memory_size, // shared memory size
+                                     traits.block_dim_x, // number of threads
+                                     traits.block_dim_y,
+                                     traits.block_dim_z,
+                                     traits.shared_memory_size, // shared memory size
                                      NULL, // NULL stream
                                      args,
                                      0));

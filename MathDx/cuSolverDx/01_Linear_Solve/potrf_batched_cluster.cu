@@ -44,30 +44,15 @@ __global__ __launch_bounds__(POTRF::max_threads_per_block) void potrf_kernel(Dat
         return;
 
     extern __shared__ __align__(sizeof(DataType)) cusolverdx::byte shared_mem[];
-    auto*          tiles_s     = reinterpret_cast<DataType*>(shared_mem);
-
-    constexpr auto tile_size   = POTRF::tile_size;
-    const unsigned thread_id   = threadIdx.x + blockDim.x * (threadIdx.y + blockDim.y * threadIdx.z);
+    auto* tiles_s = reinterpret_cast<DataType*>(shared_mem);
 
     auto* Ag = reinterpret_cast<DataType*>(A + lda_gmem * POTRF::m_size * batch_idx);
 
-    cusolverdx::detail::potrf::load_global_to_cluster_tiles<DataType,
-                                                            POTRF::m_size,
-                                                            tile_size,
-                                                            POTRF::fill_mode,
-                                                            POTRF::a_arrangement,
-                                                            POTRF::max_threads_per_block,
-                                                            POTRF::blocks_per_cluster>(Ag, lda_gmem, tiles_s, thread_id);
+    POTRF().load_global_to_dsmem(Ag, lda_gmem, tiles_s);
 
     POTRF().execute(reinterpret_cast<DataType*>(tiles_s), &info[batch_idx]);
-
-    cusolverdx::detail::potrf::store_cluster_tiles_to_global<DataType,
-                                                             POTRF::m_size,
-                                                             tile_size,
-                                                             POTRF::fill_mode,
-                                                             POTRF::a_arrangement,
-                                                             POTRF::max_threads_per_block,
-                                                             POTRF::blocks_per_cluster>(Ag, lda_gmem, tiles_s, thread_id);
+    
+    POTRF().store_dsmem_to_global(Ag, lda_gmem, tiles_s);
 #endif
 }
 
@@ -82,7 +67,7 @@ int potrf_batched_cluster() {
 
         using POTRF = decltype(Size<250>() + Precision<double>() + Type<type::real>() + Function<function::potrf>() +
                                FillMode<fill_mode::upper>() + Arrangement<row_major>() + SM<Arch>() + Cluster() +
-                               BlocksPerCluster<4>() + TileSize<64>() + BlockDim<256>());
+                               BlocksPerCluster<4>() + TileSize<64>() + BlockDim<128>());
 
         using data_type = typename POTRF::a_data_type;
         using cuda_data_type = typename POTRF::a_cuda_data_type;
@@ -91,7 +76,7 @@ int potrf_batched_cluster() {
         constexpr auto bpc          = POTRF::blocks_per_cluster;
         constexpr bool is_col_maj_a = arrangement_of_v_a<POTRF> == arrangement::col_major;
 
-        constexpr auto lda              = m;
+        constexpr auto lda              = POTRF::default_lda;
         const auto     one_batch_size_A = lda * m;
         const auto     batches          = 200;
 
@@ -116,11 +101,12 @@ int potrf_batched_cluster() {
         CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(d_A, A.data(), sizeof(data_type) * A.size(), cudaMemcpyHostToDevice, stream));
 
         // Increase max dynamic shared memory for the kernel if needed.
-        const auto sm_size = POTRF::shared_memory_size;
+        const auto sm_size = POTRF::get_shared_memory_size();
         printf("shared memory workspace size needed for POTRF cluster execution = %u bytes, Matrix size = %lu bytes\n", sm_size, m * m * sizeof(data_type));
 
         const auto kernel = potrf_kernel<POTRF>;
-        CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, sm_size));
+        CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(kernel, cudaFuncAttributeNonPortableClusterSizeAllowed, 1));
+        CUDA_CHECK_AND_EXIT(common::set_max_dynamic_shared_memory_size(kernel, sm_size));
 
         //Invokes kernel
         cudaLaunchAttribute attribute[1];

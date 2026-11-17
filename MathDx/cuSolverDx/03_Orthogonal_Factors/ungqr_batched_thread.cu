@@ -53,7 +53,8 @@ __global__ void ungqr_kernel(DataType* A, const DataType* tau, const unsigned ba
     auto this_A   = A + one_batch_size_a_gmem * batch_idx;
     auto this_tau = tau + k * batch_idx;
 
-    Solver().execute(this_A, this_tau);
+    constexpr auto lda = Solver::default_lda;
+    Solver().execute(this_A, lda, this_tau);
 }
 
 template<int Arch>
@@ -71,7 +72,7 @@ int ungqr_batched_thread() {
 
     constexpr bool is_col_maj_a = arrangement_of_v_a<Solver> == arrangement::col_major;
 
-    const auto     lda          = is_col_maj_a ? m : n;
+    const auto     lda          = Solver::default_lda;
     constexpr auto input_size_a = m * n;
 
     const auto batches = 200;

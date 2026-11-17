@@ -11,7 +11,7 @@ This folder demonstrates cuRANDDx APIs usage.
 ## Requirements
 
 * [See cuRANDDx requirements](https://docs.nvidia.com/cuda/curanddx/get_started/requirement.html)
-* CMake 3.23 or newer
+* CMake 3.24 or newer
 * Linux system with installed NVIDIA drivers
 * NVIDIA GPU of Turing (SM75) or newer architecture
 

@@ -51,17 +51,18 @@ constexpr unsigned THREADS_PER_BLOCK = 64;
 // -------------------------------------------------------------------------
 template<class BLAS, class GlobalTensorA, class GlobalTensorB>
 __global__ void trsm_thread_kernel(GlobalTensorA global_a, GlobalTensorB global_b) {
-    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(BLAS);
-    const unsigned thread_idx  = blockIdx.x * blockDim.x + threadIdx.x;
-    const unsigned total_items = cute::size<2>(global_a);
-    if (thread_idx >= total_items) {
-        return;
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM_BLOCK(BLAS) {
+        const unsigned thread_idx  = blockIdx.x * blockDim.x + threadIdx.x;
+        const unsigned total_items = cute::size<2>(global_a);
+        if (thread_idx >= total_items) {
+            return;
+        }
+
+        auto batch_a = cublasdx::get_batch(global_a, BLAS::get_layout_gmem_a(), thread_idx);
+        auto batch_b = cublasdx::get_batch(global_b, BLAS::get_layout_gmem_b(), thread_idx);
+
+        BLAS{}.execute(batch_a, batch_b);
     }
-
-    auto batch_a = cublasdx::get_batch(global_a, BLAS::get_layout_gmem_a(), thread_idx);
-    auto batch_b = cublasdx::get_batch(global_b, BLAS::get_layout_gmem_b(), thread_idx);
-
-    BLAS{}.execute(batch_a, batch_b);
 }
 
 // -------------------------------------------------------------------------

@@ -44,6 +44,9 @@ namespace example {
     } // namespace __io
 
 
+    // These helpers use logical working_group IDs rather than CUDA thread
+    // coordinates, so they work with every ThreadLayout while preserving the
+    // batch-major user data layout.
     template<class FFT>
     struct io {
         using complex_type = typename FFT::value_type;
@@ -58,34 +61,28 @@ namespace example {
                    (alignof(RegType) == alignof(complex_type));
         }
 
-        static inline __device__ unsigned int input_batch_offset(unsigned int local_fft_id) {
+        static inline __device__ unsigned int input_batch_offset(unsigned int local_batchid) {
             // Implicit batching is currently mandatory for __half precision, and it forces two
             // batches of data to be put together into a single complex __half2 value. This makes
             // it so a "single" batch of complex __half2 values in reality contains 2 batches of
             // complex __half values. Full reference can be found in documentation:
             // https://docs.nvidia.com/cuda/cufftdx/api/methods.html#half-precision-implicit-batching
-            unsigned int global_fft_id =
-                blockIdx.x * (FFT::ffts_per_block / FFT::implicit_type_batching) + local_fft_id;
-            return FFT::input_length * global_fft_id;
+            unsigned int global_batchid = blockIdx.x * FFT::working_group::implicit_bpb() + local_batchid;
+            return FFT::input_length * global_batchid;
         }
 
-        static inline __device__ unsigned int output_batch_offset(unsigned int local_fft_id) {
+        static inline __device__ unsigned int output_batch_offset(unsigned int local_batchid) {
             // See note regarding implicit batching in input_batch_offset
-            unsigned int global_fft_id =
-                blockIdx.x * (FFT::ffts_per_block / FFT::implicit_type_batching) + local_fft_id;
+            unsigned int global_batchid = blockIdx.x * FFT::working_group::implicit_bpb() + local_batchid;
             // If Fold Optimization is enabled, the real values are packed together
             // into complex values which decreases the effective size twofold
-            return FFT::output_length * global_fft_id;
-        }
-
-        static inline __device__ unsigned int computing_threads_y() {
-            return FFT::working_group::block_dim().y;
+            return FFT::output_length * global_batchid;
         }
 
         template<unsigned int EPT, typename DataType>
         static inline __device__ void copy(const DataType* source, DataType* target, unsigned int n) {
-            unsigned int stride = FFT::stride * computing_threads_y();
-            unsigned int index  = threadIdx.y * FFT::stride + threadIdx.x;
+            unsigned int stride = FFT::stride * FFT::working_group::implicit_bpb();
+            unsigned int index  = FFT::working_group::batchid() * FFT::stride + FFT::working_group::fftid();
             if (FFT::working_group::is_thread_active()) {
                 for (int i = 0; i < EPT; i++) {
                     if (index < n) {
@@ -101,7 +98,7 @@ namespace example {
             using input_t = typename FFT::input_type;
             copy<FFT::input_ept>(reinterpret_cast<const input_t*>(global),
                                  reinterpret_cast<input_t*>(shared),
-                                 computing_threads_y() * FFT::input_length);
+                                 FFT::working_group::implicit_bpb() * FFT::input_length);
             __syncthreads();
         }
 
@@ -111,7 +108,7 @@ namespace example {
             using output_t = typename FFT::output_type;
             copy<FFT::output_ept>(reinterpret_cast<const output_t*>(shared),
                                   reinterpret_cast<output_t*>(global),
-                                  computing_threads_y() * FFT::output_length);
+                                  FFT::working_group::implicit_bpb() * FFT::output_length);
         }
 
 
@@ -124,20 +121,21 @@ namespace example {
             CUFFTDX_STD::enable_if_t<is_type_compatible<RegisterType, IOType>()>
             load(const IOType* input,
                  RegisterType* thread_data,
-                 unsigned int  local_fft_id,
+                 unsigned int  local_batchid,
                  LoadOp op = {}) {
             static constexpr bool needs_half2_format_conversion = cufftdx::type_of<FFT>::value != cufftdx::fft_type::r2c &&
                                                                   std::is_same_v<IOType, cufftdx::detail::complex<__half2>>;
             using input_t                                       = typename FFT::input_type;
 
             // Calculate global offset of FFT batch
-            const unsigned int offset = input_batch_offset(local_fft_id);
+            const unsigned int offset = input_batch_offset(local_batchid);
             // Get stride, this shows how elements from batch should be split between threads
             const unsigned int stride = FFT::stride;
-            unsigned int       index  = offset + threadIdx.x;
+            const unsigned int fftid  = FFT::working_group::fftid();
+            unsigned int       index  = offset + fftid;
             if (FFT::working_group::is_thread_active()) {
                 for (unsigned int i = 0; i < FFT::input_ept; i++) {
-                    if ((i * stride + threadIdx.x) < FFT::input_length) {
+                    if ((i * stride + fftid) < FFT::input_length) {
                         if constexpr (needs_half2_format_conversion) {
                             reinterpret_cast<input_t*>(thread_data)[i] =
                                 op(__io::convert_to_rrii<InputInRRIILayout>(reinterpret_cast<const input_t*>(input)[index]));
@@ -157,18 +155,19 @@ namespace example {
             CUFFTDX_STD::enable_if_t<is_type_compatible<RegisterType, IOType>()>
             store(const RegisterType* thread_data,
                   IOType*             output,
-                  unsigned int        local_fft_id,
+                  unsigned int        local_batchid,
                   StoreOp op = {}) {
             static constexpr bool needs_half2_format_conversion = cufftdx::type_of<FFT>::value != cufftdx::fft_type::c2r &&
                                                                   std::is_same_v<IOType, cufftdx::detail::complex<__half2>>;
             using output_t                                       = typename FFT::output_type;
 
-            const unsigned int offset = output_batch_offset(local_fft_id);
+            const unsigned int offset = output_batch_offset(local_batchid);
             const unsigned int stride = FFT::stride;
-            unsigned int       index  = offset + threadIdx.x;
+            const unsigned int fftid  = FFT::working_group::fftid();
+            unsigned int       index  = offset + fftid;
             if (FFT::working_group::is_thread_active()) {
                 for (int i = 0; i < FFT::output_ept; ++i) {
-                    if ((i * stride + threadIdx.x) < FFT::output_length) {
+                    if ((i * stride + fftid) < FFT::output_length) {
                         if constexpr (needs_half2_format_conversion) {
                             reinterpret_cast<output_t*>(output)[index] =
                                 op(__io::convert_to_riri<OutputInRRIILayout>(reinterpret_cast<const output_t*>(thread_data)[i]));
@@ -190,18 +189,18 @@ namespace example {
         static_assert(std::is_same<scalar_type, __half2>::value, "This IO class is only for half precision FFTs");
         static_assert((FFT::ffts_per_block % 2 == 0), "This IO class works only for even FFT::ffts_per_block");
 
-        static inline __device__ unsigned int batch_offset(unsigned int local_fft_id) {
-            unsigned int global_fft_id =
-                FFT::ffts_per_block == 1 ? blockIdx.x : (blockIdx.x * FFT::ffts_per_block + local_fft_id);
-            return cufftdx::size_of<FFT>::value * global_fft_id;
+        static inline __device__ unsigned int batch_offset(unsigned int local_batchid) {
+            unsigned int global_batchid = FFT::ffts_per_block == 1 ? blockIdx.x : (blockIdx.x * FFT::ffts_per_block + local_batchid);
+            return cufftdx::size_of<FFT>::value * global_batchid;
         }
 
-        static inline __device__ void load(const __half2* input, complex_type* thread_data, unsigned int local_fft_id) {
+        static inline __device__ void load(const __half2* input, complex_type* thread_data, unsigned int local_batchid) {
             // Calculate global offset of FFT batch
-            const unsigned int offset = batch_offset(local_fft_id);
+            const unsigned int offset = batch_offset(local_batchid);
             // Get stride, this shows how elements from batch should be split between threads
             const unsigned int stride = FFT::stride;
-            unsigned int       index  = offset + threadIdx.x;
+            const unsigned int fftid  = FFT::working_group::fftid();
+            unsigned int       index  = offset + fftid;
             if (FFT::working_group::is_thread_active()) {
                 // We bundle __half2 data of X-th and X+(FFT::ffts_per_block/2) batches together.
                 const unsigned int batch_stride = (FFT::ffts_per_block / 2) * cufftdx::size_of<FFT>::value;
@@ -214,10 +213,11 @@ namespace example {
 
         static inline __device__ void store(const complex_type* thread_data,
                                             __half2*            output,
-                                            unsigned int        local_fft_id) {
-            const unsigned int offset       = batch_offset(local_fft_id);
+                                            unsigned int        local_batchid) {
+            const unsigned int offset       = batch_offset(local_batchid);
             const unsigned int stride       = FFT::stride;
-            unsigned int       index        = offset + threadIdx.x;
+            const unsigned int fftid        = FFT::working_group::fftid();
+            unsigned int       index        = offset + fftid;
             const unsigned int batch_stride = (FFT::ffts_per_block / 2) * cufftdx::size_of<FFT>::value;
             if (FFT::working_group::is_thread_active()) {
                 for (unsigned int i = 0; i < FFT::elements_per_thread; i++) {

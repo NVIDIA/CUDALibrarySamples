@@ -47,7 +47,8 @@ __global__ void kernel(DataType* A, DataType* tau, const unsigned batches) {
     auto Ag    = A + one_batch_size * batch_idx;
     auto tau_g = tau + min(m, n) * batch_idx;
 
-    Solver().execute(Ag, tau_g);
+    constexpr auto lda = Solver::default_lda;
+    Solver().execute(Ag, lda, tau_g);
 }
 
 template<int Arch>
@@ -66,7 +67,7 @@ int geqrf_batched_thread() {
 
     constexpr bool is_col_maj_a = arrangement_of_v_a<Solver> == arrangement::col_major;
 
-    const auto     lda          = is_col_maj_a ? m : n;
+    const auto     lda          = Solver::default_lda;
     constexpr auto input_size_a = m * n;
 
     const auto batches = 1000;

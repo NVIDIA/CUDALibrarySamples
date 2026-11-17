@@ -49,7 +49,8 @@ __global__ void posv_kernel(
     auto this_A = A + one_batch_size_a * batch_idx;
     auto this_B = B + one_batch_size_b * batch_idx;
 
-    POSV_thread().execute(this_A, this_B, &info[batch_idx]);
+    constexpr auto ldb = POSV_thread::default_ldb;
+    POSV_thread().execute(this_A, m, this_B, ldb, &info[batch_idx]);
 }
 
 template<int Arch>
@@ -72,8 +73,8 @@ int posv_batched_thread() {
     constexpr bool is_col_maj_b = arrangement_of_v_b<POSV> == arrangement::col_major;
 
     printf("Size m = %d, n = %d, nrhs = %d\n", m, n, nrhs);
-    const auto lda = m;
-    const auto ldb = is_col_maj_b ? m : nrhs;
+    const auto lda = POSV::default_lda;
+    const auto ldb = POSV::default_ldb;
 
     const auto batches          = 100;
     const auto one_batch_size_A = m * m;

@@ -22,6 +22,7 @@
 #include <cublasdx.hpp>
 
 #include "../common/common.hpp"
+#include "../common/pipeline_budget.hpp"
 #include "../reference/reference.hpp"
 
 // Batched GEMM kernel using the pipelining API with a grid-stride loop
@@ -56,39 +57,40 @@ __launch_bounds__(DevicePipeline::max_threads_per_block, 1) __global__
                              unsigned                               ldc,
                              unsigned                               batch_count,
                              __grid_constant__ DevicePipeline const device_pipeline) {
-    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(BLAS);
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM_BLOCK(BLAS) {
 
-    extern __shared__ __align__(device_pipeline.buffer_alignment()) cublasdx::byte smem[];
+        extern __shared__ __align__(device_pipeline.buffer_alignment()) cublasdx::byte smem[];
 
-    // First batch: create the tile pipeline
-    auto tile_pipeline = device_pipeline.get_tile(
-        smem,
-        cublasdx::make_coord(blockIdx.x, blockIdx.z), // A: (row_tile, batch)
-        cublasdx::make_coord(blockIdx.y, blockIdx.z)); // B: (col_tile, batch)
+        // First batch: create the tile pipeline
+        auto tile_pipeline = device_pipeline.get_tile(
+            smem,
+            cublasdx::make_coord(blockIdx.x, blockIdx.z), // A: (row_tile, batch)
+            cublasdx::make_coord(blockIdx.y, blockIdx.z)); // B: (col_tile, batch)
 
-    // Grid-stride loop over the batch dimension
-    for (unsigned batch = blockIdx.z; batch < batch_count;) {
-        // Build a 2D C view for the current batch
-        auto tile_gmem_c = cublasdx::get_tile(
-            cublasdx::make_gmem_tensor<ArrC>(c_ptr + batch * m * n, m, n, ldc),
-            BLAS::c_shape,
-            blockIdx.x,
-            blockIdx.y);
+        // Grid-stride loop over the batch dimension
+        for (unsigned batch = blockIdx.z; batch < batch_count;) {
+            // Build a 2D C view for the current batch
+            auto tile_gmem_c = cublasdx::get_tile(
+                cublasdx::make_gmem_tensor<ArrC>(c_ptr + batch * m * n, m, n, ldc),
+                BLAS::c_shape,
+                blockIdx.x,
+                blockIdx.y);
 
-        // Epilogue: D = alpha * A * B + beta * C
-        auto epilogue_functor = [&](auto& accumulator) {
-            accumulator.axpby(alpha, beta, tile_gmem_c);
-        };
+            // Epilogue: D = alpha * A * B + beta * C
+            auto epilogue_functor = [&](auto& accumulator) {
+                accumulator.axpby(alpha, beta, tile_gmem_c);
+            };
 
-        tile_pipeline.execute(epilogue_functor);
+            tile_pipeline.execute(epilogue_functor);
 
-        // Re-point the pipeline at the next batch for the next iteration
-        batch += gridDim.z;
-        device_pipeline.reset_tile(
-            tile_pipeline,
-            cublasdx::make_coord(blockIdx.x, batch),  // A: (row_tile, batch)
-            cublasdx::make_coord(blockIdx.y, batch)); // B: (col_tile, batch)
+            // Re-point the pipeline at the next batch for the next iteration
+            batch += gridDim.z;
+            device_pipeline.reset_tile(
+                tile_pipeline,
+                cublasdx::make_coord(blockIdx.x, batch),  // A: (row_tile, batch)
+                cublasdx::make_coord(blockIdx.y, batch)); // B: (col_tile, batch)
 
+        }
     }
 }
 
@@ -183,7 +185,7 @@ int batched_gemm_pipeline() {
                                           tile_k * tile_n * sizeof(b_value_type) +
                                           sizeof(cublasdx::pipeline_stage_scratch_t);
 
-    constexpr unsigned available_shared_memory = commondx::device_info<Arch>::shared_memory();
+    constexpr unsigned available_shared_memory = example::pipeline_shared_memory_budget<Arch>();
     constexpr unsigned maximal_pipeline_depth  = std::min(k / tile_k, std::min(16u, (available_shared_memory - 32u) / stage_shared_req));
     constexpr unsigned pipeline_depth = override_pipeline_depth ? manual_pipeline_depth : maximal_pipeline_depth;
 
@@ -299,7 +301,7 @@ int batched_gemm_pipeline() {
                                       c_value_type,
                                       c_value_type,
                                       decltype(pipeline->get_device_handle())>;
-    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_memory_size));
+    CUDA_CHECK_AND_EXIT(example::set_max_dynamic_shared_memory_size(kernel, shared_memory_size));
     kernel<<<grid_dim, pipeline->get_block_dim(), shared_memory_size>>>(
         alpha, beta, d_c, m, n, global_ldc, batch_count, pipeline->get_device_handle());
     CUDA_CHECK_AND_EXIT(cudaPeekAtLastError());

@@ -129,54 +129,55 @@ __launch_bounds__(FFT::max_threads_per_block) __global__ void gemm_fft_fp16_kern
                                                                                    const ValueType  alpha,
                                                                                    const ValueType  beta,
                                                                                    ValueType*       output) {
-    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(BLAS);
-    using blas_complex_type = example::uniform_value_type_t<BLAS>;
-    using fft_complex_type  = typename FFT::value_type;
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM_BLOCK(BLAS) {
+        using blas_complex_type = example::uniform_value_type_t<BLAS>;
+        using fft_complex_type  = typename FFT::value_type;
 
-    using complex_type                = blas_complex_type;
-    using value_type                  = ValueType;
-    constexpr unsigned int block_size = BLAS::block_dim.x * BLAS::block_dim.y * BLAS::block_dim.z;
+        using complex_type                = blas_complex_type;
+        using value_type                  = ValueType;
+        constexpr unsigned int block_size = BLAS::block_dim.x * BLAS::block_dim.y * BLAS::block_dim.z;
 
-    extern __shared__ __align__(alignof(complex_type)) complex_type smem[];
+        extern __shared__ __align__(alignof(complex_type)) complex_type smem[];
 
-    auto [smem_a, smem_b, smem_c] = cublasdx::slice_shared_memory<BLAS>(reinterpret_cast<char*>(smem));
+        auto [smem_a, smem_b, smem_c] = cublasdx::slice_shared_memory<BLAS>(reinterpret_cast<char*>(smem));
 
-    // Compute FFT(B, axis=0).
-    fft_complex_type thread_data[FFT::storage_size];
+        // Compute FFT(B, axis=0).
+        fft_complex_type thread_data[FFT::storage_size];
 
-    // Load data from global memory into registers for FFT, converting to RRII form from RIRI.
-    fft_load<FFT::elements_per_thread, cufftdx::size_of<FFT>::value, FFT::stride>(b, thread_data);
-    __syncthreads();
+        // Load data from global memory into registers for FFT, converting to RRII form from RIRI.
+        fft_load<FFT::elements_per_thread, cufftdx::size_of<FFT>::value, FFT::stride>(b, thread_data);
+        __syncthreads();
 
-    // Execute batched FFT on registers.
-    FFT().execute(thread_data, reinterpret_cast<fft_complex_type*>(smem));
-    __syncthreads();
+        // Execute batched FFT on registers.
+        FFT().execute(thread_data, reinterpret_cast<fft_complex_type*>(smem));
+        __syncthreads();
 
-    // Store register data into smem_b, converting back to RIRI form from RRII.
-    fft_store<FFT::elements_per_thread, cufftdx::size_of<FFT>::value, FFT::stride>(thread_data, smem_b);
+        // Store register data into smem_b, converting back to RIRI form from RRII.
+        fft_store<FFT::elements_per_thread, cufftdx::size_of<FFT>::value, FFT::stride>(thread_data, smem_b);
 
-    // Compute C := alpha * A @ FFT(B, axis=0) + beta * C.
+        // Compute C := alpha * A @ FFT(B, axis=0) + beta * C.
 
-    // Load A and C from global to shared memory, B is already in shared memory after the FFT
-    auto a_global_tensor = cublasdx::make_tensor(a, BLAS::get_layout_gmem_a());
-    auto c_global_tensor = cublasdx::make_tensor(c, BLAS::get_layout_gmem_c());
+        // Load A and C from global to shared memory, B is already in shared memory after the FFT
+        auto a_global_tensor = cublasdx::make_tensor(a, BLAS::get_layout_gmem_a());
+        auto c_global_tensor = cublasdx::make_tensor(c, BLAS::get_layout_gmem_c());
 
-    auto a_shared_tensor = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_a());
-    auto b_shared_tensor = cublasdx::make_tensor(smem_b, BLAS::get_layout_smem_b());
-    auto c_shared_tensor = cublasdx::make_tensor(smem_c, BLAS::get_layout_smem_c());
+        auto a_shared_tensor = cublasdx::make_tensor(smem_a, BLAS::get_layout_smem_a());
+        auto b_shared_tensor = cublasdx::make_tensor(smem_b, BLAS::get_layout_smem_b());
+        auto c_shared_tensor = cublasdx::make_tensor(smem_c, BLAS::get_layout_smem_c());
 
-    using alignment = cublasdx::alignment_of<BLAS>;
-    cublasdx::copy<BLAS, alignment::a>(a_global_tensor, a_shared_tensor);
-    cublasdx::copy<BLAS, alignment::c>(c_global_tensor, c_shared_tensor);
-    cublasdx::copy_wait();
+        using alignment = cublasdx::alignment_of<BLAS>;
+        cublasdx::copy<BLAS, alignment::a>(a_global_tensor, a_shared_tensor);
+        cublasdx::copy<BLAS, alignment::c>(c_global_tensor, c_shared_tensor);
+        cublasdx::copy_wait();
 
-    // Execute GEMM: C = alpha * A @ FFT(B, axis=0) + beta * C.
-    BLAS().execute(alpha, a_shared_tensor, b_shared_tensor, beta, c_shared_tensor);
-    __syncthreads();
+        // Execute GEMM: C = alpha * A @ FFT(B, axis=0) + beta * C.
+        BLAS().execute(alpha, a_shared_tensor, b_shared_tensor, beta, c_shared_tensor);
+        __syncthreads();
 
-    // Store the results.
-    auto out_global_tensor = cublasdx::make_tensor(output, BLAS::get_layout_gmem_c());
-    cublasdx::copy<BLAS, alignment::c>(c_shared_tensor, out_global_tensor);
+        // Store the results.
+        auto out_global_tensor = cublasdx::make_tensor(output, BLAS::get_layout_gmem_c());
+        cublasdx::copy<BLAS, alignment::c>(c_shared_tensor, out_global_tensor);
+    }
 }
 
 // In this example cuBLASDx and cuFFTDx libraries are combined to perform GEMM and FFT in one pipeline for complex half-precision
@@ -266,8 +267,8 @@ int gemm_fft_fp16() {
     // Get max shared memory required by FFT and GEMM
     constexpr auto shared_memory_size = std::max({FFT::shared_memory_size, cublasdx::get_shared_storage_size<BLAS>()});
     // Increase max shared memory if needed
-    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(
-        gemm_fft_fp16_kernel<FFT, BLAS>, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_memory_size));
+    CUDA_CHECK_AND_EXIT(
+        example::set_max_dynamic_shared_memory_size(gemm_fft_fp16_kernel<FFT, BLAS>, shared_memory_size));
 
     // Invokes cuBLASDx+cuFFTDx kernel with FFT::block_dim threads in CUDA block
     gemm_fft_fp16_kernel<FFT, BLAS>

@@ -46,7 +46,7 @@ __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(
     constexpr auto min_mn = m >= n ? n : m;
     
     const auto     one_batch_size_a_gmem = (Solver::a_arrangement == col_major ? lda_gmem * n : m * lda_gmem);
-    constexpr auto lda_smem              = Solver::lda;
+    constexpr auto lda_smem              = Solver::default_lda;
     constexpr auto one_batch_size_a_smem = (Solver::a_arrangement == col_major ? lda_smem * n : m * lda_smem);
 
     constexpr auto m_u  = m;
@@ -61,8 +61,8 @@ __global__ __launch_bounds__(Solver::max_threads_per_block) void kernel(
                                             ? 0
                                             : (Solver::c_arrangement == col_major ? ldvt_gmem * n_vt : n_vt * ldvt_gmem);
 
-    constexpr auto ldu_smem               = (Solver::jobu == job::no_vectors) ? 0 : Solver::ldb;
-    constexpr auto ldvt_smem              = (Solver::jobvt == job::no_vectors) ? 0 : Solver::ldc;
+    constexpr auto ldu_smem               = Solver::default_ldb;
+    constexpr auto ldvt_smem              = Solver::default_ldc;
     constexpr auto one_batch_size_u_smem  = (Solver::b_arrangement == col_major ? ldu_smem * n_u : m_u * ldu_smem);
     constexpr auto one_batch_size_vt_smem = (Solver::c_arrangement == col_major ? ldvt_smem * n_vt : m_vt * ldvt_smem);
 
@@ -153,21 +153,21 @@ int gesvd_batched_block() {
     // jobvt = job::some_vectors: VT(min_mn x n)
     // jobvt = job::overwrite_vectors: VT(min_mn x n) using Arrangement and Leading Dimension specified for A
     constexpr auto input_size_a = m * n;
-    constexpr auto lda     = is_col_maj_a ? m : n;
+    constexpr auto lda     = Solver::default_lda;
     
     constexpr auto act_m_u = m;
     constexpr auto act_n_u = Solver::jobu == job::all_vectors ? m : min_mn;
     constexpr auto act_m_vt = Solver::jobvt == job::all_vectors ? n : min_mn;
     constexpr auto act_n_vt = n;    
-    constexpr auto ldu        = (is_col_maj_u ? act_m_u : act_n_u);
-    constexpr auto ldvt       = (is_col_maj_vt ? act_m_vt : act_n_vt);
+    constexpr auto ldu        = Solver::default_ldb;
+    constexpr auto ldvt       = Solver::default_ldc;
     constexpr auto input_size_u = compute_vectors_u ? act_m_u * act_n_u : 0;
     constexpr auto input_size_vt = compute_vectors_vt ? act_m_vt * act_n_vt : 0;
     
     const auto batches        = 10;
     const auto padded_batches = (batches + bpb - 1) / bpb * bpb;
 
-    std::cout << "Solver: " << Solver::lda << ", " << Solver::ldb << ", " << Solver::ldc << std::endl;
+    std::cout << "Solver: " << lda << ", " << ldu << ", " << ldvt << std::endl;
     std::cout << "actual m_u = " << act_m_u << ", actual n_u = " << act_n_u << ", actual m_vt = " << act_m_vt << ", actual n_vt = " << act_n_vt << std::endl;
     std::cout << "input_size_a = " << input_size_a << ", input_size_u = " << input_size_u << ", input_size_vt = " << input_size_vt << std::endl;
 
@@ -206,10 +206,10 @@ int gesvd_batched_block() {
 
     CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(d_A, A_input.data(), sizeof(data_type) * A_input.size(), cudaMemcpyHostToDevice, stream));
 
-    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(kernel<Solver, bpb>, cudaFuncAttributeMaxDynamicSharedMemorySize, Solver::shared_memory_size));
+    CUDA_CHECK_AND_EXIT(common::set_max_dynamic_shared_memory_size(kernel<Solver, bpb>, Solver::get_shared_memory_size(lda, ldu, ldvt)));
 
     //Invokes kernel
-    kernel<Solver, bpb><<<padded_batches / bpb, Solver::block_dim, Solver::shared_memory_size, stream>>>(d_A, lda, d_S, d_U, ldu, d_VT, ldvt, d_info, batches);
+    kernel<Solver, bpb><<<padded_batches / bpb, Solver::block_dim, Solver::get_shared_memory_size(lda, ldu, ldvt), stream>>>(d_A, lda, d_S, d_U, ldu, d_VT, ldvt, d_info, batches);
     CUDA_CHECK_AND_EXIT(cudaGetLastError());
     CUDA_CHECK_AND_EXIT(cudaDeviceSynchronize());
 

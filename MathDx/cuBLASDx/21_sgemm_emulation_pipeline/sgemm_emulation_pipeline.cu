@@ -37,21 +37,22 @@ namespace {
                          Beta const beta,
                          CTensor global_c,
                          __grid_constant__ Pipeline const device_pipeline) {
-        CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(BLAS);
-        extern __shared__ __align__(128) cublasdx::byte smem[];
-        const auto [tile_coord_m, tile_coord_n] = example::get_threadblock_swizzled_tile_coord<SwizzleM>();
+        CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM_BLOCK(BLAS) {
+            extern __shared__ __align__(128) cublasdx::byte smem[];
+            const auto [tile_coord_m, tile_coord_n] = example::get_threadblock_swizzled_tile_coord<SwizzleM>();
 
-        auto tile_c = cublasdx::get_tile(global_c, BLAS::c_shape, tile_coord_m, tile_coord_n);
-        auto tile_pipeline = device_pipeline.get_tile(smem, tile_coord_m, tile_coord_n);
-        auto accumulator = tile_pipeline.get_accumulator();
+            auto tile_c = cublasdx::get_tile(global_c, BLAS::c_shape, tile_coord_m, tile_coord_n);
+            auto tile_pipeline = device_pipeline.get_tile(smem, tile_coord_m, tile_coord_n);
+            auto accumulator = tile_pipeline.get_accumulator();
 
-        tile_pipeline.execute(accumulator);
+            tile_pipeline.execute(accumulator);
 
-        if (accumulator.is_thread_active()) {
-            auto c_fragment = accumulator.get_results();
-            auto d_fragment = accumulator.make_partition_and_copy(tile_c);
-            cublasdx::axpby(alpha, c_fragment, beta, d_fragment);
-            accumulator.partition_and_copy(d_fragment, tile_c);
+            if (accumulator.is_thread_active()) {
+                auto c_fragment = accumulator.get_results();
+                auto d_fragment = accumulator.make_partition_and_copy(tile_c);
+                cublasdx::axpby(alpha, c_fragment, beta, d_fragment);
+                accumulator.partition_and_copy(d_fragment, tile_c);
+            }
         }
     }
 
@@ -90,8 +91,7 @@ namespace {
             auto shared_memory_size = pipeline->buffer_size();
 
             auto kernel = pipeline_kernel<BLAS, SwizzleM, Alpha, Beta, CTensor, decltype(pipeline->get_device_handle())>;
-            CUDA_CHECK_AND_EXIT(
-                cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_memory_size));
+            CUDA_CHECK_AND_EXIT(example::set_max_dynamic_shared_memory_size(kernel, shared_memory_size));
 
             kernel<<<dim3(m / tile_m, n / tile_n, 1), pipeline->get_block_dim(), shared_memory_size, str>>>(
                 alpha, beta, global_c, pipeline->get_device_handle());
@@ -133,14 +133,21 @@ int sgemm_emulation_pipeline(GlobalShape const global_shape) {
     const auto global_ldb = (global_arrangement_b == cublasdx::col_major) ? k : n;
     const auto global_ldc = (global_arrangement_c == cublasdx::col_major) ? m : n;
 
-    // Default 128x128x128 tile; 
-    // increase tile_n to 256 for B200 and later
-    constexpr unsigned tile_m = 128;
-    constexpr unsigned tile_n = 128;
-    constexpr unsigned tile_k = 128;
+    constexpr unsigned required_mantissa_bits = 23;
+    using common_operators = decltype(cublasdx::Precision<value_type, value_type, value_type>() +
+                                      cublasdx::Block() +
+                                      cublasdx::WithPipeline() +
+                                      cublasdx::RequiredMantissaBits<required_mantissa_bits>() +
+                                      cublasdx::SM<Arch, Modifier>());
+    constexpr auto tile = [](unsigned stage_size_ratio) {
+        return stage_size_ratio > 1 ? std::array<unsigned, 3> {128, 128, 128}
+                                    : std::array<unsigned, 3> {64, 64, 32};
+    }(cublasdx::emulated_stage_size_ratio_v<common_operators>);
+    constexpr unsigned tile_m = tile[0];
+    constexpr unsigned tile_n = tile[1];
+    constexpr unsigned tile_k = tile[2];
     constexpr unsigned threads = 128;
     constexpr unsigned swizzle_m = 16;
-    constexpr unsigned required_mantissa_bits = 23;
     constexpr unsigned kernel_warm_up_repeats = 1;
     constexpr unsigned kernel_repeats = 10;
 
@@ -148,20 +155,16 @@ int sgemm_emulation_pipeline(GlobalShape const global_shape) {
     constexpr value_type beta = 1.2f;
 
     using emulated_blas = decltype(cublasdx::Size<tile_m, tile_n, tile_k>() +
-                                   cublasdx::Precision<value_type, value_type, value_type>() +
+                                   common_operators {} +
                                    cublasdx::Type<cublasdx::type::real>() +
                                    cublasdx::Function<cublasdx::function::MM>() +
                                    cublasdx::Arrangement<global_arrangement_a,
                                                          global_arrangement_b,
                                                          global_arrangement_c>() +
-                                   cublasdx::Block() +
                                    cublasdx::BlockDim<threads>() +
                                    cublasdx::StaticBlockDim() +
                                    cublasdx::Alignment<16, 16, 16>() +
-                                   cublasdx::EnableInputStreaming() +
-                                   cublasdx::WithPipeline() +
-                                   cublasdx::RequiredMantissaBits<required_mantissa_bits>() +
-                                   cublasdx::SM<Arch, Modifier>());
+                                   cublasdx::EnableInputStreaming());
 
     cudaStream_t stream;
     CUDA_CHECK_AND_EXIT(cudaStreamCreate(&stream));

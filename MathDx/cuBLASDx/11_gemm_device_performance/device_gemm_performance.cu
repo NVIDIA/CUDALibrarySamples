@@ -28,6 +28,8 @@
 
 
 #include "../common/common.hpp"
+#include "../common/pipeline_budget.hpp"
+#include "../common/cluster.hpp"
 #include "../reference/reference.hpp"
 
 template<class BLAS, class Alpha, class Beta, class CTensor, class DevicePipeline>
@@ -36,24 +38,28 @@ __launch_bounds__(DevicePipeline::max_threads_per_block, 1) __global__
                      Beta const                             beta,
                      CTensor                                global_c,
                      __grid_constant__ DevicePipeline const device_pipeline) {
-    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM(BLAS);
+    CUBLASDX_SKIP_IF_NOT_APPLICABLE_SM_BLOCK(BLAS) {
 
-    extern __shared__ __align__(device_pipeline.buffer_alignment()) cublasdx::byte smem[];
+        extern __shared__ __align__(device_pipeline.buffer_alignment()) cublasdx::byte smem[];
 
-    // Maximize L2 utilization by changing order of threadblocks
-    // In effect subsequent blocks form small sub-squares instead of
-    // flowing in rows or columns.
-    auto [output_tile_m, output_tile_n] = example::get_threadblock_swizzled_tile_coord<16>();
+        // Maximize L2 utilization by changing order of threadblocks: subsequent blocks
+        // form small sub-squares instead of flowing in rows or columns.
+        //
+        // Cluster-level swizzling preserves each block's coordinates within its cluster.
+        // BlocksPerCluster<1, 1> produces the ordinary block swizzle.
+        auto [output_tile_m, output_tile_n] =
+            example::get_cluster_swizzled_tile_coord<16, DevicePipeline::cluster_m, DevicePipeline::cluster_n>();
 
-    // Get pipeline tile for this block
-    auto tile_pipeline = device_pipeline.get_tile(smem, output_tile_m, output_tile_n);
+        // Get pipeline tile for this block
+        auto tile_pipeline = device_pipeline.get_tile(smem, output_tile_m, output_tile_n);
 
-    // Get appropriate C tile for this block
-    auto tile_gmem_c   = cublasdx::get_tile(global_c, BLAS::c_shape, output_tile_m, output_tile_n);
+        // Get appropriate C tile for this block
+        auto tile_gmem_c   = cublasdx::get_tile(global_c, BLAS::c_shape, output_tile_m, output_tile_n);
 
-    tile_pipeline.execute([&](auto& accumulator) {
-        accumulator.axpby(alpha, beta, tile_gmem_c);
-    });
+        tile_pipeline.execute([&](auto& accumulator) {
+            accumulator.axpby(alpha, beta, tile_gmem_c);
+        });
+    }
 }
 
 template<class BLAS,
@@ -88,11 +94,13 @@ auto measure_cublasdx(GEMMShape const   gemm_shape,
     auto global_b = cublasdx::make_gmem_tensor<cute::get<1>(gemm_arr)>(b, k, n, ldb);
     auto global_c = cublasdx::make_gmem_tensor<cute::get<2>(gemm_arr)>(c, m, n, ldc);
 
+    // This example is neither persistent nor predicated, so it needs an exact tiling.
+    // The launch grid must contain a whole number of clusters.
     dim3 grid_dim = dim3 {m / tile_m, n / tile_n, 1};
 
     auto run_cublasdx_gemm = [&](cudaStream_t const str) {
-        auto pipeline =
-            cublasdx::suggest_pipeline<BLAS, cublasdx::internal_accumulator>(global_a, global_b);
+        // The deepest pipeline that fits in shared memory.
+        auto pipeline = cublasdx::suggest_pipeline<BLAS, cublasdx::internal_accumulator>(global_a, global_b);
 
         if (not pipeline) {
             auto const error = pipeline.error();
@@ -112,12 +120,29 @@ auto measure_cublasdx(GEMMShape const   gemm_shape,
                                       .get();
 
         auto kernel = gemm_kernel<BLAS, Alpha, Beta, decltype(global_c), decltype(pipeline->get_device_handle())>;
-        CUDA_CHECK_AND_EXIT(
-            cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_memory_size));
+        CUDA_CHECK_AND_EXIT(example::set_max_dynamic_shared_memory_size(kernel, shared_memory_size));
 
-        kernel<<<grid_dim, pipeline->get_block_dim(), shared_memory_size, str>>>(
-            alpha, beta, global_c, pipeline->get_device_handle());
+        // The launch helper configures clustered and non-clustered launches.
+        CUDA_CHECK_AND_EXIT(example::launch(*pipeline,
+                                             kernel,
+                                             grid_dim,
+                                             shared_memory_size,
+                                             str,
+                                             alpha,
+                                             beta,
+                                             global_c,
+                                             pipeline->get_device_handle()));
     };
+
+    // Report the pipeline depth and launch cluster dimensions.
+    {
+        auto probe = cublasdx::suggest_pipeline<BLAS, cublasdx::internal_accumulator>(global_a, global_b);
+        if (probe) {
+            auto const cluster = probe->get_cluster_dim();
+            std::cout << "pipeline: stages " << probe->stages() << ", cluster "
+                      << cluster.x << "x" << cluster.y << std::endl;
+        }
+    }
 
     // First run for correctness check
     run_cublasdx_gemm(stream);
@@ -213,13 +238,19 @@ int device_gemm_performance(GlobalShape const global_shape) {
 
     // tile size, this describes smaller GEMM,
     // which will be computed by each threadblock
-    // using cuBLASDx
+    // using cuBLASDx.
+    // 128x128 keeps the example portable across GPUs; increase tile_n to 256
+    // on B200 and later for best performance.
     constexpr unsigned tile_m = 128;
     constexpr unsigned tile_n = 128;
     constexpr unsigned tile_k = 64;
 
-    // Number of threads to compute the tile described above
+    // Number of threads to compute the tile described above.
     constexpr int tile_threads = 128;
+
+    // Start with one block. Increase these extents to enable clustered execution.
+    constexpr unsigned cluster_m = 1;
+    constexpr unsigned cluster_n = 1;
 
     // Arrangement of data in a per-threadblock tile of data
     constexpr auto tile_arr_a = global_arrangement_a;
@@ -250,16 +281,9 @@ int device_gemm_performance(GlobalShape const global_shape) {
                                           tile_k * tile_n * sizeof(b_compute_value_type) +
                                           sizeof(cublasdx::pipeline_stage_scratch_t);
 
-    constexpr unsigned available_shared_memory = commondx::device_info<Arch>::shared_memory();
+    constexpr unsigned available_shared_memory = example::pipeline_shared_memory_budget<Arch>();
     constexpr unsigned maximal_pipeline_depth  = cute::min(16, (available_shared_memory - 32) / stage_shared_req);
     constexpr unsigned pipeline_depth          = maximal_pipeline_depth;
-
-    auto k_stages = k / tile_k;
-    if (k_stages < pipeline_depth) {
-        std::cerr << "PipelineDepth must be less or equal to GEMM k stages, please adjust the tile or problem size"
-                  << std::endl;
-        return 1;
-    }
 
     const bool divisible = (m % tile_m == 0 and n % tile_n == 0 and k % tile_k == 0);
     if (not divisible) {
@@ -281,8 +305,9 @@ int device_gemm_performance(GlobalShape const global_shape) {
     const auto global_ld = cute::make_tuple(global_lda, global_ldb, global_ldc);
 
     // Performance comparison parameters
-    const unsigned int kernel_repeats         = 5;
-    const unsigned int kernel_warm_up_repeats = 15;
+    //
+    const unsigned int kernel_repeats         = 15;
+    const unsigned int kernel_warm_up_repeats = 5;
 
     constexpr bool compare_to_fp64_cublas = false;
     using a_cublas_value_type             = cute::conditional_t<compare_to_fp64_cublas, double, a_compute_value_type>;
@@ -380,7 +405,8 @@ int device_gemm_performance(GlobalShape const global_shape) {
                           cublasdx::Arrangement<tile_arr_a, tile_arr_b, tile_arr_c>() + cublasdx::Block() +
                           cublasdx::BlockDim<tile_threads>() + cublasdx::StaticBlockDim() +
                           cublasdx::Alignment<cublasdx_alignment, cublasdx_alignment, cublasdx_alignment>() +
-                          cublasdx::EnableInputStreaming() + cublasdx::WithPipeline() + cublasdx::SM<Arch, Modifier>());
+                          cublasdx::EnableInputStreaming() + cublasdx::WithPipeline() +
+                          cublasdx::BlocksPerCluster<cluster_m, cluster_n>() + cublasdx::SM<Arch, Modifier>());
 
     // =============================
     // Execute cuBLASDx and cuBLASLt
@@ -408,6 +434,8 @@ int device_gemm_performance(GlobalShape const global_shape) {
     // Write performance data.
     using cublasdx::size_of;
     std::cout << "m, n, k: " << m << ", " << n << ", " << k << std::endl;
+    std::cout << "tile m, n, k / threads / stages: " << tile_m << ", " << tile_n << ", " << tile_k << " / "
+              << tile_threads << " / " << pipeline_depth << std::endl;
     std::cout << "Compute Type A: " << example::type_string<a_compute_value_type>() << std::endl;
     std::cout << "Compute Type B: " << example::type_string<b_compute_value_type>() << std::endl;
     std::cout << "Compute Type C: " << example::type_string<c_compute_value_type>() << std::endl;
@@ -436,8 +464,8 @@ int device_gemm_performance(GlobalShape const global_shape) {
     constexpr bool verbose_knob = false;
     constexpr bool print_knob   = true;
 
-    auto error = example::calculate_error(host_dx_results, host_blas_results, verbose_knob, print_knob);
-    std::cout << std::fixed << std::setprecision(10) << "Error = " << error << "\n";
+    const bool is_correct = example::check_error<BLAS>(host_dx_results, host_blas_results, verbose_knob, print_knob);
+    std::cout << (is_correct ? "Success!" : "Failure!") << "\n";
 
     std::cout << std::fixed << std::setprecision(2) << "cuBLAS / cuBLASDx timings = " << time_cublas / time_cublasdx
               << "\n";
@@ -451,7 +479,7 @@ int device_gemm_performance(GlobalShape const global_shape) {
     CUDA_CHECK_AND_EXIT(cudaFree(b_cublas));
     CUDA_CHECK_AND_EXIT(cudaFree(c_cublas));
 
-    return 0;
+    return is_correct ? 0 : 1;
 }
 
 struct device_gemm_performance_functor {

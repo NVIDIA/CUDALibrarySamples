@@ -81,6 +81,13 @@ namespace example {
             stream << "- SM 1030a" << std::endl;
         }
 
+        if constexpr (EnableSM::sm_107) {
+            stream << "- SM 1070" << std::endl;
+        }
+        if constexpr (EnableSM::sm_107a) {
+            stream << "- SM 1070a" << std::endl;
+        }
+
         if constexpr (EnableSM::sm_110) {
             stream << "- SM 1100" << std::endl;
         }
@@ -171,6 +178,16 @@ namespace example {
                 } else if constexpr (EnableSM::sm_103) {
                     return example_functor(
                         std::integral_constant<int, 1030> {}, generic_modifier, static_cast<Args&&>(args)...);
+                }
+                break;
+            }
+            case 1070: {
+                if constexpr (EnableSM::sm_107a) {
+                    return example_functor(
+                        std::integral_constant<int, 1070> {}, arch_specific_modifier, static_cast<Args&&>(args)...);
+                } else if constexpr (EnableSM::sm_107) {
+                    return example_functor(
+                        std::integral_constant<int, 1070> {}, generic_modifier, static_cast<Args&&>(args)...);
                 }
                 break;
             }

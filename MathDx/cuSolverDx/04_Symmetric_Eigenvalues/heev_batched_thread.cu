@@ -44,7 +44,7 @@ __global__ void kernel(DataType* A, PrecisionType* lambda, DataType* workspace, 
     auto this_lambda    = lambda + m * batch_idx;
     auto this_workspace = workspace + workspace_size * batch_idx;
 
-    Solver().execute(this_A, this_lambda, this_workspace, &info[batch_idx]);
+    Solver().execute(this_A, m, this_lambda, this_workspace, &info[batch_idx]);
 }
 
 template<int Arch>
@@ -65,7 +65,7 @@ int heev_batched_thread() {
     constexpr bool is_lower_fill   = fill_mode_of_v<Solver> == fill_mode::lower;
     constexpr bool compute_vectors = job_of_v<Solver> != job::no_vectors;
 
-    const auto     lda_gmem     = m;
+    const auto     lda_gmem     = Solver::default_lda;
     constexpr auto input_size_a = m * m;
 
     const auto batches = 500;

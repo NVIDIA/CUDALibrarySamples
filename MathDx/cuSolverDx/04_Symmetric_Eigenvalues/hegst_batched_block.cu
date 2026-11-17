@@ -33,9 +33,9 @@
 
 template<class POTRF, class HEGST, typename DataType = typename HEGST::a_data_type>
 __global__ __launch_bounds__(HEGST::max_threads_per_block) void potrf_hegst_kernel(DataType*                    A,
-                                                                                   const int                    lda_gmem,
+                                                                                   const int                    lda,
                                                                                    DataType*                    B,
-                                                                                   const int                    ldb_gmem,
+                                                                                   const int                    ldb,
                                                                                    typename POTRF::status_type* info,
                                                                                    const unsigned               batches) {
     CUSOLVERDX_SKIP_IF_NOT_APPLICABLE_SM(HEGST);
@@ -44,11 +44,9 @@ __global__ __launch_bounds__(HEGST::max_threads_per_block) void potrf_hegst_kern
                   "This fused example intentionally uses one batch per block");
 
     constexpr auto m                     = HEGST::m_size;
-    constexpr auto lda_smem              = HEGST::lda;
-    constexpr auto ldb_smem              = HEGST::ldb;
     constexpr auto workspace_size        = HEGST::workspace_size;
-    constexpr auto one_batch_size_a_smem = m * lda_smem;
-    constexpr auto one_batch_size_b_smem = m * ldb_smem;
+    const     auto one_batch_size_a_smem = m * lda;
+    const     auto one_batch_size_b_smem = m * ldb;
 
     const auto batch_idx = blockIdx.x;
     if (batch_idx >= batches) {
@@ -64,12 +62,12 @@ __global__ __launch_bounds__(HEGST::max_threads_per_block) void potrf_hegst_kern
                                                                                                   alignof(DataType),
                                                                                                   workspace_size);
 
-    auto A_g = A + batch_idx * lda_gmem * m;
-    auto B_g = B + batch_idx * ldb_gmem * m;
+    auto A_g = A + batch_idx * lda * m;
+    auto B_g = B + batch_idx * ldb * m;
 
-    common::io<HEGST>::load_b<m, m>(B_g, ldb_gmem, B_s, ldb_smem);
+    common::io<HEGST>::load_b<m, m>(B_g, ldb, B_s, ldb);
     __shared__ typename POTRF::status_type potrf_info;
-    POTRF().execute(B_s, ldb_smem, &potrf_info);
+    POTRF().execute(B_s, ldb, &potrf_info);
     __syncthreads();
 
     if (threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0) {
@@ -77,15 +75,15 @@ __global__ __launch_bounds__(HEGST::max_threads_per_block) void potrf_hegst_kern
     }
 
     if (potrf_info == 0) {
-        common::io<HEGST>::load_a<m, m>(A_g, lda_gmem, A_s, lda_smem);
+        common::io<HEGST>::load_a<m, m>(A_g, lda, A_s, lda);
 
-        // HEGST block execution requires a workspace pointer, and HEGST::shared_memory_size already accounts for HEGST::workspace_size.
-        HEGST().execute(A_s, lda_smem, B_s, ldb_smem, workspace_s);
+        // HEGST block execution requires a workspace pointer, and HEGST::get_shared_memory_size(lda, ldb) already accounts for HEGST::workspace_size.
+        HEGST().execute(A_s, lda, B_s, ldb, workspace_s);
 
-        common::io<HEGST>::store_a<m, m>(A_s, lda_smem, A_g, lda_gmem);
+        common::io<HEGST>::store_a<m, m>(A_s, lda, A_g, lda);
     }
 
-    common::io<HEGST>::store_b<m, m>(B_s, ldb_smem, B_g, ldb_gmem);
+    common::io<HEGST>::store_b<m, m>(B_s, ldb, B_g, ldb);
 }
 
 template<int Arch>
@@ -105,15 +103,17 @@ int hegst_batched_block() {
     constexpr auto     m            = HEGST::m_size;
     constexpr bool     is_col_maj_a = arrangement_of_v_a<HEGST> == arrangement::col_major;
     constexpr bool     is_col_maj_b = arrangement_of_v_b<HEGST> == arrangement::col_major;
-    constexpr unsigned lda_gmem     = m;
-    constexpr unsigned ldb_gmem     = m;
+    constexpr unsigned lda          = HEGST::default_lda;
+    constexpr unsigned ldb          = HEGST::default_ldb;
     constexpr unsigned batch_size   = m * m;
     constexpr unsigned batches      = 200;
+
+    const auto smem_size = HEGST::get_shared_memory_size(lda, ldb);
 
     std::cout << "Suggested BlockDim = " << HEGST::suggested_block_dim.x << std::endl;
     std::cout << "BlockDim Used = " << HEGST::block_dim.x << std::endl;
     std::cout << "HEGST workspace size = " << HEGST::workspace_size << std::endl;
-    std::cout << "HEGST shared memory size = " << HEGST::shared_memory_size << std::endl;
+    std::cout << "HEGST shared memory size = " << smem_size << std::endl;
 
     cudaStream_t stream = nullptr;
     CUDA_CHECK_AND_EXIT(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
@@ -123,9 +123,9 @@ int hegst_batched_block() {
 
     // The input matrix could be non-symmetric as only the specified part of the matrix is processed by HEGST.
     common::fillup_random_matrix<data_type>(
-        is_col_maj_a, m, m, A.data(), lda_gmem, false /*symmetric*/, false /*diagonal dominant*/, -2, 4, batches);
+        is_col_maj_a, m, m, A.data(), lda, false /*symmetric*/, false /*diagonal dominant*/, -2, 4, batches);
     common::fillup_random_matrix<data_type>(
-        is_col_maj_b, m, m, B.data(), ldb_gmem, false /*symmetric*/, true /*diagonal dominant*/, -2, 1, batches);
+        is_col_maj_b, m, m, B.data(), ldb, false /*symmetric*/, true /*diagonal dominant*/, -2, 1, batches);
 
     auto A_input = A;
 
@@ -140,11 +140,9 @@ int hegst_batched_block() {
     CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(d_A, A.data(), sizeof(data_type) * A.size(), cudaMemcpyHostToDevice, stream));
     CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(d_B, B.data(), sizeof(data_type) * B.size(), cudaMemcpyHostToDevice, stream));
 
-    CUDA_CHECK_AND_EXIT(cudaFuncSetAttribute(
-        potrf_hegst_kernel<POTRF, HEGST>, cudaFuncAttributeMaxDynamicSharedMemorySize, HEGST::shared_memory_size));
+    CUDA_CHECK_AND_EXIT(common::set_max_dynamic_shared_memory_size(potrf_hegst_kernel<POTRF, HEGST>, smem_size));
 
-    potrf_hegst_kernel<POTRF, HEGST>
-        <<<batches, HEGST::block_dim, HEGST::shared_memory_size, stream>>>(d_A, lda_gmem, d_B, ldb_gmem, d_info, batches);
+    potrf_hegst_kernel<POTRF, HEGST><<<batches, HEGST::block_dim, smem_size, stream>>>(d_A, lda, d_B, ldb, d_info, batches);
     CUDA_CHECK_AND_EXIT(cudaGetLastError());
 
     CUDA_CHECK_AND_EXIT(cudaMemcpyAsync(A.data(), d_A, sizeof(data_type) * A.size(), cudaMemcpyDeviceToHost, stream));
@@ -166,7 +164,7 @@ int hegst_batched_block() {
     common::cublas_reference_hegst<eig_type_of_v<HEGST>,
                                    fill_mode_of_v<HEGST>,
                                    arrangement_of_v_a<HEGST>,
-                                   arrangement_of_v_b<HEGST>>(A_input, B, A_reference, m, batches);
+                                   arrangement_of_v_b<HEGST>>(A_input, B, A_reference, m, lda, ldb, batches);
 
     double     total_relative_error = 0.0;
     const auto dx_active = common::extract_active_triangle<fill_mode_of_v<HEGST>, arrangement_of_v_a<HEGST>>(A, m, batches);

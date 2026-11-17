@@ -61,7 +61,7 @@ extern "C" __global__ void fft_kernel(typename FFT::value_type* fft_data)
     }
   }
 
-  extern __shared__ FFT::value_type shared_mem[];
+  extern __shared__ __align__(alignof(float4)) cufftdx::byte shared_mem[];
   FFT().execute(thread_data, shared_mem);
 
   index = offset + threadIdx.x;
@@ -254,7 +254,8 @@ int main(int, char**) {
         {0, 0, 0},
         cufftdx::complex_layout::natural,
         cufftdx::real_mode::normal,
-        cufftdx::experimental::query_code_type::ltoir_online);
+        cufftdx::experimental::query_code_type::ltoir_online,
+        false);
 
     if (impls.empty()) {
         std::cerr << "No implementations found for this configuration." << std::endl;
@@ -277,15 +278,24 @@ int main(int, char**) {
     std::cout << std::string(55, '-') << std::endl;
 
     std::vector<autotune_result> results;
+#if CUFFTDX_CUFFT_DEVICE_API_HAS_TRANSPOSITION
+    const bool supports_explicit_transposition =
+        cufftdx::utils::check_cufft_device_api_transposition_version();
+#endif
 
     for (unsigned i = 0; i < impls.size(); ++i) {
         const auto&  impl = impls[i];
         unsigned int ept  = impl.elements_per_thread;
         unsigned int fpb  = impl.ffts_per_block;
         dim3         bdim(impl.block_dim_x, impl.block_dim_y, impl.block_dim_z);
+        auto trp = cufftdx::experimental::transposition::any;
+#if CUFFTDX_CUFFT_DEVICE_API_HAS_TRANSPOSITION
+        if (supports_explicit_transposition) {
+            trp = impl.transposition_type;
+        }
+#endif
 
-        // unused block_dim and shared memory as it comes from query_all_cufft_implementations
-        auto [lto_db, ltoirs, _0, _1] =
+        auto [lto_db, ltoirs, fetched] =
             cufftdx::utils::get_database_and_ltoir(
                 fft_size,
                 cufftdx::fft_direction::forward,
@@ -295,7 +305,11 @@ int main(int, char**) {
                 cufftdx::precision::f32,
                 cufftdx::complex_layout::natural,
                 cufftdx::real_mode::normal,
-                ept);
+                ept,
+                fpb,
+                dim3(0, 0, 0),
+                false,
+                trp);
 
         if (ltoirs.empty() || lto_db.empty()) {
             std::cout << "  [" << i << "] ept=" << ept << "  SKIPPED (no LTOIR/database)" << std::endl;

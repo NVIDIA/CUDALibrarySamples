@@ -26,7 +26,7 @@
 #include "../common/common.hpp"
 #include "../common/random.hpp"
 
-#include "io_strided_conv_smem.hpp"
+#include "io_strided_conv.hpp"
 #include "kernels.hpp"
 #include "reference.hpp"
 
@@ -77,9 +77,9 @@ auto cufftdx_3d_convolution(ValueType* input, ValueType* output, cudaStream_t st
 
     // This is for C2C only, so front/back FFT executions require same memory accesses
     // hence "Front" parameter is true in all cases
-    using io_x = io_strided_conv_smem<dimension::x, true, Batches, FFTX, IFFTX, FFTY, IFFTY, FFTZ, IFFTZ>;
-    using io_y = io_strided_conv_smem<dimension::y, true, Batches, FFTX, IFFTX, FFTY, IFFTY, FFTZ, IFFTZ>;
-    using io_z = io_strided_conv_smem<dimension::z, true, Batches, FFTX, IFFTX, FFTY, IFFTY, FFTZ, IFFTZ>;
+    using io_x = io_strided_conv<dimension::x, true, Batches, FFTX, IFFTX, FFTY, IFFTY, FFTZ, IFFTZ>;
+    using io_y = io_strided_conv<dimension::y, true, Batches, FFTX, IFFTX, FFTY, IFFTY, FFTZ, IFFTZ>;
+    using io_z = io_strided_conv<dimension::z, true, Batches, FFTX, IFFTX, FFTY, IFFTY, FFTZ, IFFTZ>;
 
     cudaError_t err;
 

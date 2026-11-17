@@ -19,6 +19,7 @@
 #define CURANDDX_EXAMPLE_NVRTC_HELPER_HPP
 
 #include <cstdlib>
+#include <string>
 #include "../common.hpp" // for CUDA_CHECK_AND_EXIT
 #define CURANDDX_EXAMPLE_NVRTC
 

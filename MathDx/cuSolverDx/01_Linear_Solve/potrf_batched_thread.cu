@@ -34,7 +34,7 @@ __global__ void potrf_kernel(typename POTRF::a_data_type* A, typename POTRF::sta
     CUSOLVERDX_SKIP_IF_NOT_APPLICABLE_SM(POTRF);
 
     constexpr auto m                = POTRF::m_size;
-    const auto     one_batch_size_a = POTRF::lda * m;
+    const auto     one_batch_size_a = POTRF::m_size * m;
 
     const auto batch_idx = threadIdx.x + blockIdx.x * blockDim.x;
     if (batch_idx >= batches)
@@ -42,7 +42,7 @@ __global__ void potrf_kernel(typename POTRF::a_data_type* A, typename POTRF::sta
 
     auto Ag = A + size_t(one_batch_size_a) * batch_idx;
 
-    POTRF().execute(Ag, &info[batch_idx]);
+    POTRF().execute(Ag, m, &info[batch_idx]);
 }
 
 template<int Arch>
@@ -59,12 +59,11 @@ int potrf_batched_thread() {
     constexpr auto m = POTRF::m_size;
     constexpr auto n = POTRF::n_size;
     static_assert(m == n, "potrf is for Hermitian positive-definite matrix matrix only");
-    constexpr auto lda_smem = POTRF::lda;
 
     constexpr bool is_col_maj_a = arrangement_of_v_a<POTRF> == arrangement::col_major;
 
     // no padding for global memory
-    constexpr auto lda              = m;
+    constexpr auto lda              = POTRF::default_lda;
     const auto     batches          = 250;
     const auto     one_batch_size_A = lda * n; // no padding for global memory
 
