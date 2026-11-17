@@ -1,4 +1,4 @@
-# MathDx Package
+# MathDx
 
 The **MathDx** package is a comprehensive collection of NVIDIA device extension libraries that empower CUDA developers to run
 advanced mathematical operations directly inside their GPU kernels, leveraging kernel fusion for maximum efficiency and flexibility.
@@ -12,13 +12,32 @@ so developers can focus on algorithms rather than hardware-specific tuning.
 * **cuSolverDx**: Device-side matrix factorization, linear solve, least squares, eigenvalue solver, and singular value decomposition routines, supporting scientific and engineering workflows within a kernel.
 * **cuRANDDx**:  Random number generation library aiming to be a modern replacement for [cuRAND RNG device APIs](https://docs.nvidia.com/cuda/curand/device-api-overview.html#device-api-overview).
 * **nvCOMPDx**: Compression and decompression capabilities built into device code, essential for high-throughput streaming and storage applications.
-* **libmathdx**: Runtime library exposing MathDx functionalities through a C API, enabling JIT compilation of device functions to support MathDx usage in other languages like Python.
 
 **See [MathDx documentation](https://docs.nvidia.com/cuda/mathdx/index.html) for more details.**
 
-# MathDx Examples
+## libmathdx
 
-This folder includes examples for libmathdx as well as all libraries in the [MathDx package](https://docs.nvidia.com/cuda/mathdx/index.html): cuFFTDx, cuBLASDx, cuSolverDx, cuRANDDx, and nvCOMPDx. The examples are also shipped in the latest MathDx package (and, for libmathdx examples, in the latest libmathdx package), however, this repository may be updated more often, i.e., between releases. Note that libmathdx is not shipped within the MathDx package.
+**libmathdx** is a runtime library for MathDx enabling JIT compilation of MathDx operations. libmathdx exposes a simple C-API interface for ease of adoption in non-C++ projects, and is the backend powering NVIDIA Python projects such as [Warp](https://developer.nvidia.com/warp-python) and [nvmath-python](https://developer.nvidia.com/nvmath-python). It is shipped as its own package.
+
+**See [libmathdx documentation](https://docs.nvidia.com/cuda/libmathdx/index.html) for more details.**
+
+## MathDx Tile
+
+**MathDx Tile** makes selected cuFFTDx, cuSolverDx, cuBLASDx, and nvCOMPDx operations available inside CUDA Tile kernels, from CUDA Tile C++ and cuTile Python. It is built on top of libmathdx and shipped as its own package.
+
+**See [MathDx Tile documentation](https://docs.nvidia.com/cuda/mathdx_tile/index.html) for more details.**
+
+# Examples
+
+This folder includes examples for all libraries in the [MathDx package](https://docs.nvidia.com/cuda/mathdx/index.html) (cuBLASDx, cuFFTDx, cuSolverDx, cuRANDDx, and nvCOMPDx) as well as for libmathdx and MathDx Tile. The examples are also shipped in the latest MathDx, libmathdx, and MathDx Tile packages, however, this repository may be updated more often, i.e., between releases.
+
+* [cuBLASDx](#cublasdx)
+* [cuFFTDx](#cufftdx)
+* [cuSolverDx](#cusolverdx)
+* [cuRANDDx](#curanddx)
+* [nvCOMPDx](#nvcompdx)
+* [libmathdx](#libmathdx-1)
+* [MathDx Tile](#mathdx-tile-1)
 
 ## [cuBLASDx](cuBLASDx)
 
@@ -212,7 +231,7 @@ This folder includes examples for libmathdx as well as all libraries in the [Mat
 
 ## [libmathdx](libmathdx)
 
-* [libmathdx download page](https://developer.nvidia.com/cublasdx-downloads)
+* [libmathdx download page](https://developer.nvidia.com/libmathdx-downloads)
 * [libmathdx API documentation](https://docs.nvidia.com/cuda/libmathdx/index.html)
 
 #### Examples
@@ -222,12 +241,23 @@ This folder includes examples for libmathdx as well as all libraries in the [Mat
 | cuFFTDx Examples    | cufftdx                      | cuFFTDx API introduction example, performs a C2C FFT                            |
 |                     | cufftdx_heuristics           | Performs a C2C FFT with queryable tuning knobs                                  |
 | cuBLASDx Examples   | cublasdx                     | cuBLASDx API introduction example, performs a GEMM                              |
+|                     | cublasdx_trsm                           | Performs a triangular matrix solve using cuBLASDx                              |
 |                     | cublasdx_tensor              | Performs a GEMM with the Opaque Tensor API                                      |
 |                     | cublasdx_pipeline            | Performs a GEMM using the pipelining APIs                                       |
 |                     | cublasdx_pipelining_callback | Performs a GEMM using pipelining/TMA instructions with a user callback function |
+|                     | cublasdx_pipeline_rmem_copy              | Pipelined GEMM that adds a bias to the output in registers before storing it    |
 | cuSolverDx Examples | cusolverdx_trsm              | cuSolverDx API introduction example, performs a triangular matrix solve         |
 |                     | cusolverdx_potrf             | Performs Cholesky factorization                                                 |
 |                     | cusolverdx_potrs             | Performs a linear solve using Cholesky factors                                  |
 | cuRANDDx Examples   | curanddx                     | cuRANDDx API introduction example, generates random numbers                     |
 | nvCOMPDx Examples   | nvcompdx                     | nvCOMPDx API introduction example, builds an LZ4 compress device function       |
 |                     | nvcompdx_batch               | End-to-end LZ4 compress/decompress round-trip across a batch of chunks          |
+
+## [MathDx Tile](Tile)
+
+* [MathDx Tile download page](https://developer.nvidia.com/mathdx-tile-downloads)
+* [MathDx Tile API documentation](https://docs.nvidia.com/cuda/mathdx_tile/index.html)
+
+#### Examples
+
+See [Tile/README.md](Tile/README.md#examples) for the list of examples.

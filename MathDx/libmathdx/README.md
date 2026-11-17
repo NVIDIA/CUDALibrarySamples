@@ -1,13 +1,13 @@
 # libmathdx Library - API Examples
 
-All examples are shipped within [libmathdx package](https://developer.nvidia.com/cublasdx-downloads).
+All examples are shipped within [libmathdx package](https://developer.nvidia.com/libmathdx-downloads).
 
 ## Description
 
 This folder demonstrates libmathdx APIs usage. libmathdx is a runtime library for MathDx enabling JIT compilation of MathDx operations.
 libmathdx exposes a simple C-API interface for ease of adoption in non-C++ projects, and is the backend powering NVIDIA Python projects such as [Warp](https://developer.nvidia.com/warp-python) and [nvmath-python](https://developer.nvidia.com/nvmath-python).
 
-* [libmathdx download page](https://developer.nvidia.com/cublasdx-downloads)
+* [libmathdx download page](https://developer.nvidia.com/libmathdx-downloads)
 * [libmathdx API documentation](https://docs.nvidia.com/cuda/libmathdx/index.html)
 
 ## Requirements
@@ -61,9 +61,11 @@ For the detailed descriptions of the examples please visit the Examples section 
 | cuFFTDx Examples    | cufftdx                                  | cuFFTDx API introduction example, performs a C2C FFT                            |
 |                     | cufftdx_heuristics                       | Performs a C2C FFT with queryable tuning knobs                                  |
 | cuBLASDx Examples   | cublasdx                                 | cuBLASDx API introduction example, performs a GEMM                              |
+|                     | cublasdx_trsm                           | Performs a triangular matrix solve using cuBLASDx                              |
 |                     | cublasdx_tensor                          | Performs a GEMM with the Opaque Tensor API                                      |
 |                     | cublasdx_pipeline                        | Performs a GEMM using the pipelining APIs                                       |
 |                     | cublasdx_pipelining_callback             | Performs a GEMM using pipelining/TMA instructions with a user callback function |
+|                     | cublasdx_pipeline_rmem_copy              | Pipelined GEMM that adds a bias to the output in registers before storing it    |
 | cuSolverDx Examples | cusolverdx_trsm                          | cuSolverDx API introduction example, performs a triangular matrix solve         |
 |                     | cusolverdx_potrf                         | Performs Cholesky factorization                                                 |
 |                     | cusolverdx_potrs                         | Performs a linear solve using Cholesky factors                                  |

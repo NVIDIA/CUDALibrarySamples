@@ -18,9 +18,11 @@ set(LIBMATHDX_EXAMPLES
     cufftdx
     cufftdx_heuristics
     cublasdx
+    cublasdx_trsm
     cublasdx_tensor
     cublasdx_pipeline
     cublasdx_pipelining_callback
+    cublasdx_pipeline_rmem_copy
     cusolverdx_trsm
     cusolverdx_potrf
     cusolverdx_potrs

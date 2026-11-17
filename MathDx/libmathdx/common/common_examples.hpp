@@ -62,7 +62,7 @@ inline std::tuple<int, int> get_nvrtc_version() {
 }
 
 // Typed input for nvJitLink: pairs an input kind (LTOIR, FATBIN, ...) with its bytes.
-// Lets examples link a mix of fatbins and LTOIRs (e.g. nvCOMPDx requires both).
+// Lets examples link a mix of fatbins and LTOIRs (for example, nvCOMPDx requires both).
 struct lto_t {
     nvJitLinkInputType type;
     std::vector<char> code;
@@ -142,7 +142,7 @@ inline std::vector<char> compile_and_link(const std::string& cuda_code, std::vec
         NVRTC_CHECK(nvrtcGetProgramLogSize(prog, &log_size));
         std::vector<char> log(log_size);
         NVRTC_CHECK(nvrtcGetProgramLog(prog, log.data()));
-        printf("Log: %s\n", log.data());
+        printf("Log: %s\n", log.empty() ? "N/A" : log.data());
         NVRTC_CHECK(compile_result);
     }
 

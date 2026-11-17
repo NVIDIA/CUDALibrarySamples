@@ -70,28 +70,37 @@ int main() {
     LIBMATHDX_CHECK(cufftdxSetOptionStr(h, commondxOption::COMMONDX_OPTION_SYMBOL_NAME, "my_fft"));
 
     /**
-     * Find valid EPTs
+     * Find valid EPTs. Find the supported transpositions for each EPT.
+     * Implementations with the same EPT differ only by transposition and shared memory per FFT:
+     * - None.
+     * - `sizeof(precision) * size` bytes (CUFFTDX_TRANSPOSITION_BY_COMPONENT).
+     * - Twice that size (CUFFTDX_TRANSPOSITION_BY_COMPLEX).
+     * - Padded storage (CUFFTDX_TRANSPOSITION_BY_COMPONENT_PADDED).
      */
 
-    cufftdxKnobType_t knobs = CUFFTDX_KNOB_ELEMENTS_PER_THREAD;
-    size_t num_epts = 0;
-    LIBMATHDX_CHECK(cufftdxGetKnobInt64Size(h, 1, &knobs, &num_epts));
-    std::vector<long long int> epts(num_epts, 0);
-    LIBMATHDX_CHECK(cufftdxGetKnobInt64s(h, 1, &knobs, epts.size(), epts.data()));
+    std::array<cufftdxKnobType_t, 2> knobs = { CUFFTDX_KNOB_ELEMENTS_PER_THREAD, CUFFTDX_KNOB_TRANSPOSITION };
+    size_t num_values = 0;
+    LIBMATHDX_CHECK(cufftdxGetKnobInt64Size(h, knobs.size(), knobs.data(), &num_values));
+    std::vector<long long int> values(num_values, 0);
+    LIBMATHDX_CHECK(cufftdxGetKnobInt64s(h, knobs.size(), knobs.data(), values.size(), values.data()));
 
-    for (auto ept : epts) {
-        printf("Valid ept: %lld\n", ept);
+    for (size_t i = 0; i < values.size(); i += knobs.size()) {
+        printf("Valid ept: %lld with transposition %s\n",
+               values.at(i),
+               cufftdxTranspositionToStr(static_cast<cufftdxTransposition>(values.at(i + 1))));
     }
 
     /**
-     * Pick of one of them directly
+     * Select one implementation directly.
      */
 
-    if (epts.empty()) {
+    if (values.empty()) {
         printf("No valid EPTs!");
+        LIBMATHDX_CHECK(cufftdxDestroyDescriptor(h));
         return 1;
     }
-    LIBMATHDX_CHECK(cufftdxSetOperatorInt64(h, CUFFTDX_OPERATOR_ELEMENTS_PER_THREAD, epts.front()));
+    LIBMATHDX_CHECK(cufftdxSetOperatorInt64(h, CUFFTDX_OPERATOR_ELEMENTS_PER_THREAD, values.at(0)));
+    LIBMATHDX_CHECK(cufftdxSetOperatorInt64(h, CUFFTDX_OPERATOR_TRANSPOSITION, values.at(1)));
 
     /**
      * Confirms that this descriptor is valid and will compile
@@ -101,6 +110,7 @@ int main() {
     LIBMATHDX_CHECK(cufftdxIsSupported(h, &valid));
     printf("Descriptor is %s\n", valid ? "valid" : "invalid");
     if (!valid) {
+        LIBMATHDX_CHECK(cufftdxDestroyDescriptor(h));
         return 1;
     }
 

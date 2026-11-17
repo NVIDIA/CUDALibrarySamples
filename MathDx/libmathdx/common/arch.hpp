@@ -123,7 +123,7 @@ inline arch_t get_dx_sm() {
 
 inline arch_t maybe_accelerated_dx(cc_t in) {
     if (in == get_current_cc() && (in == cc_t { 9, 0 } || in == cc_t { 10, 0 } || in == cc_t { 10, 1 } ||
-                                   in == cc_t { 10, 3 } || in == cc_t { 11, 0 })) {
+                                   in == cc_t { 10, 3 } || in == cc_t { 10, 7 } || in == cc_t { 11, 0 })) {
         return { in, COMMONDX_ARCH_MODIFIER_ARCH_SPECIFIC };
     } else {
         return { in, COMMONDX_ARCH_MODIFIER_GENERIC };
@@ -133,7 +133,7 @@ inline arch_t maybe_accelerated_dx(cc_t in) {
 inline arch_t maybe_accelerated_target(cc_t in) {
     if (in == get_current_cc() &&
         (in == cc_t { 9, 0 } || in == cc_t { 10, 0 } || in == cc_t { 10, 1 } || in == cc_t { 10, 3 } ||
-         in == cc_t { 11, 0 } || in == cc_t { 12, 0 } || in == cc_t { 12, 1 })) {
+         in == cc_t { 10, 7 } || in == cc_t { 11, 0 } || in == cc_t { 12, 0 } || in == cc_t { 12, 1 })) {
         return { in, COMMONDX_ARCH_MODIFIER_ARCH_SPECIFIC };
     } else {
         return { in, COMMONDX_ARCH_MODIFIER_GENERIC };

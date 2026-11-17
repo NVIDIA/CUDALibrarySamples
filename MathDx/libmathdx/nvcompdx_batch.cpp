@@ -36,6 +36,7 @@ struct nvcompdx_artifacts {
     std::vector<char> fatbin;
     long long shmem_size = 0;
     long long tmp_size = 0;
+    long long tmp_alignment = 0;
     long long shmem_alignment = 0;
     long long max_comp_chunk_size = 0; // 0 for decompress
 };
@@ -49,14 +50,13 @@ nvcompdx_artifacts finalize(nvcompdxDirection direction, long long max_uncomp_ch
     LIBMATHDX_CHECK(nvcompdxSetOperatorInt64(h, NVCOMPDX_OPERATOR_DATATYPE, COMMONDX_R_8UI));
     LIBMATHDX_CHECK(nvcompdxSetOperatorInt64(h, NVCOMPDX_OPERATOR_EXECUTION, COMMONDX_EXECUTION_WARP));
     LIBMATHDX_CHECK(nvcompdxSetOperatorInt64(h, NVCOMPDX_OPERATOR_SM, get_dx_sm().operator_sm()));
-    if (direction == NVCOMPDX_DIRECTION_COMPRESS) {
-        LIBMATHDX_CHECK(nvcompdxSetOperatorInt64(h, NVCOMPDX_OPERATOR_MAX_UNCOMP_CHUNK_SIZE, max_uncomp_chunk_size));
-    }
+    LIBMATHDX_CHECK(nvcompdxSetOperatorInt64(h, NVCOMPDX_OPERATOR_MAX_UNCOMP_CHUNK_SIZE, max_uncomp_chunk_size));
     LIBMATHDX_CHECK(nvcompdxSetOptionStr(h, COMMONDX_OPTION_SYMBOL_NAME, symbol));
 
     nvcompdx_artifacts out {};
     LIBMATHDX_CHECK(nvcompdxGetTraitInt64(h, NVCOMPDX_TRAIT_SHMEM_SIZE_GROUP, &out.shmem_size));
     LIBMATHDX_CHECK(nvcompdxGetTraitInt64(h, NVCOMPDX_TRAIT_TMP_SIZE_GROUP, &out.tmp_size));
+    LIBMATHDX_CHECK(nvcompdxGetTraitInt64(h, NVCOMPDX_TRAIT_TMP_ALIGNMENT, &out.tmp_alignment));
     LIBMATHDX_CHECK(nvcompdxGetTraitInt64(h, NVCOMPDX_TRAIT_SHMEM_ALIGNMENT, &out.shmem_alignment));
     if (direction == NVCOMPDX_DIRECTION_COMPRESS) {
         LIBMATHDX_CHECK(nvcompdxGetTraitInt64(h, NVCOMPDX_TRAIT_MAX_COMP_CHUNK_SIZE, &out.max_comp_chunk_size));
@@ -91,13 +91,20 @@ int main() {
     // (LZ4, ANS, ...) shipped with libmathdx. It must be linked alongside the per-descriptor
     // LTOIR for the device function to actually do anything at runtime.
     auto comp = finalize(NVCOMPDX_DIRECTION_COMPRESS, chunk_size, "lz4_compress");
-    auto decomp = finalize(NVCOMPDX_DIRECTION_DECOMPRESS, 0, "lz4_decompress");
+    auto decomp = finalize(NVCOMPDX_DIRECTION_DECOMPRESS, chunk_size, "lz4_decompress");
+
+    // Per-chunk tmp strides, padded so every chunk's slice stays aligned.
+    const auto tmp_stride = [](const nvcompdx_artifacts& a) {
+        const long long alignment = std::max(1LL, a.tmp_alignment);
+        return (a.tmp_size + alignment - 1) / alignment * alignment;
+    };
+    const long long comp_tmp_stride = tmp_stride(comp);
+    const long long decomp_tmp_stride = tmp_stride(decomp);
 
     const long long shmem_align = std::max(comp.shmem_alignment, decomp.shmem_alignment);
 
     // The nvCOMPDx-emitted device functions have signature:
     //   void(void* in, void* out, size_t* in_size, size_t* out_size, uint8_t* shmem, uint8_t* tmp)
-    // For LZ4 decompress, tmp is unused and may be nullptr.
     const char kernel_template[] = R"(
 extern "C" __device__ void lz4_compress(void*, void*, size_t*, size_t*, unsigned char*, unsigned char*);
 extern "C" __device__ void lz4_decompress(void*, void*, size_t*, size_t*, unsigned char*, unsigned char*);
@@ -108,6 +115,7 @@ constexpr size_t    max_comp_size     = %lld;
 constexpr long long comp_shmem_warp   = %lld;
 constexpr long long decomp_shmem_warp = %lld;
 constexpr long long comp_tmp_warp     = %lld;
+constexpr long long decomp_tmp_warp   = %lld;
 constexpr long long shmem_align       = %lld;
 
 extern "C" __global__ void compress_batch(
@@ -127,7 +135,7 @@ extern "C" __global__ void compress_batch(
 
 extern "C" __global__ void decompress_batch(
     int n, unsigned char* in_flat, size_t* in_sizes,
-    unsigned char* out_flat, size_t* out_sizes)
+    unsigned char* out_flat, size_t* out_sizes, unsigned char* tmp)
 {
     extern __shared__ __align__(shmem_align) unsigned char shmem[];
     int warp = threadIdx.x / 32;
@@ -137,7 +145,7 @@ extern "C" __global__ void decompress_batch(
                    out_flat + chunk * chunk_size,
                    in_sizes + chunk, out_sizes + chunk,
                    shmem + warp * decomp_shmem_warp,
-                   nullptr); // LZ4 decompress takes no tmp scratch
+                   tmp + chunk * decomp_tmp_warp);
 }
 )";
     std::string kernel = strprintf(kernel_template,
@@ -146,7 +154,8 @@ extern "C" __global__ void decompress_batch(
                                    comp.max_comp_chunk_size,
                                    comp.shmem_size,
                                    decomp.shmem_size,
-                                   comp.tmp_size,
+                                   comp_tmp_stride,
+                                   decomp_tmp_stride,
                                    shmem_align);
 
     // Both descriptors are LZ4-with-uint8 at the same SM, so the universal nvCOMPDx fatbin
@@ -166,8 +175,8 @@ extern "C" __global__ void decompress_batch(
     // compressed: staging area between kernels (comp_stride).
     // in_size: one size_t = chunk_size, shared by every compress warp.
     // comp_sizes/out_sizes: per-chunk lengths written by compress/decompress.
-    // comp_tmp: per-warp scratch (NVCOMPDX_TRAIT_TMP_SIZE_GROUP); LZ4 decompress doesn't need it.
-    uint8_t *input {}, *compressed {}, *output {}, *comp_tmp {};
+    // comp_tmp/decomp_tmp: per-warp scratch (NVCOMPDX_TRAIT_TMP_SIZE_GROUP of each direction, padded).
+    uint8_t *input {}, *compressed {}, *output {}, *comp_tmp {}, *decomp_tmp {};
     size_t *in_size {}, *comp_sizes {}, *out_sizes {};
     CUDA_CHECK(cudaMallocManaged(&input, num_chunks * chunk_size));
     CUDA_CHECK(cudaMallocManaged(&compressed, num_chunks * comp_stride));
@@ -175,7 +184,8 @@ extern "C" __global__ void decompress_batch(
     CUDA_CHECK(cudaMallocManaged(&in_size, sizeof(size_t)));
     CUDA_CHECK(cudaMallocManaged(&comp_sizes, num_chunks * sizeof(size_t)));
     CUDA_CHECK(cudaMallocManaged(&out_sizes, num_chunks * sizeof(size_t)));
-    CUDA_CHECK(cudaMalloc(&comp_tmp, comp.tmp_size * num_chunks));
+    CUDA_CHECK(cudaMalloc(&comp_tmp, comp_tmp_stride * num_chunks));
+    CUDA_CHECK(cudaMalloc(&decomp_tmp, decomp_tmp_stride * num_chunks));
     *in_size = static_cast<size_t>(chunk_size);
 
     // Fill with sequential bytes (0,1,...,255,0,1,...); the cast wraps mod 256.
@@ -192,7 +202,7 @@ extern "C" __global__ void decompress_batch(
     const int blocks = (num_chunks + warps_per_block - 1) / warps_per_block;
     int n = num_chunks;
     void* comp_args[] = { &n, &input, &in_size, &compressed, &comp_sizes, &comp_tmp };
-    void* decomp_args[] = { &n, &compressed, &comp_sizes, &output, &out_sizes };
+    void* decomp_args[] = { &n, &compressed, &comp_sizes, &output, &out_sizes, &decomp_tmp };
 
     CU_CHECK(cuLaunchKernel(comp_fn,
                             blocks,
@@ -239,5 +249,6 @@ extern "C" __global__ void decompress_batch(
     CUDA_CHECK(cudaFree(comp_sizes));
     CUDA_CHECK(cudaFree(out_sizes));
     CUDA_CHECK(cudaFree(comp_tmp));
+    CUDA_CHECK(cudaFree(decomp_tmp));
     return 0;
 }

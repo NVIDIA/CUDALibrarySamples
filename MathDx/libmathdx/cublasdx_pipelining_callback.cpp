@@ -95,9 +95,11 @@ int main() {
     LIBMATHDX_CHECK(cublasdxSetOperatorInt64s(
         h, cublasdxOperatorType::CUBLASDX_OPERATOR_ALIGNMENT, alignment.size(), alignment.data()));
 
-    LIBMATHDX_CHECK(cublasdxSetOperatorInt64(h, cublasdxOperatorType::CUBLASDX_OPERATOR_ENABLE_INPUT_STREAMING, 1));
+    LIBMATHDX_CHECK(cublasdxSetOperatorInt64(
+        h, cublasdxOperatorType::CUBLASDX_OPERATOR_ENABLE_INPUT_STREAMING, CUBLASDX_INPUT_STREAMING_ENABLED));
 
-    LIBMATHDX_CHECK(cublasdxSetOperatorInt64(h, cublasdxOperatorType::CUBLASDX_OPERATOR_WITH_PIPELINE, 1));
+    LIBMATHDX_CHECK(cublasdxSetOperatorInt64(
+        h, cublasdxOperatorType::CUBLASDX_OPERATOR_WITH_PIPELINE, CUBLASDX_WITH_PIPELINE_ENABLED));
 
     LIBMATHDX_CHECK(cublasdxSetOptionStr(h, commondxOption::COMMONDX_OPTION_SYMBOL_NAME, "matmul"));
 

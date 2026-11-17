@@ -37,8 +37,6 @@ using namespace examples;
 int main() {
 
     int size = 32;
-    int ept = 4;
-    int bpb = 2;
 
     arch_t dx_sm = get_dx_sm();
     arch_t target_sm = get_target_sm();
@@ -76,10 +74,11 @@ int main() {
     LIBMATHDX_CHECK(cufftdxSetOperatorInt64(h, CUFFTDX_OPERATOR_PRECISION, COMMONDX_PRECISION_F32));
     // Compute capability to target
     LIBMATHDX_CHECK(cufftdxSetOperatorInt64(h, CUFFTDX_OPERATOR_SM, dx_sm.operator_sm()));
-    // Number of elements per thread (only for BLOCK execution)
-    LIBMATHDX_CHECK(cufftdxSetOperatorInt64(h, CUFFTDX_OPERATOR_ELEMENTS_PER_THREAD, ept));
-    // Number of ffts per block (only for BLOCK execution)
-    LIBMATHDX_CHECK(cufftdxSetOperatorInt64(h, CUFFTDX_OPERATOR_FFTS_PER_BLOCK, bpb));
+    LIBMATHDX_CHECK(cufftdxSetOperatorInt64(h,
+                                            CUFFTDX_OPERATOR_DEVICE_FUNCTION,
+                                            CUFFTDX_DEVICE_FUNCTION_EXECUTE | CUFFTDX_DEVICE_FUNCTION_FFT_ID |
+                                                CUFFTDX_DEVICE_FUNCTION_BATCH_ID |
+                                                CUFFTDX_DEVICE_FUNCTION_IS_THREAD_ACTIVE));
 
     // COMMONDX_OPTION_SYMBOL_NAME indicates the required name for the device function.
     LIBMATHDX_CHECK(cufftdxSetOptionStr(h, COMMONDX_OPTION_SYMBOL_NAME, "my_fft"));
@@ -99,11 +98,17 @@ int main() {
     LIBMATHDX_CHECK(commondxGetCodeLTOIR(code, lto.size(), lto.data()));
     LIBMATHDX_CHECK(commondxDestroyCode(code));
 
-    printf("Successfully generated LTOIR, %zu bytes for FFT of size %d (%d elements per thread, %d FFTs per block)\n",
-           lto_size,
-           size,
-           ept,
-           bpb);
+    // Let cuFFTDx choose a valid configuration for the requested size.
+    long long int ept = 0, bpb = 0;
+    LIBMATHDX_CHECK(cufftdxGetTraitInt64(h, CUFFTDX_TRAIT_ELEMENTS_PER_THREAD, &ept));
+    LIBMATHDX_CHECK(cufftdxGetTraitInt64(h, CUFFTDX_TRAIT_FFTS_PER_BLOCK, &bpb));
+
+    printf(
+        "Successfully generated LTOIR, %zu bytes for FFT of size %d (%lld elements per thread, %lld FFTs per block)\n",
+        lto_size,
+        size,
+        ept,
+        bpb);
 
     /**
      * Query traits
@@ -125,11 +130,18 @@ int main() {
     long long int stride = 0;
     LIBMATHDX_CHECK(cufftdxGetTraitInt64(h, CUFFTDX_TRAIT_STRIDE, &stride));
 
-    // What is the name of the function?
-    size_t str_size = 0;
-    LIBMATHDX_CHECK(cufftdxGetTraitStrSize(h, CUFFTDX_TRAIT_SYMBOL_NAME, &str_size));
-    std::vector<char> symbol_name(str_size);
-    LIBMATHDX_CHECK(cufftdxGetTraitStr(h, CUFFTDX_TRAIT_SYMBOL_NAME, str_size, symbol_name.data()));
+    // Query the execution and indexing helper symbols.
+    const auto get_symbol = [h](cufftdxTraitType trait) {
+        size_t str_size = 0;
+        LIBMATHDX_CHECK(cufftdxGetTraitStrSize(h, trait, &str_size));
+        std::string name(str_size, '\0');
+        LIBMATHDX_CHECK(cufftdxGetTraitStr(h, trait, str_size, name.data()));
+        return name;
+    };
+    const auto symbol_name = get_symbol(CUFFTDX_TRAIT_SYMBOL_NAME);
+    const auto fft_id_name = get_symbol(CUFFTDX_TRAIT_SYMBOL_FFT_ID_NAME);
+    const auto batch_id_name = get_symbol(CUFFTDX_TRAIT_SYMBOL_BATCH_ID_NAME);
+    const auto is_thread_active_name = get_symbol(CUFFTDX_TRAIT_SYMBOL_IS_THREAD_ACTIVE_NAME);
 
     printf(
         "Function %s requires %lld B of shared memory %lld # of local memory elements and a block_dim of %lld %lld %lld\n",
@@ -142,45 +154,63 @@ int main() {
 
     LIBMATHDX_CHECK(cufftdxDestroyDescriptor(h));
 
-    int total_size = size * bpb;
+    const auto total_size = size * bpb;
 
     const char kernel_template[] = R"(
     // traits from cufftdx descriptor
     #define fft_function %s
+    #define fft_thread_id %s
+    #define fft_batch_id %s
+    #define fft_is_thread_active %s
     constexpr unsigned size = %d;
     constexpr unsigned storage_size = %d;
-    constexpr unsigned ept = %d;
     constexpr unsigned stride = %d;
 
     // function from cufftdx descriptor
     extern "C" __device__ void fft_function(float2* rmem, float2* smem);
+    extern "C" __device__ void fft_thread_id(unsigned int*);
+    extern "C" __device__ void fft_batch_id(unsigned int*);
+    extern "C" __device__ void fft_is_thread_active(int*);
 
     extern "C" __global__ void simple_fft_kernel(float2* in, float2* out) {
         extern __shared__ float2 smem[];
         float2 rmem[storage_size]= {};
 
         // indexing for per thread FFT data copy
-        int fft_id = threadIdx.y;
-        int thread_id = threadIdx.x;
-        int base_index = fft_id * size + thread_id;
+        unsigned int fft_id, thread_id;
+        int active;
+        fft_batch_id(&fft_id);
+        fft_thread_id(&thread_id);
+        fft_is_thread_active(&active);
+        unsigned int batch_offset = fft_id * size;
 
         // copy input to rmem
-        for (int i = 0; i < ept; i++) {
-            rmem[i] = in[base_index + i * stride];
+        if (active) {
+            for (unsigned int index = thread_id, i = 0; index < size; index += stride, ++i) {
+                rmem[i] = in[batch_offset + index];
+            }
         }
     
         // call JIT compiled FFT device function
         fft_function(rmem, smem);
 
         // copy output to out
-        for (int i = 0; i < ept; i++) {
-            out[base_index + i * stride] = rmem[i];
+        if (active) {
+            for (unsigned int index = thread_id, i = 0; index < size; index += stride, ++i) {
+                out[batch_offset + index] = rmem[i];
+            }
         }
     }
     )";
 
-    std::string final_kernel =
-        strprintf(kernel_template, symbol_name.data(), size, (int)storage_size, (int)ept, (int)stride);
+    std::string final_kernel = strprintf(kernel_template,
+                                         symbol_name.data(),
+                                         fft_id_name.data(),
+                                         batch_id_name.data(),
+                                         is_thread_active_name.data(),
+                                         size,
+                                         (int)storage_size,
+                                         (int)stride);
     std::vector<char> cubin = compile_and_link(final_kernel, lto, target_sm);
 
     CUmodule module {};
@@ -188,6 +218,8 @@ int main() {
     CUDA_CHECK(cudaSetDevice(0));
     CU_CHECK(cuModuleLoadDataEx(&module, cubin.data(), 0, 0, 0));
     CU_CHECK(cuModuleGetFunction(&kernel, module, "simple_fft_kernel"));
+    CU_CHECK(cuFuncSetAttribute(
+        kernel, CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES, static_cast<int>(shared_memory_size)));
 
     std::complex<float>*in = nullptr, *out = nullptr;
     CUDA_CHECK(cudaMallocManaged(&in, total_size * sizeof(std::complex<float>)));
@@ -209,14 +241,13 @@ int main() {
                             nullptr));
     CUDA_CHECK(cudaDeviceSynchronize());
 
-    // with an input of 1.0f, the output of the FFT should be the sum of inputs and equaling the FFT size
-    // we are performing a batch of size 2 so we should have 4 values (real, imag) equalling 32 with remaining values
-    // being 0
+    // Each all-ones FFT has a DC value of size and zero elsewhere, within FP32 roundoff.
     for (int i = 0; i < total_size; i++) {
         std::complex<float> expected =
             ((i % size == 0) ? std::complex<float>(static_cast<float>(size), 0.0f) : std::complex<float>(0.0f, 0.0f));
 
-        if (std::abs(out[i] - expected) > 1e-7) {
+        const float error = std::abs(out[i] - expected);
+        if (!std::isfinite(error) || error > 1e-5f * size) {
             printf("Error: out[%d] = %f, %f, expected %f, %f\n",
                    i,
                    out[i].real(),
