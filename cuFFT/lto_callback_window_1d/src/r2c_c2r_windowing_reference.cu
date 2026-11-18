@@ -26,7 +26,7 @@
 #include <cufft.h>
 #include <stdio.h>
 #include <vector>
-#include "r2c_c2r_reference.h"
+#include "r2c_c2r_windowing_reference.h"
 
 __global__ void windowing(unsigned nbatches, unsigned complex_signal_size, unsigned window_size, float2* buffer)
 {
