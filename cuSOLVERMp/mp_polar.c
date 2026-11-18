@@ -294,7 +294,7 @@ int main(int argc, char* argv[])
     /* =========================================== */
     /*          CONFIGURE POLAR PARAMETERS         */
     /* =========================================== */
-    /* uplo: CUBLAS_FILL_MODE_FULL — input A is a general dense matrix.
+    /* uplo: CUBLAS_FILL_MODE_FULL - input A is a general dense matrix.
      *       Use CUBLAS_FILL_MODE_UPPER if A is already upper triangular
      *       (e.g., from a prior QR factorization) to skip internal QR.
      *
@@ -458,6 +458,80 @@ int main(int argc, char* argv[])
     SAMPLE_ASSERT(cudaStat == cudaSuccess);
 
     /* =========================================== */
+    /*     CHOLESKY CHECK OF H ON ALL RANKS        */
+    /* =========================================== */
+    /* H is on the host now, so Potrf may overwrite d_H. It succeeds exactly when H is numerically
+     * positive definite, which holds for every A this sample generates: in the top n-by-n block the
+     * diagonal boost n exceeds the norm of the [-0.5, 0.5] noise (at most n/2), so sigma_min(A) =
+     * lambda_min(H) >= n/2 in exact arithmetic, and the extra rows of a tall A only raise sigma_min.
+     * A rank-deficient A would give a singular PSD H that this check rejects; a tolerance would need
+     * H + tau*I. Symmetry is checked on rank 0 below. d_info is reused. */
+    size_t d_workSizeChol = 0;
+    size_t h_workSizeChol = 0;
+    cusolverStat          = cusolverMpPotrf_bufferSize(handle,
+                                              CUBLAS_FILL_MODE_LOWER,
+                                              n,
+                                              (const void*)d_H,
+                                              ih,
+                                              jh,
+                                              descH,
+                                              computeType,
+                                              &d_workSizeChol,
+                                              &h_workSizeChol);
+    SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
+
+    void* d_workChol = NULL;
+    void* h_workChol = NULL;
+    if (d_workSizeChol > 0)
+    {
+        cudaStat = cudaMalloc(&d_workChol, d_workSizeChol);
+        SAMPLE_ASSERT(cudaStat == cudaSuccess);
+    }
+    if (h_workSizeChol > 0)
+    {
+        h_workChol = malloc(h_workSizeChol);
+        SAMPLE_ASSERT(h_workChol != NULL);
+    }
+
+    cusolverStat = cusolverMpPotrf(handle,
+                                   CUBLAS_FILL_MODE_LOWER,
+                                   n,
+                                   (void*)d_H,
+                                   ih,
+                                   jh,
+                                   descH,
+                                   computeType,
+                                   d_workChol,
+                                   d_workSizeChol,
+                                   h_workChol,
+                                   h_workSizeChol,
+                                   d_info);
+
+    /* Potrf reports a matrix that is not positive definite through info > 0 on every rank, with
+     * CUSOLVER_STATUS_SUCCESS: info is the descriptor-global row of the failing pivot (for ih = 33 and
+     * pivot 18 of H, info = 50). That case is the verification failure reported below; any other status
+     * is fatal. Potrf does not synchronize the stream, so synchronize before reading info. */
+    SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
+    cudaStat = cudaStreamSynchronize(stream);
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
+    int h_info_chol = 0;
+    cudaStat        = cudaMemcpy(&h_info_chol, d_info, sizeof(int), cudaMemcpyDeviceToHost);
+    SAMPLE_ASSERT(cudaStat == cudaSuccess);
+    const int h_pd = (h_info_chol == 0);
+
+    if (d_workChol != NULL)
+    {
+        cudaStat = cudaFree(d_workChol);
+        SAMPLE_ASSERT(cudaStat == cudaSuccess);
+        d_workChol = NULL;
+    }
+    if (h_workChol != NULL)
+    {
+        free(h_workChol);
+        h_workChol = NULL;
+    }
+
+    /* =========================================== */
     /*             VERIFY ON MASTER                */
     /* =========================================== */
     if (rank == 0)
@@ -505,10 +579,42 @@ int main(int argc, char* argv[])
         }
         double recon_err = (a_norm2 > 0.0) ? sqrt(err2) / sqrt(a_norm2) : sqrt(err2);
 
+        /* Check the Hermitian factor: symmetry as max |H - H^T| (the library returns H projected to
+         * (Z + Z^H) / 2, so this stays at rounding level), finite entries, and the Potrf
+         * info from above. Tolerance n * 1e-12 * max(max |H_ij|, 1): each entry is a length-n inner
+         * product, so its rounding error grows with n, as in the checks above. min diag(H) is a
+         * diagnostic only. */
+        double sym_err  = 0.0;
+        double min_diag = (n > 0) ? H[0] : 0.0;
+        double h_max    = 0.0;
+        int    h_finite = 1;
+        for (int64_t j = 0; j < n; j++)
+        {
+            for (int64_t i = 0; i < n; i++)
+            {
+                const double hij = H[i + j * globalRowsH];
+                h_finite         = h_finite && isfinite(hij);
+                sym_err          = fmax(sym_err, fabs(hij - H[j + i * globalRowsH]));
+                h_max            = fmax(h_max, fabs(hij));
+                if (i == j) min_diag = fmin(min_diag, hij);
+            }
+        }
+        const double h_tol = n * 1e-12 * fmax(h_max, 1.0);
+
         printf("\nVerification:\n");
         printf("  ||Up^T*Up - I||_F        = %.6e\n", ortho_err);
         printf("  ||A - Up*H||_F / ||A||_F = %.6e\n", recon_err);
-        sample_ok = sample_ok && (ortho_err < n * 1e-12) && (recon_err < n * 1e-12);
+        printf("  max |H - H^T|            = %.6e\n", sym_err);
+        printf("  min diag(H)              = %.6e\n", min_diag);
+        printf("  cusolverMpPotrf(H) info  = %d (%s)\n",
+               h_info_chol,
+               h_pd ? "positive definite" : "leading minor not positive definite");
+        if (!h_finite)
+        {
+            printf("  H has a non-finite entry\n");
+        }
+        sample_ok = sample_ok && (ortho_err < n * 1e-12) && (recon_err < n * 1e-12) && (sym_err < h_tol) && h_finite &&
+                    h_pd;
         printf("  Polar check: %s\n", sample_ok ? "PASS" : "FAIL");
     }
 

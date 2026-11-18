@@ -52,18 +52,18 @@ static void gen_1d_laplacian_perm(int64_t N, double* A, int64_t lda)
         }
     }
 
-    /* set entries */
-    for (int J = 0; J < N; J++)
+    /* tridiagonal band along the anti-diagonal */
+    for (int64_t J = 0; J < N; J++)
     {
-        /* main diagonal */
+        /* anti-diagonal */
         A[((N - 1) - J) + J * lda] = 2.0;
 
-        /* upper diagonal */
+        /* one below the anti-diagonal */
         if (J > 0)
         {
             A[((N - 1) - (J - 1)) + J * lda] = -1.0;
         }
-        /* lower diagonal */
+        /* one above the anti-diagonal */
         if (J < (N - 1))
         {
             A[((N - 1) - (J + 1)) + J * lda] = -1.0;
@@ -139,7 +139,7 @@ int main(int argc, char* argv[])
     const int nprow = opts.p;
     const int npcol = opts.q;
 
-    /* Convert grid layout to cusolverMp grid mapping */
+    /* Convert grid layout to cuSOLVERMp grid mapping */
     const cusolverMpGridMapping_t gridLayout =
             (opts.grid_layout == 'C' || opts.grid_layout == 'c' ? CUSOLVERMP_GRID_MAPPING_COL_MAJOR
                                                                 : CUSOLVERMP_GRID_MAPPING_ROW_MAJOR);
@@ -183,15 +183,15 @@ int main(int argc, char* argv[])
     cudaStat = cudaStreamCreate(&stream);
     SAMPLE_ASSERT(cudaStat == cudaSuccess);
 
-    /* Initialize cusolverMp library handle */
+    /* Initialize cuSOLVERMp library handle */
     cusolverStat = cusolverMpCreate(&handle, localRank, stream);
     SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
-    /* cusolverMp grids */
+    /* cuSOLVERMp grids */
     cusolverMpGrid_t gridA = NULL;
     cusolverMpGrid_t gridB = NULL;
 
-    /* cusolverMp matrix descriptors */
+    /* cuSOLVERMp matrix descriptors */
     cusolverMpMatrixDescriptor_t descrA = NULL;
     cusolverMpMatrixDescriptor_t descrB = NULL;
 
@@ -216,11 +216,11 @@ int main(int argc, char* argv[])
     size_t workspaceInBytesOnHost_getrf = 0;
     size_t workspaceInBytesOnHost_getrs = 0;
 
-    /* error codes from cusolverMp (device) */
+    /* error codes from cuSOLVERMp (device) */
     int* d_info_getrf = NULL;
     int* d_info_getrs = NULL;
 
-    /* error codes from cusolverMp (host) */
+    /* error codes from cuSOLVERMp (host) */
     int h_info_getrf = 0;
     int h_info_getrs = 0;
 
@@ -364,8 +364,11 @@ int main(int argc, char* argv[])
     /* Allocate global d_ipiv */
     if (enable_pivoting)
     {
-        /* REMARK : ipiv overlaps A[IA, JA:JA+N] as in Netlib's ScaLAPACK */
-        cudaStat = cudaMalloc((void**)&d_ipiv, localColsA * sizeof(int64_t));
+        /* REMARK : ipiv overlaps A[IA, JA:JA+N] as in Netlib's ScaLAPACK.
+         * Allocate at least one entry: d_ipiv must not be NULL on a process
+         * without local columns, because d_ipiv must be NULL on all
+         * processes or on none. */
+        cudaStat = cudaMalloc((void**)&d_ipiv, (localColsA > 0 ? localColsA : 1) * sizeof(int64_t));
         SAMPLE_ASSERT(cudaStat == cudaSuccess);
     }
 
@@ -596,10 +599,10 @@ int main(int argc, char* argv[])
 
         /* measure residual error |b - A*x| */
         double max_err = 0;
-        for (int row = 0; row < N; row++)
+        for (int64_t row = 0; row < N; row++)
         {
             double sum = 0.0;
-            for (int col = 0; col < N; col++)
+            for (int64_t col = 0; col < N; col++)
             {
                 double Aij = _A[row + col * lda];
                 double xj  = _X[col];
@@ -608,15 +611,21 @@ int main(int argc, char* argv[])
             double bi  = _B[row];
             double err = fabs(bi - sum);
 
-            max_err = (max_err > err) ? max_err : err;
+            /* A comparison with a NaN is false. Keep the NaN, so that a NaN or Inf solution fails the check. */
+            if (isnan(err) || err > max_err)
+            {
+                max_err = err;
+            }
         }
 
         double x_nrm_inf = vec_nrm_inf(N, _X);
         double b_nrm_inf = vec_nrm_inf(N, _B);
         double A_nrm_inf = 4.0;
-        double rel_err   = max_err / (A_nrm_inf * x_nrm_inf + b_nrm_inf);
-        double tol       = 1.0e-10;
-        int    ok        = (rel_err < tol);
+        /* An Inf denominator gives rel_err = 0 when max_err is finite, so ok also needs a finite denominator. */
+        double denom   = A_nrm_inf * x_nrm_inf + b_nrm_inf;
+        double rel_err = max_err / denom;
+        double tol     = 1.0e-10;
+        int    ok      = isfinite(denom) && (rel_err < tol);
 
         printf("\n|b - A*x|_inf = %E\n", max_err);
         printf("|x|_inf = %E\n", x_nrm_inf);
@@ -745,7 +754,7 @@ int main(int argc, char* argv[])
     /*                      CLEANUP                */
     /* =========================================== */
 
-    /* Destroy cusolverMp handle */
+    /* Destroy cuSOLVERMp handle */
     cusolverStat = cusolverMpDestroy(handle);
     SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 

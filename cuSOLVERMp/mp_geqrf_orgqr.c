@@ -179,7 +179,7 @@ int main(int argc, char* argv[])
     cudaStat            = cudaStreamCreate(&stream);
     SAMPLE_ASSERT(cudaStat == cudaSuccess);
 
-    /* Initialize cusolverMp library handle */
+    /* Initialize cuSOLVERMp library handle */
     cusolverMpHandle_t handle       = NULL;
     cusolverStatus_t   cusolverStat = cusolverMpCreate(&handle, localDeviceId, stream);
     SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);

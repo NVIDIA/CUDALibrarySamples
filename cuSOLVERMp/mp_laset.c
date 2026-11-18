@@ -125,7 +125,7 @@ int main(int argc, char* argv[])
     cudaStat            = cudaStreamCreate(&stream);
     SAMPLE_ASSERT(cudaStat == cudaSuccess);
 
-    /* Initialize cusolverMp library handle */
+    /* Initialize cuSOLVERMp library handle */
     cusolverMpHandle_t handle = NULL;
     cusolverStat              = cusolverMpCreate(&handle, localRank, stream);
     SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
@@ -280,7 +280,7 @@ int main(int argc, char* argv[])
         /* Verify: check each element of the M-by-N submatrix at (IA, JA).
          * With FULL mode: diagonal == beta, off-diagonal == alpha.
          * Elements outside the submatrix should remain sentinel. */
-        int errors = 0;
+        int64_t errors = 0;
 
         for (int64_t j = 0; j < colsA; j++)
         {
@@ -326,7 +326,7 @@ int main(int argc, char* argv[])
 
         if (errors > 0)
         {
-            printf("VERIFICATION FAILED: %d mismatches\n", errors);
+            printf("VERIFICATION FAILED: %ld mismatches\n", (long)errors);
             sample_ok = 0;
         }
         else

@@ -29,7 +29,7 @@
 
 static void generate_diagonal_dominant_symmetric_matrix(int64_t n, double* A, int64_t lda)
 {
-    /* set A[0:n, 0:n] = 0 */
+    /* fill A[0:n, 0:n] with a random symmetric diagonally dominant matrix */
     for (int64_t j = 0; j < n; j++)
     {
         double sum = 0;
@@ -116,7 +116,7 @@ int main(int argc, char* argv[])
     const int nprow = opts.p;
     const int npcol = opts.q;
 
-    /* Convert grid layout to cusolverMp grid mapping */
+    /* Convert grid layout to cuSOLVERMp grid mapping */
     const cusolverMpGridMapping_t gridLayout =
             (opts.grid_layout == 'C' || opts.grid_layout == 'c' ? CUSOLVERMP_GRID_MAPPING_COL_MAJOR
                                                                 : CUSOLVERMP_GRID_MAPPING_ROW_MAJOR);
@@ -155,16 +155,16 @@ int main(int argc, char* argv[])
     cudaStat            = cudaStreamCreate(&stream);
     SAMPLE_ASSERT(cudaStat == cudaSuccess);
 
-    /* Initialize cusolverMp library handle */
+    /* Initialize cuSOLVERMp library handle */
     cusolverMpHandle_t handle = NULL;
     cusolverStat              = cusolverMpCreate(&handle, localRank, stream);
     SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
-    /* cusolverMp grids */
+    /* cuSOLVERMp grids */
     cusolverMpGrid_t gridA = NULL;
     cusolverMpGrid_t gridQ = NULL;
 
-    /* cusolverMp matrix descriptors */
+    /* cuSOLVERMp matrix descriptors */
     cusolverMpMatrixDescriptor_t descA = NULL;
     cusolverMpMatrixDescriptor_t descQ = NULL;
 
@@ -185,10 +185,10 @@ int main(int argc, char* argv[])
     /* size of workspace on host */
     size_t syevdWorkspaceInBytesOnHost = 0;
 
-    /* error codes from cusolverMp (device) */
+    /* error codes from cuSOLVERMp (device) */
     int* d_syevdInfo = NULL;
 
-    /* error codes from cusolverMp (host) */
+    /* error codes from cuSOLVERMp (host) */
     int h_syevdInfo = 0;
 
     /* =========================================== */
@@ -326,12 +326,12 @@ int main(int argc, char* argv[])
     /*         ALLOCATE Psyevd WORKSPACE            */
     /* =========================================== */
 
-    /* To achieve better performance, allocate the device workspace with
-     * cusolverMpMalloc or — as here — with ncclMemAlloc + cusolverMpBufferRegister.
+    /* To achieve the best performance, allocate the device workspace with
+     * cusolverMpMalloc or - as here - with ncclMemAlloc + cusolverMpBufferRegister.
      * Plain cudaMalloc is also accepted. */
-    /* cusolverMp bufferSize queries return this rank's requirement, while
+    /* cuSOLVERMp bufferSize queries return this rank's requirement, while
      * registration (like cusolverMpMalloc) is collective and requires the
-     * same size on every grid rank — register the grid-wide maximum. */
+     * same size on every grid rank - register the grid-wide maximum. */
     MPI_Allreduce(MPI_IN_PLACE, &syevdWorkspaceInBytesOnDevice, 1, MPI_UNSIGNED_LONG, MPI_MAX, MPI_COMM_WORLD);
 
     int syevdWorkRegistered = 0;
@@ -352,7 +352,7 @@ int main(int argc, char* argv[])
         else if (rank == 0)
         {
             fprintf(stderr,
-                    "Warning: failed to register workspace memory with cusolverMp (status %d); "
+                    "Warning: failed to register workspace memory with cuSOLVERMp (status %d); "
                     "continuing without workspace registration.\n",
                     (int)cusolverStat);
         }
@@ -565,7 +565,7 @@ int main(int argc, char* argv[])
     /*                      CLEANUP                */
     /* =========================================== */
 
-    /* Destroy cusolverMp handle */
+    /* Destroy cuSOLVERMp handle */
     cusolverStat = cusolverMpDestroy(handle);
     SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 

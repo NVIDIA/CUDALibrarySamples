@@ -24,7 +24,6 @@ set(CUBLASMP_LIBRARIES cublasmp CACHE STRING "cuBLASMp library needed by cuSOLVE
 
 set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
-set(CUDA_RUNTIME_LIBRARY shared)
 
 function(build_sample sample_file_name)
     get_filename_component(sample_name ${sample_file_name} NAME_WE)
@@ -42,10 +41,12 @@ function(build_sample sample_file_name)
 
     target_include_directories(${sample_name} PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CUSOLVERMP_INCLUDE_DIRECTORIES}
+    )
+    target_include_directories(${sample_name} SYSTEM PUBLIC
         ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
         ${MPI_C_INCLUDE_DIRS}
         ${NCCL_INCLUDE_DIR}
-        ${CUSOLVERMP_INCLUDE_DIRECTORIES}
     )
 
     target_link_directories(${sample_name} PUBLIC
@@ -76,9 +77,12 @@ endfunction(build_sample)
 
 # C
 build_sample("mp_getrf_getrs.c")
+build_sample("mp_getrf_getri.c")
 build_sample("mp_potrf_potrs.c")
 build_sample("mp_potrf_potrs_fp32.c")
 build_sample("mp_potrf_potrs_fp32emulation.c")
+build_sample("mp_potrf_potrs_fp64emulation.c")
+build_sample("mp_potrf_potri.c")
 build_sample("mp_geqrf.c")
 build_sample("mp_geqrf_orgqr.c")
 build_sample("mp_ormqr.c")
@@ -87,6 +91,7 @@ build_sample("mp_syevd.c")
 build_sample("mp_sygst.c")
 build_sample("mp_sygvd.c")
 build_sample("mp_gels.c")
+build_sample("mp_geqrf_geqrs.c")
 build_sample("mp_laset.c")
 build_sample("mp_polar.c")
 build_sample("mp_gesvd.c")

@@ -48,7 +48,7 @@ static float normI(int64_t m, int64_t n, int64_t lda, const float* A)
 
 static void generate_diagonal_dominant_symmetric_matrix(int64_t n, float* A, int64_t lda)
 {
-    /* set A[0:n, 0:n] = 0 */
+    /* fill A[0:n, 0:n] with a random symmetric diagonally dominant matrix */
     for (int64_t j = 0; j < n; j++)
     {
         float sum = 0;
@@ -134,7 +134,7 @@ int main(int argc, char* argv[])
     const int nprow = opts.p;
     const int npcol = opts.q;
 
-    /* Convert grid layout to cusolverMp grid mapping */
+    /* Convert grid layout to cuSOLVERMp grid mapping */
     const cusolverMpGridMapping_t gridLayout =
             (opts.grid_layout == 'C' || opts.grid_layout == 'c' ? CUSOLVERMP_GRID_MAPPING_COL_MAJOR
                                                                 : CUSOLVERMP_GRID_MAPPING_ROW_MAJOR);
@@ -173,7 +173,7 @@ int main(int argc, char* argv[])
     cudaStat            = cudaStreamCreate(&stream);
     SAMPLE_ASSERT(cudaStat == cudaSuccess);
 
-    /* Initialize cusolverMp library handle */
+    /* Initialize cuSOLVERMp library handle */
     cusolverMpHandle_t handle = NULL;
     cusolverStat              = cusolverMpCreate(&handle, localRank, stream);
     SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
@@ -191,13 +191,19 @@ int main(int argc, char* argv[])
     cusolverStat = cusolverMpSetEmulationStrategy(handle, CUDA_EMULATION_STRATEGY_DEFAULT);
     SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
+#else
+    // headers older than CUDA 13.0 have no FP32 emulation: the sample runs in native FP32
+    if (rank == 0)
+    {
+        printf("FP32 emulation needs CUDA 13.0 or later headers, running natively\n");
+    }
 #endif
 
-    /* cusolverMp grids */
+    /* cuSOLVERMp grids */
     cusolverMpGrid_t gridA = NULL;
     cusolverMpGrid_t gridB = NULL;
 
-    /* cusolverMp matrix descriptors */
+    /* cuSOLVERMp matrix descriptors */
     cusolverMpMatrixDescriptor_t descA = NULL;
     cusolverMpMatrixDescriptor_t descB = NULL;
 
@@ -221,11 +227,11 @@ int main(int argc, char* argv[])
     size_t potrfWorkspaceInBytesOnHost = 0;
     size_t potrsWorkspaceInBytesOnHost = 0;
 
-    /* error codes from cusolverMp (device) */
+    /* error codes from cuSOLVERMp (device) */
     int* d_potrfInfo = NULL;
     int* d_potrsInfo = NULL;
 
-    /* error codes from cusolverMp (host) */
+    /* error codes from cuSOLVERMp (host) */
     int h_potrfInfo = 0;
     int h_potrsInfo = 0;
 
@@ -551,10 +557,10 @@ int main(int argc, char* argv[])
 
         /* measure residual error |b - A*x| */
         float max_err = 0;
-        for (int row = 0; row < n; row++)
+        for (int64_t row = 0; row < n; row++)
         {
             float sum = 0.0f;
-            for (int col = 0; col < n; col++)
+            for (int64_t col = 0; col < n; col++)
             {
                 float Aij = _A[row + col * lda];
                 float xj  = _X[col];
@@ -563,15 +569,21 @@ int main(int argc, char* argv[])
             float bi  = _B[row];
             float err = fabsf(bi - sum);
 
-            max_err = fmaxf(max_err, err);
+            /* fmaxf ignores a NaN. Keep the NaN, so that a NaN or Inf solution fails the check. */
+            if (isnan(err) || err > max_err)
+            {
+                max_err = err;
+            }
         }
 
         float x_nrm_inf = normI(n, 1, ldb, _X);
         float b_nrm_inf = normI(n, 1, ldb, _B);
         float A_nrm_inf = normI(n, n, lda, _A);
-        float rel_err   = max_err / (A_nrm_inf * x_nrm_inf + b_nrm_inf);
-        float tol       = 1.0e-4f;
-        int   ok        = (rel_err < tol);
+        /* An Inf denominator gives rel_err = 0 when max_err is finite, so ok also needs a finite denominator. */
+        float denom   = A_nrm_inf * x_nrm_inf + b_nrm_inf;
+        float rel_err = max_err / denom;
+        float tol     = 1.0e-4f;
+        int   ok      = isfinite(denom) && (rel_err < tol);
 
         printf("\n|b - A*x|_inf = %E\n", max_err);
         printf("|x|_inf = %E\n", x_nrm_inf);
@@ -691,7 +703,7 @@ int main(int argc, char* argv[])
     /*                      CLEANUP                */
     /* =========================================== */
 
-    /* Destroy cusolverMp handle */
+    /* Destroy cuSOLVERMp handle */
     cusolverStat = cusolverMpDestroy(handle);
     SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 

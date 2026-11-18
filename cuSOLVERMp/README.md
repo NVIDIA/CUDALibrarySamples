@@ -12,11 +12,17 @@ Distributed decompositions and linear system solutions
 
 [Dense matrix LU factorization and linear system solve](mp_getrf_getrs.c)
 
+[Dense matrix LU factorization and inversion](mp_getrf_getri.c)
+
 [Dense matrix Cholesky factorization and linear system solve](mp_potrf_potrs.c)
 
 [Dense matrix Cholesky factorization and linear system solve (FP32)](mp_potrf_potrs_fp32.c)
 
 [Dense matrix Cholesky factorization and linear system solve (FP32 emulation)](mp_potrf_potrs_fp32emulation.c)
+
+[Dense matrix Cholesky factorization and linear system solve (FP64 emulation)](mp_potrf_potrs_fp64emulation.c)
+
+[Dense matrix Cholesky factorization and inversion](mp_potrf_potri.c)
 
 [Dense matrix Symmetric Eigensolver](mp_syevd.c)
 
@@ -33,6 +39,8 @@ Distributed decompositions and linear system solutions
 [Dense matrix QR reflector application](mp_ormqr.c)
 
 [Dense matrix QR factorization and linear system solve](mp_gels.c)
+
+[Dense matrix QR factorization and least-squares solve reusing the factorization across multiple right-hand sides](mp_geqrf_geqrs.c)
 
 [Dense matrix initialization (LASET)](mp_laset.c)
 
@@ -110,11 +118,19 @@ Run examples with mpi command and number of processes according to process grid 
 
 `mpirun -n 4 ./mp_getrf_getrs -p 2 -q 2`
 
+`mpirun -n 2 ./mp_getrf_getri`
+
+`mpirun -n 4 ./mp_getrf_getri -p 2 -q 2`
+
 `mpirun -n 2 ./mp_potrf_potrs`
 
 `mpirun -n 4 ./mp_potrf_potrs_fp32 -p 2 -q 2 -n 8192 -nbA 1024 -mbA 1024 -nbB 1024 -mbB 1024 -ia 1 -ja 1 -ib 1 -jb 1`
 
 `mpirun -n 4 ./mp_potrf_potrs_fp32emulation -p 2 -q 2 -n 8192 -nbA 1024 -mbA 1024 -nbB 1024 -mbB 1024 -ia 1 -ja 1 -ib 1 -jb 1`
+
+`mpirun -n 4 ./mp_potrf_potrs_fp64emulation -p 2 -q 2 -n 8192 -nbA 1024 -mbA 1024 -nbB 1024 -mbB 1024 -ia 1 -ja 1 -ib 1 -jb 1`
+
+`mpirun -n 2 ./mp_potrf_potri`
 
 `mpirun -n 2 ./mp_syevd`
 
@@ -143,6 +159,8 @@ Run examples with mpi command and number of processes according to process grid 
 `mpirun -n 4 ./mp_ormqr -p 2 -q 2 -m 128 -n 64 -nrhs 64 -mbA 32 -nbA 32 -mbB 32 -nbB 32`
 
 `mpirun -n 2 ./mp_gels`
+
+`mpirun -n 2 ./mp_geqrf_geqrs`
 
 `mpirun -n 2 ./mp_laset`
 

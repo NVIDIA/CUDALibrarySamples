@@ -265,8 +265,11 @@ int main(int argc, char* argv[])
     SAMPLE_ASSERT(cudaStat == cudaSuccess);
     cudaStat = cudaMalloc(&d_D_stedc, n * sizeof(double));
     SAMPLE_ASSERT(cudaStat == cudaSuccess);
-    cudaStat = cudaMalloc(&d_E_stedc, n * sizeof(double));
-    SAMPLE_ASSERT(cudaStat == cudaSuccess);
+    if (n > 1)
+    {
+        cudaStat = cudaMalloc(&d_E_stedc, (n - 1) * sizeof(double));
+        SAMPLE_ASSERT(cudaStat == cudaSuccess);
+    }
     cudaStat = cudaMalloc((void**)&d_info, sizeof(int));
     SAMPLE_ASSERT(cudaStat == cudaSuccess);
 
@@ -409,8 +412,11 @@ int main(int argc, char* argv[])
     MPI_Bcast(h_E, (int)n, MPI_DOUBLE, 0, MPI_COMM_WORLD);
     cudaStat = cudaMemcpy(d_D_stedc, h_D, n * sizeof(double), cudaMemcpyHostToDevice);
     SAMPLE_ASSERT(cudaStat == cudaSuccess);
-    cudaStat = cudaMemcpy(d_E_stedc, h_E, n * sizeof(double), cudaMemcpyHostToDevice);
-    SAMPLE_ASSERT(cudaStat == cudaSuccess);
+    if (n > 1)
+    {
+        cudaStat = cudaMemcpy(d_E_stedc, h_E, (n - 1) * sizeof(double), cudaMemcpyHostToDevice);
+        SAMPLE_ASSERT(cudaStat == cudaSuccess);
+    }
 
     if (rank == 0) printf("Step 2: STEDC solve of tridiagonal T...\n");
     cudaStat = cudaMemset(d_info, 0, sizeof(int));

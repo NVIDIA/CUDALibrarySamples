@@ -122,6 +122,11 @@ static double compute_error(const int64_t m,
     }
     const double norm_R = compute_norm2(m, nrhs, B, ldb);
 
+    /* A norm of X that overflows to Inf can make the error 0: return NaN, so that the check fails. */
+    if (!isfinite(norm_X))
+    {
+        return NAN;
+    }
     return (norm_R / fmax(m, n) / norm_A / norm_X);
 }
 
@@ -190,7 +195,7 @@ int main(int argc, char* argv[])
     const int nprow = opts.p;
     const int npcol = opts.q;
 
-    /* Convert grid layout to cusolverMp grid mapping */
+    /* Convert grid layout to cuSOLVERMp grid mapping */
     const cusolverMpGridMapping_t gridLayout =
             (opts.grid_layout == 'C' || opts.grid_layout == 'c' ? CUSOLVERMP_GRID_MAPPING_COL_MAJOR
                                                                 : CUSOLVERMP_GRID_MAPPING_ROW_MAJOR);
@@ -222,16 +227,16 @@ int main(int argc, char* argv[])
     cudaStat            = cudaStreamCreate(&stream);
     SAMPLE_ASSERT(cudaStat == cudaSuccess);
 
-    /* Initialize cusolverMp library handle */
+    /* Initialize cuSOLVERMp library handle */
     cusolverMpHandle_t handle = NULL;
     cusolverStat              = cusolverMpCreate(&handle, localRank, stream);
     SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
-    /* cusolverMp grids */
+    /* cuSOLVERMp grids */
     cusolverMpGrid_t gridA = NULL;
     cusolverMpGrid_t gridB = NULL;
 
-    /* cusolverMp matrix descriptors */
+    /* cuSOLVERMp matrix descriptors */
     cusolverMpMatrixDescriptor_t descA = NULL;
     cusolverMpMatrixDescriptor_t descB = NULL;
 
@@ -251,10 +256,10 @@ int main(int argc, char* argv[])
     /* size of workspace on host */
     size_t gelsWorkspaceInBytesOnHost = 0;
 
-    /* error codes from cusolverMp (device) */
+    /* error codes from cuSOLVERMp (device) */
     int* d_gelsInfo = NULL;
 
-    /* error codes from cusolverMp (host) */
+    /* error codes from cuSOLVERMp (host) */
     int h_gelsInfo = 0;
 
     /* =========================================== */
@@ -610,7 +615,7 @@ int main(int argc, char* argv[])
     /*                      CLEANUP                */
     /* =========================================== */
 
-    /* Destroy cusolverMp handle */
+    /* Destroy cuSOLVERMp handle */
     cusolverStat = cusolverMpDestroy(handle);
     SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 

@@ -107,7 +107,7 @@ typedef struct _Options
     bool verbose;
 } Options;
 
-void printHelp(const Options* opts)
+static inline void printHelp(void)
 {
     printf("Available options:\n"
            "    -m\n"
@@ -135,7 +135,7 @@ void printHelp(const Options* opts)
            "    -verbose\n");
 }
 
-void print(const Options* opts)
+static inline void print(const Options* opts)
 {
     printf("Parameters: "
            "m=%d n=%d nrhs=%d "
@@ -166,7 +166,7 @@ void print(const Options* opts)
            opts->verbose);
 }
 
-void parse(Options* opts, int argc, char** argv)
+static inline void parse(Options* opts, int argc, char** argv)
 {
     for (int i = 1; i < argc; i++)
     {
@@ -265,19 +265,19 @@ void parse(Options* opts, int argc, char** argv)
         }
         else if (strcmp(argv[i], "-help") == 0)
         {
-            printHelp(opts);
+            printHelp();
             exit(0);
         }
         else
         {
             printf("unknown option: %s\n", argv[i]);
-            printHelp(opts);
+            printHelp();
             exit(1);
         }
     }
 }
 
-void validate(const Options* opts)
+static inline void validate(const Options* opts)
 {
     if (opts->ia && opts->mbA && (opts->ia - 1) % opts->mbA != 0)
     {
@@ -328,7 +328,7 @@ void validate(const Options* opts)
     }
 }
 
-static inline int getLocalRank()
+static inline int getLocalRank(void)
 {
     int      localRank;
     MPI_Comm localComm;

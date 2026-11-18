@@ -29,7 +29,7 @@
 
 static void gen_matrix(int64_t M, int64_t N, double* A, int64_t lda)
 {
-    /* set A[0:N, 0:N] = 0 */
+    /* fill A[0:M, 0:N] with a deterministic pattern */
     for (int64_t J = 0; J < N; J++)
     {
         for (int64_t I = 0; I < M; I++)
@@ -38,21 +38,21 @@ static void gen_matrix(int64_t M, int64_t N, double* A, int64_t lda)
         }
     }
 
-    /* set entries */
+    /* main diagonal plus a tridiagonal band along the anti-diagonal */
     const int64_t M_N_min = (M < N) ? M : N;
-    for (int J = 0; J < M_N_min; J++)
+    for (int64_t J = 0; J < M_N_min; J++)
     {
-        /* main diagonal */
+        /* anti-diagonal and main diagonal */
         A[((M - 1) - J) + J * lda] = 2.0;
         A[J + J * lda]             = 2.0;
 
-        /* upper diagonal */
+        /* one below the anti-diagonal */
         if (J > 0)
         {
             A[((M - 1) - (J - 1)) + J * lda] = -1.0;
         }
-        /* lower diagonal */
-        if (J < (N - 1))
+        /* one above the anti-diagonal */
+        if (J < (M - 1))
         {
             A[((M - 1) - (J + 1)) + J * lda] = -1.0;
         }
@@ -125,7 +125,7 @@ int main(int argc, char* argv[])
     const int nprow = opts.p;
     const int npcol = opts.q;
 
-    /* Convert grid layout to cusolverMp grid mapping */
+    /* Convert grid layout to cuSOLVERMp grid mapping */
     const cusolverMpGridMapping_t gridLayout =
             (opts.grid_layout == 'C' || opts.grid_layout == 'c' ? CUSOLVERMP_GRID_MAPPING_COL_MAJOR
                                                                 : CUSOLVERMP_GRID_MAPPING_ROW_MAJOR);
@@ -172,14 +172,14 @@ int main(int argc, char* argv[])
     cudaStat = cudaStreamCreate(&stream);
     SAMPLE_ASSERT(cudaStat == cudaSuccess);
 
-    /* Initialize cusolverMp library handle */
+    /* Initialize cuSOLVERMp library handle */
     cusolverStat = cusolverMpCreate(&handle, localDeviceId, stream);
     SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
-    /* cusolverMp grids */
+    /* cuSOLVERMp grids */
     cusolverMpGrid_t gridA = NULL;
 
-    /* cusolverMp matrix descriptors */
+    /* cuSOLVERMp matrix descriptors */
     cusolverMpMatrixDescriptor_t descrA = NULL;
 
     /* Distributed matrices */
@@ -198,10 +198,10 @@ int main(int argc, char* argv[])
     /* size of workspace on host */
     size_t workspaceInBytesOnHost_geqrf = 0;
 
-    /* error codes from cusolverMp (device) */
+    /* error codes from cuSOLVERMp (device) */
     int* d_info_geqrf = NULL;
 
-    /* error codes from cusolverMp (host) */
+    /* error codes from cuSOLVERMp (host) */
     int h_info_geqrf = 0;
 
     /* =========================================== */
@@ -512,12 +512,12 @@ int main(int argc, char* argv[])
             print_host_matrix(lda, colsA, h_A, lda, "A after cusolverDnXgeqrf");
         }
 
-        int passed     = 0;
-        int failed     = 0;
-        int passed_abs = 0;
-        int failed_abs = 0;
+        int64_t passed     = 0;
+        int64_t failed     = 0;
+        int64_t passed_abs = 0;
+        int64_t failed_abs = 0;
 
-        for (int i = 0; i < (M + IA - 1) * (N + JA - 1); i++)
+        for (int64_t i = 0; i < (M + IA - 1) * (N + JA - 1); i++)
         {
             if (fabs(h_A[i] - h_QR[i]) < 0.001)
                 passed++;
@@ -538,7 +538,11 @@ int main(int argc, char* argv[])
         }
 
         sample_ok = sample_ok && (failed_abs == 0);
-        printf("passed_abs %d failed_abs %d passed %d failed %d\n", passed_abs, failed_abs, passed, failed);
+        printf("passed_abs %ld failed_abs %ld passed %ld failed %ld\n",
+               (long)passed_abs,
+               (long)failed_abs,
+               (long)passed,
+               (long)failed);
         printf("  GEQRF check: %s\n", failed_abs == 0 ? "PASS" : "FAIL");
 
         /* Clean up the additional GPU arrays */
@@ -641,7 +645,7 @@ int main(int argc, char* argv[])
     /*                      CLEANUP                */
     /* =========================================== */
 
-    /* Destroy cusolverMp handle */
+    /* Destroy cuSOLVERMp handle */
     cusolverStat = cusolverMpDestroy(handle);
     SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 

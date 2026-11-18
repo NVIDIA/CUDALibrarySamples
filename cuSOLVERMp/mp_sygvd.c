@@ -30,7 +30,7 @@
 /* A is a diagonal weighted matrix */
 static void generate_diagonal_dominant_symmetric_matrix(int64_t n, double* A, int64_t lda)
 {
-    /* set A[0:n, 0:n] = 0 */
+    /* fill A[0:n, 0:n] with a random symmetric diagonally dominant matrix */
     for (int64_t j = 0; j < n; j++)
     {
         double sum = 0;
@@ -189,16 +189,16 @@ int main(int argc, char* argv[])
     cudaStat = cudaStreamCreate(&stream);
     SAMPLE_ASSERT(cudaStat == cudaSuccess);
 
-    /* Initialize cusolverMp library handle */
+    /* Initialize cuSOLVERMp library handle */
     cusolverMpHandle_t handle = NULL;
 
     cusolverStat = cusolverMpCreate(&handle, localRank, stream);
     SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
-    /* cusolverMp grid */
+    /* cuSOLVERMp grid */
     cusolverMpGrid_t grid = NULL;
 
-    /* cusolverMp matrix descriptors */
+    /* cuSOLVERMp matrix descriptors */
     cusolverMpMatrixDescriptor_t descA = NULL;
     cusolverMpMatrixDescriptor_t descB = NULL;
     cusolverMpMatrixDescriptor_t descZ = NULL;
@@ -221,10 +221,10 @@ int main(int argc, char* argv[])
     /* size of workspace on host */
     size_t sygvdWorkspaceInBytesOnHost = 0;
 
-    /* error codes from cusolverMp (device) */
+    /* error codes from cuSOLVERMp (device) */
     int* d_sygvdInfo = NULL;
 
-    /* error codes from cusolverMp (host) */
+    /* error codes from cuSOLVERMp (host) */
     int h_sygvdInfo = 0;
 
     /* =========================================== */
@@ -265,7 +265,7 @@ int main(int argc, char* argv[])
         double* AA = &h_A[(ia - 1) + (ja - 1) * m_global];
         double* BB = &h_B[(ib - 1) + (jb - 1) * m_global];
 
-        /* set A[ia:ia+n, ja:ja+n] = diagonal dominant random lower triangular matrix */
+        /* set A and B to random symmetric diagonally dominant matrices */
         generate_diagonal_dominant_symmetric_matrix(m, AA, m_global);
         generate_diagonal_dominant_symmetric_matrix(m, BB, m_global);
 
@@ -397,12 +397,12 @@ int main(int argc, char* argv[])
     /*         ALLOCATE Psygvd WORKSPACE            */
     /* =========================================== */
 
-    /* To achieve better performance, allocate the device workspace with
-     * cusolverMpMalloc or — as here — with ncclMemAlloc + cusolverMpBufferRegister.
+    /* To achieve the best performance, allocate the device workspace with
+     * cusolverMpMalloc or - as here - with ncclMemAlloc + cusolverMpBufferRegister.
      * Plain cudaMalloc is also accepted. */
-    /* cusolverMp bufferSize queries return this rank's requirement, while
+    /* cuSOLVERMp bufferSize queries return this rank's requirement, while
      * registration (like cusolverMpMalloc) is collective and requires the
-     * same size on every grid rank — register the grid-wide maximum. */
+     * same size on every grid rank - register the grid-wide maximum. */
     MPI_Allreduce(MPI_IN_PLACE, &sygvdWorkspaceInBytesOnDevice, 1, MPI_UNSIGNED_LONG, MPI_MAX, MPI_COMM_WORLD);
 
     int sygvdWorkRegistered = 0;
@@ -423,7 +423,7 @@ int main(int argc, char* argv[])
         else if (rank == 0)
         {
             fprintf(stderr,
-                    "Warning: failed to register workspace memory with cusolverMp (status %d); "
+                    "Warning: failed to register workspace memory with cuSOLVERMp (status %d); "
                     "continuing without workspace registration.\n",
                     (int)cusolverStat);
         }
@@ -637,7 +637,7 @@ int main(int argc, char* argv[])
     /*                      CLEANUP                */
     /* =========================================== */
 
-    /* Destroy cusolverMp handle */
+    /* Destroy cuSOLVERMp handle */
     cusolverStat = cusolverMpDestroy(handle);
     SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 

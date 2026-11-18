@@ -287,7 +287,7 @@ int main(int argc, char* argv[])
     /* ================================================================
      * 9. Configure GESVD (optional descriptor for diagnostics)
      *
-     * Passing gesvdDesc=NULL is fine — it uses defaults and the
+     * Passing gesvdDesc=NULL is fine - it uses defaults and the
      * diagnostic output attributes are simply not retrievable. Here we
      * create one to demonstrate readback and enable the optional
      * residual diagnostic.
@@ -343,14 +343,14 @@ int main(int argc, char* argv[])
     void* d_work         = NULL;
     void* h_work         = NULL;
     int   workRegistered = 0;
-    /* cusolverMp bufferSize queries return this rank's requirement, while
+    /* cuSOLVERMp bufferSize queries return this rank's requirement, while
      * registration (like cusolverMpMalloc) is collective and requires the
-     * same size on every grid rank — register the grid-wide maximum. */
+     * same size on every grid rank - register the grid-wide maximum. */
     MPI_Allreduce(MPI_IN_PLACE, &d_workSize, 1, MPI_UNSIGNED_LONG, MPI_MAX, MPI_COMM_WORLD);
     if (d_workSize > 0)
     {
-        /* To achieve better performance, allocate the device workspace with
-         * cusolverMpMalloc or — as here — with ncclMemAlloc + cusolverMpBufferRegister.
+        /* To achieve the best performance, allocate the device workspace with
+         * cusolverMpMalloc or - as here - with ncclMemAlloc + cusolverMpBufferRegister.
          * Plain cudaMalloc is also accepted. */
         ncclStat = ncclMemAlloc(&d_work, d_workSize);
         SAMPLE_ASSERT(ncclStat == ncclSuccess);
@@ -367,7 +367,7 @@ int main(int argc, char* argv[])
         else if (rank == 0)
         {
             fprintf(stderr,
-                    "Warning: failed to register workspace memory with cusolverMp (status %d); "
+                    "Warning: failed to register workspace memory with cuSOLVERMp (status %d); "
                     "continuing without workspace registration.\n",
                     (int)cusolverStat);
         }

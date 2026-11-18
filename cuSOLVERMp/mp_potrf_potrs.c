@@ -48,7 +48,7 @@ static double normI(int64_t m, int64_t n, int64_t lda, const double* A)
 
 static void generate_diagonal_dominant_symmetric_matrix(int64_t n, double* A, int64_t lda)
 {
-    /* set A[0:n, 0:n] = 0 */
+    /* fill A[0:n, 0:n] with a random symmetric diagonally dominant matrix */
     for (int64_t j = 0; j < n; j++)
     {
         double sum = 0;
@@ -134,7 +134,7 @@ int main(int argc, char* argv[])
     const int nprow = opts.p;
     const int npcol = opts.q;
 
-    /* Convert grid layout to cusolverMp grid mapping */
+    /* Convert grid layout to cuSOLVERMp grid mapping */
     const cusolverMpGridMapping_t gridLayout =
             (opts.grid_layout == 'C' || opts.grid_layout == 'c' ? CUSOLVERMP_GRID_MAPPING_COL_MAJOR
                                                                 : CUSOLVERMP_GRID_MAPPING_ROW_MAJOR);
@@ -173,16 +173,16 @@ int main(int argc, char* argv[])
     cudaStat            = cudaStreamCreate(&stream);
     SAMPLE_ASSERT(cudaStat == cudaSuccess);
 
-    /* Initialize cusolverMp library handle */
+    /* Initialize cuSOLVERMp library handle */
     cusolverMpHandle_t handle = NULL;
     cusolverStat              = cusolverMpCreate(&handle, localRank, stream);
     SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
-    /* cusolverMp grids */
+    /* cuSOLVERMp grids */
     cusolverMpGrid_t gridA = NULL;
     cusolverMpGrid_t gridB = NULL;
 
-    /* cusolverMp matrix descriptors */
+    /* cuSOLVERMp matrix descriptors */
     cusolverMpMatrixDescriptor_t descA = NULL;
     cusolverMpMatrixDescriptor_t descB = NULL;
 
@@ -206,11 +206,11 @@ int main(int argc, char* argv[])
     size_t potrfWorkspaceInBytesOnHost = 0;
     size_t potrsWorkspaceInBytesOnHost = 0;
 
-    /* error codes from cusolverMp (device) */
+    /* error codes from cuSOLVERMp (device) */
     int* d_potrfInfo = NULL;
     int* d_potrsInfo = NULL;
 
-    /* error codes from cusolverMp (host) */
+    /* error codes from cuSOLVERMp (host) */
     int h_potrfInfo = 0;
     int h_potrsInfo = 0;
 
@@ -536,10 +536,10 @@ int main(int argc, char* argv[])
 
         /* measure residual error |b - A*x| */
         double max_err = 0;
-        for (int row = 0; row < n; row++)
+        for (int64_t row = 0; row < n; row++)
         {
             double sum = 0.0;
-            for (int col = 0; col < n; col++)
+            for (int64_t col = 0; col < n; col++)
             {
                 double Aij = _A[row + col * lda];
                 double xj  = _X[col];
@@ -548,15 +548,21 @@ int main(int argc, char* argv[])
             double bi  = _B[row];
             double err = fabs(bi - sum);
 
-            max_err = fmax(max_err, err);
+            /* fmax ignores a NaN. Keep the NaN, so that a NaN or Inf solution fails the check. */
+            if (isnan(err) || err > max_err)
+            {
+                max_err = err;
+            }
         }
 
         double x_nrm_inf = normI(n, 1, ldb, _X);
         double b_nrm_inf = normI(n, 1, ldb, _B);
         double A_nrm_inf = normI(n, n, lda, _A);
-        double rel_err   = max_err / (A_nrm_inf * x_nrm_inf + b_nrm_inf);
-        double tol       = 1.0e-10;
-        int    ok        = (rel_err < tol);
+        /* An Inf denominator gives rel_err = 0 when max_err is finite, so ok also needs a finite denominator. */
+        double denom   = A_nrm_inf * x_nrm_inf + b_nrm_inf;
+        double rel_err = max_err / denom;
+        double tol     = 1.0e-10;
+        int    ok      = isfinite(denom) && (rel_err < tol);
 
         printf("\n|b - A*x|_inf = %E\n", max_err);
         printf("|x|_inf = %E\n", x_nrm_inf);
@@ -676,7 +682,7 @@ int main(int argc, char* argv[])
     /*                      CLEANUP                */
     /* =========================================== */
 
-    /* Destroy cusolverMp handle */
+    /* Destroy cuSOLVERMp handle */
     cusolverStat = cusolverMpDestroy(handle);
     SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 

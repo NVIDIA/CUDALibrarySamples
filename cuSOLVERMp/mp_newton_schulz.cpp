@@ -29,10 +29,10 @@
 #include "helpers.h"
 
 /* types */
-typedef __nv_bfloat16 value_type;
-typedef float         compute_type;
-cudaDataType_t        cudaValueType   = CUDA_R_16BF;
-cudaDataType_t        cudaComputeType = CUDA_R_32F;
+typedef __nv_bfloat16       value_type;
+typedef float               compute_type;
+static const cudaDataType_t cudaValueType   = CUDA_R_16BF;
+static const cudaDataType_t cudaComputeType = CUDA_R_32F;
 
 /* set random matrix A, dim(A) = [m,n] */
 static void generate_random_matrix(const int64_t m, const int64_t n, value_type* A, const int64_t lda)
@@ -98,7 +98,7 @@ int main(int argc, char* argv[])
     const int nprow = opts.p;
     const int npcol = opts.q;
 
-    /* Convert grid layout to cusolverMp grid mapping */
+    /* Convert grid layout to cuSOLVERMp grid mapping */
     const cusolverMpGridMapping_t gridLayout =
             (opts.grid_layout == 'C' || opts.grid_layout == 'c' ? CUSOLVERMP_GRID_MAPPING_COL_MAJOR
                                                                 : CUSOLVERMP_GRID_MAPPING_ROW_MAJOR);
@@ -135,18 +135,18 @@ int main(int argc, char* argv[])
     cudaStat            = cudaStreamCreate(&stream);
     SAMPLE_ASSERT(cudaStat == cudaSuccess);
 
-    /* Initialize cusolverMp library handle */
+    /* Initialize cuSOLVERMp library handle */
     cusolverMpHandle_t handle = NULL;
     cusolverStat              = cusolverMpCreate(&handle, localRank, stream);
     SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
-    /* cusolverMp grids */
+    /* cuSOLVERMp grids */
     cusolverMpGrid_t gridA = NULL;
 
-    /* cusolverMp matrix descriptors */
+    /* cuSOLVERMp matrix descriptors */
     cusolverMpMatrixDescriptor_t descA = NULL;
 
-    /* cusolverMp NS descriptor */
+    /* cuSOLVERMp NS descriptor */
     cusolverMpNewtonSchulzDescriptor_t descNS = NULL;
 
     /* Distributed matrices */
@@ -164,10 +164,10 @@ int main(int argc, char* argv[])
     /* size of workspace on host */
     size_t workspaceInBytesOnHost = 0;
 
-    /* error codes from cusolverMp (device) */
+    /* error codes from cuSOLVERMp (device) */
     int* d_nsInfo = NULL;
 
-    /* error codes from cusolverMp (host) */
+    /* error codes from cuSOLVERMp (host) */
     int h_nsInfo = 0;
 
     /* Single process per device */
@@ -189,7 +189,7 @@ int main(int argc, char* argv[])
         SAMPLE_ASSERT(h_A != NULL);
 
         /* reset host workspace */
-        memset(h_A, 0xFF, lda * colsA * sizeof(value_type));
+        memset(static_cast<void*>(h_A), 0xFF, lda * colsA * sizeof(value_type));
 
         value_type* _A = &h_A[(ia - 1) + (ja - 1) * lda];
 
@@ -328,12 +328,12 @@ int main(int argc, char* argv[])
     /* =========================================== */
     /*          ALLOCATE and REGISTER WORKSPACE    */
     /* =========================================== */
-    /* To achieve better performance, allocate the device workspace with
-     * cusolverMpMalloc or — as here — with ncclMemAlloc + cusolverMpBufferRegister.
+    /* To achieve the best performance, allocate the device workspace with
+     * cusolverMpMalloc or - as here - with ncclMemAlloc + cusolverMpBufferRegister.
      * Plain cudaMalloc is also accepted. */
-    /* cusolverMp bufferSize queries return this rank's requirement, while
+    /* cuSOLVERMp bufferSize queries return this rank's requirement, while
      * registration (like cusolverMpMalloc) is collective and requires the
-     * same size on every grid rank — register the grid-wide maximum. */
+     * same size on every grid rank - register the grid-wide maximum. */
     MPI_Allreduce(MPI_IN_PLACE, &workspaceInBytesOnDevice, 1, MPI_UNSIGNED_LONG, MPI_MAX, MPI_COMM_WORLD);
 
     bool workspaceRegistered = false;
@@ -354,7 +354,7 @@ int main(int argc, char* argv[])
         else if (rank == 0)
         {
             fprintf(stderr,
-                    "Warning: failed to register workspace memory with cusolverMp (status %d); "
+                    "Warning: failed to register workspace memory with cuSOLVERMp (status %d); "
                     "continuing without workspace registration.\n",
                     (int)cusolverStat);
         }
@@ -508,7 +508,7 @@ int main(int argc, char* argv[])
     /*                      CLEANUP                */
     /* =========================================== */
 
-    /* Destroy cusolverMp handle */
+    /* Destroy cuSOLVERMp handle */
     cusolverStat = cusolverMpDestroy(handle);
     SAMPLE_ASSERT(cusolverStat == CUSOLVER_STATUS_SUCCESS);
 
