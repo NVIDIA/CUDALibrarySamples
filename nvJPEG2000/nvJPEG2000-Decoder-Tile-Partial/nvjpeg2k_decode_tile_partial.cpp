@@ -152,7 +152,7 @@ int prepare_buffers(FileData &file_data, std::vector<size_t> &file_len,
         CHECK_NVJPEG2K(nvjpeg2kStreamParse(params.nvjpeg2k_handle, (unsigned char*)file_data[i].data(), file_len[i],
                 0, 0, params.jpeg2k_streams[i]));
         auto io_end = perfclock::now();
-        parse_time += std::chrono::duration_cast<std::chrono::seconds>(io_end-io_start).count();
+        parse_time += std::chrono::duration<double>(io_end-io_start).count();
         
         CHECK_NVJPEG2K(nvjpeg2kStreamGetImageInfo(params.jpeg2k_streams[i], &image_info));
 

@@ -196,7 +196,7 @@ int read_next_batch(FileNames &image_names, int batch_size,
         {
             std::cerr << "Cannot open image: " << *cur_iter
                       << ", removing it from image list" << std::endl;
-            image_names.erase(cur_iter);
+            cur_iter = image_names.erase(cur_iter);
             continue;
         }
 
@@ -212,7 +212,7 @@ int read_next_batch(FileNames &image_names, int batch_size,
         {
             std::cerr << "Cannot read from file: " << *cur_iter
                       << ", removing it from image list" << std::endl;
-            image_names.erase(cur_iter);
+            cur_iter = image_names.erase(cur_iter);
             continue;
         }
         raw_len[counter] = file_size;

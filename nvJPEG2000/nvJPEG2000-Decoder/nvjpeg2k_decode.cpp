@@ -205,7 +205,7 @@ int decode_images(FileNames &current_names, const FileData &img_data, const std:
         CHECK_NVJPEG2K(nvjpeg2kStreamParse(params.nvjpeg2k_handle, (unsigned char*)img_data[i].data(), img_len[i],
              0, 0, params.jpeg2k_stream));
         auto io_end = perfclock::now();
-        double parse_time = std::chrono::duration_cast<std::chrono::seconds>(io_end-io_start).count();
+        double parse_time = std::chrono::duration<double>(io_end-io_start).count();
         
         CHECK_NVJPEG2K(nvjpeg2kStreamGetImageInfo(params.jpeg2k_stream, &image_info));
 
