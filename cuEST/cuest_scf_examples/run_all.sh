@@ -89,6 +89,7 @@ run_pytest "directk_bilinear_grad_1" test/directk_bilinear_grad_1
 
 # Standalone examples
 run_script "rhf-1 example"      examples/rhf-1/test.py
+run_script "rhf-2 example"      examples/rhf-2/test.py
 run_script "uhf-1 example"      examples/uhf-1/test.py
 run_script "mp2-1 example"      examples/mp2-1/test.py
 run_script "mp2-grad-1 example" examples/mp2-grad-1/test.py

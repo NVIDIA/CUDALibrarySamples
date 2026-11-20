@@ -354,6 +354,21 @@ int main(int argc, char **argv)
         &gridkint_plan_parameters));
 
     /*
+     * Request the symmetric overlap fit of the grid collocation. This is the
+     * overlap-fitting step that is part of the Compensated Grid-K procedure.
+     * The exchange derivatives computed from this plan will account for the
+     * response of the overlap fit.
+     */
+    cuestGridKIntPlanParametersFittingAlgorithm_t fitting_algorithm =
+        CUEST_GRIDKINTPLAN_PARAMETERS_FITTING_ALGORITHM_OVERLAP_SYMMETRIC;
+    checkCuestErrors(cuestParametersConfigure(
+        CUEST_GRIDKINTPLAN_PARAMETERS,
+        gridkint_plan_parameters,
+        CUEST_GRIDKINTPLAN_PARAMETERS_FITTING_ALGORITHM,
+        &fitting_algorithm,
+        sizeof(cuestGridKIntPlanParametersFittingAlgorithm_t)));
+
+    /*
      * The Grid-K gradient algorithm implemented in cuEST can benefit from very large temporary spaces.
      * However, the calculation can be performed in smaller, more managable workspaces. Here, a workspace
      * descriptor is used to set an upper limit for the size of certain intermediates used to form the K

@@ -440,6 +440,19 @@ def run(
             )
         )
 
+    # Request the symmetric overlap fit of the grid collocation. This is the
+    # overlap-fitting step that is part of the Compensated Grid-K procedure.
+    fitting_algorithm = ce.data_cuestGridKIntPlanParametersFittingAlgorithm_t(
+        ce.CuestGridKIntPlanParametersFittingAlgorithm.CUEST_GRIDKINTPLAN_PARAMETERS_FITTING_ALGORITHM_OVERLAP_SYMMETRIC)
+    cuest_check('Configure GridKIntPlan Params',
+        ce.cuestParametersConfigure(
+            parametersType=ce.CuestParametersType.CUEST_GRIDKINTPLAN_PARAMETERS,
+            parameters=gridkintplan_parameters,
+            attribute=ce.CuestGridKIntPlanParametersAttributes.CUEST_GRIDKINTPLAN_PARAMETERS_FITTING_ALGORITHM,
+            attributeValue=fitting_algorithm,
+            )
+        )
+
     plan_variable_buffer_size = WorkspaceDescriptor(device_buffer_size_in_bytes=4000000000)
 
     cuest_check('Create GridKIntPlan Workspace Query',

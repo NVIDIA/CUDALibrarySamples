@@ -48,6 +48,7 @@ cuest_scf_examples/
     gbs/              # Gaussian basis set files (G94/Psi4 GBS format)
   examples/
     rhf-1/            # Standalone RHF example
+    rhf-2/            # Standalone RHF example comparing the Fock build methods (DF-J/DF-K, direct J/K, compensated Grid-K)
     uhf-1/            # Standalone UHF example
     mp2-1/            # Standalone MP2 example (uses nvmath-python)
     mp2-grad-1/       # Standalone MP2 gradient example (uses nvmath-python)
