@@ -95,6 +95,9 @@ run_script "mp2-1 example"      examples/mp2-1/test.py
 run_script "mp2-grad-1 example" examples/mp2-grad-1/test.py
 run_script "cphf-1 example"     examples/cphf-1/test.py
 run_script "rhf-hessian-1 example" examples/rhf-hessian-1/test.py
+# Large-scale example (376 atoms), not run by default: it is only
+# recommended on GPUs with full-rate FP64 compute. Uncomment to run it.
+# run_script "rhf-large-1 example" examples/rhf-large-1/test.py
 
 echo "============================================================"
 echo " Results: $PASS passed, $FAIL failed"

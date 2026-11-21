@@ -54,6 +54,7 @@ cuest_scf_examples/
     mp2-grad-1/       # Standalone MP2 gradient example (uses nvmath-python)
     cphf-1/           # Standalone CPHF example (uses nvmath-python)
     rhf-hessian-1/    # Standalone semi-analytic RHF Hessian example (overlap and kinetic Hessian terms)
+    rhf-large-1/      # Standalone large-scale RHF example (376-atom urea cluster, DF-J and compensated Grid-K, with optional direct J); not run by run_all.sh
   test/
     rhf_1/            # RHF integration test
     rhf_grad_1/       # RHF gradient integration test

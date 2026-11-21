@@ -16,7 +16,8 @@ downloaded from the Basis Set Exchange
 (https://www.basissetexchange.org), versions 0.9 to 0.12. The header
 of each file records the Basis Set Exchange version it was downloaded
 with and the origin of its data (Turbomole 7.3 for the def2 basis
-sets, Gaussian09 for STO-3G).
+sets and the cc-pVnZ-JKFIT auxiliary basis sets, ccRepo/Grant Hill
+for the cc-pVnZ and aug-cc-pVnZ basis sets, Gaussian09 for STO-3G).
 
 Basis Set Exchange is developed by the Molecular Sciences Software
 Institute (MolSSI) and is licensed under the BSD 3-Clause License:
@@ -75,22 +76,75 @@ def2-TZVP-ECP  (cuest_scf_examples/data/gbs/def2-tzvp-ecp.gbs)
 def2-TZVPP  (cuest_scf_examples/data/gbs/def2-tzvpp.gbs)
 def2-QZVP  (cuest_scf_examples/data/gbs/def2-qzvp.gbs)
 def2-QZVP-ECP  (cuest_scf_examples/data/gbs/def2-qzvp-ecp.gbs)
+def2-QZVPP  (cuest_scf_examples/data/gbs/def2-qzvpp.gbs)
 
   F. Weigend and R. Ahlrichs,
   Phys. Chem. Chem. Phys. 7, 3297 (2005).
   https://doi.org/10.1039/B508541A
 
   F. Weigend, F. Furche, R. Ahlrichs,
-  J. Chem. Phys. 119, 12753 (2003).  [def2-QZVP]
+  J. Chem. Phys. 119, 12753 (2003).  [def2-QZVP, def2-QZVPP]
   https://doi.org/10.1063/1.1627293
 
+  R. Gulde, P. Pollak, F. Weigend,
+  J. Chem. Theory Comput. 8, 4062 (2012).  [Ce-Lu]
+  https://doi.org/10.1021/ct300302u
+
+  The effective core potentials used with the def2 basis sets for
+  Rb and heavier elements:
+
+  T. Leininger, A. Nicklass, W. Küchle, H. Stoll, M. Dolg, A. Bergner,
+  Chem. Phys. Lett. 255, 274 (1996).  [Rb, Cs]
+  https://doi.org/10.1016/0009-2614(96)00382-X
+
+  M. Kaupp, P. v. R. Schleyer, H. Stoll, H. Preuss,
+  J. Chem. Phys. 94, 1360 (1991).  [Sr, Ba]
+  https://doi.org/10.1063/1.459993
+
   D. Andrae, U. Häußermann, M. Dolg, H. Stoll, H. Preuß,
-  Theor. Chim. Acta 77, 123 (1990).  [ECPs for 4th/5th row elements]
+  Theor. Chim. Acta 77, 123 (1990).  [Y-Cd, Hf-Hg]
   https://doi.org/10.1007/BF01114537
 
   B. Metz, H. Stoll, M. Dolg,
-  J. Chem. Phys. 113, 2563 (2000).  [Small-core ECPs, including I]
+  J. Chem. Phys. 113, 2563 (2000).  [In-Sb, Pb, Bi]
   https://doi.org/10.1063/1.1305880
+
+  K. A. Peterson, D. Figgen, E. Goll, H. Stoll, M. Dolg,
+  J. Chem. Phys. 119, 11113 (2003).  [Te-Xe, Po-Rn]
+  https://doi.org/10.1063/1.1622924
+
+  M. Dolg, H. Stoll, A. Savin, H. Preuss,
+  Theor. Chim. Acta 75, 173 (1989).  [La]
+  https://doi.org/10.1007/BF00528565
+
+  M. Dolg, H. Stoll, H. Preuss,
+  Theor. Chim. Acta 85, 441 (1993).  [La]
+  https://doi.org/10.1007/BF01112983
+
+  M. Dolg, H. Stoll, H. Preuss,
+  J. Chem. Phys. 90, 1730 (1989).  [Ce-Yb]
+  https://doi.org/10.1063/1.456066
+
+  X. Cao and M. Dolg,
+  J. Chem. Phys. 115, 7348 (2001).  [Lu]
+  https://doi.org/10.1063/1.1406535
+
+  B. Metz, M. Schweizer, H. Stoll, M. Dolg, W. Liu,
+  Theor. Chem. Acc. 104, 22 (2000).  [Tl]
+  https://doi.org/10.1007/s002149900101
+
+def2-SVPD  (cuest_scf_examples/data/gbs/def2-svpd.gbs)
+def2-TZVPD  (cuest_scf_examples/data/gbs/def2-tzvpd.gbs)
+def2-TZVPPD  (cuest_scf_examples/data/gbs/def2-tzvppd.gbs)
+def2-QZVPD  (cuest_scf_examples/data/gbs/def2-qzvpd.gbs)
+def2-QZVPPD  (cuest_scf_examples/data/gbs/def2-qzvppd.gbs)
+
+  The diffuse-augmented variants of the def2 basis sets above; in
+  addition to the references for the underlying def2 basis sets:
+
+  D. Rappoport and F. Furche,
+  J. Chem. Phys. 133, 134105 (2010).
+  https://doi.org/10.1063/1.3484283
 
 def2-universal-JKFIT  (data/basis_set/def2-universal-jkfit.gbs,
                        cuest_scf_examples/data/gbs/def2-universal-jkfit.gbs)
@@ -99,11 +153,19 @@ def2-universal-JKFIT  (data/basis_set/def2-universal-jkfit.gbs,
   J. Comput. Chem. 29, 167 (2008).
   https://doi.org/10.1002/jcc.20702
 
+  R. Gulde, P. Pollak, F. Weigend,
+  J. Chem. Theory Comput. 8, 4062 (2012).  [Ce-Lu]
+  https://doi.org/10.1021/ct300302u
+
 def2-universal-JFIT  (cuest_scf_examples/data/gbs/def2-universal-jfit.gbs)
 
   F. Weigend,
   Phys. Chem. Chem. Phys. 8, 1057 (2006).
   https://doi.org/10.1039/B515623H
+
+  R. Gulde, P. Pollak, F. Weigend,
+  J. Chem. Theory Comput. 8, 4062 (2012).  [Ce-Lu]
+  https://doi.org/10.1021/ct300302u
 
 def2-SVP-RIFIT  (cuest_scf_examples/data/gbs/def2-svp-rifit.gbs)
 def2-TZVP-RIFIT  (cuest_scf_examples/data/gbs/def2-tzvp-rifit.gbs)
@@ -120,6 +182,57 @@ def2-QZVP-RIFIT  (cuest_scf_examples/data/gbs/def2-qzvp-rifit.gbs)
   A. Hellweg, C. Hättig, S. Höfener, W. Klopper,
   Theor. Chem. Acc. 117, 587 (2007).
   https://doi.org/10.1007/s00214-007-0250-5
+
+cc-pVDZ  (cuest_scf_examples/data/gbs/cc-pvdz.gbs)
+cc-pVTZ  (cuest_scf_examples/data/gbs/cc-pvtz.gbs)
+cc-pVQZ  (cuest_scf_examples/data/gbs/cc-pvqz.gbs)
+aug-cc-pVDZ  (cuest_scf_examples/data/gbs/aug-cc-pvdz.gbs)
+aug-cc-pVTZ  (cuest_scf_examples/data/gbs/aug-cc-pvtz.gbs)
+aug-cc-pVQZ  (cuest_scf_examples/data/gbs/aug-cc-pvqz.gbs)
+
+  T. H. Dunning Jr.,
+  J. Chem. Phys. 90, 1007 (1989).  [H, B-Ne]
+  https://doi.org/10.1063/1.456153
+
+  R. A. Kendall, T. H. Dunning Jr., R. J. Harrison,
+  J. Chem. Phys. 96, 6796 (1992).  [aug-cc-pVnZ: H, B-Ne]
+  https://doi.org/10.1063/1.462569
+
+  D. E. Woon and T. H. Dunning Jr.,
+  J. Chem. Phys. 98, 1358 (1993).  [Al-Ar]
+  https://doi.org/10.1063/1.464303
+
+  D. E. Woon and T. H. Dunning Jr.,
+  J. Chem. Phys. 100, 2975 (1994).  [He]
+  https://doi.org/10.1063/1.466439
+
+  B. P. Prascher, D. E. Woon, K. A. Peterson, T. H. Dunning Jr.,
+  A. K. Wilson,
+  Theor. Chem. Acc. 128, 69 (2011).  [Li, Be, Na, Mg]
+  https://doi.org/10.1007/s00214-010-0764-0
+
+  J. Koput and K. A. Peterson,
+  J. Phys. Chem. A 106, 9595 (2002).  [cc-pVnZ: Ca]
+  https://doi.org/10.1021/jp026283u
+
+  N. B. Balabanov and K. A. Peterson,
+  J. Chem. Phys. 123, 064107 (2005).  [Sc-Zn]
+  https://doi.org/10.1063/1.1998907
+
+  N. B. Balabanov and K. A. Peterson,
+  J. Chem. Phys. 125, 074110 (2006).  [cc-pVDZ, aug-cc-pVDZ: Sc-Zn]
+  https://doi.org/10.1063/1.2335444
+
+  A. K. Wilson, D. E. Woon, K. A. Peterson, T. H. Dunning Jr.,
+  J. Chem. Phys. 110, 7667 (1999).  [Ga-Kr]
+  https://doi.org/10.1063/1.478678
+
+cc-pVTZ-JKFIT  (cuest_scf_examples/data/gbs/cc-pvtz-jkfit.gbs)
+cc-pVQZ-JKFIT  (cuest_scf_examples/data/gbs/cc-pvqz-jkfit.gbs)
+
+  F. Weigend,
+  Phys. Chem. Chem. Phys. 4, 4285 (2002).
+  https://doi.org/10.1039/B204199P
 
 STO-3G  (cuest_scf_examples/data/gbs/sto-3g.gbs)
 
@@ -160,7 +273,32 @@ MinAO-1  (cuest_scf_examples/data/gbs/minao-1.gbs)
 
 
 -----------------------------------------------------------------------
-2. NumPy
+2. Crystallography Open Database (bundled data)
+-----------------------------------------------------------------------
+
+The urea cluster geometry
+cuest_scf_examples/examples/rhf-large-1/urea_376.xyz (47 molecules,
+376 atoms) was carved from the urea crystal structure in entry
+1008775 of the Crystallography Open Database (COD,
+https://www.crystallography.net/cod/1008775.html).
+
+All data in the COD and the database itself are dedicated to the
+public domain and licensed under the CC0 License
+(https://creativecommons.org/publicdomain/zero/1.0/). The COD asks
+users of the data to acknowledge the original authors of the
+structural data:
+
+  H. Guth, G. Heger, S. Klein, W. Treutmann, C. Scheringer,
+  Z. Kristallogr. 153, 237 (1980).
+
+The Crystallography Open Database is described in:
+
+  S. Gražulis et al., J. Appl. Cryst. 42, 726 (2009).
+  https://doi.org/10.1107/S0021889809016690
+
+
+-----------------------------------------------------------------------
+3. NumPy
 -----------------------------------------------------------------------
 
 The Python API examples depend on NumPy (https://numpy.org).
