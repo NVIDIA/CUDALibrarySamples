@@ -12,7 +12,7 @@ This folder demonstrates how to use the libraries stored in the cuPQC SDK: cuPQC
 ## Requirements
 
 * [cuPQC SDK](https://developer.nvidia.com/cupqc-downloads)
-* [See cuPQC SDK requirements](https://docs.nvidia.com/cuda/cupqc/requirements.html)
+* [See cuPQC SDK requirements](https://docs.nvidia.com/cuda/cupqc/introduction/requirements.html)
 * Linux system with installed NVIDIA drivers
 * NVIDIA GPU of Volta (SM70) or newer architecture
 
