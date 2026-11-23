@@ -622,19 +622,23 @@ struct TestBench {
                                                 cudaMemcpyHostToDevice, stream));
 
             for (int i = 0; i < N; ++i) {
-                checkCudaStatus(cudaMemcpyAsync(APtrArrayHost[i], &Ahost[i * m * n],
+                checkCudaStatus(cudaMemcpyAsync(APtrArrayHost[i], &Ahost[i * (Ahost.size() / N)],
                                                 Ahost.size() / N * sizeof(Ahost[0]), cudaMemcpyHostToDevice, stream));
-                checkCudaStatus(cudaMemcpyAsync(BPtrArrayHost[i], &Bhost[i * m * n],
+                checkCudaStatus(cudaMemcpyAsync(BPtrArrayHost[i], &Bhost[i * (Bhost.size() / N)],
                                                 Bhost.size() / N * sizeof(Bhost[0]), cudaMemcpyHostToDevice, stream));
+                checkCudaStatus(cudaMemcpyAsync(CPtrArrayHost[i], &Chost[i * (Chost.size() / N)],
+                                                Chost.size() / N * sizeof(Chost[0]), cudaMemcpyHostToDevice, stream));
                 checkCudaStatus(cudaMemcpyAsync(BiasPtrArrayHost[i], &biasHost[i * m],
                                                 biasHost.size() / N * sizeof(biasHost[0]), cudaMemcpyHostToDevice,
                                                 stream));
             }
         } else {
-            checkCudaStatus(
-                cudaMemcpyAsync(Adev, Ahost.data(), Ahost.size() * sizeof(Ahost[0]), cudaMemcpyHostToDevice, stream));
-            checkCudaStatus(
-                cudaMemcpyAsync(Bdev, Bhost.data(), Bhost.size() * sizeof(Bhost[0]), cudaMemcpyHostToDevice, stream));
+            checkCudaStatus(cudaMemcpyAsync(Adev, Ahost.data(), Ahost.size() * sizeof(Ahost[0]),
+                                            cudaMemcpyHostToDevice, stream));
+            checkCudaStatus(cudaMemcpyAsync(Bdev, Bhost.data(), Bhost.size() * sizeof(Bhost[0]),
+                                            cudaMemcpyHostToDevice, stream));
+            checkCudaStatus(cudaMemcpyAsync(Cdev, Chost.data(), Chost.size() * sizeof(Chost[0]),
+                                            cudaMemcpyHostToDevice, stream));
             checkCudaStatus(cudaMemcpyAsync(biasDev, biasHost.data(), biasHost.size() * sizeof(biasHost[0]),
                                             cudaMemcpyHostToDevice, stream));
         }
