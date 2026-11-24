@@ -20,7 +20,7 @@ This can be done as the following:
 9. Destroy the plan
     
 Note that `nvshmem_malloc` requires the same "size" argument on every MPI rank
-- Hence, if scratch_size is not identical on every rank, the max accross ranks should be used. (See https://docs.nvidia.com/hpc-sdk/nvshmem/api/docs/gen/api/memory.html#c.nvshmem_malloc)
+- Hence, if scratch_size is not identical on every rank, the max accross ranks should be used. (See https://docs.nvidia.com/nvshmem/api/latest/gen/api/memory.html#c.nvshmem_malloc)
 - Except for FFT kernels that don't require any scratch (like powers of 2), there is no guarantees that cuFFT requires the same amount of scratch on all ranks Hence, the user should compute the max across MPI ranks (e.g. using `MPI_Allreduce`) and pass this to `nvshmem_malloc`.
   
 ## Build and run
