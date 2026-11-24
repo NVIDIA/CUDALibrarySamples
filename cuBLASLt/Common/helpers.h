@@ -628,7 +628,7 @@ struct TestBench {
                                                 Bhost.size() / N * sizeof(Bhost[0]), cudaMemcpyHostToDevice, stream));
                 checkCudaStatus(cudaMemcpyAsync(CPtrArrayHost[i], &Chost[i * (Chost.size() / N)],
                                                 Chost.size() / N * sizeof(Chost[0]), cudaMemcpyHostToDevice, stream));
-                checkCudaStatus(cudaMemcpyAsync(BiasPtrArrayHost[i], &biasHost[i * m],
+                checkCudaStatus(cudaMemcpyAsync(BiasPtrArrayHost[i], &biasHost[i * (biasHost.size() / N)],
                                                 biasHost.size() / N * sizeof(biasHost[0]), cudaMemcpyHostToDevice,
                                                 stream));
             }
@@ -670,11 +670,11 @@ struct TestBench {
         if (isPtrArray(ptrArrayBatch, groupedBatch)) {
             for (int i = 0; i < N; ++i) {
                 if (outOfPlace)
-                    checkCudaStatus(cudaMemcpyAsync(&Dhost[i * m * n], DPtrArrayHost[i],
+                    checkCudaStatus(cudaMemcpyAsync(&Dhost[i * (Dhost.size() / N)], DPtrArrayHost[i],
                                                     Dhost.size() / N * sizeof(Dhost[0]), cudaMemcpyDeviceToHost,
                                                     stream));
                 else
-                    checkCudaStatus(cudaMemcpyAsync(&Chost[i * m * n], CPtrArrayHost[i],
+                    checkCudaStatus(cudaMemcpyAsync(&Chost[i * (Chost.size() / N)], CPtrArrayHost[i],
                                                     Chost.size() / N * sizeof(Chost[0]), cudaMemcpyDeviceToHost,
                                                     stream));
             }
