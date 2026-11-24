@@ -47,40 +47,70 @@ DEFINES = -DCUDA_ARCH=$(CUDA_LTO_ARCH) -DCUDA_PATH=$(CUDA_PATH) -DSOURCE_PATH=${
 ###########################################################################################################
 # Rules
 
-all: bin/r2c_c2r_lto_callback_example bin/r2c_c2r_lto_nvrtc_callback_example bin/r2c_c2r_legacy_callback_example
+all: bin/r2c_c2r_windowing_lto_callback_example bin/r2c_c2r_windowing_lto_nvrtc_callback_example bin/r2c_c2r_windowing_legacy_callback_example bin/r2c_c2r_padding_lto_callback_example bin/r2c_c2r_padding_legacy_callback_example
 
-# LTO example
-bin/r2c_c2r_lto_callback_example: build/r2c_c2r_lto_callback_example.o build/r2c_c2r_reference.o build/common.o
+# Windowing LTO example
+bin/r2c_c2r_windowing_lto_callback_example: build/r2c_c2r_windowing_lto_callback_example.o build/r2c_c2r_windowing_reference.o build/common.o
 	$(CXX) $(LIBS) $^ -o $@ -lcufft -lcudart
 
-build/r2c_c2r_lto_callback_example.o: src/r2c_c2r_lto_callback_example.cpp build/r2c_c2r_lto_callback_device_fatbin.h
+build/r2c_c2r_windowing_lto_callback_example.o: src/r2c_c2r_windowing_lto_callback_example.cpp build/r2c_c2r_windowing_lto_callback_device_fatbin.h
 	$(CXX) $(INCLUDES) -c $< -o $@
 
-build/r2c_c2r_lto_callback_device_fatbin.h: build/r2c_c2r_lto_callback_device.fatbin
+build/r2c_c2r_windowing_lto_callback_device_fatbin.h: build/r2c_c2r_windowing_lto_callback_device.fatbin
 	$(BIN2C) --name window_callback --type longlong $< > $@
 
-build/r2c_c2r_lto_callback_device.fatbin: src/r2c_c2r_lto_callback_device.cu
+build/r2c_c2r_windowing_lto_callback_device.fatbin: src/r2c_c2r_windowing_lto_callback_device.cu
 	$(NVCC) --std=c++11 $(GENCODE_FLAGS_LTO) $(CB_SWITCH) -dc -fatbin $< -o $@
 
-# NVRTC + LTO example
-bin/r2c_c2r_lto_nvrtc_callback_example: build/r2c_c2r_lto_nvrtc_callback_example.o build/r2c_c2r_reference.o build/common.o
-	$(CXX) $(LIBS) $^ -o $@ -lcufft -lnvrtc -lcudart
+# Padding LTO example
+bin/r2c_c2r_padding_lto_callback_example: build/r2c_c2r_padding_lto_callback_example.o build/r2c_c2r_padding_reference.o build/common.o build/r2c_c2r_padding_load_callback_fatbin.h build/r2c_c2r_padding_store_callback_fatbin.h
+	$(CXX) $(LIBS) $^ -o $@ -lcufft -lcudart -lnvJitLink
 
-build/r2c_c2r_lto_nvrtc_callback_example.o: src/r2c_c2r_lto_nvrtc_callback_example.cpp
+build/r2c_c2r_padding_lto_callback_example.o: src/r2c_c2r_padding_lto_callback_example.cpp build/r2c_c2r_padding_load_callback_fatbin.h build/r2c_c2r_padding_store_callback_fatbin.h
+	$(CXX) $(INCLUDES) -c $< -o $@
+
+build/r2c_c2r_padding_load_callback_fatbin.h: build/r2c_c2r_padding_load_callback.fatbin
+	$(BIN2C) --name padding_load_callback --type longlong $< > $@
+
+build/r2c_c2r_padding_store_callback_fatbin.h: build/r2c_c2r_padding_store_callback.fatbin
+	$(BIN2C) --name padding_store_callback --type longlong $< > $@
+
+build/r2c_c2r_padding_load_callback.fatbin: src/r2c_c2r_padding_lto_load_callback_device.cu
+	$(NVCC) --std=c++11 $(GENCODE_FLAGS_LTO) $(CB_SWITCH) -dc -fatbin $< -o $@
+
+build/r2c_c2r_padding_store_callback.fatbin: src/r2c_c2r_padding_lto_store_callback_device.cu
+	$(NVCC) --std=c++11 $(GENCODE_FLAGS_LTO) $(CB_SWITCH) -dc -fatbin $< -o $@
+
+# Windowing NVRTC + LTO example
+bin/r2c_c2r_windowing_lto_nvrtc_callback_example: build/r2c_c2r_windowing_lto_nvrtc_callback_example.o build/r2c_c2r_windowing_reference.o build/common.o
+	$(CXX) $(LIBS) $^ -o $@ -lcufft -lnvrtc -lcudart -lnvJitLink
+
+build/r2c_c2r_windowing_lto_nvrtc_callback_example.o: src/r2c_c2r_windowing_lto_nvrtc_callback_example.cpp
 	$(CXX) $(INCLUDES) $(DEFINES) $(CB_SWITCH) -c $< -o $@
 
-# Regular callback example
+# Windowing Regular callback example
 # NOTE: we compile the sample with nvcc and do device-linking against the static library. With the
 # LTO sample, on the other hand, we only need to do separate compilation of the callback function;
 # we can use the dynamic library and compile the host code with the host compiler
-build/r2c_c2r_legacy_callback_example.o: src/r2c_c2r_legacy_callback_example.cu
+build/r2c_c2r_windowing_legacy_callback_example.o: src/r2c_c2r_windowing_legacy_callback_example.cu
 	$(NVCC) $(INCLUDES) --std=c++11 $(GENCODE_FLAGS) $(CB_SWITCH) -dc -c $< -o $@
 
-bin/r2c_c2r_legacy_callback_example: build/r2c_c2r_legacy_callback_example.o build/r2c_c2r_reference.o build/common.o
+bin/r2c_c2r_windowing_legacy_callback_example: build/r2c_c2r_windowing_legacy_callback_example.o build/r2c_c2r_windowing_reference.o build/common.o
 	$(NVCC) $(LIBS) $(GENCODE_FLAGS) $(CB_SWITCH) -o $@ $^ -lcufft_static -lcudart -lculibos
 
-# Reference
-build/r2c_c2r_reference.o: src/r2c_c2r_reference.cu
+# Padding Regular callback example
+build/r2c_c2r_padding_legacy_callback_example.o: src/r2c_c2r_padding_legacy_callback_example.cu
+	$(NVCC) $(INCLUDES) --std=c++11 $(GENCODE_FLAGS) $(CB_SWITCH) -dc -c $< -o $@
+
+bin/r2c_c2r_padding_legacy_callback_example: build/r2c_c2r_padding_legacy_callback_example.o build/r2c_c2r_padding_reference.o build/common.o
+	$(NVCC) $(LIBS) $(GENCODE_FLAGS) $(CB_SWITCH) -o $@ $^ -lcufft_static -lcudart -lculibos
+
+# Windowing Reference
+build/r2c_c2r_windowing_reference.o: src/r2c_c2r_windowing_reference.cu
+	$(NVCC) $(INCLUDES) --std=c++11 $(GENCODE_FLAGS) -c $< -o $@
+
+# Padding Reference
+build/r2c_c2r_padding_reference.o: src/r2c_c2r_padding_reference.cu
 	$(NVCC) $(INCLUDES) --std=c++11 $(GENCODE_FLAGS) -c $< -o $@
 
 build/common.o: src/common.cpp
