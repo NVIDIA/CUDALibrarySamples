@@ -52,9 +52,9 @@ int main(int argc, char** argv) {
     //   | [15 16 17 18 19 ]
     // x v
     // 
-    // Initially, data is distributed as follow
+    // Initially, data is distributed as follows
     // [0  1  2  | 3  4  ]
-    // [5  6  7  | 7  9  ]
+    // [5  6  7  | 8  9  ]
     // [10 11 12 | 13 14 ]
     // [15 16 17 | 18 19 ]
     //  ^rank 0^  ^rank 1^
@@ -129,7 +129,7 @@ int main(int argc, char** argv) {
 
     // Move CPU data to GPU, and set the destination data to 0.
     CUDA_CHECK(cudaMemcpyAsync(src, src_host.data(), src_host.size() * sizeof(int), cudaMemcpyDefault, stream));
-    CUDA_CHECK(cudaMemsetAsync(dst, 0, dst_host_expected.size(), stream));
+    CUDA_CHECK(cudaMemsetAsync(dst, 0, dst_host_expected.size() * sizeof(int), stream));
 
     // Before calling cufftMpExecReshapeAsync, use a sync to make sure the buffers are synced to avoid race conditions.
     // More precisely, when one GPU starts to execute the API `cufftMpExecReshapeAsync` in a stream,

@@ -12,7 +12,7 @@ This can be done as the following:
 1. Create (but don't make) plans
 2. Call `cufftSetAutoAllocation(plan, false)` on all plans
 3. Call `cufftMakePlan3d(plan, ..., scratch_size)` on all plans and retrieve the required scratch size per plan
-4. Compute the maximum scratch size accros plans *AND* accross MPI ranks (see note below on `nvshmem_malloc`)
+4. Compute the maximum scratch size across plans *AND* across MPI ranks (see note below on `nvshmem_malloc`)
 5. Allocate memory using `nvshmem_malloc`
 6. Call `cufftSetWorkArea(plan, buffer)` on all plans
 7. Call `cufftExec`, `cufftXtMemcpy`, etc
@@ -20,7 +20,7 @@ This can be done as the following:
 9. Destroy the plan
     
 Note that `nvshmem_malloc` requires the same "size" argument on every MPI rank
-- Hence, if scratch_size is not identical on every rank, the max accross ranks should be used. (See https://docs.nvidia.com/hpc-sdk/nvshmem/api/docs/gen/api/memory.html#c.nvshmem_malloc)
+- Hence, if scratch_size is not identical on every rank, the max across ranks should be used. (See https://docs.nvidia.com/nvshmem/api/latest/gen/api/memory.html#c.nvshmem_malloc)
 - Except for FFT kernels that don't require any scratch (like powers of 2), there is no guarantees that cuFFT requires the same amount of scratch on all ranks Hence, the user should compute the max across MPI ranks (e.g. using `MPI_Allreduce`) and pass this to `nvshmem_malloc`.
   
 ## Build and run

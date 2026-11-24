@@ -11,3 +11,6 @@ This folder contains a few auxiliary functions for various samples.
 
 ## scaling.cuh
 - scaling_kernel: Normalize entries in the box with a constant scaling factor using `BoxIterator`. By default, entries corresponding to the first 10 threads are printed for illustration. This kernel serves as an example of intermediate operations that can be done between two Fourier transforms.
+
+## nccl_check.hpp
+- NCCL_CHECK: Stop the program with a message if an NCCL call does not return `ncclSuccess`. Only the NCCL samples include this file.

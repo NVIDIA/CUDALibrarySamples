@@ -1,6 +1,6 @@
 # Standalone Reshape Sample
 
-This sample shows how to use the reshape API to re-distribute data accross GPUs.
+This sample shows how to use the reshape API to re-distribute data across GPUs.
 
 ## Sample description
 Assume we have a 4x5 "global" world with the following data
@@ -12,7 +12,7 @@ Assume we have a 4x5 "global" world with the following data
 |   | 10 | 11 | 12 | 13 | 14 |
 |   | 15 | 16 | 17 | 18 | 19 |
 
-Initially, data is distributed as follow
+Initially, data is distributed as follows
 
 |   | y  |    |    |    |    | 
 |---|----|----|----|----|----|
