@@ -105,6 +105,11 @@ void spmg(dim_t fft, int &batch_size, gpus_t gpus, cpudata_t &h_data_in, cpudata
     // Execute the plan
     CUFFT_CALL(cufftXtExecDescriptor(plan, indesc, indesc, CUFFT_FORWARD));
 
+#if CUFFT_VERSION >= 10400
+    // The transform runs on the plan's stream; wait for it before reading back
+    CUDA_RT_CALL(cudaStreamSynchronize(stream));
+#endif
+
     // Copy output data to CPU
     CUFFT_CALL(cufftXtMemcpy(plan, reinterpret_cast<void *>(h_data_out.data()),
                              reinterpret_cast<void *>(indesc), CUFFT_COPY_DEVICE_TO_HOST));
